@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="400" height="120">
+  <defs>
+    <!-- 方案 C 的渐变: 翠绿 -> 蔚蓝 -->
+    <linearGradient id="mainGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/> <!-- Emerald 500 -->
+      <stop offset="100%" style="stop-color:#3b82f6"/> <!-- Blue 500 -->
+    </linearGradient>
+  </defs>
+
+  <!-- 图形部分 (左侧) -->
+  <g transform="translate(20, 10)">
+    <!-- 起点 -->
+    <circle cx="20" cy="80" r="12" fill="url(#mainGradient)"/>
+    
+    <!-- 终点 -->
+    <circle cx="80" cy="20" r="12" fill="url(#mainGradient)"/>
+    
+    <!-- S型连接线 -->
+    <path d="M 20 80 C 20 20, 80 80, 80 20" fill="none" stroke="url(#mainGradient)" stroke-width="10" stroke-linecap="round"/>
+  </g>
+
+  <!-- 文字部分 (右侧) -->
+  <g transform="translate(130, 75)">
+    <text font-family="Arial, sans-serif" font-weight="bold" font-size="56" fill="#e2e8f0">
+      Flow<tspan fill="url(#mainGradient)">Sight</tspan>
+    </text>
+  </g>
+</svg>

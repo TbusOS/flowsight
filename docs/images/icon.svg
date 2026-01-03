@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="mainGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/> <!-- Emerald 500 -->
+      <stop offset="100%" style="stop-color:#3b82f6"/> <!-- Blue 500 -->
+    </linearGradient>
+  </defs>
+
+  <!-- 背景: 大圆角 (Squircle 风格) -->
+  <rect width="256" height="256" fill="#18181b" rx="68" ry="68"/>
+  
+  <!-- 居中的图形 -->
+  <g transform="translate(128, 128)">
+    <!-- 起点 -->
+    <circle cx="-60" cy="50" r="20" fill="url(#mainGradient)"/>
+    
+    <!-- 终点 -->
+    <circle cx="60" cy="-50" r="20" fill="url(#mainGradient)"/>
+    
+    <!-- 极简连接线 -->
+    <path d="M -60 50 C -60 -50, 60 50, 60 -50" fill="none" stroke="url(#mainGradient)" stroke-width="16" stroke-linecap="round"/>
+  </g>
+</svg>
