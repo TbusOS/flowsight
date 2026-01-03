@@ -1,0 +1,196 @@
+# JNI (Java Native Interface) Bridge Knowledge Base
+
+jni_bridge:
+  description: "Java ↔ C/C++ 跨语言调用"
+  documentation: "https://docs.oracle.com/javase/8/docs/technotes/guides/jni/"
+  
+  # 命名约定
+  naming_conventions:
+    static_registration:
+      description: "静态 JNI 注册 (函数命名约定)"
+      java_pattern: 'native\s+(?P<return>\w+)\s+(?P<method>\w+)\s*\('
+      native_pattern: 'Java_(?P<package>[\w_]+)_(?P<class>[\w_]+)_(?P<method>\w+)'
+      transform_rules:
+        - "Java 包名中的 '.' → '_'"
+        - "Java 类名中的 '$' (内部类) → '_00024'"
+        - "方法名保持不变"
+      example:
+        java: "com.example.MyClass.nativeMethod()"
+        native: "Java_com_example_MyClass_nativeMethod()"
+    
+    dynamic_registration:
+      description: "动态 JNI 注册 (RegisterNatives)"
+      pattern: 'RegisterNatives\s*\(\s*(?P<clazz>\w+)\s*,\s*(?P<methods>\w+)\s*,\s*(?P<count>\w+)\s*\)'
+      method_table_pattern: |
+        JNINativeMethod\s+(?P<table>\w+)\[\]\s*=\s*\{
+        .*?
+        \{"(?P<java_name>\w+)",\s*"(?P<signature>[^"]+)",\s*\(void\*\)(?P<native_func>\w+)\}
+      
+
+  # 类型映射
+  type_mapping:
+    # 原始类型
+    primitives:
+      boolean: { java: "boolean", jni: "jboolean", c: "unsigned char" }
+      byte: { java: "byte", jni: "jbyte", c: "signed char" }
+      char: { java: "char", jni: "jchar", c: "unsigned short" }
+      short: { java: "short", jni: "jshort", c: "short" }
+      int: { java: "int", jni: "jint", c: "int" }
+      long: { java: "long", jni: "jlong", c: "long long" }
+      float: { java: "float", jni: "jfloat", c: "float" }
+      double: { java: "double", jni: "jdouble", c: "double" }
+      void: { java: "void", jni: "void", c: "void" }
+    
+    # 引用类型
+    references:
+      object: { java: "Object", jni: "jobject" }
+      class: { java: "Class", jni: "jclass" }
+      string: { java: "String", jni: "jstring" }
+      throwable: { java: "Throwable", jni: "jthrowable" }
+    
+    # 数组类型
+    arrays:
+      boolean_array: { java: "boolean[]", jni: "jbooleanArray" }
+      byte_array: { java: "byte[]", jni: "jbyteArray" }
+      char_array: { java: "char[]", jni: "jcharArray" }
+      short_array: { java: "short[]", jni: "jshortArray" }
+      int_array: { java: "int[]", jni: "jintArray" }
+      long_array: { java: "long[]", jni: "jlongArray" }
+      float_array: { java: "float[]", jni: "jfloatArray" }
+      double_array: { java: "double[]", jni: "jdoubleArray" }
+      object_array: { java: "Object[]", jni: "jobjectArray" }
+
+  # 方法签名解析
+  signature_encoding:
+    description: "JNI 方法签名编码"
+    primitives:
+      Z: "boolean"
+      B: "byte"
+      C: "char"
+      S: "short"
+      I: "int"
+      J: "long"
+      F: "float"
+      D: "double"
+      V: "void"
+    
+    reference_pattern: 'L(?P<class>[\w/]+);'
+    array_prefix: "["
+    
+    examples:
+      - signature: "(I)V"
+        meaning: "void method(int)"
+      - signature: "(Ljava/lang/String;I)Z"
+        meaning: "boolean method(String, int)"
+      - signature: "([B)Ljava/lang/String;"
+        meaning: "String method(byte[])"
+
+
+  # 调用模式
+  call_patterns:
+    # Java → Native
+    java_to_native:
+      description: "Java 调用 Native 方法"
+      java_side:
+        declaration: 'native\s+(?P<return>\w+)\s+(?P<method>\w+)\s*\([^)]*\)'
+        call: '(?P<method>\w+)\s*\([^)]*\)'
+      native_side:
+        function: 'JNIEXPORT\s+(?P<return>\w+)\s+JNICALL\s+(?P<name>Java_[\w_]+)'
+    
+    # Native → Java (回调)
+    native_to_java:
+      description: "Native 回调 Java 方法"
+      patterns:
+        get_method_id:
+          pattern: 'GetMethodID\s*\(\s*(?P<env>\w+)\s*,\s*(?P<class>\w+)\s*,\s*"(?P<method>\w+)"\s*,\s*"(?P<sig>[^"]+)"\s*\)'
+          purpose: "获取 Java 方法 ID"
+        
+        get_static_method_id:
+          pattern: 'GetStaticMethodID\s*\(\s*(?P<env>\w+)\s*,\s*(?P<class>\w+)\s*,\s*"(?P<method>\w+)"\s*,\s*"(?P<sig>[^"]+)"\s*\)'
+          purpose: "获取 Java 静态方法 ID"
+        
+        call_method:
+          pattern: 'Call(?P<type>\w+)Method\s*\(\s*(?P<env>\w+)\s*,\s*(?P<obj>\w+)\s*,\s*(?P<mid>\w+)'
+          purpose: "调用 Java 实例方法"
+        
+        call_static_method:
+          pattern: 'CallStatic(?P<type>\w+)Method\s*\(\s*(?P<env>\w+)\s*,\s*(?P<class>\w+)\s*,\s*(?P<mid>\w+)'
+          purpose: "调用 Java 静态方法"
+
+
+  # JNI 函数参数模式
+  function_parameters:
+    instance_method:
+      params:
+        - name: "env"
+          type: "JNIEnv *"
+          description: "JNI 环境指针"
+        - name: "thiz"
+          type: "jobject"
+          description: "调用此方法的 Java 对象"
+    
+    static_method:
+      params:
+        - name: "env"
+          type: "JNIEnv *"
+          description: "JNI 环境指针"
+        - name: "clazz"
+          type: "jclass"
+          description: "声明此方法的 Java 类"
+
+
+  # 常见 JNI 操作
+  common_operations:
+    string_conversion:
+      java_to_native:
+        pattern: 'GetStringUTFChars\s*\(\s*(?P<env>\w+)\s*,\s*(?P<jstr>\w+)'
+        release: 'ReleaseStringUTFChars\s*\(\s*(?P<env>\w+)\s*,\s*(?P<jstr>\w+)'
+      
+      native_to_java:
+        pattern: 'NewStringUTF\s*\(\s*(?P<env>\w+)\s*,\s*(?P<cstr>\w+)'
+    
+    array_access:
+      get_elements:
+        pattern: 'Get(?P<type>\w+)ArrayElements\s*\(\s*(?P<env>\w+)\s*,\s*(?P<arr>\w+)'
+      release_elements:
+        pattern: 'Release(?P<type>\w+)ArrayElements\s*\(\s*(?P<env>\w+)\s*,\s*(?P<arr>\w+)'
+    
+    object_creation:
+      new_object:
+        pattern: 'NewObject\s*\(\s*(?P<env>\w+)\s*,\s*(?P<class>\w+)\s*,\s*(?P<ctor>\w+)'
+      new_array:
+        pattern: 'New(?P<type>\w+)Array\s*\(\s*(?P<env>\w+)\s*,\s*(?P<size>\w+)'
+    
+    exception_handling:
+      check:
+        pattern: 'ExceptionCheck\s*\(\s*(?P<env>\w+)\s*\)'
+      clear:
+        pattern: 'ExceptionClear\s*\(\s*(?P<env>\w+)\s*\)'
+      throw:
+        pattern: 'ThrowNew\s*\(\s*(?P<env>\w+)\s*,\s*(?P<class>\w+)'
+
+
+  # Android 特有扩展
+  android_extensions:
+    # Android Log
+    android_log:
+      pattern: '__android_log_print\s*\(\s*(?P<level>\w+)'
+      levels:
+        - ANDROID_LOG_VERBOSE
+        - ANDROID_LOG_DEBUG
+        - ANDROID_LOG_INFO
+        - ANDROID_LOG_WARN
+        - ANDROID_LOG_ERROR
+    
+    # Asset Manager
+    asset_manager:
+      get_from_java:
+        pattern: 'AAssetManager_fromJava\s*\(\s*(?P<env>\w+)\s*,\s*(?P<jasset>\w+)'
+    
+    # Bitmap
+    bitmap_access:
+      lock_pixels:
+        pattern: 'AndroidBitmap_lockPixels\s*\(\s*(?P<env>\w+)\s*,\s*(?P<bitmap>\w+)'
+      unlock_pixels:
+        pattern: 'AndroidBitmap_unlockPixels\s*\(\s*(?P<env>\w+)\s*,\s*(?P<bitmap>\w+)'
+

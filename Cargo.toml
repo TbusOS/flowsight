@@ -1,0 +1,72 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/flowsight-core",
+    "crates/flowsight-parser",
+    "crates/flowsight-index",
+    "crates/flowsight-analysis",
+    "crates/flowsight-knowledge",
+    "crates/flowsight-query",
+    "crates/flowsight-cli",
+    "app/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["FlowSight Team"]
+license = "MIT"
+repository = "https://github.com/user/flowsight"
+description = "A cross-platform IDE for visualizing code execution flow"
+
+[workspace.dependencies]
+# Internal crates
+flowsight-core = { path = "crates/flowsight-core" }
+flowsight-parser = { path = "crates/flowsight-parser" }
+flowsight-index = { path = "crates/flowsight-index" }
+flowsight-analysis = { path = "crates/flowsight-analysis" }
+flowsight-knowledge = { path = "crates/flowsight-knowledge" }
+flowsight-query = { path = "crates/flowsight-query" }
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Parsing
+tree-sitter = "0.22"
+tree-sitter-c = "0.21"
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+sled = "0.34"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+
+# Regex
+regex = "1.10"
+
+# Path handling
+walkdir = "2.4"
+globset = "0.4"
+
+# Parallelism
+rayon = "1.8"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+

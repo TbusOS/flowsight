@@ -1,0 +1,14 @@
+[package]
+name = "flowsight-query"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Query engine for FlowSight"
+
+[dependencies]
+flowsight-core = { workspace = true }
+flowsight-index = { workspace = true }
+flowsight-analysis = { workspace = true }
+thiserror = { workspace = true }
+

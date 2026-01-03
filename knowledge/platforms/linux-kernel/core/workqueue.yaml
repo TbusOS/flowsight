@@ -1,0 +1,145 @@
+# Linux Kernel Work Queue Knowledge Base
+# 
+# Reference: https://www.kernel.org/doc/html/latest/core-api/workqueue.html
+
+work_struct:
+  description: "Work Queue - 延迟到进程上下文执行的工作单元"
+  header: "linux/workqueue.h"
+  icon: "⚙️"
+  
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+  
+  bind_patterns:
+    - pattern: 'INIT_WORK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "struct_field"
+    
+    - pattern: 'INIT_WORK_ONSTACK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "local"
+    
+    - pattern: 'DECLARE_WORK\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "global"
+  
+  trigger_patterns:
+    - pattern: 'schedule_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      workqueue: "system_wq"
+    
+    - pattern: 'queue_work\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      extra_captures:
+        - name: "wq"
+          description: "目标工作队列"
+    
+    - pattern: 'queue_work_on\s*\(\s*(?P<cpu>\d+|[\w]+)\s*,\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+  
+  cancel_patterns:
+    - pattern: 'cancel_work_sync\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "sync"
+      description: "同步取消，等待工作完成"
+    
+    - pattern: 'cancel_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "trycancel"
+      description: "尝试取消，不等待"
+  
+  handler_signature:
+    return_type: "void"
+    parameters:
+      - name: "work"
+        type: "struct work_struct *"
+        description: "工作结构体指针"
+  
+  lifecycle:
+    init_required: true
+    cleanup_required: true
+    ref_counted: false
+  
+  notes:
+    - "使用 container_of 获取包含此 work_struct 的结构体"
+    - "不要在 handler 中释放包含 work_struct 的内存"
+    - "可以在 handler 中重新调度自身"
+
+
+delayed_work:
+  description: "Delayed Work Queue - 延迟指定时间后执行"
+  header: "linux/workqueue.h"
+  icon: "⏰"
+  
+  extends: "work_struct"
+  
+  context:
+    type: "process"
+    can_sleep: true
+  
+  bind_patterns:
+    - pattern: 'INIT_DELAYED_WORK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+  
+  trigger_patterns:
+    - pattern: 'schedule_delayed_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<delay>[\w\+\*\/\(\)]+)\s*\)'
+      variable_capture: "var"
+      extra_captures:
+        - name: "delay"
+          description: "延迟时间 (jiffies)"
+    
+    - pattern: 'queue_delayed_work\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<delay>[\w\+\*\/\(\)]+)\s*\)'
+      variable_capture: "var"
+    
+    - pattern: 'mod_delayed_work\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<delay>[\w\+\*\/\(\)]+)\s*\)'
+      variable_capture: "var"
+      description: "修改延迟时间"
+  
+  cancel_patterns:
+    - pattern: 'cancel_delayed_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      behavior: "trycancel"
+    
+    - pattern: 'cancel_delayed_work_sync\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      behavior: "sync"
+
+
+workqueue_struct:
+  description: "Work Queue 实例"
+  header: "linux/workqueue.h"
+  
+  creation_patterns:
+    - pattern: 'alloc_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*,'
+      extra_captures:
+        - name: "name"
+          description: "工作队列名称"
+    
+    - pattern: 'create_singlethread_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*\)'
+      description: "单线程工作队列"
+    
+    - pattern: 'create_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*\)'
+      description: "多线程工作队列（已废弃）"
+  
+  destroy_patterns:
+    - pattern: 'destroy_workqueue\s*\(\s*(?P<wq>[\w\.\->]+)\s*\)'
+    - pattern: 'flush_workqueue\s*\(\s*(?P<wq>[\w\.\->]+)\s*\)'
+      description: "等待队列中所有工作完成"
+  
+  builtin_queues:
+    system_wq:
+      description: "通用系统工作队列"
+    system_highpri_wq:
+      description: "高优先级工作队列"
+    system_long_wq:
+      description: "长时间运行的工作"
+    system_unbound_wq:
+      description: "不绑定 CPU 的工作队列"
+    system_freezable_wq:
+      description: "可冻结的工作队列"
+

@@ -1,0 +1,26 @@
+[package]
+name = "flowsight-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Command-line interface for FlowSight"
+
+[[bin]]
+name = "flowsight"
+path = "src/main.rs"
+
+[dependencies]
+flowsight-core = { workspace = true }
+flowsight-parser = { workspace = true }
+flowsight-analysis = { workspace = true }
+flowsight-knowledge = { workspace = true }
+flowsight-index = { workspace = true }
+flowsight-query = { workspace = true }
+
+clap = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+

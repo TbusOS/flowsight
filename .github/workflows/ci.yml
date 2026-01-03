@@ -1,0 +1,177 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Check
+        run: cargo check --workspace
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Run tests
+        run: cargo test --workspace
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          components: rustfmt
+          
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          components: clippy
+          
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+
+  # Windows 首要平台，优先测试
+  build-windows:
+    name: Build Windows (Primary)
+    runs-on: windows-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install pnpm
+        run: npm install -g pnpm
+        
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install
+        
+      - name: Build Tauri app
+        working-directory: app
+        run: pnpm tauri build
+        
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flowsight-windows
+          path: |
+            app/src-tauri/target/release/bundle/msi/
+            app/src-tauri/target/release/bundle/nsis/
+
+  # Linux 第二优先级
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-22.04
+    needs: build-windows  # Windows 构建成功后再构建 Linux
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install pnpm
+        run: npm install -g pnpm
+        
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install
+        
+      - name: Build Tauri app
+        working-directory: app
+        run: pnpm tauri build
+        
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flowsight-linux
+          path: |
+            app/src-tauri/target/release/bundle/deb/
+            app/src-tauri/target/release/bundle/appimage/
+
+  # macOS 第三优先级（可选）
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    needs: build-linux  # Linux 构建成功后再构建 macOS
+    if: github.ref == 'refs/heads/main'  # 只在 main 分支构建
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install pnpm
+        run: npm install -g pnpm
+        
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install
+        
+      - name: Build Tauri app
+        working-directory: app
+        run: pnpm tauri build
+        
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flowsight-macos
+          path: |
+            app/src-tauri/target/release/bundle/dmg/
+            app/src-tauri/target/release/bundle/macos/
+

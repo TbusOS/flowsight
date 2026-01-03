@@ -1,0 +1,17 @@
+[package]
+name = "flowsight-index"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Index storage for FlowSight (symbols, call graphs)"
+
+[dependencies]
+flowsight-core = { workspace = true }
+rusqlite = { workspace = true }
+sled = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+

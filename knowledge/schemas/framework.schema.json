@@ -1,0 +1,186 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://flowsight.dev/schemas/framework.schema.json",
+  "title": "FlowSight Framework Schema",
+  "description": "Schema for defining framework callbacks in FlowSight knowledge base",
+  "type": "object",
+  "additionalProperties": {
+    "$ref": "#/definitions/Framework"
+  },
+  "definitions": {
+    "Framework": {
+      "type": "object",
+      "required": ["description"],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "header": {
+          "type": "string",
+          "description": "Header file or import path"
+        },
+        "documentation": {
+          "type": "string",
+          "format": "uri",
+          "description": "Documentation URL"
+        },
+        "registration": {
+          "$ref": "#/definitions/Registration"
+        },
+        "core_struct": {
+          "$ref": "#/definitions/CoreStruct"
+        },
+        "callbacks": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Callback"
+          }
+        },
+        "lifecycle_callbacks": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/LifecycleCallback"
+          }
+        }
+      }
+    },
+    "Registration": {
+      "type": "object",
+      "properties": {
+        "functions": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "pattern": { "type": "string" }
+                }
+              }
+            ]
+          }
+        },
+        "macros": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "CoreStruct": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "id_field": { "type": "string" },
+        "ops_field": { "type": ["string", "null"] }
+      }
+    },
+    "Callback": {
+      "type": "object",
+      "required": ["description"],
+      "properties": {
+        "description": { "type": "string" },
+        "field_path": { "type": "string" },
+        "trigger": {
+          "type": "object",
+          "properties": {
+            "event": { "type": "string" },
+            "timing": {
+              "type": "string",
+              "enum": ["sync", "async", "deferred"]
+            },
+            "initiator": {
+              "type": "string",
+              "enum": ["system", "user", "hardware", "driver"]
+            }
+          }
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" },
+            "can_sleep": { "type": "boolean" },
+            "holds_locks": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "signature": {
+          "type": "object",
+          "properties": {
+            "return_type": { "type": "string" },
+            "parameters": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            },
+            "return_values": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "string" },
+                "failure": { "type": "string" }
+              }
+            }
+          }
+        },
+        "typical_actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "lifecycle_phase": {
+          "type": "string",
+          "enum": ["init", "runtime", "shutdown"]
+        },
+        "ordering": {
+          "type": "object",
+          "properties": {
+            "must_before": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "must_after": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "may_call": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "LifecycleCallback": {
+      "type": "object",
+      "required": ["description"],
+      "properties": {
+        "description": { "type": "string" },
+        "trigger": { "type": "string" },
+        "context": { "type": "string" },
+        "signature": { "type": "string" },
+        "next_states": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "typical_actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}
+

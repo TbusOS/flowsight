@@ -1,0 +1,155 @@
+# Android Activity Framework Knowledge Base
+
+activity:
+  description: "Android Activity Lifecycle"
+  header: "android.app.Activity"
+  documentation: "https://developer.android.com/guide/components/activities/activity-lifecycle"
+  
+  lifecycle_callbacks:
+    onCreate:
+      description: "Activity 创建时调用"
+      trigger: "Activity 首次创建"
+      context: "Main thread"
+      signature: "void onCreate(Bundle savedInstanceState)"
+      next_states: ["onStart"]
+      typical_actions:
+        - "setContentView() 设置布局"
+        - "初始化 UI 组件"
+        - "恢复保存的状态"
+        - "绑定数据"
+    
+    onStart:
+      description: "Activity 即将可见"
+      trigger: "onCreate 完成后，或从 onStop 恢复"
+      context: "Main thread"
+      signature: "void onStart()"
+      next_states: ["onResume"]
+      typical_actions:
+        - "注册 BroadcastReceiver"
+        - "开始动画"
+    
+    onResume:
+      description: "Activity 可交互"
+      trigger: "onStart 完成后，或从 onPause 恢复"
+      context: "Main thread"
+      signature: "void onResume()"
+      next_states: ["onPause"]
+      typical_actions:
+        - "开始相机预览"
+        - "恢复暂停的操作"
+        - "刷新 UI"
+    
+    onPause:
+      description: "Activity 即将失去焦点"
+      trigger: "另一个 Activity 来到前台"
+      context: "Main thread"
+      signature: "void onPause()"
+      next_states: ["onResume", "onStop"]
+      typical_actions:
+        - "暂停动画"
+        - "暂停相机预览"
+        - "提交未保存的更改"
+    
+    onStop:
+      description: "Activity 不再可见"
+      trigger: "Activity 完全被遮挡"
+      context: "Main thread"
+      signature: "void onStop()"
+      next_states: ["onRestart", "onDestroy"]
+      typical_actions:
+        - "释放重资源"
+        - "注销 BroadcastReceiver"
+        - "保存持久化数据"
+    
+    onRestart:
+      description: "Activity 从停止状态恢复"
+      trigger: "用户返回此 Activity"
+      context: "Main thread"
+      signature: "void onRestart()"
+      next_states: ["onStart"]
+    
+    onDestroy:
+      description: "Activity 被销毁"
+      trigger: "finish() 或系统回收"
+      context: "Main thread"
+      signature: "void onDestroy()"
+      next_states: []
+      typical_actions:
+        - "释放所有资源"
+        - "取消后台任务"
+    
+    onSaveInstanceState:
+      description: "保存实例状态"
+      trigger: "系统可能销毁 Activity 前"
+      context: "Main thread"
+      signature: "void onSaveInstanceState(Bundle outState)"
+      typical_actions:
+        - "保存 UI 状态"
+        - "保存临时数据"
+    
+    onRestoreInstanceState:
+      description: "恢复实例状态"
+      trigger: "Activity 重建后"
+      context: "Main thread"
+      signature: "void onRestoreInstanceState(Bundle savedInstanceState)"
+
+
+fragment:
+  description: "Android Fragment Lifecycle"
+  header: "androidx.fragment.app.Fragment"
+  
+  lifecycle_callbacks:
+    onAttach:
+      description: "Fragment 附加到 Activity"
+      signature: "void onAttach(Context context)"
+      next_states: ["onCreate"]
+    
+    onCreate:
+      description: "Fragment 创建"
+      signature: "void onCreate(Bundle savedInstanceState)"
+      next_states: ["onCreateView"]
+    
+    onCreateView:
+      description: "创建 Fragment 视图"
+      signature: "View onCreateView(LayoutInflater, ViewGroup, Bundle)"
+      next_states: ["onViewCreated"]
+    
+    onViewCreated:
+      description: "视图创建完成"
+      signature: "void onViewCreated(View view, Bundle savedInstanceState)"
+      next_states: ["onStart"]
+    
+    onStart:
+      description: "Fragment 可见"
+      signature: "void onStart()"
+      next_states: ["onResume"]
+    
+    onResume:
+      description: "Fragment 可交互"
+      signature: "void onResume()"
+      next_states: ["onPause"]
+    
+    onPause:
+      description: "Fragment 暂停"
+      signature: "void onPause()"
+      next_states: ["onStop"]
+    
+    onStop:
+      description: "Fragment 停止"
+      signature: "void onStop()"
+      next_states: ["onDestroyView"]
+    
+    onDestroyView:
+      description: "视图销毁"
+      signature: "void onDestroyView()"
+      next_states: ["onDestroy"]
+    
+    onDestroy:
+      description: "Fragment 销毁"
+      signature: "void onDestroy()"
+      next_states: ["onDetach"]
+    
+    onDetach:
+      description: "Fragment 从 Activity 分离"
+      signature: "void onDetach()"
+

@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://flowsight.dev/schemas/bridge.schema.json",
+  "title": "FlowSight Bridge Schema",
+  "description": "Schema for defining cross-language bridges in FlowSight knowledge base",
+  "type": "object",
+  "additionalProperties": {
+    "$ref": "#/definitions/Bridge"
+  },
+  "definitions": {
+    "Bridge": {
+      "type": "object",
+      "required": ["description"],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "documentation": {
+          "type": "string",
+          "format": "uri"
+        },
+        "source_language": {
+          "type": "string"
+        },
+        "target_language": {
+          "type": "string"
+        },
+        "naming_conventions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/NamingConvention"
+          }
+        },
+        "type_mapping": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/TypeCategory"
+          }
+        },
+        "call_patterns": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/CallPattern"
+          }
+        },
+        "common_operations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "NamingConvention": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "java_pattern": { "type": "string" },
+        "native_pattern": { "type": "string" },
+        "pattern": { "type": "string" },
+        "transform_rules": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "example": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "TypeCategory": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "properties": {
+              "java": { "type": "string" },
+              "jni": { "type": "string" },
+              "c": { "type": "string" },
+              "go": { "type": "string" },
+              "rust": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "CallPattern": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "patterns": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "pattern": { "type": "string" },
+              "purpose": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,178 @@
+# FlowSight Async Patterns Knowledge Base
+# 
+# This file defines async mechanism patterns for static analysis.
+# Each pattern includes bind and trigger regex patterns.
+
+work_struct:
+  description: "Work Queue"
+  context: "Process context, can sleep"
+  icon: "⚙️"
+  
+  bind_patterns:
+    - pattern: 'INIT_WORK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_group: "handler"
+      variable_group: "var"
+    - pattern: 'INIT_WORK_ONSTACK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_group: "handler"
+      variable_group: "var"
+  
+  trigger_patterns:
+    - pattern: 'schedule_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_group: "var"
+    - pattern: 'queue_work\s*\([^,]+,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_group: "var"
+
+  handler_signature: "void (*)(struct work_struct *)"
+
+
+delayed_work:
+  description: "Delayed Work Queue"
+  context: "Process context, can sleep"
+  icon: "⏰"
+  
+  bind_patterns:
+    - pattern: 'INIT_DELAYED_WORK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_group: "handler"
+      variable_group: "var"
+  
+  trigger_patterns:
+    - pattern: 'schedule_delayed_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,'
+      variable_group: "var"
+    - pattern: 'queue_delayed_work\s*\([^,]+,\s*&?(?P<var>[\w\.\->]+)\s*,'
+      variable_group: "var"
+    - pattern: 'mod_delayed_work\s*\([^,]+,\s*&?(?P<var>[\w\.\->]+)\s*,'
+      variable_group: "var"
+
+  handler_signature: "void (*)(struct work_struct *)"
+
+
+timer_list:
+  description: "Kernel Timer"
+  context: "Soft IRQ context, cannot sleep"
+  icon: "⏲️"
+  
+  bind_patterns:
+    - pattern: 'timer_setup\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*,'
+      handler_group: "handler"
+      variable_group: "var"
+    - pattern: 'DEFINE_TIMER\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_group: "handler"
+      variable_group: "var"
+  
+  trigger_patterns:
+    - pattern: 'mod_timer\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,'
+      variable_group: "var"
+    - pattern: 'add_timer\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_group: "var"
+
+  handler_signature: "void (*)(struct timer_list *)"
+
+
+hrtimer:
+  description: "High Resolution Timer"
+  context: "Hard IRQ context"
+  icon: "⏱️"
+  
+  bind_patterns:
+    - pattern: '(?P<var>[\w\.\->]+)\.function\s*=\s*(?P<handler>\w+)'
+      handler_group: "handler"
+      variable_group: "var"
+  
+  trigger_patterns:
+    - pattern: 'hrtimer_start\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,'
+      variable_group: "var"
+
+  handler_signature: "enum hrtimer_restart (*)(struct hrtimer *)"
+
+
+tasklet:
+  description: "Tasklet"
+  context: "Soft IRQ context, cannot sleep"
+  icon: "🔄"
+  
+  bind_patterns:
+    - pattern: 'tasklet_init\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*,'
+      handler_group: "handler"
+      variable_group: "var"
+    - pattern: 'DECLARE_TASKLET\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_group: "handler"
+      variable_group: "var"
+    - pattern: 'DECLARE_TASKLET_DISABLED\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_group: "handler"
+      variable_group: "var"
+  
+  trigger_patterns:
+    - pattern: 'tasklet_schedule\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_group: "var"
+    - pattern: 'tasklet_hi_schedule\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_group: "var"
+
+  handler_signature: "void (*)(unsigned long)"
+
+
+irq:
+  description: "Hardware Interrupt Handler"
+  context: "Hard IRQ context, cannot sleep"
+  icon: "⚡"
+  
+  bind_patterns:
+    - pattern: 'request_irq\s*\([^,]+,\s*(?P<handler>\w+)\s*,'
+      handler_group: "handler"
+    - pattern: 'devm_request_irq\s*\([^,]+,\s*[^,]+,\s*(?P<handler>\w+)\s*,'
+      handler_group: "handler"
+  
+  trigger_patterns: []  # Hardware triggered
+
+  handler_signature: "irqreturn_t (*)(int, void *)"
+
+
+threaded_irq:
+  description: "Threaded Interrupt Handler"
+  context: "Process context, can sleep"
+  icon: "🧵"
+  
+  bind_patterns:
+    - pattern: 'request_threaded_irq\s*\([^,]+,\s*(?P<top_half>\w+)\s*,\s*(?P<handler>\w+)\s*,'
+      handler_group: "handler"
+    - pattern: 'devm_request_threaded_irq\s*\([^,]+,\s*[^,]+,\s*(?P<top_half>\w+)\s*,\s*(?P<handler>\w+)\s*,'
+      handler_group: "handler"
+  
+  trigger_patterns: []  # Hardware triggered
+
+  handler_signature: "irqreturn_t (*)(int, void *)"
+
+
+kthread:
+  description: "Kernel Thread"
+  context: "Process context, can sleep"
+  icon: "🧵"
+  
+  bind_patterns:
+    - pattern: 'kthread_run\s*\(\s*(?P<handler>\w+)\s*,'
+      handler_group: "handler"
+    - pattern: 'kthread_create\s*\(\s*(?P<handler>\w+)\s*,'
+      handler_group: "handler"
+  
+  trigger_patterns:
+    - pattern: 'wake_up_process\s*\('
+
+  handler_signature: "int (*)(void *)"
+
+
+rcu_callback:
+  description: "RCU Callback"
+  context: "Soft IRQ context"
+  icon: "🔒"
+  
+  bind_patterns:
+    - pattern: 'call_rcu\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_group: "handler"
+      variable_group: "var"
+    - pattern: 'call_srcu\s*\([^,]+,\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_group: "handler"
+      variable_group: "var"
+  
+  trigger_patterns: []  # Triggered after grace period
+
+  handler_signature: "void (*)(struct rcu_head *)"
+

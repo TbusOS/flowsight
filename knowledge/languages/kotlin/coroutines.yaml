@@ -1,0 +1,175 @@
+# Kotlin Coroutines Knowledge Base
+
+suspend_function:
+  description: "Kotlin Suspend Function"
+  context: "Coroutine context"
+  icon: "⏸️"
+  
+  patterns:
+    - pattern: 'suspend\s+fun\s+(?P<name>\w+)'
+      type: "declaration"
+    - pattern: 'suspend\s+override\s+fun\s+(?P<name>\w+)'
+      type: "override"
+
+
+coroutine_scope:
+  description: "Coroutine Scope"
+  icon: "🔄"
+  
+  scopes:
+    GlobalScope:
+      description: "全局作用域，生命周期与应用相同"
+      warning: "避免使用，可能导致内存泄漏"
+    
+    viewModelScope:
+      description: "ViewModel 作用域"
+      lifecycle: "ViewModel cleared 时自动取消"
+      import: "androidx.lifecycle.viewModelScope"
+    
+    lifecycleScope:
+      description: "Lifecycle 作用域"
+      lifecycle: "Lifecycle destroyed 时自动取消"
+      import: "androidx.lifecycle.lifecycleScope"
+    
+    MainScope:
+      description: "主线程作用域"
+      dispatcher: "Dispatchers.Main"
+    
+    CoroutineScope:
+      description: "自定义作用域"
+      pattern: 'CoroutineScope\s*\(\s*(?P<context>[^)]+)\s*\)'
+
+
+launch:
+  description: "Launch Coroutine Builder"
+  context: "Fire-and-forget"
+  icon: "🚀"
+  
+  bind_patterns:
+    - pattern: '(?P<scope>\w+)\.launch\s*\('
+      handler_group: "block"
+    - pattern: 'launch\s*\{\s*'
+      handler_group: "block"
+  
+  parameters:
+    context:
+      description: "Coroutine context"
+      optional: true
+    start:
+      description: "Start mode"
+      values: ["DEFAULT", "LAZY", "ATOMIC", "UNDISPATCHED"]
+  
+  returns: "Job"
+
+
+async:
+  description: "Async Coroutine Builder"
+  context: "Returns Deferred with result"
+  icon: "⏳"
+  
+  bind_patterns:
+    - pattern: '(?P<scope>\w+)\.async\s*\('
+      handler_group: "block"
+    - pattern: 'async\s*\{\s*'
+      handler_group: "block"
+  
+  returns: "Deferred<T>"
+  
+  await_pattern: '(?P<deferred>\w+)\.await\s*\(\s*\)'
+
+
+withContext:
+  description: "Context Switch"
+  context: "Switches coroutine context"
+  icon: "🔀"
+  
+  pattern: 'withContext\s*\(\s*(?P<context>[^)]+)\s*\)\s*\{'
+  
+  common_contexts:
+    - "Dispatchers.Main"
+    - "Dispatchers.IO"
+    - "Dispatchers.Default"
+    - "Dispatchers.Unconfined"
+
+
+dispatchers:
+  description: "Kotlin Dispatchers"
+  
+  types:
+    Main:
+      description: "Android 主线程"
+      can_update_ui: true
+      use_case: "UI 操作"
+    
+    IO:
+      description: "IO 密集型线程池"
+      thread_pool: "Unbounded"
+      use_case: "网络请求、文件读写、数据库操作"
+    
+    Default:
+      description: "CPU 密集型线程池"
+      thread_pool: "CPU cores"
+      use_case: "复杂计算、数据处理"
+    
+    Unconfined:
+      description: "不限定线程"
+      warning: "通常只用于测试"
+
+
+flow:
+  description: "Kotlin Flow"
+  icon: "🌊"
+  
+  creation_patterns:
+    - pattern: 'flow\s*\{'
+      type: "cold_flow"
+    - pattern: 'flowOf\s*\('
+      type: "immediate"
+    - pattern: 'asFlow\s*\(\s*\)'
+      type: "conversion"
+    - pattern: 'MutableStateFlow\s*\('
+      type: "state_flow"
+    - pattern: 'MutableSharedFlow\s*\('
+      type: "shared_flow"
+  
+  collect_patterns:
+    - pattern: '(?P<flow>\w+)\.collect\s*\{'
+      type: "terminal"
+    - pattern: '(?P<flow>\w+)\.collectLatest\s*\{'
+      type: "terminal_latest"
+    - pattern: '(?P<flow>\w+)\.launchIn\s*\('
+      type: "launch_in"
+    - pattern: '(?P<flow>\w+)\.stateIn\s*\('
+      type: "convert_to_state"
+    - pattern: '(?P<flow>\w+)\.shareIn\s*\('
+      type: "convert_to_shared"
+  
+  operators:
+    - map
+    - filter
+    - flatMapConcat
+    - flatMapMerge
+    - flatMapLatest
+    - debounce
+    - distinctUntilChanged
+    - combine
+    - zip
+
+
+channel:
+  description: "Kotlin Channel"
+  icon: "📬"
+  
+  creation_patterns:
+    - pattern: 'Channel\s*<(?P<type>[^>]+)>\s*\('
+    - pattern: 'produce\s*\{'
+  
+  send_patterns:
+    - pattern: '(?P<channel>\w+)\.send\s*\('
+    - pattern: '(?P<channel>\w+)\.trySend\s*\('
+  
+  receive_patterns:
+    - pattern: '(?P<channel>\w+)\.receive\s*\(\s*\)'
+    - pattern: '(?P<channel>\w+)\.tryReceive\s*\(\s*\)'
+    - pattern: 'for\s*\(\s*(?P<item>\w+)\s+in\s+(?P<channel>\w+)\s*\)'
+

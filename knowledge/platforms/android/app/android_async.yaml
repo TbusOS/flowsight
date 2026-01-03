@@ -1,0 +1,238 @@
+# Android Async Patterns Knowledge Base
+
+handler_message:
+  description: "Android Handler/Looper"
+  context: "Main thread or specified Looper thread"
+  icon: "📨"
+  
+  bind_patterns:
+    # Handler.handleMessage override
+    - pattern: 'handleMessage\s*\(\s*Message\s+(?P<msg>\w+)\s*\)'
+      handler_group: "function"
+      type: "override"
+    
+    # Handler.Callback
+    - pattern: 'Handler\.Callback\s*\(\s*\)\s*\{[^}]*handleMessage'
+      type: "callback"
+  
+  trigger_patterns:
+    - pattern: '(?P<handler>\w+)\.sendMessage\s*\('
+    - pattern: '(?P<handler>\w+)\.sendEmptyMessage\s*\('
+    - pattern: '(?P<handler>\w+)\.sendMessageDelayed\s*\('
+    - pattern: '(?P<handler>\w+)\.post\s*\('
+    - pattern: '(?P<handler>\w+)\.postDelayed\s*\('
+    - pattern: '(?P<handler>\w+)\.postAtTime\s*\('
+
+
+runnable_post:
+  description: "View.post / Handler.post Runnable"
+  context: "Main thread"
+  icon: "🏃"
+  
+  bind_patterns:
+    - pattern: 'new\s+Runnable\s*\(\s*\)\s*\{\s*@Override\s+public\s+void\s+run\s*\('
+      type: "anonymous_class"
+    - pattern: '\(\s*\)\s*->\s*\{'
+      type: "lambda"
+  
+  trigger_patterns:
+    - pattern: '(?P<view>\w+)\.post\s*\('
+    - pattern: '(?P<view>\w+)\.postDelayed\s*\('
+    - pattern: 'runOnUiThread\s*\('
+
+
+async_task:
+  description: "AsyncTask (deprecated but still used)"
+  context: "Background thread → UI thread"
+  icon: "⚙️"
+  
+  callbacks:
+    doInBackground:
+      description: "后台执行"
+      context: "Background thread"
+      signature: "Result doInBackground(Params... params)"
+    
+    onPreExecute:
+      description: "执行前准备"
+      context: "UI thread"
+      signature: "void onPreExecute()"
+    
+    onPostExecute:
+      description: "执行后回调"
+      context: "UI thread"
+      signature: "void onPostExecute(Result result)"
+    
+    onProgressUpdate:
+      description: "进度更新"
+      context: "UI thread"
+      signature: "void onProgressUpdate(Progress... values)"
+  
+  trigger_patterns:
+    - pattern: '(?P<task>\w+)\.execute\s*\('
+    - pattern: '(?P<task>\w+)\.executeOnExecutor\s*\('
+
+
+executor_service:
+  description: "ExecutorService"
+  context: "Thread pool"
+  icon: "🔄"
+  
+  trigger_patterns:
+    - pattern: '(?P<executor>\w+)\.submit\s*\(\s*(?P<runnable>[^)]+)\s*\)'
+    - pattern: '(?P<executor>\w+)\.execute\s*\(\s*(?P<runnable>[^)]+)\s*\)'
+    - pattern: 'Executors\.newSingleThreadExecutor\s*\(\s*\)\.(?P<method>submit|execute)'
+    - pattern: 'Executors\.newFixedThreadPool\s*\([^)]+\)\.(?P<method>submit|execute)'
+
+
+kotlin_coroutine:
+  description: "Kotlin Coroutines"
+  context: "Dispatcher-dependent"
+  icon: "🚀"
+  
+  scope_patterns:
+    - pattern: 'CoroutineScope\s*\(\s*(?P<dispatcher>Dispatchers\.\w+)\s*\)'
+    - pattern: 'viewModelScope'
+    - pattern: 'lifecycleScope'
+    - pattern: 'GlobalScope'
+  
+  launch_patterns:
+    - pattern: '(?P<scope>\w+)\.launch\s*\(\s*(?P<dispatcher>Dispatchers\.\w+)?\s*\)\s*\{'
+      handler_group: "block"
+      async_type: "launch"
+    
+    - pattern: '(?P<scope>\w+)\.async\s*\(\s*(?P<dispatcher>Dispatchers\.\w+)?\s*\)\s*\{'
+      handler_group: "block"
+      async_type: "async"
+  
+  suspend_patterns:
+    - pattern: 'suspend\s+fun\s+(?P<func>\w+)'
+      is_suspend: true
+    
+    - pattern: 'withContext\s*\(\s*(?P<dispatcher>Dispatchers\.\w+)\s*\)\s*\{'
+      context_switch: true
+    
+    - pattern: '(?P<deferred>\w+)\.await\s*\('
+      is_await: true
+  
+  dispatchers:
+    Main:
+      description: "Android 主线程"
+      can_update_ui: true
+    
+    IO:
+      description: "IO 密集型线程池"
+      use_case: "网络、文件操作"
+    
+    Default:
+      description: "CPU 密集型线程池"
+      use_case: "计算任务"
+    
+    Unconfined:
+      description: "不限定线程"
+      use_case: "测试、特殊场景"
+
+
+livedata_observer:
+  description: "LiveData Observer"
+  context: "Main thread"
+  icon: "👁️"
+  
+  bind_patterns:
+    - pattern: '(?P<livedata>\w+)\.observe\s*\(\s*(?P<owner>\w+)\s*,\s*(?P<observer>[^)]+)\s*\)'
+      handler_group: "observer"
+    - pattern: '(?P<livedata>\w+)\.observeForever\s*\(\s*(?P<observer>[^)]+)\s*\)'
+      handler_group: "observer"
+  
+  trigger_patterns:
+    - pattern: '(?P<livedata>\w+)\.setValue\s*\('
+    - pattern: '(?P<livedata>\w+)\.postValue\s*\('
+
+
+flow_collect:
+  description: "Kotlin Flow Collect"
+  context: "Coroutine context"
+  icon: "🌊"
+  
+  collect_patterns:
+    - pattern: '(?P<flow>\w+)\.collect\s*\{'
+    - pattern: '(?P<flow>\w+)\.collectLatest\s*\{'
+    - pattern: '(?P<flow>\w+)\.launchIn\s*\('
+  
+  emit_patterns:
+    - pattern: 'emit\s*\('
+    - pattern: 'emitAll\s*\('
+
+
+broadcast_receiver:
+  description: "BroadcastReceiver"
+  context: "Main thread (by default)"
+  icon: "📻"
+  
+  bind_patterns:
+    - pattern: 'registerReceiver\s*\(\s*(?P<receiver>\w+)\s*,\s*(?P<filter>\w+)'
+    - pattern: 'LocalBroadcastManager.*registerReceiver\s*\(\s*(?P<receiver>\w+)'
+  
+  callback:
+    onReceive:
+      signature: "void onReceive(Context context, Intent intent)"
+      context: "Main thread"
+  
+  trigger_patterns:
+    - pattern: 'sendBroadcast\s*\('
+    - pattern: 'sendOrderedBroadcast\s*\('
+    - pattern: 'LocalBroadcastManager.*sendBroadcast\s*\('
+
+
+content_observer:
+  description: "ContentObserver"
+  context: "Handler-dependent"
+  icon: "📝"
+  
+  bind_patterns:
+    - pattern: 'registerContentObserver\s*\(\s*(?P<uri>\w+)\s*,\s*(?P<notify>\w+)\s*,\s*(?P<observer>\w+)'
+  
+  callback:
+    onChange:
+      signature: "void onChange(boolean selfChange, Uri uri)"
+
+
+job_scheduler:
+  description: "JobScheduler"
+  context: "Background, system-managed"
+  icon: "📅"
+  
+  bind_patterns:
+    - pattern: 'class\s+(?P<service>\w+)\s+extends\s+JobService'
+  
+  callbacks:
+    onStartJob:
+      signature: "boolean onStartJob(JobParameters params)"
+      description: "Job 开始执行"
+    
+    onStopJob:
+      signature: "boolean onStopJob(JobParameters params)"
+      description: "Job 被停止"
+  
+  trigger_patterns:
+    - pattern: 'JobScheduler.*schedule\s*\('
+
+
+workmanager:
+  description: "WorkManager"
+  context: "Background, system-managed"
+  icon: "🔧"
+  
+  bind_patterns:
+    - pattern: 'class\s+(?P<worker>\w+)\s+:\s*(?:Coroutine)?Worker'
+    - pattern: 'class\s+(?P<worker>\w+)\s+extends\s+(?:ListenableWorker|Worker)'
+  
+  callbacks:
+    doWork:
+      signature: "Result doWork()"
+      description: "执行后台任务"
+      context: "WorkManager thread"
+  
+  trigger_patterns:
+    - pattern: 'WorkManager\.getInstance.*enqueue\s*\('
+    - pattern: 'WorkManager\.getInstance.*enqueueUniqueWork\s*\('
+

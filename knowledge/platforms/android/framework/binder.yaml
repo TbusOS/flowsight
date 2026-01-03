@@ -1,0 +1,140 @@
+# Android Binder IPC Knowledge Base
+
+binder_service:
+  description: "Android Binder Service Pattern"
+  documentation: "https://developer.android.com/guide/components/aidl"
+  
+  # AIDL 接口模式
+  aidl_patterns:
+    interface_definition:
+      description: "AIDL 接口定义"
+      pattern: 'interface\s+(?P<name>I\w+)\s*\{'
+      generates:
+        - "I{name}.java"        # 接口
+        - "I{name}.Stub"        # 服务端桩
+        - "I{name}.Stub.Proxy"  # 客户端代理
+    
+    stub_implementation:
+      description: "Binder 服务实现"
+      pattern: 'class\s+(?P<impl>\w+)\s+extends\s+(?P<interface>I\w+)\.Stub'
+      role: "server"
+    
+    proxy_usage:
+      description: "Binder 客户端调用"
+      pattern: '(?P<interface>I\w+)\.Stub\.asInterface\s*\(\s*(?P<binder>\w+)\s*\)'
+      role: "client"
+  
+  # 服务获取模式
+  service_resolution:
+    system_service:
+      description: "获取系统服务"
+      patterns:
+        - pattern: 'getSystemService\s*\(\s*(?P<name>\w+)\s*\)'
+          service_name: "name"
+        - pattern: 'ServiceManager\.getService\s*\(\s*"(?P<name>\w+)"\s*\)'
+          service_name: "name"
+    
+    bind_service:
+      description: "绑定服务"
+      pattern: 'bindService\s*\(\s*(?P<intent>\w+)\s*,\s*(?P<connection>\w+)'
+      callback: "ServiceConnection.onServiceConnected"
+  
+  # 常见系统服务映射
+  system_services:
+    activity:
+      service_name: "activity"
+      interface: "IActivityManager"
+      implementation: "ActivityManagerService"
+    
+    package:
+      service_name: "package"
+      interface: "IPackageManager"
+      implementation: "PackageManagerService"
+    
+    window:
+      service_name: "window"
+      interface: "IWindowManager"
+      implementation: "WindowManagerService"
+    
+    input_method:
+      service_name: "input_method"
+      interface: "IInputMethodManager"
+      implementation: "InputMethodManagerService"
+    
+    notification:
+      service_name: "notification"
+      interface: "INotificationManager"
+      implementation: "NotificationManagerService"
+    
+    power:
+      service_name: "power"
+      interface: "IPowerManager"
+      implementation: "PowerManagerService"
+
+
+binder_transaction:
+  description: "Binder Transaction Flow"
+  
+  call_flow:
+    - step: "Client calls proxy method"
+      location: "App process"
+      code: "service.doSomething(args)"
+    
+    - step: "Proxy serializes arguments"
+      location: "App process"
+      code: "Parcel.writeXxx()"
+    
+    - step: "Proxy calls transact()"
+      location: "App process → Kernel"
+      code: "mRemote.transact(TRANSACTION_CODE, data, reply, 0)"
+    
+    - step: "Binder driver transfers data"
+      location: "Kernel"
+    
+    - step: "Stub receives transaction"
+      location: "Server process"
+      code: "onTransact(code, data, reply, flags)"
+    
+    - step: "Stub dispatches to implementation"
+      location: "Server process"
+      code: "this.doSomething(args)"
+    
+    - step: "Result written to reply"
+      location: "Server process"
+      code: "reply.writeXxx()"
+    
+    - step: "Reply transferred back"
+      location: "Kernel → App process"
+    
+    - step: "Proxy reads result"
+      location: "App process"
+      code: "reply.readXxx()"
+
+
+# HIDL for HAL
+hidl:
+  description: "Hardware Interface Definition Language"
+  documentation: "https://source.android.com/docs/core/architecture/hidl"
+  
+  patterns:
+    interface_definition:
+      description: "HIDL 接口定义"
+      pattern: 'interface\s+(?P<name>I\w+)\s+extends\s+@\d+\.\d+::(?P<base>\w+)'
+    
+    hal_service:
+      description: "HAL 服务实现"
+      pattern: 'class\s+(?P<impl>\w+)\s*:\s*public\s+(?P<interface>I\w+)'
+    
+    hal_get_service:
+      description: "获取 HAL 服务"
+      pattern: '(?P<interface>I\w+)::getService\s*\(\s*"(?P<name>\w+)"\s*\)'
+  
+  transport:
+    passthrough:
+      description: "直通模式 (同进程)"
+      use_case: "Same process HAL access"
+    
+    hwbinder:
+      description: "HwBinder 模式 (跨进程)"
+      use_case: "Cross-process HAL access"
+

@@ -1,0 +1,113 @@
+# Character Device Framework Knowledge Base
+
+file_operations:
+  description: "Character Device File Operations"
+  header: "linux/fs.h"
+  registration:
+    - "cdev_add"
+    - "register_chrdev"
+    - "misc_register"
+  
+  callbacks:
+    owner:
+      description: "Module owner (not a callback)"
+      trigger: "N/A"
+      context: "N/A"
+      notes: "Usually set to THIS_MODULE"
+
+    open:
+      description: "Called when the device file is opened"
+      trigger: "User space open() system call"
+      context: "Process context, can sleep"
+      signature: "int (*)(struct inode *, struct file *)"
+      return_value:
+        success: "0"
+        failure: "Negative error code"
+      typical_actions:
+        - "Increment usage counter"
+        - "Allocate per-file private data"
+        - "Initialize hardware if first open"
+
+    release:
+      description: "Called when the device file is closed"
+      trigger: "User space close() when refcount reaches 0"
+      context: "Process context, can sleep"
+      signature: "int (*)(struct inode *, struct file *)"
+      typical_actions:
+        - "Decrement usage counter"
+        - "Free per-file private data"
+        - "Shutdown hardware if last close"
+
+    read:
+      description: "Called to read data from the device"
+      trigger: "User space read() system call"
+      context: "Process context, can sleep"
+      signature: "ssize_t (*)(struct file *, char __user *, size_t, loff_t *)"
+      return_value:
+        success: "Number of bytes read"
+        failure: "Negative error code"
+      typical_actions:
+        - "Copy data to user space with copy_to_user()"
+        - "May block waiting for data"
+        - "Update file position"
+
+    write:
+      description: "Called to write data to the device"
+      trigger: "User space write() system call"
+      context: "Process context, can sleep"
+      signature: "ssize_t (*)(struct file *, const char __user *, size_t, loff_t *)"
+      return_value:
+        success: "Number of bytes written"
+        failure: "Negative error code"
+      typical_actions:
+        - "Copy data from user space with copy_from_user()"
+        - "Send data to hardware"
+        - "Update file position"
+
+    unlocked_ioctl:
+      description: "Called for device-specific control operations"
+      trigger: "User space ioctl() system call"
+      context: "Process context, can sleep"
+      signature: "long (*)(struct file *, unsigned int, unsigned long)"
+      return_value:
+        success: "0 or positive value"
+        failure: "Negative error code"
+      notes:
+        - "Does not hold BKL (Big Kernel Lock)"
+        - "Command is the ioctl number"
+        - "Arg can be a value or a pointer"
+
+    compat_ioctl:
+      description: "Called for 32-bit ioctl on 64-bit kernel"
+      trigger: "User space ioctl() from 32-bit process on 64-bit kernel"
+      context: "Process context"
+      signature: "long (*)(struct file *, unsigned int, unsigned long)"
+
+    poll:
+      description: "Called to check if I/O is possible"
+      trigger: "User space poll()/select()/epoll()"
+      context: "Process context"
+      signature: "__poll_t (*)(struct file *, struct poll_table_struct *)"
+      return_value: "Bitmask of POLLIN, POLLOUT, etc."
+      typical_actions:
+        - "Register wait queues with poll_wait()"
+        - "Return current ready state"
+
+    mmap:
+      description: "Called to map device memory to user space"
+      trigger: "User space mmap() system call"
+      context: "Process context"
+      signature: "int (*)(struct file *, struct vm_area_struct *)"
+
+    llseek:
+      description: "Called to change file position"
+      trigger: "User space lseek() system call"
+      context: "Process context"
+      signature: "loff_t (*)(struct file *, loff_t, int)"
+
+    fasync:
+      description: "Called to enable/disable async notification"
+      trigger: "User space fcntl(F_SETFL, O_ASYNC)"
+      context: "Process context"
+      signature: "int (*)(int, struct file *, int)"
+

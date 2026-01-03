@@ -1,0 +1,19 @@
+[package]
+name = "flowsight-parser"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Code parser for FlowSight (tree-sitter + libclang)"
+
+[dependencies]
+flowsight-core = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-c = { workspace = true }
+regex = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+

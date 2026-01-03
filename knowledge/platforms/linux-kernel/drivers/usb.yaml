@@ -1,0 +1,101 @@
+# USB Driver Framework Knowledge Base
+
+usb_driver:
+  description: "USB Device Driver Framework"
+  header: "linux/usb.h"
+  registration:
+    - "usb_register"
+    - "usb_register_driver"
+    - "module_usb_driver"
+  
+  callbacks:
+    probe:
+      description: "Called when a USB device matching the ID table is connected"
+      trigger: "USB device insertion and ID match"
+      context: "Process context, can sleep"
+      signature: "int (*)(struct usb_interface *, const struct usb_device_id *)"
+      return_value:
+        success: "0"
+        failure: "Negative error code (-ENOMEM, -ENODEV, etc.)"
+      typical_actions:
+        - "Allocate device private data"
+        - "Initialize USB endpoints"
+        - "Submit initial URBs"
+        - "Register character device or network interface"
+
+    disconnect:
+      description: "Called when the USB device is disconnected"
+      trigger: "USB device removal or driver unload"
+      context: "Process context, can sleep"
+      signature: "void (*)(struct usb_interface *)"
+      typical_actions:
+        - "Cancel pending URBs"
+        - "Release resources"
+        - "Unregister sub-devices"
+        - "Free private data"
+
+    suspend:
+      description: "Called when the device is suspended"
+      trigger: "System sleep or USB autosuspend"
+      context: "Process context"
+      signature: "int (*)(struct usb_interface *, pm_message_t)"
+      typical_actions:
+        - "Cancel pending URBs"
+        - "Save device state"
+
+    resume:
+      description: "Called when the device is resumed"
+      trigger: "System wake or USB autoresume"
+      context: "Process context"
+      signature: "int (*)(struct usb_interface *)"
+      typical_actions:
+        - "Restore device state"
+        - "Resubmit URBs"
+
+    reset_resume:
+      description: "Called after device reset during resume"
+      trigger: "Device reset during resume"
+      context: "Process context"
+      signature: "int (*)(struct usb_interface *)"
+
+    pre_reset:
+      description: "Called before device reset"
+      trigger: "Before USB device reset"
+      context: "Process context"
+      signature: "int (*)(struct usb_interface *)"
+
+    post_reset:
+      description: "Called after device reset"
+      trigger: "After USB device reset"
+      context: "Process context"
+      signature: "int (*)(struct usb_interface *)"
+
+
+usb_class_driver:
+  description: "USB Class Driver (for character device registration)"
+  header: "linux/usb.h"
+  
+  callbacks:
+    open:
+      description: "Called when the USB device file is opened"
+      trigger: "User space open() on /dev/usb/xxx"
+      context: "Process context"
+      signature: "int (*)(struct inode *, struct file *)"
+
+    release:
+      description: "Called when the USB device file is closed"
+      trigger: "User space close() when refcount reaches 0"
+      context: "Process context"
+      signature: "int (*)(struct inode *, struct file *)"
+
+
+# URB completion handlers
+urb_completion:
+  description: "USB Request Block completion callback"
+  context: "Usually hard IRQ or soft IRQ context"
+  signature: "void (*)(struct urb *)"
+  notes:
+    - "Cannot sleep in this context"
+    - "Should not call usb_submit_urb() with URB_ASYNC_UNLINK"
+    - "Can resubmit the same URB for continuous transfers"
+
