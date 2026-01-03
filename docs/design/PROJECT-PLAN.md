@@ -4,7 +4,7 @@
 > 
 > 让你看到代码的"灵魂"——执行流、异步调用、数据结构关系
 > 
-> 支持 Linux 内核、Android 系统、嵌入式系统等多语言混合项目
+> 首要支持 Linux 内核，IDE 稳定后再扩展 Android 等其他平台
 
 ---
 
@@ -19,9 +19,44 @@
 7. [项目结构](#7-项目结构)
 8. [核心算法设计](#8-核心算法设计)
 9. [UI/UX 设计](#9-uiux-设计)
+   - [9.5 国际化 (i18n) 设计](#95-国际化-i18n-设计)
 10. [风险评估与应对](#10-风险评估与应对)
 11. [资源估算](#11-资源估算)
 12. [成功指标](#12-成功指标)
+
+---
+
+## 🎯 核心开发策略
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         开发策略：先落地，再扩展                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   第一阶段：IDE 落地 (v1.0)                                              │
+│   ══════════════════════════                                             │
+│   • 知识库：只支持 Linux 内核                                            │
+│   • 平台：Windows 优先 → Linux → macOS                                  │
+│   • 语言：简体中文 + 英文 (首发双语支持)                                 │
+│   • 目标：把 IDE 完整落地、调试稳定、发布正式版                          │
+│                                                                          │
+│   第二阶段：知识扩展 (v2.0+)                                             │
+│   ══════════════════════════                                             │
+│   • IDE 稳定后，逐步添加 Android 知识库                                  │
+│   • 再逐步添加其他语言和平台                                             │
+│   • 稳扎稳打，每步充分测试                                               │
+│                                                                          │
+│   ┌─────────────────────────────────────────────────────────────────┐   │
+│   │  v0.1 → v0.5 → v1.0          v1.5 → v2.0          v2.5 → v3.0   │   │
+│   │   │       │       │            │       │            │       │    │   │
+│   │   └───────┴───────┘            └───────┘            └───────┘    │   │
+│   │    Linux 内核 + IDE             Android              其他        │   │
+│   │    ════════════════             ════════             ════        │   │
+│   │     当前阶段重点                 下一阶段             远期        │   │
+│   └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -1087,36 +1122,116 @@ flowsight/
 │   └── src/                    # React 前端
 │       ├── main.tsx
 │       ├── App.tsx
-│       ├── components/
-│       │   ├── Editor/         # 代码编辑器
-│       │   │   ├── Editor.tsx
-│       │   │   ├── Monaco.tsx
-│       │   │   └── Highlight.tsx
-│       │   ├── Explorer/       # 文件浏览器
-│       │   │   ├── FileTree.tsx
-│       │   │   └── Search.tsx
-│       │   ├── FlowView/       # 执行流视图
-│       │   │   ├── FlowGraph.tsx
-│       │   │   ├── Node.tsx
-│       │   │   └── Edge.tsx
-│       │   ├── StructView/     # 结构体视图
-│       │   │   ├── StructGraph.tsx
-│       │   │   └── FieldList.tsx
-│       │   └── Common/         # 通用组件
-│       │       ├── Panel.tsx
+│       │
+│       ├── components/         # UI 组件
+│       │   ├── layout/         # 布局组件 (可扩展架构)
+│       │   │   ├── AppShell.tsx        # 应用外壳
+│       │   │   ├── LayoutManager.tsx   # 布局管理器
+│       │   │   ├── Sidebar.tsx         # 侧边栏容器
+│       │   │   ├── Panel.tsx           # 通用面板
+│       │   │   ├── PanelGroup.tsx      # 面板组 (可拖拽)
+│       │   │   ├── StatusBar.tsx       # 状态栏
+│       │   │   └── Toolbar.tsx         # 工具栏
+│       │   │
+│       │   ├── panels/         # 面板组件 (插件化设计)
+│       │   │   ├── Explorer/           # 文件浏览器
+│       │   │   │   ├── FileTree.tsx
+│       │   │   │   ├── FileItem.tsx
+│       │   │   │   └── index.ts
+│       │   │   ├── Editor/             # 代码编辑器
+│       │   │   │   ├── EditorTabs.tsx
+│       │   │   │   ├── MonacoEditor.tsx
+│       │   │   │   ├── EditorToolbar.tsx
+│       │   │   │   └── index.ts
+│       │   │   ├── FlowView/           # 执行流视图
+│       │   │   │   ├── FlowCanvas.tsx
+│       │   │   │   ├── FlowNode.tsx
+│       │   │   │   ├── FlowEdge.tsx
+│       │   │   │   ├── FlowLegend.tsx
+│       │   │   │   └── index.ts
+│       │   │   ├── StructView/         # 结构体关系图
+│       │   │   │   ├── StructGraph.tsx
+│       │   │   │   ├── StructNode.tsx
+│       │   │   │   └── index.ts
+│       │   │   ├── Outline/            # 代码大纲
+│       │   │   │   ├── OutlineTree.tsx
+│       │   │   │   └── index.ts
+│       │   │   ├── Search/             # 全局搜索
+│       │   │   │   ├── SearchInput.tsx
+│       │   │   │   ├── SearchResults.tsx
+│       │   │   │   └── index.ts
+│       │   │   ├── CallHierarchy/      # 调用层次
+│       │   │   │   ├── CallTree.tsx
+│       │   │   │   └── index.ts
+│       │   │   ├── Properties/         # 属性面板
+│       │   │   │   ├── PropertyList.tsx
+│       │   │   │   └── index.ts
+│       │   │   │
+│       │   │   └── _future/            # 未来功能占位
+│       │   │       ├── Terminal/       # 终端 (v1.5)
+│       │   │       ├── SSHExplorer/    # SSH (v2.0)
+│       │   │       └── Debugger/       # 调试器 (v3.0)
+│       │   │
+│       │   └── common/         # 通用 UI 组件
+│       │       ├── Button.tsx
+│       │       ├── Input.tsx
 │       │       ├── Tabs.tsx
-│       │       └── Modal.tsx
-│       ├── hooks/
+│       │       ├── Modal.tsx
+│       │       ├── ContextMenu.tsx
+│       │       ├── Tooltip.tsx
+│       │       ├── Tree.tsx
+│       │       └── Icon.tsx
+│       │
+│       ├── i18n/               # 国际化
+│       │   ├── index.ts        # i18n 配置
+│       │   ├── locales/
+│       │   │   ├── zh-CN.json  # 简体中文 (首选)
+│       │   │   ├── en-US.json  # 英文
+│       │   │   └── _template.json  # 翻译模板
+│       │   └── useLocale.ts    # 语言切换 Hook
+│       │
+│       ├── services/           # 服务层 (业务逻辑)
+│       │   ├── ProjectService.ts
+│       │   ├── AnalysisService.ts
+│       │   ├── FileService.ts
+│       │   ├── SearchService.ts
+│       │   ├── ThemeService.ts
+│       │   ├── KeybindingService.ts
+│       │   ├── LayoutService.ts
+│       │   └── LocaleService.ts  # 语言服务
+│       │
+│       ├── stores/             # 状态管理 (Zustand)
+│       │   ├── projectStore.ts
+│       │   ├── editorStore.ts
+│       │   ├── uiStore.ts
+│       │   ├── layoutStore.ts
+│       │   └── analysisStore.ts
+│       │
+│       ├── hooks/              # React Hooks
 │       │   ├── useProject.ts
 │       │   ├── useAnalysis.ts
-│       │   └── useEditor.ts
-│       ├── stores/
-│       │   ├── projectStore.ts
-│       │   └── uiStore.ts
-│       ├── styles/
-│       │   └── globals.css
-│       └── utils/
-│           └── ipc.ts
+│       │   ├── useEditor.ts
+│       │   ├── useTheme.ts
+│       │   ├── useKeybinding.ts
+│       │   └── usePanel.ts
+│       │
+│       ├── styles/             # 样式
+│       │   ├── globals.css     # 全局样式 + CSS 变量
+│       │   ├── themes/
+│       │   │   ├── dark.css
+│       │   │   └── light.css
+│       │   └── components/     # 组件样式
+│       │
+│       ├── types/              # TypeScript 类型定义
+│       │   ├── panel.ts
+│       │   ├── analysis.ts
+│       │   ├── project.ts
+│       │   └── ipc.ts
+│       │
+│       └── utils/              # 工具函数
+│           ├── ipc.ts          # Tauri IPC 封装
+│           ├── keybindings.ts  # 快捷键处理
+│           └── layout.ts       # 布局工具
 │
 ├── docs/                       # 文档
 │   ├── user-guide/
@@ -1478,6 +1593,270 @@ impl CallGraphBuilder {
 
 ## 9. UI/UX 设计
 
+### 9.0 前端架构设计原则
+
+> ⚠️ **核心理念**: 前端架构必须考虑长期扩展性，未来可能支持终端、SSH、调试器等更多功能。
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     前端架构设计原则                                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  1. 插件化架构                                                           │
+│     ├── 所有面板都是可插拔的插件                                         │
+│     ├── 新功能通过插件方式添加                                           │
+│     └── 参考 VS Code 的扩展模型                                         │
+│                                                                          │
+│  2. 灵活的布局系统                                                       │
+│     ├── 支持拖拽调整面板位置和大小                                       │
+│     ├── 支持多标签、分屏                                                 │
+│     ├── 布局状态可保存/恢复                                              │
+│     └── 参考 VS Code / JetBrains 的布局                                 │
+│                                                                          │
+│  3. 统一的通信层                                                         │
+│     ├── 前端 ↔ Tauri 后端 (IPC)                                         │
+│     ├── 前端 ↔ LSP 服务器 (可选)                                        │
+│     └── 前端 ↔ 远程服务器 (SSH, 未来)                                   │
+│                                                                          │
+│  4. 主题和定制化                                                         │
+│     ├── 支持浅色/深色主题                                                │
+│     ├── CSS 变量驱动的主题系统                                           │
+│     ├── 字体、颜色可配置                                                 │
+│     └── 键盘快捷键可配置                                                 │
+│                                                                          │
+│  5. 国际化 (i18n)                                                        │
+│     ├── 首发支持：简体中文 + 英文                                        │
+│     ├── react-i18next 方案                                               │
+│     ├── 语言包热切换                                                     │
+│     └── 社区可贡献翻译                                                   │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 前端技术栈选择
+
+| 技术 | 选择 | 理由 |
+|------|------|------|
+| UI 框架 | **React 18+** | 生态成熟、组件丰富、团队熟悉 |
+| 状态管理 | **Zustand** | 轻量、简单、TypeScript 友好 |
+| 样式方案 | **Tailwind CSS + CSS Variables** | 快速开发 + 主题支持 |
+| 代码编辑器 | **Monaco Editor** | VS Code 同款、功能强大 |
+| 图形可视化 | **React Flow** | 专业的流程图库、高性能 |
+| 布局系统 | **Allotment** | 可拖拽分割面板 |
+| 图标 | **Lucide React** | 美观、体积小 |
+| 终端 (未来) | **xterm.js** | 成熟的终端模拟器 |
+
+#### 可扩展架构图
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       FlowSight 前端架构                                 │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                         App Shell (外壳)                           │  │
+│  │  ┌─────────┐ ┌─────────────────────────────────┐ ┌─────────────┐  │  │
+│  │  │ 菜单栏   │ │           工具栏                │ │   状态栏    │  │  │
+│  │  └─────────┘ └─────────────────────────────────┘ └─────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                     Layout Manager (布局管理器)                    │  │
+│  │  ┌─────────────┐ ┌─────────────────────────┐ ┌─────────────────┐  │  │
+│  │  │  左侧边栏    │ │       主编辑区          │ │     右侧边栏     │  │  │
+│  │  │  (可折叠)    │ │     (可分屏/标签)       │ │    (可折叠)      │  │  │
+│  │  └─────────────┘ └─────────────────────────┘ └─────────────────┘  │  │
+│  │                  ┌─────────────────────────┐                       │  │
+│  │                  │       底部面板          │                       │  │
+│  │                  │   (可折叠/可拖拽高度)   │                       │  │
+│  │                  └─────────────────────────┘                       │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                     Panel Registry (面板注册表)                    │  │
+│  │                                                                    │  │
+│  │  内置面板:                                                         │  │
+│  │  ├── 📁 FileExplorer     文件浏览器                                │  │
+│  │  ├── 📝 Editor           代码编辑器 (Monaco)                       │  │
+│  │  ├── 🔍 Search           全局搜索                                  │  │
+│  │  ├── 📊 FlowView         执行流视图                                │  │
+│  │  ├── 🏗️ StructView       结构体关系图                              │  │
+│  │  ├── 📋 Outline          代码大纲                                  │  │
+│  │  ├── 📜 CallHierarchy    调用层次                                  │  │
+│  │  └── ℹ️  Properties      属性面板                                  │  │
+│  │                                                                    │  │
+│  │  未来扩展 (v2.0+):                                                 │  │
+│  │  ├── 💻 Terminal         集成终端 (xterm.js)                       │  │
+│  │  ├── 🔗 SSHExplorer      SSH 远程浏览器                            │  │
+│  │  ├── 🐛 Debugger         调试器面板                                │  │
+│  │  ├── 📡 RemoteIndex      远程索引管理                              │  │
+│  │  ├── 🔌 Plugins          插件管理                                  │  │
+│  │  └── ⚙️  Settings         设置面板                                  │  │
+│  │                                                                    │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                     Service Layer (服务层)                         │  │
+│  │                                                                    │  │
+│  │  ├── ProjectService      项目管理                                  │  │
+│  │  ├── AnalysisService     分析服务 (调用 Tauri 后端)                │  │
+│  │  ├── FileService         文件读写                                  │  │
+│  │  ├── SearchService       搜索服务                                  │  │
+│  │  ├── ThemeService        主题管理                                  │  │
+│  │  ├── KeybindingService   快捷键管理                                │  │
+│  │  ├── LayoutService       布局持久化                                │  │
+│  │  └── (未来) SSHService   SSH 连接管理                              │  │
+│  │  └── (未来) TermService  终端管理                                  │  │
+│  │                                                                    │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                     IPC Layer (通信层)                             │  │
+│  │                                                                    │  │
+│  │  ├── TauriIPC            Tauri invoke/listen                       │  │
+│  │  ├── (未来) SSHChannel   SSH 通道                                  │  │
+│  │  └── (未来) LSPClient    LSP 协议客户端                            │  │
+│  │                                                                    │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 面板插件接口设计
+
+```typescript
+// 面板插件接口 (未来扩展用)
+interface PanelPlugin {
+  // 基本信息
+  id: string;
+  name: string;
+  icon: React.ComponentType;
+  
+  // 面板组件
+  component: React.ComponentType<PanelProps>;
+  
+  // 允许的位置
+  allowedPositions: ('left' | 'right' | 'bottom' | 'center')[];
+  defaultPosition: 'left' | 'right' | 'bottom' | 'center';
+  
+  // 生命周期
+  onActivate?: () => void;
+  onDeactivate?: () => void;
+  
+  // 快捷键
+  keybindings?: Keybinding[];
+  
+  // 菜单贡献
+  menuContributions?: MenuContribution[];
+}
+
+// 示例：终端面板 (未来实现)
+const TerminalPanel: PanelPlugin = {
+  id: 'terminal',
+  name: '终端',
+  icon: TerminalIcon,
+  component: TerminalView,
+  allowedPositions: ['bottom', 'center'],
+  defaultPosition: 'bottom',
+  keybindings: [
+    { key: 'ctrl+`', command: 'terminal.toggle' },
+    { key: 'ctrl+shift+`', command: 'terminal.new' },
+  ],
+};
+```
+
+#### 主题系统设计
+
+```css
+/* CSS 变量驱动的主题系统 */
+:root {
+  /* 基础色彩 */
+  --color-bg-primary: #1e1e1e;
+  --color-bg-secondary: #252526;
+  --color-bg-tertiary: #2d2d30;
+  
+  --color-text-primary: #cccccc;
+  --color-text-secondary: #9d9d9d;
+  --color-text-accent: #569cd6;
+  
+  /* 边框 */
+  --color-border: #3c3c3c;
+  
+  /* 强调色 */
+  --color-accent: #007acc;
+  --color-accent-hover: #1c97ea;
+  
+  /* 语法高亮 */
+  --syntax-keyword: #569cd6;
+  --syntax-string: #ce9178;
+  --syntax-function: #dcdcaa;
+  --syntax-type: #4ec9b0;
+  --syntax-comment: #6a9955;
+  
+  /* 异步标记色 (FlowSight 特有) */
+  --flow-workqueue: #4fc1ff;
+  --flow-timer: #f9c74f;
+  --flow-irq: #f94144;
+  --flow-callback: #90be6d;
+  
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+}
+
+/* 浅色主题覆盖 */
+[data-theme="light"] {
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f3f3f3;
+  --color-text-primary: #333333;
+  /* ... */
+}
+```
+
+#### 未来功能规划
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     功能扩展路线图                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  v1.0 (核心功能)                                                         │
+│  ├── ✅ 代码编辑器 (Monaco)                                              │
+│  ├── ✅ 文件浏览器                                                       │
+│  ├── ✅ 执行流视图                                                       │
+│  ├── ✅ 结构体关系图                                                     │
+│  ├── ✅ 全局搜索                                                         │
+│  └── ✅ 调用层次                                                         │
+│                                                                          │
+│  v1.5 (体验增强)                                                         │
+│  ├── 🔲 集成终端 (xterm.js)                                             │
+│  ├── 🔲 键盘快捷键自定义                                                 │
+│  ├── 🔲 多主题支持                                                       │
+│  └── 🔲 布局保存/恢复                                                    │
+│                                                                          │
+│  v2.0 (远程支持)                                                         │
+│  ├── 🔲 SSH 远程连接                                                     │
+│  ├── 🔲 远程文件浏览                                                     │
+│  ├── 🔲 远程索引                                                         │
+│  └── 🔲 Android 知识库                                                   │
+│                                                                          │
+│  v3.0 (高级功能)                                                         │
+│  ├── 🔲 插件系统                                                         │
+│  ├── 🔲 调试器集成                                                       │
+│  ├── 🔲 AI 辅助分析                                                      │
+│  └── 🔲 协作功能                                                         │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ### 9.1 主界面布局
 
 ```
@@ -1641,6 +2020,199 @@ Light Theme:
 侧边栏:      #f0f0f0
 ...
 ```
+
+### 9.5 国际化 (i18n) 设计
+
+> 🌐 **目标**: FlowSight 面向全球开发者，需要支持多语言界面。
+
+#### 支持优先级
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      语言支持优先级                                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   P0 - v1.0 必须支持 (首发语言)                                         │
+│   ══════════════════════════════                                         │
+│   • 简体中文 (zh-CN) ← 首选默认                                         │
+│   • 英文 (en-US)                                                         │
+│                                                                          │
+│   P1 - v2.0+ 考虑支持 (IDE 功能完善后)                                  │
+│   ════════════════════════════════════                                   │
+│   • 繁体中文 (zh-TW)                                                     │
+│   • 日文 (ja-JP)                                                         │
+│   • 韩文 (ko-KR)                                                         │
+│                                                                          │
+│   P2 - 社区贡献 (开放翻译)                                              │
+│   ══════════════════════════                                             │
+│   • 法语、德语、西班牙语、俄语等                                         │
+│   • 提供翻译模板，欢迎社区 PR                                            │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 技术方案
+
+| 组件 | 选择 | 说明 |
+|------|------|------|
+| i18n 框架 | **react-i18next** | React 生态最成熟的 i18n 方案 |
+| 语言检测 | 系统语言 → 用户设置 → 默认 zh-CN | 智能检测，可手动切换 |
+| 翻译文件格式 | JSON | 简单、工具链支持好 |
+| 插值 | ICU MessageFormat | 支持复数、性别等复杂场景 |
+
+#### 目录结构
+
+```
+app/src/i18n/
+├── index.ts              # i18n 初始化配置
+├── useLocale.ts          # 语言切换 Hook
+└── locales/
+    ├── zh-CN.json        # 简体中文
+    ├── en-US.json        # 英文
+    └── _template.json    # 翻译模板 (供贡献者使用)
+```
+
+#### 翻译文件示例
+
+```json
+// zh-CN.json
+{
+  "app": {
+    "name": "FlowSight",
+    "menu": {
+      "file": "文件",
+      "edit": "编辑",
+      "view": "视图",
+      "analyze": "分析",
+      "help": "帮助"
+    },
+    "actions": {
+      "newProject": "新建项目",
+      "openProject": "打开项目",
+      "save": "保存",
+      "settings": "设置"
+    }
+  },
+  "panels": {
+    "explorer": "文件浏览器",
+    "outline": "大纲",
+    "callHierarchy": "调用层次",
+    "flowView": "执行流视图",
+    "search": "搜索",
+    "properties": "属性"
+  },
+  "analysis": {
+    "analyzing": "正在分析...",
+    "complete": "分析完成",
+    "error": "分析出错",
+    "asyncFlow": "异步执行流",
+    "callGraph": "调用关系图",
+    "structRelation": "结构体关系"
+  },
+  "settings": {
+    "language": "语言",
+    "theme": "主题",
+    "darkTheme": "深色主题",
+    "lightTheme": "浅色主题"
+  }
+}
+```
+
+```json
+// en-US.json
+{
+  "app": {
+    "name": "FlowSight",
+    "menu": {
+      "file": "File",
+      "edit": "Edit",
+      "view": "View",
+      "analyze": "Analyze",
+      "help": "Help"
+    },
+    "actions": {
+      "newProject": "New Project",
+      "openProject": "Open Project",
+      "save": "Save",
+      "settings": "Settings"
+    }
+  },
+  "panels": {
+    "explorer": "Explorer",
+    "outline": "Outline",
+    "callHierarchy": "Call Hierarchy",
+    "flowView": "Execution Flow",
+    "search": "Search",
+    "properties": "Properties"
+  },
+  "analysis": {
+    "analyzing": "Analyzing...",
+    "complete": "Analysis Complete",
+    "error": "Analysis Error",
+    "asyncFlow": "Async Execution Flow",
+    "callGraph": "Call Graph",
+    "structRelation": "Struct Relations"
+  },
+  "settings": {
+    "language": "Language",
+    "theme": "Theme",
+    "darkTheme": "Dark Theme",
+    "lightTheme": "Light Theme"
+  }
+}
+```
+
+#### 使用方式
+
+```tsx
+import { useTranslation } from 'react-i18next';
+
+function MenuBar() {
+  const { t } = useTranslation();
+  
+  return (
+    <nav>
+      <button>{t('app.menu.file')}</button>
+      <button>{t('app.menu.edit')}</button>
+      <button>{t('app.menu.view')}</button>
+      <button>{t('app.menu.analyze')}</button>
+      <button>{t('app.menu.help')}</button>
+    </nav>
+  );
+}
+```
+
+#### 语言切换 UI
+
+```
+┌──────────────────────────────────────┐
+│ ⚙️ 设置                               │
+├──────────────────────────────────────┤
+│                                      │
+│  🌐 语言 / Language                  │
+│  ┌────────────────────────────────┐  │
+│  │  ● 简体中文                     │  │
+│  │  ○ English                     │  │
+│  └────────────────────────────────┘  │
+│                                      │
+│  🎨 主题                             │
+│  ┌────────────────────────────────┐  │
+│  │  ● 深色                         │  │
+│  │  ○ 浅色                         │  │
+│  │  ○ 跟随系统                     │  │
+│  └────────────────────────────────┘  │
+│                                      │
+└──────────────────────────────────────┘
+```
+
+#### 社区贡献指南
+
+1. **翻译模板**: `_template.json` 包含所有需翻译的 key
+2. **贡献流程**: Fork → 添加新语言 JSON → PR
+3. **翻译规范**:
+   - 保持技术术语一致性
+   - 注意 UI 空间限制
+   - 使用正式语气
 
 ---
 
