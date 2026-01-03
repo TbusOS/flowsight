@@ -1,6 +1,10 @@
 # 🔭 FlowSight
 
 <p align="center">
+  <img src="docs/images/logo.svg" alt="FlowSight Logo" width="180"/>
+</p>
+
+<p align="center">
   <strong>See Your Code Flow — A Cross-Platform IDE for Visualizing Execution Flow</strong>
 </p>
 

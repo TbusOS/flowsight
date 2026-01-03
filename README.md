@@ -1,6 +1,10 @@
 # 🔭 FlowSight
 
 <p align="center">
+  <img src="docs/images/logo.svg" alt="FlowSight Logo" width="180"/>
+</p>
+
+<p align="center">
   <strong>看见代码的"灵魂" — 跨平台执行流可视化 IDE</strong>
 </p>
 
