@@ -1,0 +1,172 @@
+/**
+ * FlowView - 执行流可视化组件
+ * 
+ * 使用 React Flow 显示代码执行流程图
+ */
+
+import { useCallback, useMemo } from 'react'
+import {
+  ReactFlow,
+  Node,
+  Edge,
+  Controls,
+  Background,
+  BackgroundVariant,
+  useNodesState,
+  useEdgesState,
+  NodeTypes,
+  MarkerType,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
+
+import { FlowNodeComponent } from './FlowNode'
+import { FlowTreeNode } from '../../types'
+import './FlowView.css'
+
+// 自定义节点类型
+const nodeTypes: NodeTypes = {
+  flowNode: FlowNodeComponent,
+}
+
+interface FlowViewProps {
+  flowTrees: FlowTreeNode[]
+  onNodeClick?: (nodeId: string, functionName: string) => void
+}
+
+// 将 FlowTree 转换为 React Flow 的节点和边
+function convertToReactFlow(
+  flowTrees: FlowTreeNode[]
+): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = []
+  const edges: Edge[] = []
+  
+  let yOffset = 0
+  const xSpacing = 250
+  const ySpacing = 100
+
+  function processNode(
+    node: FlowTreeNode,
+    depth: number,
+    parentId: string | null,
+    index: number
+  ): string {
+    const nodeId = `${node.name}-${depth}-${index}`
+    
+    nodes.push({
+      id: nodeId,
+      type: 'flowNode',
+      position: { x: depth * xSpacing, y: yOffset },
+      data: {
+        label: node.display_name || node.name,
+        name: node.name,
+        nodeType: node.node_type,
+        description: node.description,
+      },
+    })
+    
+    yOffset += ySpacing
+
+    // 添加边
+    if (parentId) {
+      const edgeType = getEdgeType(node.node_type)
+      edges.push({
+        id: `${parentId}-${nodeId}`,
+        source: parentId,
+        target: nodeId,
+        type: 'smoothstep',
+        animated: edgeType === 'async',
+        style: {
+          stroke: edgeType === 'async' ? '#fbbf24' : '#64748b',
+          strokeWidth: 2,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: edgeType === 'async' ? '#fbbf24' : '#64748b',
+        },
+        label: edgeType === 'async' ? '异步' : undefined,
+        labelStyle: { fill: '#fbbf24', fontSize: 10 },
+      })
+    }
+
+    // 递归处理子节点
+    if (node.children) {
+      node.children.forEach((child, idx) => {
+        processNode(child, depth + 1, nodeId, idx)
+      })
+    }
+
+    return nodeId
+  }
+
+  flowTrees.forEach((tree, index) => {
+    processNode(tree, 0, null, index)
+    yOffset += ySpacing // 树之间的间距
+  })
+
+  return { nodes, edges }
+}
+
+function getEdgeType(nodeType: string | { AsyncCallback?: any }): 'sync' | 'async' {
+  if (typeof nodeType === 'object' && nodeType.AsyncCallback) {
+    return 'async'
+  }
+  return 'sync'
+}
+
+export function FlowView({ flowTrees, onNodeClick }: FlowViewProps) {
+  const { nodes: initialNodes, edges: initialEdges } = useMemo(
+    () => convertToReactFlow(flowTrees),
+    [flowTrees]
+  )
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+
+  const handleNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      if (onNodeClick) {
+        onNodeClick(node.id, node.data.name as string)
+      }
+    },
+    [onNodeClick]
+  )
+
+  if (flowTrees.length === 0) {
+    return (
+      <div className="flow-view-empty">
+        <div className="empty-icon">📊</div>
+        <h3>暂无执行流数据</h3>
+        <p>请先分析源代码文件</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flow-view">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={handleNodeClick}
+        nodeTypes={nodeTypes}
+        fitView
+        minZoom={0.1}
+        maxZoom={2}
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+        }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2a4a" />
+        <Controls 
+          showZoom={true}
+          showFitView={true}
+          showInteractive={false}
+        />
+      </ReactFlow>
+    </div>
+  )
+}
+
+export default FlowView
+

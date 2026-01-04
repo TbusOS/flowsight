@@ -1,0 +1,77 @@
+/* FlowView 容器样式 */
+.flow-view {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  background: var(--bg-primary);
+}
+
+.flow-view-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 300px;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 2rem;
+}
+
+.flow-view-empty .empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.flow-view-empty h3 {
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.flow-view-empty p {
+  font-size: 0.875rem;
+}
+
+/* React Flow 主题覆盖 */
+.react-flow__background {
+  background: var(--bg-primary);
+}
+
+.react-flow__controls {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  width: 28px;
+  height: 28px;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--bg-tertiary);
+}
+
+.react-flow__controls-button svg {
+  fill: var(--text-primary);
+}
+
+.react-flow__minimap {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.react-flow__edge-path {
+  stroke-width: 2;
+}
+
+.react-flow__edge-text {
+  font-size: 10px;
+}
+

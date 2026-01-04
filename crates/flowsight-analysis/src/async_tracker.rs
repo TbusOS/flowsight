@@ -130,8 +130,85 @@ impl AsyncTracker {
                 context: ExecutionContext::SoftIrq,
                 bind_patterns: vec![
                     Regex::new(r"call_rcu\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)").unwrap(),
+                    Regex::new(r"call_rcu_sched\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)").unwrap(),
                 ],
                 trigger_patterns: vec![],
+            },
+            // Notifier chain
+            AsyncPattern {
+                mechanism: AsyncMechanism::Notifier,
+                context: ExecutionContext::Process,
+                bind_patterns: vec![
+                    Regex::new(r"register_reboot_notifier\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"register_netdevice_notifier\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"blocking_notifier_chain_register\s*\([^,]+,\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"atomic_notifier_chain_register\s*\([^,]+,\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                ],
+                trigger_patterns: vec![],
+            },
+            // Softirq
+            AsyncPattern {
+                mechanism: AsyncMechanism::Softirq,
+                context: ExecutionContext::SoftIrq,
+                bind_patterns: vec![
+                    Regex::new(r"open_softirq\s*\(\s*\w+\s*,\s*(\w+)\s*\)").unwrap(),
+                ],
+                trigger_patterns: vec![
+                    Regex::new(r"raise_softirq\s*\(").unwrap(),
+                    Regex::new(r"raise_softirq_irqoff\s*\(").unwrap(),
+                ],
+            },
+            // Completion (synchronization but often used with async)
+            AsyncPattern {
+                mechanism: AsyncMechanism::Custom("completion".to_string()),
+                context: ExecutionContext::Process,
+                bind_patterns: vec![
+                    Regex::new(r"init_completion\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"DECLARE_COMPLETION\s*\(\s*(\w+)\s*\)").unwrap(),
+                    Regex::new(r"reinit_completion\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                ],
+                trigger_patterns: vec![
+                    Regex::new(r"complete\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"complete_all\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                ],
+            },
+            // Wait queue
+            AsyncPattern {
+                mechanism: AsyncMechanism::Custom("waitqueue".to_string()),
+                context: ExecutionContext::Process,
+                bind_patterns: vec![
+                    Regex::new(r"init_waitqueue_head\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"DECLARE_WAIT_QUEUE_HEAD\s*\(\s*(\w+)\s*\)").unwrap(),
+                ],
+                trigger_patterns: vec![
+                    Regex::new(r"wake_up\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"wake_up_interruptible\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"wake_up_all\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                ],
+            },
+            // Deferred work (system_wq)
+            AsyncPattern {
+                mechanism: AsyncMechanism::WorkQueue { delayed: false },
+                context: ExecutionContext::Process,
+                bind_patterns: vec![
+                    Regex::new(r"INIT_WORK_ONSTACK\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)").unwrap(),
+                ],
+                trigger_patterns: vec![
+                    Regex::new(r"schedule_work_on\s*\([^,]+,\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"queue_work_on\s*\([^,]+,\s*[^,]+,\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"flush_work\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                ],
+            },
+            // IRQ work (runs in IRQ context but deferred)
+            AsyncPattern {
+                mechanism: AsyncMechanism::Custom("irq_work".to_string()),
+                context: ExecutionContext::HardIrq,
+                bind_patterns: vec![
+                    Regex::new(r"init_irq_work\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)").unwrap(),
+                ],
+                trigger_patterns: vec![
+                    Regex::new(r"irq_work_queue\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                ],
             },
         ]
     }

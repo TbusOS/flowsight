@@ -1,18 +1,56 @@
+/**
+ * FlowSight 全局样式
+ * 
+ * 设计理念：深色主题 + 科技感 + 清晰的层次
+ */
+
+/* ============================================
+   CSS 变量
+   ============================================ */
 :root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-tertiary: #0f3460;
-  --text-primary: #e8e8e8;
-  --text-secondary: #a0a0a0;
-  --accent: #e94560;
-  --accent-hover: #ff6b6b;
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --border: #2a2a4a;
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* 背景色 - 深蓝黑色系 */
+  --bg-primary: #0f1419;
+  --bg-secondary: #1a1f2e;
+  --bg-tertiary: #242b3d;
+  --bg-hover: #2d3548;
+  
+  /* 文字色 */
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  
+  /* 强调色 */
+  --accent: #58a6ff;
+  --accent-hover: #79b8ff;
+  --accent-pink: #f778ba;
+  
+  /* 语义色 */
+  --success: #3fb950;
+  --warning: #d29922;
+  --error: #f85149;
+  
+  /* 边框 */
+  --border: #30363d;
+  --border-light: #21262d;
+  
+  /* 字体 */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 }
 
+/* ============================================
+   重置与基础
+   ============================================ */
 * {
   margin: 0;
   padding: 0;
@@ -24,137 +62,366 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* ============================================
+   应用布局
+   ============================================ */
 .app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
 }
 
+/* Header */
 .header {
   background: var(--bg-secondary);
-  padding: 1rem 2rem;
   border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1.5rem;
 }
 
-.header h1 {
-  font-size: 1.5rem;
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 100%;
+}
+
+.header-title h1 {
+  font-size: 1.25rem;
   font-weight: 600;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.125rem;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-pink) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.header p {
+.header-title p {
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
 }
 
+.header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.file-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 1rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  width: 300px;
+  font-family: var(--font-mono);
+}
+
+.file-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Main Layout */
 .main {
   flex: 1;
   display: grid;
-  grid-template-columns: 300px 1fr 350px;
+  grid-template-columns: 280px 1fr 280px;
   gap: 1px;
   background: var(--border);
+  overflow: hidden;
 }
 
+/* Panels */
 .panel {
   background: var(--bg-primary);
-  padding: 1.5rem;
+  padding: 1rem;
+  overflow-y: auto;
 }
 
 .panel h2 {
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 600;
+  color: var(--text-secondary);
   margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.panel h3 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.sidebar {
+  background: var(--bg-secondary);
+}
+
+.main-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-header h2 {
+  margin-bottom: 0;
+}
+
+.selected-info {
+  font-size: 0.75rem;
   color: var(--accent);
 }
 
-.panel ul {
-  list-style: none;
-  margin: 1rem 0;
+.selected-info code {
+  background: var(--bg-tertiary);
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
 }
 
-.panel li {
-  padding: 0.5rem 0;
-  color: var(--text-secondary);
+.flow-container {
+  flex: 1;
+  min-height: 0;
 }
 
-.placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-}
-
+/* ============================================
+   按钮
+   ============================================ */
 .button {
-  background: var(--accent);
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s;
-  margin-top: 1rem;
-}
-
-.button:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.error {
-  background: rgba(233, 69, 96, 0.1);
-  border: 1px solid var(--accent);
-  padding: 1rem;
-  border-radius: 6px;
-  margin-top: 1rem;
-  font-size: 0.875rem;
-}
-
-.result {
-  background: var(--bg-secondary);
-  padding: 1rem;
-  border-radius: 6px;
-  margin-top: 1rem;
-  font-size: 0.875rem;
-}
-
-.result h3 {
-  color: var(--success);
-  margin-bottom: 0.75rem;
-}
-
-.result p {
-  margin: 0.5rem 0;
-  color: var(--text-secondary);
-}
-
-.result strong {
+  transition: all 0.15s ease;
+  background: var(--bg-tertiary);
   color: var(--text-primary);
 }
 
-.footer {
-  background: var(--bg-secondary);
-  padding: 0.75rem 2rem;
-  border-top: 1px solid var(--border);
-  text-align: center;
+.button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* ============================================
+   分析信息卡片
+   ============================================ */
+.analysis-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.info-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.625rem 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.info-label {
   font-size: 0.75rem;
   color: var(--text-secondary);
 }
 
-/* Code styling */
+.info-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.info-value.highlight {
+  color: var(--warning);
+}
+
+/* Entry Points */
+.entry-points {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.entry-points ul {
+  list-style: none;
+  margin-top: 0.5rem;
+}
+
+.entry-points li {
+  padding: 0.5rem 0.75rem;
+  margin: 0.25rem 0;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--success);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.entry-points li:hover {
+  background: var(--bg-hover);
+}
+
+.entry-points li.selected {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+
+.entry-points li code {
+  color: var(--success);
+}
+
+/* ============================================
+   欢迎信息
+   ============================================ */
+.welcome {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.welcome ul {
+  list-style: none;
+  margin: 1rem 0;
+}
+
+.welcome li {
+  padding: 0.375rem 0;
+}
+
+.welcome .hint {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* ============================================
+   错误提示
+   ============================================ */
+.error {
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid var(--error);
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: var(--error);
+  margin-bottom: 1rem;
+}
+
+/* ============================================
+   详情面板
+   ============================================ */
+.function-detail h3 {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  font-size: 0.9375rem;
+  margin-bottom: 0.75rem;
+}
+
+.detail-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.detail-placeholder {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+/* 图例 */
+.legend {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.legend ul {
+  list-style: none;
+  margin-top: 0.5rem;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.legend-icon {
+  width: 1.5rem;
+  text-align: center;
+}
+
+/* ============================================
+   Footer
+   ============================================ */
+.footer {
+  background: var(--bg-secondary);
+  padding: 0.5rem 1.5rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+/* ============================================
+   代码样式
+   ============================================ */
 code, pre {
   font-family: var(--font-mono);
 }
 
-/* Scrollbar styling */
+code {
+  background: var(--bg-tertiary);
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+}
+
+/* ============================================
+   滚动条
+   ============================================ */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -170,6 +437,25 @@ code, pre {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+  background: var(--text-muted);
 }
 
+/* ============================================
+   响应式
+   ============================================ */
+@media (max-width: 1200px) {
+  .main {
+    grid-template-columns: 240px 1fr 240px;
+  }
+}
+
+@media (max-width: 900px) {
+  .main {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+  }
+  
+  .sidebar {
+    max-height: 200px;
+  }
+}

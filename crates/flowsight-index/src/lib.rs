@@ -1,192 +1,221 @@
 //! FlowSight Index
 //!
-//! Persistent storage for symbols and call graphs.
+//! Provides persistent indexing for code symbols and call graphs.
+//! Supports incremental updates for large codebases.
 
-use flowsight_core::{Result, Error, FunctionDef, StructDef};
-use std::path::Path;
+use flowsight_core::{FunctionDef, StructDef, Result, Error};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
-/// Symbol index using SQLite
+mod file_tracker;
+mod tree_cache;
+mod batch_indexer;
+
+pub use file_tracker::FileVersionTracker;
+pub use tree_cache::TreeCache;
+pub use batch_indexer::BatchIndexer;
+
+/// File version information for incremental indexing
+#[derive(Debug, Clone)]
+pub struct FileVersion {
+    pub path: PathBuf,
+    pub hash: u64,
+    pub mtime: SystemTime,
+    pub indexed_at: SystemTime,
+}
+
+/// Symbol index containing all indexed information
+#[derive(Debug, Default)]
 pub struct SymbolIndex {
-    conn: rusqlite::Connection,
+    /// All functions indexed by name
+    pub functions: HashMap<String, FunctionDef>,
+    /// All structs indexed by name
+    pub structs: HashMap<String, StructDef>,
+    /// Functions indexed by file
+    pub functions_by_file: HashMap<PathBuf, Vec<String>>,
+    /// File versions for incremental updates
+    pub file_versions: HashMap<PathBuf, FileVersion>,
 }
 
 impl SymbolIndex {
-    /// Create a new in-memory index
-    pub fn new_memory() -> Result<Self> {
-        let conn = rusqlite::Connection::open_in_memory()
-            .map_err(|e| Error::Index(e.to_string()))?;
-        let index = Self { conn };
-        index.init_tables()?;
-        Ok(index)
+    /// Create a new empty index
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// Create a new index at the specified path
-    pub fn new(path: &Path) -> Result<Self> {
-        let conn = rusqlite::Connection::open(path)
-            .map_err(|e| Error::Index(e.to_string()))?;
-        let index = Self { conn };
-        index.init_tables()?;
-        Ok(index)
-    }
-
-    fn init_tables(&self) -> Result<()> {
-        self.conn.execute_batch(r#"
-            CREATE TABLE IF NOT EXISTS functions (
-                name TEXT PRIMARY KEY,
-                return_type TEXT,
-                file TEXT,
-                line INTEGER,
-                is_callback INTEGER,
-                callback_context TEXT,
-                data TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS structs (
-                name TEXT PRIMARY KEY,
-                file TEXT,
-                line INTEGER,
-                data TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS calls (
-                caller TEXT,
-                callee TEXT,
-                file TEXT,
-                line INTEGER,
-                call_type TEXT,
-                PRIMARY KEY (caller, callee, line)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_functions_file ON functions(file);
-            CREATE INDEX IF NOT EXISTS idx_calls_caller ON calls(caller);
-            CREATE INDEX IF NOT EXISTS idx_calls_callee ON calls(callee);
-        "#).map_err(|e| Error::Index(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Insert a function
-    pub fn insert_function(&self, func: &FunctionDef) -> Result<()> {
-        let data = serde_json::to_string(func)
-            .map_err(|e| Error::Index(e.to_string()))?;
+    /// Add a function to the index
+    pub fn add_function(&mut self, func: FunctionDef, file: &Path) {
+        let name = func.name.clone();
+        self.functions.insert(name.clone(), func);
         
-        let file = func.location.as_ref().map(|l| l.file.as_str()).unwrap_or("");
-        let line = func.location.as_ref().map(|l| l.line as i64).unwrap_or(0);
-
-        self.conn.execute(
-            "INSERT OR REPLACE INTO functions (name, return_type, file, line, is_callback, callback_context, data) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![
-                func.name,
-                func.return_type,
-                file,
-                line,
-                func.is_callback as i32,
-                func.callback_context,
-                data
-            ],
-        ).map_err(|e| Error::Index(e.to_string()))?;
-        
-        Ok(())
+        self.functions_by_file
+            .entry(file.to_path_buf())
+            .or_default()
+            .push(name);
     }
 
-    /// Search functions by name pattern
-    pub fn search_functions(&self, pattern: &str) -> Result<Vec<FunctionDef>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT data FROM functions WHERE name LIKE ?1"
-        ).map_err(|e| Error::Index(e.to_string()))?;
+    /// Add a struct to the index
+    pub fn add_struct(&mut self, st: StructDef) {
+        self.structs.insert(st.name.clone(), st);
+    }
 
-        let pattern = format!("%{}%", pattern);
-        let rows = stmt.query_map([&pattern], |row| {
-            let data: String = row.get(0)?;
-            Ok(data)
-        }).map_err(|e| Error::Index(e.to_string()))?;
-
-        let mut functions = Vec::new();
-        for row in rows {
-            let data = row.map_err(|e| Error::Index(e.to_string()))?;
-            if let Ok(func) = serde_json::from_str(&data) {
-                functions.push(func);
+    /// Remove all symbols from a file
+    pub fn remove_file(&mut self, file: &Path) {
+        if let Some(func_names) = self.functions_by_file.remove(file) {
+            for name in func_names {
+                self.functions.remove(&name);
             }
         }
-        Ok(functions)
+        self.file_versions.remove(file);
     }
 
     /// Get function by name
-    pub fn get_function(&self, name: &str) -> Result<Option<FunctionDef>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT data FROM functions WHERE name = ?1"
-        ).map_err(|e| Error::Index(e.to_string()))?;
+    pub fn get_function(&self, name: &str) -> Option<&FunctionDef> {
+        self.functions.get(name)
+    }
 
-        let result = stmt.query_row([name], |row| {
-            let data: String = row.get(0)?;
-            Ok(data)
-        });
+    /// Get struct by name
+    pub fn get_struct(&self, name: &str) -> Option<&StructDef> {
+        self.structs.get(name)
+    }
 
-        match result {
-            Ok(data) => {
-                let func = serde_json::from_str(&data)
-                    .map_err(|e| Error::Index(e.to_string()))?;
-                Ok(Some(func))
-            }
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(Error::Index(e.to_string())),
+    /// Get all functions in a file
+    pub fn get_functions_in_file(&self, file: &Path) -> Vec<&FunctionDef> {
+        self.functions_by_file
+            .get(file)
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(|n| self.functions.get(n))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Check if a file needs reindexing
+    pub fn needs_reindex(&self, file: &Path, current_mtime: SystemTime) -> bool {
+        match self.file_versions.get(file) {
+            Some(version) => version.mtime != current_mtime,
+            None => true,
         }
     }
 
-    /// Get all callbacks
-    pub fn get_callbacks(&self) -> Result<Vec<FunctionDef>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT data FROM functions WHERE is_callback = 1"
-        ).map_err(|e| Error::Index(e.to_string()))?;
-
-        let rows = stmt.query_map([], |row| {
-            let data: String = row.get(0)?;
-            Ok(data)
-        }).map_err(|e| Error::Index(e.to_string()))?;
-
-        let mut functions = Vec::new();
-        for row in rows {
-            let data = row.map_err(|e| Error::Index(e.to_string()))?;
-            if let Ok(func) = serde_json::from_str(&data) {
-                functions.push(func);
-            }
-        }
-        Ok(functions)
+    /// Update file version
+    pub fn update_file_version(&mut self, file: &Path, hash: u64, mtime: SystemTime) {
+        self.file_versions.insert(
+            file.to_path_buf(),
+            FileVersion {
+                path: file.to_path_buf(),
+                hash,
+                mtime,
+                indexed_at: SystemTime::now(),
+            },
+        );
     }
 
-    /// Get callers of a function
-    pub fn get_callers(&self, name: &str) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT caller FROM calls WHERE callee = ?1"
-        ).map_err(|e| Error::Index(e.to_string()))?;
-
-        let rows = stmt.query_map([name], |row| {
-            row.get(0)
-        }).map_err(|e| Error::Index(e.to_string()))?;
-
-        let mut callers = Vec::new();
-        for row in rows {
-            callers.push(row.map_err(|e| Error::Index(e.to_string()))?);
+    /// Get statistics
+    pub fn stats(&self) -> IndexStats {
+        IndexStats {
+            total_functions: self.functions.len(),
+            total_structs: self.structs.len(),
+            total_files: self.functions_by_file.len(),
         }
-        Ok(callers)
-    }
-
-    /// Get callees of a function
-    pub fn get_callees(&self, name: &str) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT callee FROM calls WHERE caller = ?1"
-        ).map_err(|e| Error::Index(e.to_string()))?;
-
-        let rows = stmt.query_map([name], |row| {
-            row.get(0)
-        }).map_err(|e| Error::Index(e.to_string()))?;
-
-        let mut callees = Vec::new();
-        for row in rows {
-            callees.push(row.map_err(|e| Error::Index(e.to_string()))?);
-        }
-        Ok(callees)
     }
 }
 
+/// Index statistics
+#[derive(Debug, Clone)]
+pub struct IndexStats {
+    pub total_functions: usize,
+    pub total_structs: usize,
+    pub total_files: usize,
+}
+
+/// Index manager for handling indexing operations
+pub struct IndexManager {
+    index: SymbolIndex,
+    tree_cache: TreeCache,
+    file_tracker: FileVersionTracker,
+}
+
+impl IndexManager {
+    /// Create a new index manager
+    pub fn new() -> Self {
+        Self {
+            index: SymbolIndex::new(),
+            tree_cache: TreeCache::new(100), // Cache up to 100 trees
+            file_tracker: FileVersionTracker::new(),
+        }
+    }
+
+    /// Get the symbol index
+    pub fn index(&self) -> &SymbolIndex {
+        &self.index
+    }
+
+    /// Get mutable symbol index
+    pub fn index_mut(&mut self) -> &mut SymbolIndex {
+        &mut self.index
+    }
+
+    /// Get tree cache
+    pub fn tree_cache(&self) -> &TreeCache {
+        &self.tree_cache
+    }
+
+    /// Get mutable tree cache
+    pub fn tree_cache_mut(&mut self) -> &mut TreeCache {
+        &mut self.tree_cache
+    }
+
+    /// Check which files need reindexing
+    pub fn get_files_to_index(&self, files: &[PathBuf]) -> Vec<PathBuf> {
+        files
+            .iter()
+            .filter(|f| {
+                if let Ok(metadata) = std::fs::metadata(f) {
+                    if let Ok(mtime) = metadata.modified() {
+                        return self.index.needs_reindex(f, mtime);
+                    }
+                }
+                true
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+impl Default for IndexManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flowsight_core::Location;
+
+    #[test]
+    fn test_symbol_index() {
+        let mut index = SymbolIndex::new();
+        
+        let func = FunctionDef {
+            name: "my_func".into(),
+            return_type: "int".into(),
+            params: vec![],
+            location: Some(Location::new("test.c", 10, 0)),
+            calls: vec![],
+            called_by: vec![],
+            is_callback: false,
+            callback_context: None,
+            attributes: vec![],
+        };
+        
+        index.add_function(func, Path::new("test.c"));
+        
+        assert!(index.get_function("my_func").is_some());
+        assert_eq!(index.stats().total_functions, 1);
+    }
+}
