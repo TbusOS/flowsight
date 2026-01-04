@@ -3,7 +3,6 @@
 //! Provides fast incremental parsing using tree-sitter.
 
 use flowsight_core::{FunctionDef, Location, Parameter, Result, StructDef, StructField};
-use std::collections::HashMap;
 use tree_sitter::{Parser as TSParser, Node, Tree};
 use tracing::debug;
 
@@ -19,7 +18,7 @@ impl TreeSitterParser {
     pub fn new() -> Self {
         let mut parser = TSParser::new();
         parser
-            .set_language(&tree_sitter_c::LANGUAGE.into())
+            .set_language(&tree_sitter_c::language())
             .expect("Failed to load C grammar");
         Self { parser }
     }
@@ -405,14 +404,12 @@ impl TreeSitterParser {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "field_identifier" | "identifier" => {
-                    name = self.node_text(child, source);
-                }
-                "number_literal" | "identifier" => {
                     if name.is_empty() {
                         name = self.node_text(child, source);
-                    } else {
-                        size = Some(self.node_text(child, source));
                     }
+                }
+                "number_literal" => {
+                    size = Some(self.node_text(child, source));
                 }
                 _ => {}
             }

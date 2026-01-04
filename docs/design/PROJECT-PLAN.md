@@ -388,7 +388,7 @@ Q1        Q2        Q3        Q4        Q1        Q2        Q3
 *   [x] Rust workspace 结构
 *   [x] tree-sitter-c 集成与 AST 遍历
 *   [x] 异步模式匹配原型 (work_struct)
-*   [ ] 简单 UI 原型 (Tauri + React Flow)
+*   [x] 简单 UI 原型 (Tauri + React Flow)
 *   [ ] **基础测试框架**: 建立自动化测试流程
 
 ### 5.3 Phase 1: 核心引擎增强 (12 周)
@@ -398,13 +398,13 @@ Q1        Q2        Q3        Q4        Q1        Q2        Q3
 #### 5.3.1 基础架构层 (关键！影响后续所有功能)
 
 *   **增量解析引擎**:
-    *   [ ] 改造 TreeSitterParser，保存 Tree 用于增量更新
+    *   [x] 改造 TreeSitterParser，保存 Tree 用于增量更新
     *   [ ] 实现 `IncrementalParser` trait，支持局部代码变更
-    *   [ ] 实现 `TreeCache`，缓存已解析的语法树
+    *   [x] 实现 `TreeCache`，缓存已解析的语法树
 *   **增量索引系统**:
     *   [ ] 数据库添加 `files` 表，记录文件 hash/mtime
-    *   [ ] 实现 `FileVersionTracker`，检测需要重新索引的文件
-    *   [ ] 实现 `BatchIndexer`，批量插入优化（事务 + 预编译语句）
+    *   [x] 实现 `FileVersionTracker`，检测需要重新索引的文件
+    *   [x] 实现 `BatchIndexer`，批量插入优化（事务 + 预编译语句）
     *   [ ] 支持局部更新：修改代码后只重新分析变更的函数
 *   **并行处理**:
     *   [ ] 使用 rayon 并行解析多文件
@@ -428,7 +428,7 @@ Q1        Q2        Q3        Q4        Q1        Q2        Q3
     *   [ ] 在解析/索引过程中发送进度事件
     *   [ ] 通过 Tauri Events 推送到前端
 *   **前端**:
-    *   [ ] 实现 `ProgressIndicator` 组件
+    *   [x] 实现 `ProgressIndicator` 组件
     *   [ ] 显示索引进度 (文件数/总数)
     *   [ ] 显示当前阶段 (解析中/分析中/索引中)
     *   [ ] 支持取消操作
@@ -437,11 +437,11 @@ Q1        Q2        Q3        Q4        Q1        Q2        Q3
 
 *   **LSP 集成**: 实现与 `clangd` 的通信，获取精确符号信息
 *   **Kconfig 解析**: 读取 `.config` 文件，构建条件编译上下文
-*   **高级异步追踪**: 支持 timer, tasklet, irq 等 15+ 种模式
-*   **函数指针解析**: 实现基于 ops 表和变量赋值的解析算法
+*   [x] **高级异步追踪**: 支持 timer, tasklet, irq 等 15+ 种模式
+*   [x] **函数指针解析**: 实现基于 ops 表和变量赋值的解析算法
 *   **完整 Linux 内核模式识别**:
-    *   [ ] 覆盖所有常见异步机制 (work, timer, tasklet, softirq, kthread, rcu)
-    *   [ ] 覆盖驱动框架 (USB, PCI, I2C, SPI, Platform, Block, Net)
+    *   [x] 覆盖所有常见异步机制 (work, timer, tasklet, softirq, kthread, rcu)
+    *   [x] 覆盖驱动框架 (USB, PCI, I2C, SPI, Platform, Block, Net)
     *   [ ] 覆盖文件系统 VFS 回调
     *   [ ] 覆盖网络子系统回调
 

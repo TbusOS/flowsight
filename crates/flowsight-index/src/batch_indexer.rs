@@ -110,17 +110,15 @@ impl BatchIndexer {
             current_file: None,
         });
 
-        if let Ok(entries) = walkdir::WalkDir::new(root)
+        for entry in walkdir::WalkDir::new(root)
             .follow_links(true)
             .into_iter()
             .filter_map(|e| e.ok())
         {
-            for entry in entries {
-                if entry.file_type().is_file() {
-                    let path = entry.path();
-                    if self.should_include(path) {
-                        files.push(path.to_path_buf());
-                    }
+            if entry.file_type().is_file() {
+                let path = entry.path();
+                if self.should_include(path) {
+                    files.push(path.to_path_buf());
                 }
             }
         }

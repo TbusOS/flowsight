@@ -3,7 +3,7 @@
 //! Provides persistent indexing for code symbols and call graphs.
 //! Supports incremental updates for large codebases.
 
-use flowsight_core::{FunctionDef, StructDef, Result, Error};
+use flowsight_core::{FunctionDef, StructDef};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
