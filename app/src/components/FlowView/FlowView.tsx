@@ -178,6 +178,7 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
   const [expandedNodes, setExpandedNodes] = useState<ExpandState>({})
   const [hideKernelApi, setHideKernelApi] = useState(false) // 隐藏内核API开关
   const [focusedNode, setFocusedNode] = useState<string | null>(null) // 聚焦的节点
+  const [isFullscreen, setIsFullscreen] = useState(false) // 全屏模式
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeName: string } | null>(null)
   const functionMap = useMemo(() => buildFunctionMap(flowTrees), [flowTrees])
   const { fitView, setCenter, getNode, zoomIn, zoomOut, setViewport } = useReactFlow()
@@ -204,6 +205,22 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
       console.error('导出失败:', err)
     }
   }, [])
+  
+  // 全屏切换
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen(prev => !prev)
+  }, [])
+  
+  // ESC 退出全屏
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false)
+      }
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [isFullscreen])
   const isInitialized = useRef(false)
   const prevFlowTreesRef = useRef<FlowTreeNode[]>([])
   
@@ -297,6 +314,10 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
           isSelected: selectedFunction === node.name,
           onToggle: () => toggleExpand(node.name),
           onContextMenu: (e: React.MouseEvent) => handleContextMenu(e, node.name),
+          // 详细信息
+          file: node.file,
+          line: node.line,
+          nodeType: getNodeClass(node.node_type),
         },
       })
 
@@ -496,7 +517,7 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
   }, [collapseToDepth])
 
   return (
-    <>
+    <div className={`flow-view-inner ${isFullscreen ? 'fullscreen' : ''}`}>
       <div className="flow-toolbar">
         <button onClick={expandAll} title="展开全部">
           📂 展开
@@ -544,6 +565,9 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
         <button onClick={exportToPng} title="导出为 PNG 图片">
           📷 导出
         </button>
+        <button onClick={toggleFullscreen} title={isFullscreen ? '退出全屏 (Esc)' : '全屏显示'}>
+          {isFullscreen ? '⊗' : '⛶'} {isFullscreen ? '退出' : '全屏'}
+        </button>
       </div>
       
       {/* 右键菜单 */}
@@ -584,7 +608,7 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
           <button onClick={() => fitView({ padding: 0.2 })} title="适应视图">⊙</button>
         </div>
       </ReactFlow>
-    </>
+    </div>
   )
 }
 

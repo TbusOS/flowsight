@@ -269,3 +269,31 @@
   min-width: 45px;
   text-align: center;
 }
+
+/* 内部容器 */
+.flow-view-inner {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* 全屏模式 */
+.flow-view-inner.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: #0c1222;
+}
+
+.flow-view-inner.fullscreen .flow-toolbar {
+  top: 16px;
+  left: 16px;
+}
+
+.flow-view-inner.fullscreen .zoom-controls {
+  bottom: 16px;
+  right: 16px;
+}
