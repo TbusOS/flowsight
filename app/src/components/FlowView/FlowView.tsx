@@ -364,6 +364,24 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
     })
     setExpandedNodes(initial)
   }, [flowTrees])
+  
+  // 折叠到指定深度
+  const collapseToDepth = useCallback((maxDepth: number) => {
+    const result: ExpandState = {}
+    
+    // 递归遍历树，只展开到指定深度
+    const traverse = (node: FlowTreeNode, depth: number) => {
+      if (depth < maxDepth) {
+        result[node.name] = true // 展开
+      }
+      if (node.children && depth < maxDepth) {
+        node.children.forEach(child => traverse(child, depth + 1))
+      }
+    }
+    
+    flowTrees.forEach(tree => traverse(tree, 0))
+    setExpandedNodes(result)
+  }, [flowTrees])
 
   // 手动 fitView
   const handleFitView = useCallback(() => {
@@ -374,6 +392,25 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
   const toggleKernelApiFilter = useCallback(() => {
     setHideKernelApi(prev => !prev)
   }, [])
+  
+  // 键盘快捷键: 数字 1-5 折叠到对应层级
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 只在没有焦点到输入框时响应
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+      
+      // 数字键 1-5 折叠到对应层级
+      const num = parseInt(e.key)
+      if (num >= 1 && num <= 5) {
+        collapseToDepth(num)
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [collapseToDepth])
 
   return (
     <>
@@ -384,6 +421,20 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
         <button onClick={collapseAll} title="收起全部">
           📁 收起
         </button>
+        <div className="depth-selector">
+          <span className="depth-label">层级:</span>
+          {[1, 2, 3, 4, 5].map(depth => (
+            <button
+              key={depth}
+              onClick={() => collapseToDepth(depth)}
+              className="depth-btn"
+              title={`展开到第 ${depth} 层`}
+            >
+              {depth}
+            </button>
+          ))}
+        </div>
+        <div className="toolbar-divider" />
         <button onClick={handleFitView} title="适应视图">
           🎯 适应
         </button>
