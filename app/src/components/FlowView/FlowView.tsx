@@ -4,7 +4,7 @@
  * 使用 React Flow 显示代码执行流程图
  */
 
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useRef, useEffect } from 'react'
 import {
   ReactFlow,
   Node,
@@ -16,6 +16,8 @@ import {
   useEdgesState,
   NodeTypes,
   MarkerType,
+  useReactFlow,
+  ReactFlowProvider,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
@@ -31,80 +33,127 @@ const nodeTypes: NodeTypes = {
 interface FlowViewProps {
   flowTrees: FlowTreeNode[]
   onNodeClick?: (nodeId: string, functionName: string) => void
+  selectedFunction?: string // 新增：当前选中的函数名
 }
 
-// 将 FlowTree 转换为 React Flow 的节点和边
+// 计算树的高度（子节点数量）
+function getTreeHeight(node: FlowTreeNode): number {
+  if (!node.children || node.children.length === 0) return 1
+  return node.children.reduce((sum, child) => sum + getTreeHeight(child), 0)
+}
+
+// 将 FlowTree 转换为 React Flow 的节点和边 - 改进的水平布局
 function convertToReactFlow(
   flowTrees: FlowTreeNode[]
-): { nodes: Node[]; edges: Edge[] } {
+): { nodes: Node[]; edges: Edge[]; nodeMap: Map<string, string> } {
   const nodes: Node[] = []
   const edges: Edge[] = []
+  const nodeMap = new Map<string, string>() // 函数名 -> 节点ID
   
-  let yOffset = 0
-  const xSpacing = 250
-  const ySpacing = 100
+  const xSpacing = 280
+  const ySpacing = 80
+  let globalIndex = 0
 
   function processNode(
     node: FlowTreeNode,
     depth: number,
     parentId: string | null,
-    index: number
-  ): string {
-    const nodeId = `${node.name}-${depth}-${index}`
+    yStart: number
+  ): { nodeId: string; height: number } {
+    const nodeId = `node-${globalIndex++}`
+    const treeHeight = getTreeHeight(node)
+    const nodeY = yStart + (treeHeight * ySpacing) / 2 - ySpacing / 2
+    
+    // 保存函数名到节点ID的映射
+    nodeMap.set(node.name, nodeId)
     
     nodes.push({
       id: nodeId,
       type: 'flowNode',
-      position: { x: depth * xSpacing, y: yOffset },
+      position: { x: depth * xSpacing, y: nodeY },
       data: {
         label: node.display_name || node.name,
         name: node.name,
         nodeType: node.node_type,
         description: node.description,
         icon: getNodeIcon(node.node_type),
+        childCount: node.children?.length || 0,
       },
     })
-    
-    yOffset += ySpacing
 
     // 添加边
     if (parentId) {
       const edgeType = getEdgeType(node.node_type)
+      const isAsync = edgeType === 'async'
       edges.push({
         id: `${parentId}-${nodeId}`,
         source: parentId,
         target: nodeId,
         type: 'smoothstep',
-        animated: edgeType === 'async',
+        animated: isAsync,
         style: {
-          stroke: edgeType === 'async' ? '#fbbf24' : '#64748b',
-          strokeWidth: 2,
+          stroke: isAsync ? '#fbbf24' : '#475569',
+          strokeWidth: isAsync ? 2 : 1.5,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: edgeType === 'async' ? '#fbbf24' : '#64748b',
+          color: isAsync ? '#fbbf24' : '#475569',
+          width: 15,
+          height: 15,
         },
-        label: edgeType === 'async' ? '异步' : undefined,
-        labelStyle: { fill: '#fbbf24', fontSize: 10 },
+        label: isAsync ? '⚡异步' : undefined,
+        labelStyle: { fill: '#fbbf24', fontSize: 10, fontWeight: 500 },
+        labelBgStyle: { fill: '#1e293b', fillOpacity: 0.8 },
+        labelBgPadding: [4, 4] as [number, number],
       })
     }
 
     // 递归处理子节点
-    if (node.children) {
-      node.children.forEach((child, idx) => {
-        processNode(child, depth + 1, nodeId, idx)
+    let currentY = yStart
+    if (node.children && node.children.length > 0) {
+      // 限制显示的子节点数量，避免太长
+      const maxChildren = 8
+      const childrenToShow = node.children.slice(0, maxChildren)
+      
+      childrenToShow.forEach((child) => {
+        const childResult = processNode(child, depth + 1, nodeId, currentY)
+        currentY += childResult.height * ySpacing
       })
+      
+      // 如果有更多子节点，显示省略节点
+      if (node.children.length > maxChildren) {
+        const moreId = `more-${globalIndex++}`
+        nodes.push({
+          id: moreId,
+          type: 'flowNode',
+          position: { x: (depth + 1) * xSpacing, y: currentY },
+          data: {
+            label: `... 还有 ${node.children.length - maxChildren} 个`,
+            name: 'more',
+            nodeType: 'External',
+            isMore: true,
+          },
+        })
+        edges.push({
+          id: `${nodeId}-${moreId}`,
+          source: nodeId,
+          target: moreId,
+          type: 'smoothstep',
+          style: { stroke: '#475569', strokeDasharray: '5,5' },
+        })
+      }
     }
 
-    return nodeId
+    return { nodeId, height: treeHeight }
   }
 
-  flowTrees.forEach((tree, index) => {
-    processNode(tree, 0, null, index)
-    yOffset += ySpacing // 树之间的间距
+  let currentY = 0
+  flowTrees.forEach((tree) => {
+    const result = processNode(tree, 0, null, currentY)
+    currentY += result.height * ySpacing + ySpacing * 2 // 树之间的间距
   })
 
-  return { nodes, edges }
+  return { nodes, edges, nodeMap }
 }
 
 function getEdgeType(nodeType: FlowTreeNode['node_type']): 'sync' | 'async' {
@@ -139,24 +188,58 @@ function getNodeIcon(nodeType: FlowTreeNode['node_type']): string {
   return '📦'
 }
 
-export function FlowView({ flowTrees, onNodeClick }: FlowViewProps) {
-  const { nodes: convertedNodes, edges: convertedEdges } = useMemo(
+// 内部组件，用于访问 ReactFlow 实例
+function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewProps) {
+  const { nodes: convertedNodes, edges: convertedEdges, nodeMap } = useMemo(
     () => convertToReactFlow(flowTrees),
     [flowTrees]
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(convertedNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(convertedEdges)
+  const nodeMapRef = useRef(nodeMap)
+  const { fitView, setCenter, getNode } = useReactFlow()
+  
+  // Update refs
+  useEffect(() => {
+    nodeMapRef.current = nodeMap
+  }, [nodeMap])
   
   // Update nodes and edges when flowTrees change
-  React.useEffect(() => {
+  useEffect(() => {
     setNodes(convertedNodes)
     setEdges(convertedEdges)
-  }, [convertedNodes, convertedEdges, setNodes, setEdges])
+    // 自动适应视图
+    setTimeout(() => fitView({ padding: 0.2 }), 100)
+  }, [convertedNodes, convertedEdges, setNodes, setEdges, fitView])
+  
+  // 当选中函数改变时，自动跳转到对应节点
+  useEffect(() => {
+    if (selectedFunction && nodeMapRef.current.has(selectedFunction)) {
+      const nodeId = nodeMapRef.current.get(selectedFunction)!
+      const node = getNode(nodeId)
+      if (node) {
+        // 平滑滚动到节点位置
+        setCenter(node.position.x + 100, node.position.y + 30, { 
+          zoom: 1.2, 
+          duration: 500 
+        })
+        
+        // 高亮选中的节点
+        setNodes(nds => nds.map(n => ({
+          ...n,
+          data: {
+            ...n.data,
+            selected: n.id === nodeId,
+          }
+        })))
+      }
+    }
+  }, [selectedFunction, getNode, setCenter, setNodes])
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      if (onNodeClick) {
+      if (onNodeClick && node.data.name !== 'more') {
         onNodeClick(node.id, node.data.name as string)
       }
     },
@@ -174,28 +257,47 @@ export function FlowView({ flowTrees, onNodeClick }: FlowViewProps) {
   }
 
   return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onNodeClick={handleNodeClick}
+      nodeTypes={nodeTypes}
+      fitView
+      fitViewOptions={{ padding: 0.2 }}
+      minZoom={0.1}
+      maxZoom={2}
+      defaultEdgeOptions={{
+        type: 'smoothstep',
+      }}
+    >
+      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
+      <Controls 
+        showZoom={true}
+        showFitView={true}
+        showInteractive={false}
+      />
+    </ReactFlow>
+  )
+}
+
+export function FlowView(props: FlowViewProps) {
+  if (props.flowTrees.length === 0) {
+    return (
+      <div className="flow-view-empty">
+        <div className="empty-icon">📊</div>
+        <h3>暂无执行流数据</h3>
+        <p>请先分析源代码文件</p>
+      </div>
+    )
+  }
+  
+  return (
     <div className="flow-view">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={handleNodeClick}
-        nodeTypes={nodeTypes}
-        fitView
-        minZoom={0.1}
-        maxZoom={2}
-        defaultEdgeOptions={{
-          type: 'smoothstep',
-        }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2a4a" />
-        <Controls 
-          showZoom={true}
-          showFitView={true}
-          showInteractive={false}
-        />
-      </ReactFlow>
+      <ReactFlowProvider>
+        <FlowViewInner {...props} />
+      </ReactFlowProvider>
     </div>
   )
 }

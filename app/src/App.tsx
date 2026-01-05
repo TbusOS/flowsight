@@ -380,7 +380,11 @@ function App() {
             )}
             {(viewMode === 'flow' || viewMode === 'split') && (
               <div className="flow-panel">
-                <FlowView flowTrees={flowTrees} onNodeClick={handleNodeClick} />
+                <FlowView 
+                  flowTrees={flowTrees} 
+                  onNodeClick={handleNodeClick}
+                  selectedFunction={selectedFunction || undefined}
+                />
               </div>
             )}
           </div>
