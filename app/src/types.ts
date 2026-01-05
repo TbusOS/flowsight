@@ -9,16 +9,36 @@ export interface Location {
   column: number
 }
 
+// 流程节点类型
+export type FlowNodeType = 
+  | 'Function'
+  | 'EntryPoint'
+  | { AsyncCallback: { mechanism: AsyncMechanism } }
+  | 'KernelApi'
+  | 'External'
+
+// 异步机制类型
+export type AsyncMechanism = 
+  | { WorkQueue: { work_struct: string; queue: string | null } }
+  | { Timer: { timer_name: string; timer_type: string } }
+  | { Tasklet: { tasklet_name: string } }
+  | { Softirq: { type_name: string } }
+  | { Threaded: { thread_name: string } }
+  | { Irq: { irq_name: string; flags: string | null } }
+  | { Completion: { completion_name: string } }
+  | { Rcu: { rcu_type: string } }
+  | { Kthread: { kthread_name: string } }
+  | { WaitQueue: { queue_name: string } }
+  | { Custom: string }
+
 // 流程节点
 export interface FlowTreeNode {
   id: string
   name: string
-  node_type: string
+  display_name: string
+  node_type: FlowNodeType
   location?: Location
   children?: FlowTreeNode[]
-  is_callback?: boolean
-  async_pattern?: string
-  display_name?: string
   description?: string
 }
 

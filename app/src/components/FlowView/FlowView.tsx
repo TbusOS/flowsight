@@ -20,7 +20,7 @@ import {
 import '@xyflow/react/dist/style.css'
 
 import { FlowNodeComponent } from './FlowNode'
-import { FlowTreeNode } from '../../types'
+import type { FlowTreeNode } from '../../types'
 import './FlowView.css'
 
 // 自定义节点类型
@@ -61,6 +61,7 @@ function convertToReactFlow(
         name: node.name,
         nodeType: node.node_type,
         description: node.description,
+        icon: getNodeIcon(node.node_type),
       },
     })
     
@@ -106,11 +107,36 @@ function convertToReactFlow(
   return { nodes, edges }
 }
 
-function getEdgeType(nodeType: string | { AsyncCallback?: any }): 'sync' | 'async' {
-  if (typeof nodeType === 'object' && nodeType.AsyncCallback) {
+function getEdgeType(nodeType: FlowTreeNode['node_type']): 'sync' | 'async' {
+  if (typeof nodeType === 'object' && 'AsyncCallback' in nodeType) {
     return 'async'
   }
   return 'sync'
+}
+
+// 获取节点图标
+function getNodeIcon(nodeType: FlowTreeNode['node_type']): string {
+  if (typeof nodeType === 'string') {
+    switch (nodeType) {
+      case 'Function': return '📦'
+      case 'EntryPoint': return '🚀'
+      case 'KernelApi': return '⚙️'
+      case 'External': return '🔗'
+      default: return '📦'
+    }
+  }
+  if ('AsyncCallback' in nodeType) {
+    const mechanism = nodeType.AsyncCallback.mechanism
+    if (typeof mechanism === 'object') {
+      if ('WorkQueue' in mechanism) return '⚙️'
+      if ('Timer' in mechanism) return '⏲️'
+      if ('Tasklet' in mechanism) return '⚡'
+      if ('Irq' in mechanism) return '🔌'
+      if ('Completion' in mechanism) return '✅'
+    }
+    return '⚡'
+  }
+  return '📦'
 }
 
 export function FlowView({ flowTrees, onNodeClick }: FlowViewProps) {
