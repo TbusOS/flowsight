@@ -1,0 +1,65 @@
+/* 面包屑导航样式 */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.breadcrumb::-webkit-scrollbar {
+  height: 4px;
+}
+
+.breadcrumb::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.breadcrumb-empty {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.breadcrumb-item {
+  padding: 0.15rem 0.3rem;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+.breadcrumb-item.clickable {
+  cursor: pointer;
+}
+
+.breadcrumb-item.clickable:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.breadcrumb-item.file {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.breadcrumb-item.function {
+  color: var(--accent);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.breadcrumb-item.function:hover {
+  background: var(--accent-alpha);
+  color: var(--accent);
+}
+
+.breadcrumb-separator {
+  color: var(--text-tertiary);
+  user-select: none;
+}
+

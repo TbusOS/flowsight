@@ -11,6 +11,7 @@ import { FileTree, FileNode } from './components/Explorer'
 import { Outline, OutlineItem } from './components/Outline'
 import { CommandPalette } from './components/CommandPalette'
 import { TabBar, Tab } from './components/Tabs'
+import { Breadcrumb } from './components/Breadcrumb'
 import { 
   AnalysisResult, 
   FlowTreeNode, 
@@ -968,6 +969,26 @@ function App() {
                   onTabSelect={switchTab}
                   onTabClose={closeTab}
                   onTabReorder={reorderTabs}
+                />
+                
+                {/* 面包屑导航 */}
+                <Breadcrumb
+                  projectRoot={project?.path}
+                  filePath={filePath}
+                  currentFunction={selectedFunction}
+                  onPathClick={(path) => {
+                    // 打开目录或文件
+                    handleFileSelect(path)
+                  }}
+                  onFunctionClick={() => {
+                    // 跳转到当前函数定义
+                    if (selectedFunction) {
+                      const func = outlineItems.find(item => item.name === selectedFunction)
+                      if (func) {
+                        setGoToLine({ line: func.line, timestamp: Date.now() })
+                      }
+                    }
+                  }}
                 />
                 
                 {fileContent ? (
