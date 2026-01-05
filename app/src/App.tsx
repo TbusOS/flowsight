@@ -12,6 +12,7 @@ import { Outline, OutlineItem } from './components/Outline'
 import { CommandPalette } from './components/CommandPalette'
 import { TabBar, Tab } from './components/Tabs'
 import { Breadcrumb } from './components/Breadcrumb'
+import { StatusBar } from './components/StatusBar'
 import { 
   AnalysisResult, 
   FlowTreeNode, 
@@ -1210,6 +1211,14 @@ function App() {
         onSelect={handleCommandSelect}
         files={allFiles}
         symbols={allSymbols}
+      />
+      
+      {/* 状态栏 */}
+      <StatusBar
+        filePath={filePath}
+        functionCount={outlineItems.length}
+        analysisStatus={loading ? 'analyzing' : result ? 'done' : 'idle'}
+        isDirty={tabs.find(t => t.id === activeTabId)?.isDirty}
       />
     </div>
   )
