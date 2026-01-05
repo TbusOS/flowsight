@@ -13,6 +13,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { TabBar, Tab } from './components/Tabs'
 import { Breadcrumb } from './components/Breadcrumb'
 import { StatusBar } from './components/StatusBar'
+import { Welcome } from './components/Welcome'
 import { 
   AnalysisResult, 
   FlowTreeNode, 
@@ -1005,9 +1006,10 @@ function App() {
                     readOnly={false}
                   />
                 ) : (
-                  <div className="empty-editor">
-                    <p>📄 打开文件查看代码</p>
-                  </div>
+                  <Welcome 
+                    onOpenFile={handleOpenFile}
+                    onOpenProject={handleOpenProject}
+                  />
                 )}
               </div>
             )}
