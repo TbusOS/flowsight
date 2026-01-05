@@ -129,11 +129,67 @@ body {
 /* Main Layout */
 .main {
   flex: 1;
-  display: grid;
-  grid-template-columns: 280px 1fr 280px;
-  gap: 1px;
+  display: flex;
   background: var(--border);
   overflow: hidden;
+  position: relative;
+}
+
+/* Panel Toggle Buttons */
+.panel-toggle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 60px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  z-index: 100;
+  transition: all 0.2s;
+}
+
+.panel-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.panel-toggle.left {
+  left: 0;
+  border-radius: 0 4px 4px 0;
+  border-left: none;
+}
+
+.panel-toggle.left.collapsed {
+  left: 0;
+}
+
+.panel-toggle.right {
+  right: 0;
+  border-radius: 4px 0 0 4px;
+  border-right: none;
+}
+
+.panel-toggle.right.collapsed {
+  right: 0;
+}
+
+/* Resize Handles */
+.resize-handle {
+  width: 4px;
+  background: var(--border);
+  cursor: col-resize;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.resize-handle:hover {
+  background: var(--accent);
 }
 
 /* Panels */
@@ -161,12 +217,21 @@ body {
 
 .sidebar {
   background: var(--bg-secondary);
+  flex-shrink: 0;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.right-sidebar {
+  background: var(--bg-secondary);
 }
 
 .main-content {
   display: flex;
   flex-direction: column;
   padding: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .panel-header {
@@ -612,6 +677,40 @@ code {
 .button.secondary:hover {
   background: var(--bg-hover);
   border-color: var(--text-muted);
+}
+
+/* 导航按钮组 */
+.nav-buttons {
+  display: flex;
+  gap: 2px;
+  margin-right: 0.5rem;
+}
+
+.nav-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* ============================================

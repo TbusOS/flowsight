@@ -81,7 +81,7 @@ impl Analyzer {
     fn find_entry_points(&self, source: &str, functions: &HashMap<String, FunctionDef>) -> Vec<String> {
         let mut entries = Vec::new();
 
-        // module_init
+        // module_init (always first)
         let init_re = regex::Regex::new(r"module_init\s*\(\s*(\w+)\s*\)").unwrap();
         if let Some(cap) = init_re.captures(source) {
             if let Some(name) = cap.get(1) {
@@ -89,7 +89,7 @@ impl Analyzer {
             }
         }
 
-        // module_exit
+        // module_exit (always second)
         let exit_re = regex::Regex::new(r"module_exit\s*\(\s*(\w+)\s*\)").unwrap();
         if let Some(cap) = exit_re.captures(source) {
             if let Some(name) = cap.get(1) {
@@ -97,13 +97,22 @@ impl Analyzer {
             }
         }
 
-        // All callback functions
-        for (name, func) in functions {
-            if func.is_callback {
-                if !entries.contains(name) {
-                    entries.push(name.clone());
-                }
-            }
+        // All callback functions - collect and sort for stable order
+        let mut callbacks: Vec<_> = functions
+            .iter()
+            .filter(|(name, func)| func.is_callback && !entries.contains(name))
+            .map(|(name, func)| {
+                // Sort by line number for consistent ordering
+                let line = func.location.as_ref().map(|l| l.line).unwrap_or(u32::MAX);
+                (name.clone(), line)
+            })
+            .collect();
+        
+        // Sort by line number (definition order in source file)
+        callbacks.sort_by_key(|(_, line)| *line);
+        
+        for (name, _) in callbacks {
+            entries.push(name);
         }
 
         entries

@@ -54,10 +54,24 @@ pub fn build_flow_tree(
     visited: &mut HashSet<String>,
     depth: usize,
 ) -> Option<FlowNode> {
-    const MAX_DEPTH: usize = 15;
+    const MAX_DEPTH: usize = 20;
 
-    if depth > MAX_DEPTH || visited.contains(entry) {
+    if depth > MAX_DEPTH {
         return None;
+    }
+
+    // Allow revisiting at different depths, but not in current call stack
+    if visited.contains(entry) {
+        // Return a reference node instead of None
+        return Some(FlowNode {
+            id: format!("{}-ref-{}", entry, depth),
+            name: entry.to_string(),
+            display_name: format!("↩️ {}() [递归]", entry),
+            location: None,
+            node_type: FlowNodeType::Function,
+            children: vec![],
+            description: Some("递归调用，点击入口点查看完整树".to_string()),
+        });
     }
 
     visited.insert(entry.to_string());

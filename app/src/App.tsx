@@ -2,13 +2,14 @@
  * FlowSight - 跨平台执行流可视化 IDE
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { FlowView } from './components/FlowView'
 import { CodeEditor } from './components/Editor'
 import { FileTree, FileNode } from './components/Explorer'
 import { Outline, OutlineItem } from './components/Outline'
+import { CommandPalette } from './components/CommandPalette'
 import { 
   AnalysisResult, 
   FlowTreeNode, 
@@ -19,6 +20,14 @@ import {
 } from './types'
 
 type ViewMode = 'flow' | 'code' | 'split'
+
+// 导航历史记录项
+interface NavigationEntry {
+  filePath: string
+  selectedFunction: string | null
+  line?: number
+  timestamp: number
+}
 
 function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null)
@@ -38,6 +47,240 @@ function App() {
   const [functionDetail, setFunctionDetail] = useState<FunctionDetail | null>(null)
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
+
+  // 导航历史状态
+  const [navHistory, setNavHistory] = useState<NavigationEntry[]>([])
+  const [navIndex, setNavIndex] = useState(-1)
+  const isNavigating = useRef(false) // 防止导航时重复记录历史
+
+  // Panel visibility state
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true)
+  const [rightPanelOpen, setRightPanelOpen] = useState(true)
+  
+  // 命令面板状态
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  
+  // Panel width state (percentage)
+  const [leftPanelWidth, setLeftPanelWidth] = useState(220)
+  const [rightPanelWidth, setRightPanelWidth] = useState(280)
+  
+  // Resizing state
+  const isResizingLeft = useRef(false)
+  const isResizingRight = useRef(false)
+
+  // Handle mouse move for resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingLeft.current) {
+        const newWidth = Math.max(180, Math.min(400, e.clientX))
+        setLeftPanelWidth(newWidth)
+      }
+      if (isResizingRight.current) {
+        const newWidth = Math.max(200, Math.min(450, window.innerWidth - e.clientX))
+        setRightPanelWidth(newWidth)
+      }
+    }
+
+    const handleMouseUp = () => {
+      isResizingLeft.current = false
+      isResizingRight.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
+  const startResizeLeft = () => {
+    isResizingLeft.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  const startResizeRight = () => {
+    isResizingRight.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  // 导航历史管理
+  const pushNavHistory = useCallback((entry: Omit<NavigationEntry, 'timestamp'>) => {
+    if (isNavigating.current) return // 正在导航时不记录
+    if (!entry.filePath) return // 没有文件时不记录
+    
+    setNavHistory(prev => {
+      // 如果和当前位置相同，不记录
+      const current = prev[navIndex]
+      if (current && 
+          current.filePath === entry.filePath && 
+          current.selectedFunction === entry.selectedFunction &&
+          current.line === entry.line) {
+        return prev
+      }
+      
+      // 清除前进历史（从当前位置之后的所有记录）
+      const newHistory = prev.slice(0, navIndex + 1)
+      // 添加新记录
+      newHistory.push({ ...entry, timestamp: Date.now() })
+      // 限制历史长度
+      if (newHistory.length > 50) {
+        newHistory.shift()
+        return newHistory
+      }
+      return newHistory
+    })
+    setNavIndex(prev => Math.min(prev + 1, 49))
+  }, [navIndex])
+
+  const canGoBack = navIndex > 0
+  const canGoForward = navIndex < navHistory.length - 1
+
+  const goBack = useCallback(async () => {
+    if (!canGoBack) return
+    
+    isNavigating.current = true
+    const newIndex = navIndex - 1
+    const entry = navHistory[newIndex]
+    
+    setNavIndex(newIndex)
+    
+    // 如果是不同文件，需要加载文件
+    if (entry.filePath !== filePath) {
+      try {
+        const content = await invoke<string>('read_file', { path: entry.filePath })
+        setFileContent(content)
+        setFilePath(entry.filePath)
+        
+        // 分析文件
+        const ext = entry.filePath.split('.').pop()?.toLowerCase()
+        if (['c', 'h', 'cpp', 'hpp', 'cc', 'cxx'].includes(ext || '')) {
+          const analysis = await invoke<AnalysisResult>('analyze_file', { path: entry.filePath })
+          setResult(analysis)
+          
+          const functions = await invoke<Array<{
+            name: string
+            return_type: string
+            line: number
+            is_callback: boolean
+          }>>('get_functions', { path: entry.filePath })
+          
+          setOutlineItems(functions.map(f => ({
+            name: f.name,
+            kind: 'function' as const,
+            line: f.line,
+            isCallback: f.is_callback,
+            returnType: f.return_type,
+          })))
+        }
+      } catch (e) {
+        console.error('Navigation error:', e)
+      }
+    }
+    
+    setSelectedFunction(entry.selectedFunction)
+    if (entry.line) {
+      setGoToLine(entry.line)
+    }
+    
+    isNavigating.current = false
+  }, [canGoBack, navIndex, navHistory, filePath])
+
+  const goForward = useCallback(async () => {
+    if (!canGoForward) return
+    
+    isNavigating.current = true
+    const newIndex = navIndex + 1
+    const entry = navHistory[newIndex]
+    
+    setNavIndex(newIndex)
+    
+    // 如果是不同文件，需要加载文件
+    if (entry.filePath !== filePath) {
+      try {
+        const content = await invoke<string>('read_file', { path: entry.filePath })
+        setFileContent(content)
+        setFilePath(entry.filePath)
+        
+        // 分析文件
+        const ext = entry.filePath.split('.').pop()?.toLowerCase()
+        if (['c', 'h', 'cpp', 'hpp', 'cc', 'cxx'].includes(ext || '')) {
+          const analysis = await invoke<AnalysisResult>('analyze_file', { path: entry.filePath })
+          setResult(analysis)
+          
+          const functions = await invoke<Array<{
+            name: string
+            return_type: string
+            line: number
+            is_callback: boolean
+          }>>('get_functions', { path: entry.filePath })
+          
+          setOutlineItems(functions.map(f => ({
+            name: f.name,
+            kind: 'function' as const,
+            line: f.line,
+            isCallback: f.is_callback,
+            returnType: f.return_type,
+          })))
+        }
+      } catch (e) {
+        console.error('Navigation error:', e)
+      }
+    }
+    
+    setSelectedFunction(entry.selectedFunction)
+    if (entry.line) {
+      setGoToLine(entry.line)
+    }
+    
+    isNavigating.current = false
+  }, [canGoForward, navIndex, navHistory, filePath])
+
+  // 键盘快捷键支持
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+P or Cmd+P 打开命令面板
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault()
+        setCommandPaletteOpen(true)
+      }
+      // Alt+Left or Cmd+[ 后退
+      if ((e.altKey && e.key === 'ArrowLeft') || (e.metaKey && e.key === '[')) {
+        e.preventDefault()
+        goBack()
+      }
+      // Alt+Right or Cmd+] 前进
+      if ((e.altKey && e.key === 'ArrowRight') || (e.metaKey && e.key === ']')) {
+        e.preventDefault()
+        goForward()
+      }
+      // 鼠标侧键支持 (通过 keyCode 3 和 4，但这在 keydown 中不可用，需要 mouse event)
+    }
+    
+    // 鼠标侧键支持
+    const handleMouseButton = (e: MouseEvent) => {
+      if (e.button === 3) { // 后退键
+        e.preventDefault()
+        goBack()
+      } else if (e.button === 4) { // 前进键
+        e.preventDefault()
+        goForward()
+      }
+    }
+    
+    document.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('mouseup', handleMouseButton)
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('mouseup', handleMouseButton)
+    }
+  }, [goBack, goForward])
 
   // Open project directory
   const handleOpenProject = async () => {
@@ -59,6 +302,7 @@ function App() {
         // Load file tree (non-recursive for performance)
         const tree = await invoke<FileNode[]>('list_directory', { path: selected, recursive: false })
         setFileTree(tree)
+        setLeftPanelOpen(true) // Open left panel when project loaded
       }
     } catch (e) {
       setError(String(e))
@@ -87,7 +331,7 @@ function App() {
   }, [searchQuery])
 
   // Analyze and load file
-  const handleAnalyze = async (path?: string) => {
+  const handleAnalyze = async (path?: string, skipHistory = false) => {
     const targetPath = path || filePath
     if (!targetPath) return
     
@@ -119,6 +363,11 @@ function App() {
         isCallback: f.is_callback,
         returnType: f.return_type,
       })))
+      
+      // 记录导航历史
+      if (!skipHistory) {
+        pushNavHistory({ filePath: targetPath, selectedFunction: null })
+      }
     } catch (e) {
       setError(String(e))
     } finally {
@@ -149,47 +398,94 @@ function App() {
   const handleNodeClick = useCallback(async (_nodeId: string, functionName: string) => {
     setSelectedFunction(functionName)
     
-    // Get function detail
-    try {
-      const detail = await invoke<FunctionDetail | null>('get_function_detail', { name: functionName })
-      setFunctionDetail(detail)
-      
-      if (detail && detail.line > 0) {
-        setGoToLine(detail.line)
+    // First try to find from current file's function list
+    const funcFromOutline = outlineItems.find(item => item.name === functionName)
+    let targetLine: number | undefined
+    
+    if (funcFromOutline) {
+      targetLine = funcFromOutline.line
+      // Build detail from outline
+      setFunctionDetail({
+        name: funcFromOutline.name,
+        return_type: funcFromOutline.returnType || 'void',
+        file: filePath || null,
+        line: funcFromOutline.line,
+        end_line: funcFromOutline.line + 10,
+        is_callback: funcFromOutline.isCallback || false,
+        callback_context: null,
+        calls: [],
+        called_by: [],
+        params: [],
+      })
+      setGoToLine(funcFromOutline.line)
+    } else {
+      // Try to find in flow trees for line info
+      if (result) {
+        const findInTree = (nodes: FlowTreeNode[]): FlowTreeNode | null => {
+          for (const node of nodes) {
+            if (node.name === functionName) return node
+            if (node.children) {
+              const found = findInTree(node.children)
+              if (found) return found
+            }
+          }
+          return null
+        }
+        
+        const node = findInTree(result.flow_trees)
+        if (node) {
+          targetLine = node.location?.line
+          setFunctionDetail({
+            name: node.name,
+            return_type: 'unknown',
+            file: node.location?.file || null,
+            line: node.location?.line || 0,
+            end_line: (node.location?.line || 0) + 10,
+            is_callback: typeof node.node_type === 'object' && 'AsyncCallback' in node.node_type,
+            callback_context: node.description || null,
+            calls: node.children?.map(c => c.name) || [],
+            called_by: [],
+            params: [],
+          })
+          if (node.location?.line) {
+            setGoToLine(node.location.line)
+          }
+        } else {
+          // External function, show basic info
+          setFunctionDetail({
+            name: functionName,
+            return_type: 'unknown',
+            file: null,
+            line: 0,
+            end_line: 0,
+            is_callback: false,
+            callback_context: null,
+            calls: [],
+            called_by: [],
+            params: [],
+          })
+        }
       }
-    } catch (e) {
-      console.error('Failed to get function detail:', e)
     }
     
-    // Find function line and jump to it
-    if (result) {
-      // Search in flow trees for the function location
-      const findLine = (nodes: FlowTreeNode[]): number | null => {
-        for (const node of nodes) {
-          if (node.name === functionName && node.location) {
-            return node.location.line
-          }
-          if (node.children) {
-            const found = findLine(node.children)
-            if (found) return found
-          }
-        }
-        return null
-      }
-      
-      const line = findLine(result.flow_trees)
-      if (line) {
-        setGoToLine(line)
-      }
+    // 记录导航历史
+    if (filePath) {
+      pushNavHistory({ filePath, selectedFunction: functionName, line: targetLine })
     }
-  }, [result])
+  }, [result, outlineItems, filePath, pushNavHistory])
 
-  const handleSearchResultClick = (searchResult: SearchResult) => {
+  const handleSearchResultClick = async (searchResult: SearchResult) => {
     if (searchResult.file) {
-      handleAnalyze(searchResult.file)
+      await handleAnalyze(searchResult.file)
       if (searchResult.line) {
         setGoToLine(searchResult.line)
       }
+      // 记录导航历史
+      pushNavHistory({ 
+        filePath: searchResult.file, 
+        selectedFunction: searchResult.name, 
+        line: searchResult.line || undefined 
+      })
     }
     setSelectedFunction(searchResult.name)
     setSearchQuery('')
@@ -209,6 +505,8 @@ function App() {
         setFileContent(content)
         setFilePath(path)
         setResult(null)
+        // 记录导航历史
+        pushNavHistory({ filePath: path, selectedFunction: null })
       } catch (e) {
         setError(String(e))
       }
@@ -219,11 +517,92 @@ function App() {
     console.log('Clicked line:', line)
   }
   
+  // 代码-图联动：光标所在函数名变化时高亮图中节点
+  const handleWordAtCursor = useCallback((word: string | null) => {
+    // 只更新选中状态，不记录导航历史
+    if (word) {
+      setSelectedFunction(word)
+    }
+  }, [])
+  
+  // 已知函数名列表（用于代码-图联动判断）
+  const knownFunctions = useMemo(() => {
+    const names = new Set<string>()
+    // 从大纲获取
+    outlineItems.forEach(item => names.add(item.name))
+    // 从执行流树获取
+    if (result) {
+      const addFromTree = (nodes: FlowTreeNode[]) => {
+        nodes.forEach(node => {
+          names.add(node.name)
+          if (node.children) {
+            addFromTree(node.children)
+          }
+        })
+      }
+      addFromTree(result.flow_trees)
+    }
+    return Array.from(names)
+  }, [outlineItems, result])
+  
   // Handle outline item click
   const handleOutlineClick = (item: OutlineItem) => {
     setSelectedFunction(item.name)
     setGoToLine(item.line)
+    // 记录导航历史
+    if (filePath) {
+      pushNavHistory({ filePath, selectedFunction: item.name, line: item.line })
+    }
   }
+
+  // 命令面板选择处理
+  const handleCommandSelect = useCallback(async (item: { type: string; path?: string; line?: number; name: string }) => {
+    if (item.path) {
+      await handleAnalyze(item.path)
+      if (item.line) {
+        setGoToLine(item.line)
+      }
+      if (item.type === 'symbol') {
+        setSelectedFunction(item.name)
+      }
+      // 记录导航历史
+      pushNavHistory({ 
+        filePath: item.path, 
+        selectedFunction: item.type === 'symbol' ? item.name : null,
+        line: item.line 
+      })
+    }
+  }, [handleAnalyze, pushNavHistory])
+
+  // 为命令面板准备文件列表（递归获取所有文件）
+  const allFiles = useMemo(() => {
+    const files: Array<{ name: string; path: string; isDir: boolean }> = []
+    
+    const collectFiles = (nodes: FileNode[]) => {
+      for (const node of nodes) {
+        if (!node.is_dir) {
+          files.push({ name: node.name, path: node.path, isDir: false })
+        }
+        if (node.children) {
+          collectFiles(node.children)
+        }
+      }
+    }
+    
+    collectFiles(fileTree)
+    return files
+  }, [fileTree])
+
+  // 为命令面板准备符号列表
+  const allSymbols = useMemo(() => {
+    return outlineItems.map(item => ({
+      name: item.name,
+      kind: item.kind,
+      file: filePath || undefined,
+      line: item.line,
+      isCallback: item.isCallback,
+    }))
+  }, [outlineItems, filePath])
 
   // Get highlight lines from async handlers
   const highlightLines: number[] = []
@@ -239,9 +618,27 @@ function App() {
         <div className="header-content">
           <div className="header-title">
             <h1>🔭 FlowSight</h1>
-            <p>看见代码的"灵魂" — 执行流可视化 IDE</p>
           </div>
           <div className="header-actions">
+            {/* 导航按钮 */}
+            <div className="nav-buttons">
+              <button 
+                onClick={goBack} 
+                disabled={!canGoBack}
+                className="button nav-btn"
+                title="后退 (Alt+←)"
+              >
+                ◀
+              </button>
+              <button 
+                onClick={goForward} 
+                disabled={!canGoForward}
+                className="button nav-btn"
+                title="前进 (Alt+→)"
+              >
+                ▶
+              </button>
+            </div>
             <button onClick={handleOpenProject} className="button secondary">
               📂 项目
             </button>
@@ -308,48 +705,70 @@ function App() {
       </header>
 
       <main className="main">
+        {/* 左侧栏折叠按钮 */}
+        <button 
+          className={`panel-toggle left ${leftPanelOpen ? '' : 'collapsed'}`}
+          onClick={() => setLeftPanelOpen(!leftPanelOpen)}
+          title={leftPanelOpen ? '收起左侧栏' : '展开左侧栏'}
+        >
+          {leftPanelOpen ? '◀' : '▶'}
+        </button>
+
         {/* 左侧面板 - 文件浏览器 */}
-        <div className="panel sidebar explorer-sidebar">
-          {project ? (
-            <>
-              <div className="project-header">
-                <h2>📁 {project.path.split('/').pop()}</h2>
-                <div className="project-stats">
-                  <span>{indexStats?.files || 0} 文件</span>
-                  <span>•</span>
-                  <span>{indexStats?.functions || 0} 函数</span>
+        {leftPanelOpen && (
+          <>
+            <div 
+              className="panel sidebar explorer-sidebar"
+              style={{ width: leftPanelWidth }}
+            >
+              {project ? (
+                <>
+                  <div className="project-header">
+                    <h2>📁 {project.path.split('/').pop()}</h2>
+                    <div className="project-stats">
+                      <span>{indexStats?.files || 0} 文件</span>
+                      <span>•</span>
+                      <span>{indexStats?.functions || 0} 函数</span>
+                    </div>
+                  </div>
+                  
+                  <div className="file-tree-container">
+                    <FileTree 
+                      nodes={fileTree}
+                      onFileSelect={handleFileSelect}
+                      selectedPath={filePath}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="welcome-project">
+                  <h2>👋 开始使用</h2>
+                  <p>点击"项目"打开代码目录</p>
+                  <p>或点击"文件"打开单个文件</p>
                 </div>
-              </div>
+              )}
               
-              <div className="file-tree-container">
-                <FileTree 
-                  nodes={fileTree}
-                  onFileSelect={handleFileSelect}
-                  selectedPath={filePath}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="welcome-project">
-              <h2>👋 开始使用</h2>
-              <p>点击"项目"打开代码目录</p>
-              <p>或点击"文件"打开单个文件</p>
+              {error && (
+                <div className="error">
+                  <strong>❌ 错误：</strong> {error}
+                </div>
+              )}
             </div>
-          )}
-          
-          {error && (
-            <div className="error">
-              <strong>❌ 错误：</strong> {error}
-            </div>
-          )}
-        </div>
+            
+            {/* 左侧拖动条 */}
+            <div 
+              className="resize-handle"
+              onMouseDown={startResizeLeft}
+            />
+          </>
+        )}
 
         {/* 中间区域 - 代码/执行流可视化 */}
         <div className="panel main-content">
           <div className="panel-header">
             <h2>
-              {viewMode === 'code' ? '📝 代码编辑器' : 
-               viewMode === 'flow' ? '📊 执行流视图' : 
+              {viewMode === 'code' ? '📝 代码' : 
+               viewMode === 'flow' ? '📊 执行流' : 
                '⚡ 代码 + 执行流'}
             </h2>
             {selectedFunction && (
@@ -369,6 +788,8 @@ function App() {
                     goToLine={goToLine}
                     highlightLines={highlightLines}
                     onLineClick={handleEditorLineClick}
+                    onWordAtCursor={handleWordAtCursor}
+                    knownFunctions={knownFunctions}
                     readOnly={true}
                   />
                 ) : (
@@ -390,142 +811,169 @@ function App() {
           </div>
         </div>
 
+        {/* 右侧拖动条 */}
+        {rightPanelOpen && (
+          <div 
+            className="resize-handle"
+            onMouseDown={startResizeRight}
+          />
+        )}
+
         {/* 右侧面板 - 分析详情 */}
-        <div className="panel sidebar">
-          {/* 分析概览 */}
-          {result && (
-            <div className="analysis-overview">
-              <h2>📋 分析概览</h2>
-              <div className="overview-stats">
-                <div className="stat-item">
-                  <span className="stat-value">{result.functions_count}</span>
-                  <span className="stat-label">函数</span>
+        {rightPanelOpen && (
+          <div 
+            className="panel sidebar right-sidebar"
+            style={{ width: rightPanelWidth }}
+          >
+            {/* 分析概览 */}
+            {result && (
+              <div className="analysis-overview">
+                <h2>📋 分析概览</h2>
+                <div className="overview-stats">
+                  <div className="stat-item">
+                    <span className="stat-value">{result.functions_count}</span>
+                    <span className="stat-label">函数</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-value">{result.structs_count}</span>
+                    <span className="stat-label">结构体</span>
+                  </div>
+                  <div className="stat-item highlight">
+                    <span className="stat-value">{result.async_handlers_count}</span>
+                    <span className="stat-label">异步</span>
+                  </div>
                 </div>
-                <div className="stat-item">
-                  <span className="stat-value">{result.structs_count}</span>
-                  <span className="stat-label">结构体</span>
-                </div>
-                <div className="stat-item highlight">
-                  <span className="stat-value">{result.async_handlers_count}</span>
-                  <span className="stat-label">异步</span>
-                </div>
+                
+                {result.entry_points.length > 0 && (
+                  <div className="entry-points">
+                    <h3>🚀 入口点</h3>
+                    <ul>
+                      {result.entry_points.map((entry, i) => (
+                        <li 
+                          key={i} 
+                          className={selectedFunction === entry ? 'selected' : ''}
+                          onClick={() => handleNodeClick('', entry)}
+                        >
+                          <code>{entry}()</code>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <hr className="divider" />
               </div>
-              
-              {result.entry_points.length > 0 && (
-                <div className="entry-points">
-                  <h3>🚀 入口点</h3>
-                  <ul>
-                    {result.entry_points.map((entry, i) => (
-                      <li 
-                        key={i} 
-                        className={selectedFunction === entry ? 'selected' : ''}
-                        onClick={() => handleNodeClick('', entry)}
-                      >
-                        <code>{entry}()</code>
-                      </li>
-                    ))}
-                  </ul>
+            )}
+            
+            {/* 代码大纲 */}
+            {outlineItems.length > 0 && (
+              <div className="outline-section-wrapper">
+                <h2>📋 大纲</h2>
+                <div className="outline-container">
+                  <Outline 
+                    items={outlineItems}
+                    onItemClick={handleOutlineClick}
+                    selectedItem={selectedFunction || undefined}
+                  />
                 </div>
-              )}
-              <hr className="divider" />
-            </div>
-          )}
-          
-          {/* 代码大纲 */}
-          {outlineItems.length > 0 && (
-            <div className="outline-section-wrapper">
-              <h2>📋 大纲</h2>
-              <div className="outline-container">
-                <Outline 
-                  items={outlineItems}
-                  onItemClick={handleOutlineClick}
-                  selectedItem={selectedFunction || undefined}
-                />
+                <hr className="divider" />
               </div>
-              <hr className="divider" />
-            </div>
-          )}
-          
-          <h2>📝 函数详情</h2>
-          
-          {functionDetail ? (
-            <div className="function-detail">
-              <div className="detail-header">
-                <h3>
-                  {functionDetail.is_callback && <span className="callback-badge">⚡</span>}
-                  {functionDetail.name}()
-                </h3>
-                <span className="return-type">{functionDetail.return_type}</span>
+            )}
+            
+            <h2>📝 函数详情</h2>
+            
+            {functionDetail ? (
+              <div className="function-detail">
+                <div className="detail-header">
+                  <h3>
+                    {functionDetail.is_callback && <span className="callback-badge">⚡</span>}
+                    {functionDetail.name}()
+                  </h3>
+                  <span className="return-type">{functionDetail.return_type}</span>
+                </div>
+                
+                {functionDetail.callback_context && (
+                  <div className="detail-badge">
+                    🔌 {functionDetail.callback_context}
+                  </div>
+                )}
+                
+                {functionDetail.params.length > 0 && (
+                  <div className="detail-section">
+                    <h4>参数</h4>
+                    <ul className="param-list">
+                      {functionDetail.params.map((p, i) => (
+                        <li key={i}>
+                          <span className="param-type">{p.type_name}</span>
+                          <span className="param-name">{p.name}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {functionDetail.calls.length > 0 && (
+                  <div className="detail-section">
+                    <h4>调用 ({functionDetail.calls.length})</h4>
+                    <ul className="call-list">
+                      {functionDetail.calls.slice(0, 10).map((c, i) => (
+                        <li key={i} onClick={() => handleNodeClick('', c)}>
+                          <code>{c}()</code>
+                        </li>
+                      ))}
+                      {functionDetail.calls.length > 10 && (
+                        <li className="more">...还有 {functionDetail.calls.length - 10} 个</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+                
+                {functionDetail.file && (
+                  <div className="detail-location">
+                    📍 {functionDetail.file.split('/').pop()}:{functionDetail.line}
+                  </div>
+                )}
               </div>
-              
-              {functionDetail.callback_context && (
-                <div className="detail-badge">
-                  🔌 {functionDetail.callback_context}
-                </div>
-              )}
-              
-              {functionDetail.params.length > 0 && (
-                <div className="detail-section">
-                  <h4>参数</h4>
-                  <ul className="param-list">
-                    {functionDetail.params.map((p, i) => (
-                      <li key={i}>
-                        <span className="param-type">{p.type_name}</span>
-                        <span className="param-name">{p.name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              
-              {functionDetail.calls.length > 0 && (
-                <div className="detail-section">
-                  <h4>调用 ({functionDetail.calls.length})</h4>
-                  <ul className="call-list">
-                    {functionDetail.calls.slice(0, 10).map((c, i) => (
-                      <li key={i} onClick={() => handleNodeClick('', c)}>
-                        <code>{c}()</code>
-                      </li>
-                    ))}
-                    {functionDetail.calls.length > 10 && (
-                      <li className="more">...还有 {functionDetail.calls.length - 10} 个</li>
-                    )}
-                  </ul>
-                </div>
-              )}
-              
-              {functionDetail.file && (
-                <div className="detail-location">
-                  📍 {functionDetail.file.split('/').pop()}:{functionDetail.line}
-                </div>
-              )}
-            </div>
-          ) : selectedFunction ? (
-            <div className="function-detail">
-              <h3>{selectedFunction}()</h3>
-              <p className="detail-hint">加载中...</p>
-            </div>
-          ) : (
-            <div className="detail-placeholder">
-              <p>点击执行流图中的节点查看详情</p>
-            </div>
-          )}
+            ) : selectedFunction ? (
+              <div className="function-detail">
+                <h3>{selectedFunction}()</h3>
+                <p className="detail-hint">外部函数</p>
+              </div>
+            ) : (
+              <div className="detail-placeholder">
+                <p>点击节点查看详情</p>
+              </div>
+            )}
 
-          <div className="legend">
-            <h3>图例</h3>
-            <ul>
-              <li><span className="legend-icon entry">🚀</span> 入口点</li>
-              <li><span className="legend-icon async">⚡</span> 异步回调</li>
-              <li><span className="legend-icon kernel">⚙️</span> 内核 API</li>
-              <li><span className="legend-icon func">📦</span> 普通函数</li>
-            </ul>
+            <div className="legend">
+              <h3>图例</h3>
+              <ul>
+                <li><span className="legend-icon entry">🚀</span> 入口点</li>
+                <li><span className="legend-icon async">⚡</span> 异步回调</li>
+                <li><span className="legend-icon kernel">⚙️</span> 内核 API</li>
+                <li><span className="legend-icon func">📦</span> 普通函数</li>
+              </ul>
+            </div>
           </div>
-        </div>
-      </main>
+        )}
 
-      <footer className="footer">
-        <p>FlowSight v0.1.0 - 用 ❤️ 为想要真正理解代码的开发者打造</p>
-      </footer>
+        {/* 右侧栏折叠按钮 */}
+        <button 
+          className={`panel-toggle right ${rightPanelOpen ? '' : 'collapsed'}`}
+          onClick={() => setRightPanelOpen(!rightPanelOpen)}
+          title={rightPanelOpen ? '收起右侧栏' : '展开右侧栏'}
+        >
+          {rightPanelOpen ? '▶' : '◀'}
+        </button>
+      </main>
+      
+      {/* 命令面板 */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onSelect={handleCommandSelect}
+        files={allFiles}
+        symbols={allSymbols}
+      />
     </div>
   )
 }

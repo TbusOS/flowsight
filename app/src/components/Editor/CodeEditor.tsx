@@ -21,6 +21,10 @@ interface CodeEditorProps {
   highlightLines?: number[]
   /** 点击行回调 */
   onLineClick?: (line: number) => void
+  /** 光标所在词变化回调（用于代码-图联动） */
+  onWordAtCursor?: (word: string | null) => void
+  /** 已知函数名列表（用于判断光标词是否为函数） */
+  knownFunctions?: string[]
   /** 是否只读 */
   readOnly?: boolean
 }
@@ -93,10 +97,19 @@ export function CodeEditor({
   goToLine,
   highlightLines = [],
   onLineClick,
+  onWordAtCursor,
+  knownFunctions = [],
   readOnly = false,
 }: CodeEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const decorationsRef = useRef<string[]>([])
+  const lastWordRef = useRef<string | null>(null)
+  const knownFunctionsSet = useRef<Set<string>>(new Set(knownFunctions))
+  
+  // 更新已知函数集合
+  useEffect(() => {
+    knownFunctionsSet.current = new Set(knownFunctions)
+  }, [knownFunctions])
 
   const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
@@ -110,6 +123,30 @@ export function CodeEditor({
       editor.onMouseDown((e) => {
         if (e.target.position) {
           onLineClick(e.target.position.lineNumber)
+        }
+      })
+    }
+    
+    // 监听光标位置变化（用于代码-图联动）
+    if (onWordAtCursor) {
+      editor.onDidChangeCursorPosition((e) => {
+        const model = editor.getModel()
+        if (!model) return
+        
+        // 获取光标所在位置的词
+        const wordInfo = model.getWordAtPosition(e.position)
+        const word = wordInfo?.word || null
+        
+        // 只有当词变化且是已知函数时才触发回调
+        if (word !== lastWordRef.current) {
+          lastWordRef.current = word
+          
+          // 检查是否为已知函数名
+          if (word && knownFunctionsSet.current.has(word)) {
+            onWordAtCursor(word)
+          } else {
+            onWordAtCursor(null)
+          }
         }
       })
     }

@@ -1,10 +1,10 @@
 /**
  * FlowView - 执行流可视化组件
  * 
- * 使用 React Flow 显示代码执行流程图
+ * 支持折叠展开、聚焦模式、内核API过滤
  */
 
-import React, { useCallback, useMemo, useRef, useEffect } from 'react'
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import {
   ReactFlow,
   Node,
@@ -25,142 +25,92 @@ import { FlowNodeComponent } from './FlowNode'
 import type { FlowTreeNode } from '../../types'
 import './FlowView.css'
 
-// 自定义节点类型
 const nodeTypes: NodeTypes = {
   flowNode: FlowNodeComponent,
 }
 
+// 常见内核 API 函数列表（会被过滤隐藏）
+const KERNEL_API_LIST = new Set([
+  // 内存管理
+  'kmalloc', 'kzalloc', 'kcalloc', 'krealloc', 'kfree',
+  'vmalloc', 'vzalloc', 'vfree',
+  'kmem_cache_alloc', 'kmem_cache_free', 'kmem_cache_create', 'kmem_cache_destroy',
+  'get_zeroed_page', 'free_page', '__get_free_pages', 'free_pages',
+  'devm_kmalloc', 'devm_kzalloc', 'devm_kcalloc', 'devm_kfree',
+  
+  // 打印/调试
+  'printk', 'pr_info', 'pr_err', 'pr_warn', 'pr_debug', 'pr_notice', 'pr_emerg',
+  'dev_info', 'dev_err', 'dev_warn', 'dev_dbg', 'dev_notice',
+  'dump_stack', 'WARN', 'WARN_ON', 'WARN_ONCE', 'BUG', 'BUG_ON',
+  
+  // 自旋锁
+  'spin_lock', 'spin_unlock', 'spin_lock_irq', 'spin_unlock_irq',
+  'spin_lock_irqsave', 'spin_unlock_irqrestore', 'spin_lock_bh', 'spin_unlock_bh',
+  'spin_lock_init', 'spin_trylock',
+  
+  // 互斥锁
+  'mutex_lock', 'mutex_unlock', 'mutex_trylock', 'mutex_init',
+  'mutex_lock_interruptible', 'mutex_lock_killable',
+  
+  // 读写锁
+  'read_lock', 'read_unlock', 'write_lock', 'write_unlock',
+  'down_read', 'up_read', 'down_write', 'up_write',
+  
+  // 原子操作
+  'atomic_set', 'atomic_read', 'atomic_inc', 'atomic_dec',
+  'atomic_add', 'atomic_sub', 'atomic_inc_return', 'atomic_dec_return',
+  'atomic_cmpxchg', 'atomic_xchg', 'test_and_set_bit', 'test_and_clear_bit',
+  
+  // 引用计数
+  'kref_init', 'kref_get', 'kref_put',
+  'get_device', 'put_device',
+  
+  // 字符串操作
+  'memset', 'memcpy', 'memmove', 'memcmp',
+  'strcpy', 'strncpy', 'strcmp', 'strncmp', 'strlen', 'strnlen',
+  'sprintf', 'snprintf', 'sscanf', 'kstrdup', 'kstrndup',
+  
+  // 链表操作
+  'list_add', 'list_add_tail', 'list_del', 'list_del_init',
+  'list_empty', 'list_for_each', 'list_for_each_safe',
+  'INIT_LIST_HEAD', 'list_move', 'list_move_tail',
+  
+  // 等待/完成
+  'wait_for_completion', 'complete', 'init_completion',
+  'wait_event', 'wait_event_interruptible', 'wake_up', 'wake_up_interruptible',
+  
+  // 时间/延迟
+  'jiffies', 'msleep', 'usleep_range', 'udelay', 'mdelay', 'ndelay',
+  'schedule', 'schedule_timeout', 'cond_resched',
+  
+  // 错误处理
+  'IS_ERR', 'PTR_ERR', 'ERR_PTR', 'IS_ERR_OR_NULL',
+  
+  // 其他常用
+  'container_of', 'likely', 'unlikely', 'ACCESS_ONCE',
+  'cpu_to_le16', 'cpu_to_le32', 'le16_to_cpu', 'le32_to_cpu',
+  'min', 'max', 'clamp', 'ARRAY_SIZE',
+])
+
 interface FlowViewProps {
   flowTrees: FlowTreeNode[]
   onNodeClick?: (nodeId: string, functionName: string) => void
-  selectedFunction?: string // 新增：当前选中的函数名
+  selectedFunction?: string
 }
 
-// 计算树的高度（子节点数量）
-function getTreeHeight(node: FlowTreeNode): number {
-  if (!node.children || node.children.length === 0) return 1
-  return node.children.reduce((sum, child) => sum + getTreeHeight(child), 0)
-}
-
-// 将 FlowTree 转换为 React Flow 的节点和边 - 改进的水平布局
-function convertToReactFlow(
-  flowTrees: FlowTreeNode[]
-): { nodes: Node[]; edges: Edge[]; nodeMap: Map<string, string> } {
-  const nodes: Node[] = []
-  const edges: Edge[] = []
-  const nodeMap = new Map<string, string>() // 函数名 -> 节点ID
+// 构建扁平的函数映射
+function buildFunctionMap(flowTrees: FlowTreeNode[]): Map<string, FlowTreeNode> {
+  const map = new Map<string, FlowTreeNode>()
   
-  const xSpacing = 280
-  const ySpacing = 80
-  let globalIndex = 0
-
-  function processNode(
-    node: FlowTreeNode,
-    depth: number,
-    parentId: string | null,
-    yStart: number
-  ): { nodeId: string; height: number } {
-    const nodeId = `node-${globalIndex++}`
-    const treeHeight = getTreeHeight(node)
-    const nodeY = yStart + (treeHeight * ySpacing) / 2 - ySpacing / 2
-    
-    // 保存函数名到节点ID的映射
-    nodeMap.set(node.name, nodeId)
-    
-    nodes.push({
-      id: nodeId,
-      type: 'flowNode',
-      position: { x: depth * xSpacing, y: nodeY },
-      data: {
-        label: node.display_name || node.name,
-        name: node.name,
-        nodeType: node.node_type,
-        description: node.description,
-        icon: getNodeIcon(node.node_type),
-        childCount: node.children?.length || 0,
-      },
-    })
-
-    // 添加边
-    if (parentId) {
-      const edgeType = getEdgeType(node.node_type)
-      const isAsync = edgeType === 'async'
-      edges.push({
-        id: `${parentId}-${nodeId}`,
-        source: parentId,
-        target: nodeId,
-        type: 'smoothstep',
-        animated: isAsync,
-        style: {
-          stroke: isAsync ? '#fbbf24' : '#475569',
-          strokeWidth: isAsync ? 2 : 1.5,
-        },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: isAsync ? '#fbbf24' : '#475569',
-          width: 15,
-          height: 15,
-        },
-        label: isAsync ? '⚡异步' : undefined,
-        labelStyle: { fill: '#fbbf24', fontSize: 10, fontWeight: 500 },
-        labelBgStyle: { fill: '#1e293b', fillOpacity: 0.8 },
-        labelBgPadding: [4, 4] as [number, number],
-      })
+  function traverse(node: FlowTreeNode) {
+    if (!map.has(node.name)) {
+      map.set(node.name, node)
     }
-
-    // 递归处理子节点
-    let currentY = yStart
-    if (node.children && node.children.length > 0) {
-      // 限制显示的子节点数量，避免太长
-      const maxChildren = 8
-      const childrenToShow = node.children.slice(0, maxChildren)
-      
-      childrenToShow.forEach((child) => {
-        const childResult = processNode(child, depth + 1, nodeId, currentY)
-        currentY += childResult.height * ySpacing
-      })
-      
-      // 如果有更多子节点，显示省略节点
-      if (node.children.length > maxChildren) {
-        const moreId = `more-${globalIndex++}`
-        nodes.push({
-          id: moreId,
-          type: 'flowNode',
-          position: { x: (depth + 1) * xSpacing, y: currentY },
-          data: {
-            label: `... 还有 ${node.children.length - maxChildren} 个`,
-            name: 'more',
-            nodeType: 'External',
-            isMore: true,
-          },
-        })
-        edges.push({
-          id: `${nodeId}-${moreId}`,
-          source: nodeId,
-          target: moreId,
-          type: 'smoothstep',
-          style: { stroke: '#475569', strokeDasharray: '5,5' },
-        })
-      }
-    }
-
-    return { nodeId, height: treeHeight }
+    node.children?.forEach(traverse)
   }
-
-  let currentY = 0
-  flowTrees.forEach((tree) => {
-    const result = processNode(tree, 0, null, currentY)
-    currentY += result.height * ySpacing + ySpacing * 2 // 树之间的间距
-  })
-
-  return { nodes, edges, nodeMap }
-}
-
-function getEdgeType(nodeType: FlowTreeNode['node_type']): 'sync' | 'async' {
-  if (typeof nodeType === 'object' && 'AsyncCallback' in nodeType) {
-    return 'async'
-  }
-  return 'sync'
+  
+  flowTrees.forEach(traverse)
+  return map
 }
 
 // 获取节点图标
@@ -174,111 +124,294 @@ function getNodeIcon(nodeType: FlowTreeNode['node_type']): string {
       default: return '📦'
     }
   }
-  if ('AsyncCallback' in nodeType) {
-    const mechanism = nodeType.AsyncCallback.mechanism
-    if (typeof mechanism === 'object') {
-      if ('WorkQueue' in mechanism) return '⚙️'
-      if ('Timer' in mechanism) return '⏲️'
-      if ('Tasklet' in mechanism) return '⚡'
-      if ('Irq' in mechanism) return '🔌'
-      if ('Completion' in mechanism) return '✅'
-    }
+  if (typeof nodeType === 'object' && 'AsyncCallback' in nodeType) {
     return '⚡'
   }
   return '📦'
 }
 
-// 内部组件，用于访问 ReactFlow 实例
-function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewProps) {
-  const { nodes: convertedNodes, edges: convertedEdges, nodeMap } = useMemo(
-    () => convertToReactFlow(flowTrees),
-    [flowTrees]
-  )
+// 获取异步标签
+function getAsyncLabel(nodeType: FlowTreeNode['node_type']): string | null {
+  if (typeof nodeType === 'object' && nodeType && 'AsyncCallback' in nodeType) {
+    const mechanism = nodeType.AsyncCallback?.mechanism
+    if (typeof mechanism === 'object') {
+      if ('WorkQueue' in mechanism) return 'WorkQueue'
+      if ('Timer' in mechanism) return 'Timer'
+      if ('Tasklet' in mechanism) return 'Tasklet'
+      if ('Irq' in mechanism) return 'IRQ'
+      if ('KThread' in mechanism) return 'KThread'
+    }
+    return 'Async'
+  }
+  return null
+}
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(convertedNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(convertedEdges)
-  const nodeMapRef = useRef(nodeMap)
+// 获取节点类型类名
+function getNodeClass(nodeType: FlowTreeNode['node_type']): string {
+  if (typeof nodeType === 'string') {
+    switch (nodeType) {
+      case 'EntryPoint': return 'entry'
+      case 'KernelApi': return 'kernel'
+      case 'External': return 'external'
+      default: return 'function'
+    }
+  }
+  if (typeof nodeType === 'object' && 'AsyncCallback' in nodeType) {
+    return 'async'
+  }
+  return 'function'
+}
+
+interface ExpandState {
+  [key: string]: boolean
+}
+
+// 检查是否为内核 API
+function isKernelApi(name: string): boolean {
+  return KERNEL_API_LIST.has(name)
+}
+
+// 内部组件
+function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewProps) {
+  const [expandedNodes, setExpandedNodes] = useState<ExpandState>({})
+  const [hideKernelApi, setHideKernelApi] = useState(false) // 隐藏内核API开关
+  const functionMap = useMemo(() => buildFunctionMap(flowTrees), [flowTrees])
   const { fitView, setCenter, getNode } = useReactFlow()
+  const isInitialized = useRef(false)
+  const prevFlowTreesRef = useRef<FlowTreeNode[]>([])
   
-  // Update refs
+  // 初始化：展开所有入口点的第一层
   useEffect(() => {
-    nodeMapRef.current = nodeMap
-  }, [nodeMap])
-  
-  // Update nodes and edges when flowTrees change
-  useEffect(() => {
-    setNodes(convertedNodes)
-    setEdges(convertedEdges)
-    // 自动适应视图
-    setTimeout(() => fitView({ padding: 0.2 }), 100)
-  }, [convertedNodes, convertedEdges, setNodes, setEdges, fitView])
-  
-  // 当选中函数改变时，自动跳转到对应节点
-  useEffect(() => {
-    if (selectedFunction && nodeMapRef.current.has(selectedFunction)) {
-      const nodeId = nodeMapRef.current.get(selectedFunction)!
-      const node = getNode(nodeId)
-      if (node) {
-        // 平滑滚动到节点位置
-        setCenter(node.position.x + 100, node.position.y + 30, { 
-          zoom: 1.2, 
-          duration: 500 
+    // 只在 flowTrees 变化时重置
+    if (flowTrees !== prevFlowTreesRef.current && flowTrees.length > 0) {
+      prevFlowTreesRef.current = flowTrees
+      const initial: ExpandState = {}
+      flowTrees.forEach(tree => {
+        initial[tree.name] = true
+      })
+      setExpandedNodes(initial)
+      isInitialized.current = false
+    }
+  }, [flowTrees])
+
+  // 切换节点展开状态
+  const toggleExpand = useCallback((nodeName: string) => {
+    setExpandedNodes(prev => ({
+      ...prev,
+      [nodeName]: !prev[nodeName]
+    }))
+  }, [])
+
+  // 构建可视化节点和边
+  const { nodes, edges, nodeIdMap } = useMemo(() => {
+    const nodes: Node[] = []
+    const edges: Edge[] = []
+    const nodeIdMap = new Map<string, string>()
+    const processedNodes = new Set<string>()
+    
+    const xSpacing = 280
+    const ySpacing = 55
+    let globalY = 0
+
+    function processNode(
+      node: FlowTreeNode,
+      depth: number,
+      parentId: string | null
+    ): void {
+      // 如果启用了内核API过滤，跳过内核API节点
+      if (hideKernelApi && isKernelApi(node.name)) {
+        // 但如果有子节点，仍然处理子节点（直接连到父节点）
+        if (node.children && expandedNodes[node.name]) {
+          node.children.forEach(child => {
+            processNode(child, depth, parentId)
+          })
+        }
+        return
+      }
+      
+      // 避免循环引用
+      const nodeKey = `${node.name}-${depth}`
+      if (processedNodes.has(nodeKey) && depth > 0) {
+        return
+      }
+      processedNodes.add(nodeKey)
+      
+      const nodeId = `node-${nodes.length}`
+      const isExpanded = expandedNodes[node.name] || false
+      
+      // 计算实际可见的子节点数
+      let visibleChildren = node.children || []
+      if (hideKernelApi) {
+        visibleChildren = visibleChildren.filter(c => !isKernelApi(c.name))
+      }
+      const hasChildren = visibleChildren.length > 0
+      const childCount = visibleChildren.length
+      
+      nodeIdMap.set(node.name, nodeId)
+      
+      nodes.push({
+        id: nodeId,
+        type: 'flowNode',
+        position: { x: depth * xSpacing, y: globalY },
+        data: {
+          name: node.name,
+          icon: getNodeIcon(node.node_type),
+          nodeClass: getNodeClass(node.node_type),
+          asyncLabel: getAsyncLabel(node.node_type),
+          isExpanded,
+          hasChildren,
+          childCount,
+          isSelected: selectedFunction === node.name,
+          onToggle: () => toggleExpand(node.name),
+        },
+      })
+
+      globalY += ySpacing
+
+      // 添加边
+      if (parentId) {
+        const isAsync = typeof node.node_type === 'object' && 'AsyncCallback' in node.node_type
+        edges.push({
+          id: `${parentId}-${nodeId}`,
+          source: parentId,
+          target: nodeId,
+          type: 'smoothstep',
+          animated: isAsync,
+          style: {
+            stroke: isAsync ? '#f59e0b' : '#475569',
+            strokeWidth: isAsync ? 2 : 1,
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: isAsync ? '#f59e0b' : '#475569',
+            width: 12,
+            height: 12,
+          },
         })
-        
-        // 高亮选中的节点
-        setNodes(nds => nds.map(n => ({
-          ...n,
-          data: {
-            ...n.data,
-            selected: n.id === nodeId,
-          }
-        })))
+      }
+
+      // 如果展开，递归处理子节点
+      if (isExpanded && node.children) {
+        node.children.forEach(child => {
+          processNode(child, depth + 1, nodeId)
+        })
       }
     }
-  }, [selectedFunction, getNode, setCenter, setNodes])
+
+    // 处理所有入口点
+    flowTrees.forEach(tree => {
+      processNode(tree, 0, null)
+      globalY += 20 // 入口点之间的间距
+    })
+
+    return { nodes, edges, nodeIdMap }
+  }, [flowTrees, expandedNodes, selectedFunction, toggleExpand, hideKernelApi])
+
+  const [flowNodes, setNodes, onNodesChange] = useNodesState(nodes)
+  const [flowEdges, setEdges, onEdgesChange] = useEdgesState(edges)
+
+  // 更新节点（不触发 fitView）
+  useEffect(() => {
+    setNodes(nodes)
+    setEdges(edges)
+  }, [nodes, edges, setNodes, setEdges])
+
+  // 只在初始加载时 fitView
+  useEffect(() => {
+    if (!isInitialized.current && flowNodes.length > 0) {
+      isInitialized.current = true
+      setTimeout(() => fitView({ padding: 0.2 }), 100)
+    }
+  }, [flowNodes.length, fitView])
+
+  // 选中函数时跳转到节点
+  useEffect(() => {
+    if (selectedFunction && nodeIdMap.has(selectedFunction)) {
+      const nodeId = nodeIdMap.get(selectedFunction)!
+      const node = getNode(nodeId)
+      if (node) {
+        setCenter(node.position.x + 100, node.position.y + 20, {
+          zoom: 1.2,
+          duration: 300,
+        })
+      }
+    }
+  }, [selectedFunction, nodeIdMap, getNode, setCenter])
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      if (onNodeClick && node.data.name !== 'more') {
+      if (onNodeClick) {
         onNodeClick(node.id, node.data.name as string)
       }
     },
     [onNodeClick]
   )
 
-  if (flowTrees.length === 0) {
-    return (
-      <div className="flow-view-empty">
-        <div className="empty-icon">📊</div>
-        <h3>暂无执行流数据</h3>
-        <p>请先分析源代码文件</p>
-      </div>
-    )
-  }
+  // 展开全部
+  const expandAll = useCallback(() => {
+    const all: ExpandState = {}
+    functionMap.forEach((_, name) => {
+      all[name] = true
+    })
+    setExpandedNodes(all)
+  }, [functionMap])
+
+  // 收起全部
+  const collapseAll = useCallback(() => {
+    const initial: ExpandState = {}
+    flowTrees.forEach(tree => {
+      initial[tree.name] = true // 只保留入口点展开
+    })
+    setExpandedNodes(initial)
+  }, [flowTrees])
+
+  // 手动 fitView
+  const handleFitView = useCallback(() => {
+    fitView({ padding: 0.2 })
+  }, [fitView])
+
+  // 切换内核API过滤
+  const toggleKernelApiFilter = useCallback(() => {
+    setHideKernelApi(prev => !prev)
+  }, [])
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeClick={handleNodeClick}
-      nodeTypes={nodeTypes}
-      fitView
-      fitViewOptions={{ padding: 0.2 }}
-      minZoom={0.1}
-      maxZoom={2}
-      defaultEdgeOptions={{
-        type: 'smoothstep',
-      }}
-    >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
-      <Controls 
-        showZoom={true}
-        showFitView={true}
-        showInteractive={false}
-      />
-    </ReactFlow>
+    <>
+      <div className="flow-toolbar">
+        <button onClick={expandAll} title="展开全部">
+          📂 展开
+        </button>
+        <button onClick={collapseAll} title="收起全部">
+          📁 收起
+        </button>
+        <button onClick={handleFitView} title="适应视图">
+          🎯 适应
+        </button>
+        <div className="toolbar-divider" />
+        <button 
+          onClick={toggleKernelApiFilter} 
+          className={hideKernelApi ? 'active' : ''}
+          title={hideKernelApi ? '显示内核API (已隐藏 kmalloc、printk 等)' : '隐藏内核API'}
+        >
+          {hideKernelApi ? '🔇 已过滤' : '⚙️ 内核API'}
+        </button>
+      </div>
+      <ReactFlow
+        nodes={flowNodes}
+        edges={flowEdges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={handleNodeClick}
+        nodeTypes={nodeTypes}
+        fitView={false}
+        minZoom={0.1}
+        maxZoom={3}
+        defaultEdgeOptions={{ type: 'smoothstep' }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
+        <Controls showZoom showFitView showInteractive={false} />
+      </ReactFlow>
+    </>
   )
 }
 
@@ -292,7 +425,7 @@ export function FlowView(props: FlowViewProps) {
       </div>
     )
   }
-  
+
   return (
     <div className="flow-view">
       <ReactFlowProvider>
@@ -303,4 +436,3 @@ export function FlowView(props: FlowViewProps) {
 }
 
 export default FlowView
-
