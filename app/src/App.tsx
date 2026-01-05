@@ -18,6 +18,7 @@ import { Settings, defaultSettings, type AppSettings } from './components/Settin
 import { FindReplace, type FindMatch } from './components/FindReplace'
 import { KeyboardShortcuts } from './components/KeyboardShortcuts'
 import { GoToLine } from './components/GoToLine'
+import { ToastContainer, useToast } from './components/Toast'
 import { addRecentFile } from './utils/recentFiles'
 import { 
   AnalysisResult, 
@@ -98,6 +99,45 @@ function App() {
   
   // 跳转行号状态
   const [goToLineOpen, setGoToLineOpen] = useState(false)
+  
+  // Toast 通知
+  const { toasts, removeToast, success, error: showError, info } = useToast()
+  
+  // 拖放文件状态
+  const [isDragging, setIsDragging] = useState(false)
+  
+  // 拖放文件处理
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }, [])
+  
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }, [])
+  
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) return
+    
+    // 获取文件路径 (Tauri 需要特殊处理)
+    const file = files[0]
+    const path = (file as any).path as string | undefined
+    
+    if (path) {
+      info(`正在打开: ${file.name}`)
+      handleAnalyze(path)
+    } else {
+      showError('无法获取文件路径，请使用菜单打开文件')
+    }
+  }, [handleAnalyze, info, showError])
   
   // Panel width state (percentage)
   const [leftPanelWidth, setLeftPanelWidth] = useState(220)
@@ -751,12 +791,12 @@ function App() {
           : tab
       ))
       
-      console.log('文件已保存:', filePath)
+      success(`文件已保存: ${filePath.split('/').pop()}`)
     } catch (err) {
       console.error('保存失败:', err)
-      setError(`保存失败: ${err}`)
+      showError(`保存失败: ${err}`)
     }
-  }, [filePath, fileContent, activeTabId, tabs])
+  }, [filePath, fileContent, activeTabId, tabs, success, showError])
   
   // Ctrl+S 保存快捷键
   useEffect(() => {
@@ -894,7 +934,22 @@ function App() {
   const flowTrees: FlowTreeNode[] = result?.flow_trees || []
 
   return (
-    <div className="app">
+    <div 
+      className={`app ${isDragging ? 'dragging' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* 拖放提示层 */}
+      {isDragging && (
+        <div className="drop-overlay">
+          <div className="drop-hint">
+            <span className="drop-icon">📂</span>
+            <span>释放以打开文件</span>
+          </div>
+        </div>
+      )}
+      
       <header className="header">
         <div className="header-content">
           <div className="header-title">
@@ -1383,6 +1438,9 @@ function App() {
         isDirty={tabs.find(t => t.id === activeTabId)?.isDirty}
         fileContent={fileContent}
       />
+      
+      {/* Toast 通知 */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
 }

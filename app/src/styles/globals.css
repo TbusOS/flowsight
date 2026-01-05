@@ -105,6 +105,45 @@ body {
   flex-direction: column;
   height: 100vh;  /* 固定高度，而非min-height */
   overflow: hidden;  /* 防止溢出 */
+  position: relative;
+}
+
+/* 拖放文件时的状态 */
+.app.dragging {
+  /* 可选：添加边框或其他视觉反馈 */
+}
+
+/* 拖放提示层 */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(88, 166, 255, 0.1);
+  border: 3px dashed var(--accent);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.drop-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem 3rem;
+  background: var(--bg-primary);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.drop-icon {
+  font-size: 4rem;
+}
+
+.drop-hint span:last-child {
+  font-size: 1.25rem;
+  color: var(--text-secondary);
 }
 
 /* Header */
