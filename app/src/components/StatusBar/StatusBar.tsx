@@ -15,8 +15,14 @@ interface StatusBarProps {
   analysisStatus?: 'idle' | 'analyzing' | 'done' | 'error'
   /** 当前选中行号 */
   currentLine?: number
+  /** 当前列号 */
+  currentColumn?: number
   /** 文件是否已修改 */
   isDirty?: boolean
+  /** 文件内容 (用于统计) */
+  fileContent?: string
+  /** 选中的文本长度 */
+  selectionLength?: number
 }
 
 export function StatusBar({
@@ -24,8 +30,14 @@ export function StatusBar({
   functionCount = 0,
   analysisStatus = 'idle',
   currentLine,
+  currentColumn,
   isDirty = false,
+  fileContent,
+  selectionLength,
 }: StatusBarProps) {
+  // 计算文件统计
+  const lineCount = fileContent?.split('\n').length || 0
+  const charCount = fileContent?.length || 0
   // 获取文件语言
   const getLanguage = (path: string): string => {
     const ext = path.split('.').pop()?.toLowerCase()
@@ -80,10 +92,24 @@ export function StatusBar({
       </div>
       
       <div className="status-right">
-        {/* 当前行号 */}
+        {/* 当前位置 */}
         {currentLine && (
-          <span className="status-item">
-            行 {currentLine}
+          <span className="status-item cursor-pos">
+            行 {currentLine}{currentColumn ? `, 列 ${currentColumn}` : ''}
+          </span>
+        )}
+        
+        {/* 选中文本 */}
+        {selectionLength && selectionLength > 0 && (
+          <span className="status-item selection">
+            已选 {selectionLength} 字符
+          </span>
+        )}
+        
+        {/* 文件统计 */}
+        {lineCount > 0 && (
+          <span className="status-item file-stats">
+            {lineCount} 行, {charCount.toLocaleString()} 字符
           </span>
         )}
         

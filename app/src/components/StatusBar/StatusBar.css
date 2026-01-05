@@ -56,3 +56,18 @@
   color: var(--text-tertiary);
 }
 
+/* 光标位置 */
+.status-item.cursor-pos {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* 选中文本 */
+.status-item.selection {
+  color: var(--accent);
+}
+
+/* 文件统计 */
+.status-item.file-stats {
+  color: var(--text-tertiary);
+}
+

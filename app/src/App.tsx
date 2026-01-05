@@ -1381,6 +1381,7 @@ function App() {
         functionCount={outlineItems.length}
         analysisStatus={loading ? 'analyzing' : result ? 'done' : 'idle'}
         isDirty={tabs.find(t => t.id === activeTabId)?.isDirty}
+        fileContent={fileContent}
       />
     </div>
   )
