@@ -8,6 +8,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { FlowView } from './components/FlowView'
 import { CodeEditor } from './components/Editor'
 import { FileTree, FileNode } from './components/Explorer'
+import { Outline, OutlineItem } from './components/Outline'
 import { 
   AnalysisResult, 
   FlowTreeNode, 
@@ -36,6 +37,7 @@ function App() {
   const [indexStats, setIndexStats] = useState<IndexStats | null>(null)
   const [functionDetail, setFunctionDetail] = useState<FunctionDetail | null>(null)
   const [fileTree, setFileTree] = useState<FileNode[]>([])
+  const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([])
 
   // Open project directory
   const handleOpenProject = async () => {
@@ -101,6 +103,22 @@ function App() {
       // Analyze file
       const analysis = await invoke<AnalysisResult>('analyze_file', { path: targetPath })
       setResult(analysis)
+      
+      // Get function list for outline
+      const functions = await invoke<Array<{
+        name: string
+        return_type: string
+        line: number
+        is_callback: boolean
+      }>>('get_functions', { path: targetPath })
+      
+      setOutlineItems(functions.map(f => ({
+        name: f.name,
+        kind: 'function' as const,
+        line: f.line,
+        isCallback: f.is_callback,
+        returnType: f.return_type,
+      })))
     } catch (e) {
       setError(String(e))
     } finally {
@@ -199,6 +217,12 @@ function App() {
 
   const handleEditorLineClick = (line: number) => {
     console.log('Clicked line:', line)
+  }
+  
+  // Handle outline item click
+  const handleOutlineClick = (item: OutlineItem) => {
+    setSelectedFunction(item.name)
+    setGoToLine(item.line)
   }
 
   // Get highlight lines from async handlers
@@ -399,6 +423,21 @@ function App() {
                   </ul>
                 </div>
               )}
+              <hr className="divider" />
+            </div>
+          )}
+          
+          {/* 代码大纲 */}
+          {outlineItems.length > 0 && (
+            <div className="outline-section-wrapper">
+              <h2>📋 大纲</h2>
+              <div className="outline-container">
+                <Outline 
+                  items={outlineItems}
+                  onItemClick={handleOutlineClick}
+                  selectedItem={selectedFunction || undefined}
+                />
+              </div>
               <hr className="divider" />
             </div>
           )}
