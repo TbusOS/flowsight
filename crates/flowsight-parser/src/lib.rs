@@ -46,7 +46,10 @@ pub fn get_parser() -> Box<dyn Parser> {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests;
+
+#[cfg(test)]
+mod basic_tests {
     use super::*;
 
     #[test]

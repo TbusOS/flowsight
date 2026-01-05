@@ -130,3 +130,6 @@ impl Default for Analyzer {
     }
 }
 
+#[cfg(test)]
+mod tests;
+

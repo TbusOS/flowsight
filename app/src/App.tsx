@@ -28,7 +28,7 @@ function App() {
     }
   }
 
-  const handleNodeClick = useCallback((nodeId: string, functionName: string) => {
+  const handleNodeClick = useCallback((_nodeId: string, functionName: string) => {
     setSelectedFunction(functionName)
     console.log('Selected function:', functionName)
   }, [])

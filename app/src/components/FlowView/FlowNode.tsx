@@ -60,7 +60,7 @@ function getNodeClass(nodeType: FlowNodeData['nodeType']): string {
 }
 
 export const FlowNodeComponent = memo(({ data }: NodeProps) => {
-  const nodeData = data as FlowNodeData
+  const nodeData = data as unknown as FlowNodeData
   const icon = getNodeIcon(nodeData.nodeType)
   const nodeClass = getNodeClass(nodeData.nodeType)
 

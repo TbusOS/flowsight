@@ -268,6 +268,7 @@ impl TreeSitterParser {
         let mut name = String::new();
         let mut fields = Vec::new();
         let mut referenced_structs = Vec::new();
+        let mut has_body = false;
 
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -276,6 +277,7 @@ impl TreeSitterParser {
                     name = self.node_text(child, source);
                 }
                 "field_declaration_list" => {
+                    has_body = true;
                     let (f, refs) = self.extract_fields(child, source);
                     fields = f;
                     referenced_structs = refs;
@@ -284,7 +286,8 @@ impl TreeSitterParser {
             }
         }
 
-        if name.is_empty() {
+        // Only return struct definitions (with body), not forward declarations or type references
+        if name.is_empty() || !has_body {
             return None;
         }
 

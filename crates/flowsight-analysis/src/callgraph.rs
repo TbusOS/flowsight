@@ -1,6 +1,6 @@
 //! Call graph construction
 
-use flowsight_core::{CallEdge, CallType, AsyncBinding, FlowNode, FlowNodeType, AsyncMechanism, Location};
+use flowsight_core::{CallEdge, CallType, AsyncBinding, FlowNode, FlowNodeType, AsyncMechanism};
 use flowsight_parser::ParseResult;
 use std::collections::HashSet;
 
@@ -106,7 +106,7 @@ pub fn build_flow_tree(
     // Build children
     let mut children = Vec::new();
     for callee in &func.calls {
-        if let Some(child_func) = parse_result.functions.get(callee) {
+        if parse_result.functions.contains_key(callee) {
             // Recurse for internal functions
             if let Some(child) = build_flow_tree(callee, parse_result, async_bindings, visited, depth + 1) {
                 children.push(child);
