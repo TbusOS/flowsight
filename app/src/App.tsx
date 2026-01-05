@@ -10,6 +10,7 @@ import { CodeEditor } from './components/Editor'
 import { FileTree, FileNode } from './components/Explorer'
 import { Outline, OutlineItem } from './components/Outline'
 import { CommandPalette } from './components/CommandPalette'
+import { TabBar, Tab } from './components/Tabs'
 import { 
   AnalysisResult, 
   FlowTreeNode, 
@@ -37,6 +38,14 @@ function App() {
   const [selectedFunction, setSelectedFunction] = useState<string | null>(null)
   const [filePath, setFilePath] = useState('')
   const [fileContent, setFileContent] = useState('')
+  
+  // 多标签页状态
+  interface TabData extends Tab {
+    content: string
+    analysisResult?: AnalysisResult | null
+  }
+  const [tabs, setTabs] = useState<TabData[]>([])
+  const [activeTabId, setActiveTabId] = useState<string | null>(null)
   // goToLine 包含时间戳，确保每次点击都能触发跳转
   const [goToLine, setGoToLine] = useState<{ line: number; timestamp: number } | undefined>()
   const [viewMode, setViewMode] = useState<ViewMode>('split')
@@ -333,6 +342,121 @@ function App() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
+  // === 标签页管理 ===
+  
+  // 生成唯一 Tab ID
+  const generateTabId = () => `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  
+  // 打开文件到标签页（如果已存在则切换）
+  const openFileInTab = useCallback(async (path: string) => {
+    // 检查是否已打开
+    const existingTab = tabs.find(t => t.filePath === path)
+    if (existingTab) {
+      setActiveTabId(existingTab.id)
+      setFilePath(existingTab.filePath)
+      setFileContent(existingTab.content)
+      if (existingTab.analysisResult) {
+        setResult(existingTab.analysisResult)
+      }
+      return existingTab.id
+    }
+    
+    // 加载新文件
+    try {
+      const content = await invoke<string>('read_file', { path })
+      const fileName = path.split('/').pop() || path
+      
+      const newTab: TabData = {
+        id: generateTabId(),
+        filePath: path,
+        fileName,
+        content,
+        isDirty: false,
+        analysisResult: null,
+      }
+      
+      setTabs(prev => [...prev, newTab])
+      setActiveTabId(newTab.id)
+      setFilePath(path)
+      setFileContent(content)
+      
+      return newTab.id
+    } catch (err) {
+      console.error('打开文件失败:', err)
+      return null
+    }
+  }, [tabs])
+  
+  // 关闭标签页
+  const closeTab = useCallback((tabId: string) => {
+    const tabIndex = tabs.findIndex(t => t.id === tabId)
+    if (tabIndex === -1) return
+    
+    const tab = tabs[tabIndex]
+    
+    // TODO: 如果有未保存的更改，提示用户
+    if (tab.isDirty) {
+      // 暂时直接关闭
+    }
+    
+    const newTabs = tabs.filter(t => t.id !== tabId)
+    setTabs(newTabs)
+    
+    // 如果关闭的是当前标签，切换到相邻标签
+    if (activeTabId === tabId) {
+      if (newTabs.length === 0) {
+        setActiveTabId(null)
+        setFilePath('')
+        setFileContent('')
+        setResult(null)
+        setOutlineItems([])
+      } else {
+        // 切换到左边的标签，如果是第一个则切换到右边
+        const newIndex = Math.max(0, tabIndex - 1)
+        const newActiveTab = newTabs[newIndex]
+        setActiveTabId(newActiveTab.id)
+        setFilePath(newActiveTab.filePath)
+        setFileContent(newActiveTab.content)
+        if (newActiveTab.analysisResult) {
+          setResult(newActiveTab.analysisResult)
+        }
+      }
+    }
+  }, [tabs, activeTabId])
+  
+  // 切换标签页
+  const switchTab = useCallback((tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId)
+    if (!tab) return
+    
+    setActiveTabId(tabId)
+    setFilePath(tab.filePath)
+    setFileContent(tab.content)
+    if (tab.analysisResult) {
+      setResult(tab.analysisResult)
+    }
+  }, [tabs])
+  
+  // 重新排序标签页
+  const reorderTabs = useCallback((fromIndex: number, toIndex: number) => {
+    setTabs(prev => {
+      const newTabs = [...prev]
+      const [movedTab] = newTabs.splice(fromIndex, 1)
+      newTabs.splice(toIndex, 0, movedTab)
+      return newTabs
+    })
+  }, [])
+  
+  // 更新当前标签的分析结果
+  const updateCurrentTabAnalysis = useCallback((analysis: AnalysisResult) => {
+    if (!activeTabId) return
+    setTabs(prev => prev.map(tab => 
+      tab.id === activeTabId 
+        ? { ...tab, analysisResult: analysis }
+        : tab
+    ))
+  }, [activeTabId])
+
   // Analyze and load file
   const handleAnalyze = async (path?: string, skipHistory = false) => {
     const targetPath = path || filePath
@@ -350,6 +474,7 @@ function App() {
       // Analyze file
       const analysis = await invoke<AnalysisResult>('analyze_file', { path: targetPath })
       setResult(analysis)
+      updateCurrentTabAnalysis(analysis) // 更新标签页的分析结果
       
       // Get function list for outline
       const functions = await invoke<Array<{
@@ -497,23 +622,21 @@ function App() {
 
   // Handle file selection from tree
   const handleFileSelect = async (path: string) => {
+    // 在标签页中打开文件
+    await openFileInTab(path)
+    
     // Only analyze C/H files
     const ext = path.split('.').pop()?.toLowerCase()
     if (['c', 'h', 'cpp', 'hpp', 'cc', 'cxx'].includes(ext || '')) {
       await handleAnalyze(path)
     } else {
-      // Just show the file content
-      try {
-        const content = await invoke<string>('read_file', { path })
-        setFileContent(content)
-        setFilePath(path)
-        setResult(null)
-        // 记录导航历史
-        pushNavHistory({ filePath: path, selectedFunction: null })
-      } catch (e) {
-        setError(String(e))
-      }
+      // 非 C 文件不分析，清空分析结果
+      setResult(null)
+      setOutlineItems([])
     }
+    
+    // 记录导航历史
+    pushNavHistory({ filePath: path, selectedFunction: null })
   }
 
   const handleEditorLineClick = (line: number) => {
@@ -784,6 +907,15 @@ function App() {
           <div className={`content-area ${viewMode}`}>
             {(viewMode === 'code' || viewMode === 'split') && (
               <div className="editor-panel">
+                {/* 标签栏 */}
+                <TabBar
+                  tabs={tabs}
+                  activeTabId={activeTabId}
+                  onTabSelect={switchTab}
+                  onTabClose={closeTab}
+                  onTabReorder={reorderTabs}
+                />
+                
                 {fileContent ? (
                   <CodeEditor
                     content={fileContent}
