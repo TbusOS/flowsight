@@ -62,7 +62,22 @@ pub fn build_flow_tree(
 
     visited.insert(entry.to_string());
 
-    let func = parse_result.functions.get(entry)?;
+    // If function not found in parse result, create a basic node
+    let func = match parse_result.functions.get(entry) {
+        Some(f) => f,
+        None => {
+            visited.remove(entry);
+            return Some(FlowNode {
+                id: entry.to_string(),
+                name: entry.to_string(),
+                display_name: format!("📦 {}()", entry),
+                location: None,
+                node_type: FlowNodeType::External,
+                children: vec![],
+                description: Some("External function".to_string()),
+            });
+        }
+    };
 
     let node_type = if func.is_callback {
         if let Some(ctx) = &func.callback_context {

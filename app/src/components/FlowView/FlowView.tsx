@@ -4,7 +4,7 @@
  * 使用 React Flow 显示代码执行流程图
  */
 
-import { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import {
   ReactFlow,
   Node,
@@ -140,13 +140,19 @@ function getNodeIcon(nodeType: FlowTreeNode['node_type']): string {
 }
 
 export function FlowView({ flowTrees, onNodeClick }: FlowViewProps) {
-  const { nodes: initialNodes, edges: initialEdges } = useMemo(
+  const { nodes: convertedNodes, edges: convertedEdges } = useMemo(
     () => convertToReactFlow(flowTrees),
     [flowTrees]
   )
 
-  const [nodes, , onNodesChange] = useNodesState(initialNodes)
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges)
+  const [nodes, setNodes, onNodesChange] = useNodesState(convertedNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(convertedEdges)
+  
+  // Update nodes and edges when flowTrees change
+  React.useEffect(() => {
+    setNodes(convertedNodes)
+    setEdges(convertedEdges)
+  }, [convertedNodes, convertedEdges, setNodes, setEdges])
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
