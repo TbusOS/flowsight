@@ -100,6 +100,19 @@
   transform: rotate(90deg);
 }
 
+.chevron.loading {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .file-icon {
   font-size: 14px;
   width: 18px;

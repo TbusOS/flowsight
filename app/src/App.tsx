@@ -56,8 +56,8 @@ function App() {
         const stats = await invoke<IndexStats>('get_index_stats')
         setIndexStats(stats)
         
-        // Load file tree
-        const tree = await invoke<FileNode[]>('list_directory', { path: selected, recursive: true })
+        // Load file tree (non-recursive for performance)
+        const tree = await invoke<FileNode[]>('list_directory', { path: selected, recursive: false })
         setFileTree(tree)
       }
     } catch (e) {
