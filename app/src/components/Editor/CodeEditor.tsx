@@ -27,6 +27,10 @@ interface CodeEditorProps {
   knownFunctions?: string[]
   /** 是否只读 */
   readOnly?: boolean
+  /** 主题 */
+  theme?: 'dark' | 'light'
+  /** 字体大小 */
+  fontSize?: number
 }
 
 // 根据文件扩展名获取语言
@@ -64,7 +68,7 @@ function getLanguage(filePath: string): string {
 }
 
 // FlowSight 深色主题
-const flowsightTheme: editor.IStandaloneThemeData = {
+const flowsightDarkTheme: editor.IStandaloneThemeData = {
   base: 'vs-dark',
   inherit: true,
   rules: [
@@ -87,6 +91,37 @@ const flowsightTheme: editor.IStandaloneThemeData = {
     'editorLineNumber.activeForeground': '#e6edf3',
     'editor.findMatchBackground': '#ffc83d44',
     'editor.findMatchHighlightBackground': '#ffc83d22',
+    'editor.wordHighlightBackground': '#58a6ff33',
+    'editor.wordHighlightStrongBackground': '#58a6ff55',
+  },
+}
+
+// FlowSight 浅色主题
+const flowsightLightTheme: editor.IStandaloneThemeData = {
+  base: 'vs',
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: '6a737d', fontStyle: 'italic' },
+    { token: 'keyword', foreground: 'd73a49' },
+    { token: 'type', foreground: '005cc5' },
+    { token: 'function', foreground: '6f42c1' },
+    { token: 'string', foreground: '032f62' },
+    { token: 'number', foreground: '005cc5' },
+    { token: 'variable', foreground: '24292e' },
+    { token: 'operator', foreground: 'd73a49' },
+  ],
+  colors: {
+    'editor.background': '#ffffff',
+    'editor.foreground': '#24292e',
+    'editor.lineHighlightBackground': '#f6f8fa',
+    'editor.selectionBackground': '#0366d625',
+    'editorCursor.foreground': '#0366d6',
+    'editorLineNumber.foreground': '#959da5',
+    'editorLineNumber.activeForeground': '#24292e',
+    'editor.findMatchBackground': '#ffdf5d66',
+    'editor.findMatchHighlightBackground': '#ffdf5d33',
+    'editor.wordHighlightBackground': '#0366d622',
+    'editor.wordHighlightStrongBackground': '#0366d644',
   },
 }
 
@@ -100,6 +135,8 @@ export function CodeEditor({
   onWordAtCursor,
   knownFunctions = [],
   readOnly = false,
+  theme = 'dark',
+  fontSize = 14,
 }: CodeEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const decorationsRef = useRef<string[]>([])
@@ -110,13 +147,24 @@ export function CodeEditor({
   useEffect(() => {
     knownFunctionsSet.current = new Set(knownFunctions)
   }, [knownFunctions])
+  
+  // 主题变化时更新
+  useEffect(() => {
+    if (editorRef.current) {
+      const monaco = (window as any).monaco
+      if (monaco) {
+        monaco.editor.setTheme(theme === 'dark' ? 'flowsight-dark' : 'flowsight-light')
+      }
+    }
+  }, [theme])
 
   const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
 
     // 注册主题
-    monaco.editor.defineTheme('flowsight', flowsightTheme)
-    monaco.editor.setTheme('flowsight')
+    monaco.editor.defineTheme('flowsight-dark', flowsightDarkTheme)
+    monaco.editor.defineTheme('flowsight-light', flowsightLightTheme)
+    monaco.editor.setTheme(theme === 'dark' ? 'flowsight-dark' : 'flowsight-light')
 
     // 监听行点击
     if (onLineClick) {
@@ -197,12 +245,12 @@ export function CodeEditor({
         height="100%"
         language={getLanguage(filePath)}
         value={content}
-        theme="flowsight"
+        theme={theme === 'dark' ? 'flowsight-dark' : 'flowsight-light'}
         onMount={handleEditorMount}
         onChange={handleChange}
         options={{
           readOnly,
-          fontSize: 14,
+          fontSize,
           fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
           lineNumbers: 'on',
           minimap: { enabled: true },
@@ -218,6 +266,17 @@ export function CodeEditor({
           cursorSmoothCaretAnimation: 'on',
           smoothScrolling: true,
           padding: { top: 8 },
+          // 选中单词高亮
+          occurrencesHighlight: 'singleFile',
+          selectionHighlight: true,
+          // 括号匹配高亮
+          matchBrackets: 'always',
+          bracketPairColorization: { enabled: true },
+          // 缩进参考线
+          guides: {
+            indentation: true,
+            bracketPairs: true,
+          },
         }}
       />
     </div>

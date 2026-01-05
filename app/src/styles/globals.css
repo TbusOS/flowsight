@@ -18,11 +18,13 @@
   --text-primary: #e6edf3;
   --text-secondary: #8b949e;
   --text-muted: #6e7681;
+  --text-tertiary: #6e7681;
   
   /* 强调色 */
   --accent: #58a6ff;
   --accent-hover: #79b8ff;
   --accent-pink: #f778ba;
+  --accent-dim: rgba(88, 166, 255, 0.15);
   
   /* 语义色 */
   --success: #3fb950;
@@ -46,6 +48,35 @@
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
+}
+
+/* 浅色主题 */
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --bg-tertiary: #e8ecf0;
+  --bg-hover: #d0d7de;
+  
+  --text-primary: #24292f;
+  --text-secondary: #57606a;
+  --text-muted: #8b949e;
+  --text-tertiary: #8b949e;
+  
+  --accent: #0969da;
+  --accent-hover: #0550ae;
+  --accent-pink: #cf222e;
+  --accent-dim: rgba(9, 105, 218, 0.1);
+  
+  --success: #1a7f37;
+  --warning: #9a6700;
+  --error: #cf222e;
+  
+  --border: #d0d7de;
+  --border-light: #d8dee4;
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 /* ============================================

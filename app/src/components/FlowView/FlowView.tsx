@@ -18,10 +18,12 @@ import {
   MarkerType,
   useReactFlow,
   ReactFlowProvider,
+  useViewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
 import { FlowNodeComponent } from './FlowNode'
+import { toPng } from 'html-to-image'
 import type { FlowTreeNode } from '../../types'
 import './FlowView.css'
 
@@ -178,7 +180,30 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
   const [focusedNode, setFocusedNode] = useState<string | null>(null) // 聚焦的节点
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeName: string } | null>(null)
   const functionMap = useMemo(() => buildFunctionMap(flowTrees), [flowTrees])
-  const { fitView, setCenter, getNode } = useReactFlow()
+  const { fitView, setCenter, getNode, zoomIn, zoomOut, setViewport } = useReactFlow()
+  const { zoom } = useViewport()
+  const flowRef = useRef<HTMLDivElement>(null)
+  
+  // 导出为 PNG
+  const exportToPng = useCallback(async () => {
+    const flowElement = document.querySelector('.react-flow__viewport') as HTMLElement
+    if (!flowElement) return
+    
+    try {
+      const dataUrl = await toPng(flowElement, {
+        backgroundColor: '#0c1222',
+        pixelRatio: 2,
+      })
+      
+      // 创建下载链接
+      const link = document.createElement('a')
+      link.download = 'flowsight-execution-flow.png'
+      link.href = dataUrl
+      link.click()
+    } catch (err) {
+      console.error('导出失败:', err)
+    }
+  }, [])
   const isInitialized = useRef(false)
   const prevFlowTreesRef = useRef<FlowTreeNode[]>([])
   
@@ -515,6 +540,10 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
             </button>
           </>
         )}
+        <div className="toolbar-divider" />
+        <button onClick={exportToPng} title="导出为 PNG 图片">
+          📷 导出
+        </button>
       </div>
       
       {/* 右键菜单 */}
@@ -546,6 +575,14 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
         <Controls showZoom showFitView showInteractive={false} />
+        
+        {/* 自定义缩放控制 */}
+        <div className="zoom-controls">
+          <button onClick={() => zoomOut()} title="缩小 (-)">−</button>
+          <span className="zoom-level">{Math.round(zoom * 100)}%</span>
+          <button onClick={() => zoomIn()} title="放大 (+)">+</button>
+          <button onClick={() => fitView({ padding: 0.2 })} title="适应视图">⊙</button>
+        </div>
       </ReactFlow>
     </>
   )

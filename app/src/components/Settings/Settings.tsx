@@ -138,7 +138,7 @@ export function Settings({ isOpen, onClose, settings, onSettingsChange }: Settin
                 }))}
               >
                 <option value="dark">深色</option>
-                <option value="light">浅色 (开发中)</option>
+                <option value="light">浅色</option>
               </select>
             </div>
           </section>

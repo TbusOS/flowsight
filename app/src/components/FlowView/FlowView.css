@@ -224,3 +224,48 @@
   border: 1px solid #334155;
   border-radius: 4px;
 }
+
+/* 自定义缩放控制 */
+.zoom-controls {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(30, 41, 59, 0.9);
+  backdrop-filter: blur(4px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  z-index: 5;
+}
+
+.zoom-controls button {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.zoom-controls button:hover {
+  background: #334155;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+.zoom-level {
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #94a3b8;
+  min-width: 45px;
+  text-align: center;
+}

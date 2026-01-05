@@ -84,6 +84,11 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings)
   
+  // 应用主题到 document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', appSettings.theme)
+  }, [appSettings.theme])
+  
   // 查找替换状态
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [findMatches, setFindMatches] = useState<FindMatch[]>([])
@@ -1118,6 +1123,8 @@ function App() {
                     knownFunctions={knownFunctions}
                     onChange={handleContentChange}
                     readOnly={false}
+                    theme={appSettings.theme}
+                    fontSize={appSettings.fontSize}
                   />
                 ) : (
                   <Welcome 
