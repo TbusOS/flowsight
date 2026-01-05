@@ -684,6 +684,18 @@ code {
   border-color: var(--text-muted);
 }
 
+.button.icon {
+  background: transparent;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  font-size: 1.25rem;
+  min-width: auto;
+}
+
+.button.icon:hover {
+  background: var(--bg-tertiary);
+}
+
 /* 导航按钮组 */
 .nav-buttons {
   display: flex;

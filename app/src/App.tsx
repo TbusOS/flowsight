@@ -14,6 +14,8 @@ import { TabBar, Tab } from './components/Tabs'
 import { Breadcrumb } from './components/Breadcrumb'
 import { StatusBar } from './components/StatusBar'
 import { Welcome } from './components/Welcome'
+import { Settings, defaultSettings, type AppSettings } from './components/Settings'
+import { FindReplace, type FindMatch } from './components/FindReplace'
 import { 
   AnalysisResult, 
   FlowTreeNode, 
@@ -74,6 +76,14 @@ function App() {
   
   // 命令面板状态
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  
+  // 设置面板状态
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings)
+  
+  // 查找替换状态
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false)
+  const [findMatches, setFindMatches] = useState<FindMatch[]>([])
   
   // Panel width state (percentage)
   const [leftPanelWidth, setLeftPanelWidth] = useState(220)
@@ -263,6 +273,16 @@ function App() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
         e.preventDefault()
         setCommandPaletteOpen(true)
+      }
+      // Ctrl+F 打开查找
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        setFindReplaceOpen(true)
+      }
+      // Ctrl+H 打开查找替换
+      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+        e.preventDefault()
+        setFindReplaceOpen(true)
       }
       // Alt+Left or Cmd+[ 后退
       if ((e.altKey && e.key === 'ArrowLeft') || (e.metaKey && e.key === '[')) {
@@ -700,6 +720,33 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [saveCurrentFile])
   
+  // 自动保存功能
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  useEffect(() => {
+    // 清除之前的定时器
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
+    }
+    
+    // 如果启用了自动保存，且当前标签有未保存更改
+    if (appSettings.autoSave && activeTabId) {
+      const currentTab = tabs.find(t => t.id === activeTabId)
+      if (currentTab?.isDirty) {
+        autoSaveTimerRef.current = setTimeout(() => {
+          saveCurrentFile()
+        }, appSettings.autoSaveDelay)
+      }
+    }
+    
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+      }
+    }
+  }, [appSettings.autoSave, appSettings.autoSaveDelay, activeTabId, tabs, saveCurrentFile])
+  
   // 代码-图联动：光标所在函数名变化时高亮图中节点
   const handleWordAtCursor = useCallback((word: string | null) => {
     // 只更新选中状态，不记录导航历史
@@ -883,6 +930,9 @@ function App() {
             <button onClick={() => handleAnalyze()} disabled={loading || !filePath} className="button primary">
               {loading ? '⏳' : '🔄'}
             </button>
+            <button onClick={() => setSettingsOpen(true)} className="button icon" title="设置">
+              ⚙️
+            </button>
           </div>
         </div>
       </header>
@@ -990,6 +1040,21 @@ function App() {
                         setGoToLine({ line: func.line, timestamp: Date.now() })
                       }
                     }
+                  }}
+                />
+                
+                {/* 查找替换面板 */}
+                <FindReplace
+                  isOpen={findReplaceOpen}
+                  onClose={() => setFindReplaceOpen(false)}
+                  content={fileContent}
+                  onFindResult={setFindMatches}
+                  onReplaceAll={(newContent) => {
+                    setFileContent(newContent)
+                    handleContentChange(newContent)
+                  }}
+                  onGoToMatch={(match) => {
+                    setGoToLine({ line: match.line, timestamp: Date.now() })
                   }}
                 />
                 
@@ -1213,6 +1278,14 @@ function App() {
         onSelect={handleCommandSelect}
         files={allFiles}
         symbols={allSymbols}
+      />
+      
+      {/* 设置面板 */}
+      <Settings
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={appSettings}
+        onSettingsChange={setAppSettings}
       />
       
       {/* 状态栏 */}
