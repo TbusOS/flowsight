@@ -15,8 +15,8 @@ interface CodeEditorProps {
   filePath?: string
   /** 内容变更回调 */
   onChange?: (value: string) => void
-  /** 跳转到指定行 */
-  goToLine?: number
+  /** 跳转到指定行 (包含时间戳确保每次都触发) */
+  goToLine?: { line: number; timestamp: number }
   /** 高亮行号列表 */
   highlightLines?: number[]
   /** 点击行回调 */
@@ -161,11 +161,11 @@ export function CodeEditor({
   // 跳转到指定行
   useEffect(() => {
     if (editorRef.current && goToLine) {
-      editorRef.current.revealLineInCenter(goToLine)
-      editorRef.current.setPosition({ lineNumber: goToLine, column: 1 })
+      editorRef.current.revealLineInCenter(goToLine.line)
+      editorRef.current.setPosition({ lineNumber: goToLine.line, column: 1 })
       editorRef.current.focus()
     }
-  }, [goToLine])
+  }, [goToLine]) // 由于 goToLine 包含 timestamp，每次点击都会触发
 
   // 高亮行
   useEffect(() => {

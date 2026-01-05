@@ -1,0 +1,345 @@
+/* FlowTextView 样式 */
+
+.flow-text-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+/* 工具栏 */
+.flow-text-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.view-mode-toggle {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.view-mode-toggle button {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.view-mode-toggle button:hover {
+  color: var(--text-primary);
+}
+
+.view-mode-toggle button.active {
+  background: var(--accent);
+  color: white;
+}
+
+/* 工具栏按钮 */
+.toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.toolbar-actions button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.toolbar-actions button:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent);
+}
+
+/* 导出下拉菜单 */
+.export-dropdown {
+  position: relative;
+}
+
+.export-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 160px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.export-dropdown:hover .export-menu,
+.export-dropdown:focus-within .export-menu {
+  display: block;
+}
+
+.export-menu button {
+  display: block;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.export-menu button:hover {
+  background: var(--bg-tertiary);
+}
+
+.export-menu button:first-child {
+  border-radius: 6px 6px 0 0;
+}
+
+.export-menu button:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+/* 文本内容容器 */
+.flow-text-container {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+  min-height: 0;
+}
+
+.flow-text-content {
+  margin: 0;
+  padding: 1rem;
+  background: #0d1117;
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #e6edf3;
+  white-space: pre;
+  overflow-x: auto;
+  min-height: 100%;
+}
+
+/* 语法高亮 */
+.flow-text-content .func-name {
+  color: #79c0ff;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.flow-text-content .func-name:hover {
+  color: #58a6ff;
+  text-decoration: underline;
+}
+
+.flow-text-content .brace {
+  color: #8b949e;
+}
+
+.flow-text-content .comment {
+  color: #6e7681;
+  font-style: italic;
+}
+
+.flow-text-content .async-tag {
+  color: #f0883e;
+  font-weight: 500;
+}
+
+.flow-text-content .icon {
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+
+/* 高亮行 */
+.flow-text-content .highlight {
+  background: rgba(88, 166, 255, 0.2);
+  display: inline;
+  border-radius: 2px;
+}
+
+/* 滚动条样式 */
+.flow-text-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.flow-text-container::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+}
+
+.flow-text-container::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.flow-text-container::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+.flow-text-content::-webkit-scrollbar {
+  height: 8px;
+}
+
+.flow-text-content::-webkit-scrollbar-track {
+  background: #161b22;
+}
+
+.flow-text-content::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+/* 帮助弹窗 */
+.help-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.help-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 700px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.help-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.help-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.help-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.help-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.help-content {
+  padding: 1.5rem;
+  overflow-y: auto;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.help-content h2 {
+  font-size: 1rem;
+  color: var(--accent);
+  margin: 1.5rem 0 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.help-content h2:first-child {
+  margin-top: 0;
+}
+
+.help-content h3 {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  margin: 1rem 0 0.5rem 0;
+}
+
+.help-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+}
+
+.help-content table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+}
+
+.help-content table tr:first-child td {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.help-content table tr:not(:first-child) td:first-child {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--accent);
+}
+
+.help-content code {
+  background: var(--bg-tertiary);
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+  color: #f0883e;
+}
+
+.help-content pre {
+  background: #0d1117;
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.help-content pre code {
+  background: none;
+  padding: 0;
+  color: #e6edf3;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.help-content p {
+  margin: 0.5rem 0;
+}
+

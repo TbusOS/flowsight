@@ -415,6 +415,7 @@ Q1        Q2        Q3        Q4        Q1        Q2        Q3
 | 4 | 命令面板 (Ctrl+P) | ✅ | 模糊搜索文件/符号 |
 
 **🎯 下一步工作重点**:
+- **执行流多视图 + 导出** (用户强烈需求) - 见下方 5.1.2
 - LSP 集成 (clangd) - 智能补全、跳转定义
 - 多标签页编辑
 - Phase 0 测试框架补充
@@ -422,6 +423,136 @@ Q1        Q2        Q3        Q4        Q1        Q2        Q3
 **📅 延后任务**:
 - 面包屑导航 → 后续版本
 - 子树聚焦 → 后续版本
+
+---
+
+### 5.1.2 ⭐ 执行流多视图 + CLI 交互 (高优先级)
+
+> 基于用户反馈：程序员更喜欢 ftrace 风格的文本输出
+
+**功能概述**：
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        执行流多视图架构                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   用户输入: 函数名 (e.g. "async_demo_init")                                  │
+│                       │                                                      │
+│                       ▼                                                      │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                    FlowSight 分析引擎                                │   │
+│   │            (生成统一的 FlowTree 数据结构)                            │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                       │                                                      │
+│         ┌─────────────┼─────────────┬─────────────┐                         │
+│         ▼             ▼             ▼             ▼                         │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                   │
+│   │ 图形视图  │  │ ftrace   │  │ 缩进文本  │  │ Markdown │                   │
+│   │ (React   │  │ 风格视图  │  │ 树形视图  │  │ 导出     │                   │
+│   │  Flow)   │  │          │  │          │  │          │                   │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘                   │
+│        │              │             │             │                         │
+│        └──────────────┴─────────────┴─────────────┘                         │
+│                       │                                                      │
+│         ┌─────────────┴─────────────┐                                       │
+│         ▼                           ▼                                       │
+│   ┌──────────────┐          ┌──────────────┐                                │
+│   │   UI 界面    │          │   CLI 终端   │                                │
+│   │  (Tauri)     │          │ (flowsight)  │                                │
+│   └──────────────┘          └──────────────┘                                │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**1. 多视图模式 (UI 内切换)**
+
+| 视图模式 | 描述 | 使用场景 |
+|----------|------|----------|
+| 📊 图形 (当前) | React Flow 交互式图谱 | 浏览复杂调用关系 |
+| 📝 ftrace | 类似 ftrace 的缩进文本 | 内核开发者习惯 |
+| 🌲 树形 | 简洁的缩进树 | 快速浏览 |
+| 📋 列表 | 平铺调用链 | 搜索特定函数 |
+
+**ftrace 风格示例**:
+```
+ 0)               |  async_demo_init() {
+ 0)               |    platform_driver_register() {
+ 0)   ........    |      __platform_driver_register();
+ 0)               |    }
+ 0)               |    INIT_WORK() {           /* 异步 */
+ 0)   --------    |      → demo_work_handler   /* WorkQueue */
+ 0)               |    }
+ 0)               |    setup_timer() {         /* 异步 */
+ 0)   --------    |      → demo_timer_callback /* Timer */
+ 0)               |    }
+ 0)               |  }
+```
+
+**2. 导出功能**
+
+| 格式 | 描述 |
+|------|------|
+| Markdown | 带代码块的文档，可嵌入 README |
+| 纯文本 | ftrace 风格，可粘贴到邮件/聊天 |
+| JSON | 机器可读，供其他工具使用 |
+| SVG | 图形导出为图片 |
+
+**3. CLI 交互模式**
+
+```bash
+# 查询单个函数的执行流
+$ flowsight trace async_demo_init
+ 0)               |  async_demo_init() {
+ 0)               |    platform_driver_register();
+ 0)               |    INIT_WORK() → demo_work_handler [WorkQueue]
+ 0)               |    setup_timer() → demo_timer_callback [Timer]
+ 0)               |  }
+
+# 查询谁调用了某函数
+$ flowsight callers demo_work_handler
+Called by:
+  → async_demo_init() via WorkQueue (INIT_WORK)
+  → async_demo_probe() via schedule_work()
+
+# 查询某函数调用了谁
+$ flowsight callees async_demo_init
+async_demo_init() calls:
+  ├── platform_driver_register() [Direct]
+  ├── INIT_WORK() [Async → demo_work_handler]
+  ├── setup_timer() [Async → demo_timer_callback]
+  └── pr_info() [Direct]
+
+# 导出 Markdown
+$ flowsight trace async_demo_init --format markdown > flow.md
+
+# 交互模式
+$ flowsight -i
+flowsight> trace async_demo_init
+...
+flowsight> callers demo_work_handler
+...
+flowsight> exit
+```
+
+**4. 实现计划**
+
+| 序号 | 任务 | 预估时间 | 优先级 |
+|------|------|----------|--------|
+| 1 | **ftrace 格式渲染器** | 2h | ⭐⭐⭐ |
+| 2 | **视图切换 UI** (工具栏按钮) | 1h | ⭐⭐⭐ |
+| 3 | **Markdown 导出** | 2h | ⭐⭐⭐ |
+| 4 | **纯文本/JSON 导出** | 1h | ⭐⭐ |
+| 5 | **CLI trace 命令** | 3h | ⭐⭐ |
+| 6 | **CLI callers/callees** | 2h | ⭐⭐ |
+| 7 | **CLI 交互模式** | 3h | ⭐ |
+| 8 | **SVG 图片导出** | 2h | ⭐ |
+
+**状态**: 
+- [ ] ftrace 格式渲染器
+- [ ] 视图切换 UI
+- [ ] Markdown 导出
+- [ ] CLI 命令增强
 
 ---
 

@@ -5,7 +5,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import { FlowView } from './components/FlowView'
+import { FlowView, FlowTextView } from './components/FlowView'
 import { CodeEditor } from './components/Editor'
 import { FileTree, FileNode } from './components/Explorer'
 import { Outline, OutlineItem } from './components/Outline'
@@ -20,6 +20,7 @@ import {
 } from './types'
 
 type ViewMode = 'flow' | 'code' | 'split'
+type FlowDisplayMode = 'graph' | 'text'  // 执行流显示模式：图形 vs 文本
 
 // 导航历史记录项
 interface NavigationEntry {
@@ -36,8 +37,10 @@ function App() {
   const [selectedFunction, setSelectedFunction] = useState<string | null>(null)
   const [filePath, setFilePath] = useState('')
   const [fileContent, setFileContent] = useState('')
-  const [goToLine, setGoToLine] = useState<number | undefined>()
+  // goToLine 包含时间戳，确保每次点击都能触发跳转
+  const [goToLine, setGoToLine] = useState<{ line: number; timestamp: number } | undefined>()
   const [viewMode, setViewMode] = useState<ViewMode>('split')
+  const [flowDisplayMode, setFlowDisplayMode] = useState<FlowDisplayMode>('graph')
   
   // Project state
   const [project, setProject] = useState<ProjectInfo | null>(null)
@@ -185,7 +188,7 @@ function App() {
     
     setSelectedFunction(entry.selectedFunction)
     if (entry.line) {
-      setGoToLine(entry.line)
+      setGoToLine({ line: entry.line, timestamp: Date.now() })
     }
     
     isNavigating.current = false
@@ -235,7 +238,7 @@ function App() {
     
     setSelectedFunction(entry.selectedFunction)
     if (entry.line) {
-      setGoToLine(entry.line)
+      setGoToLine({ line: entry.line, timestamp: Date.now() })
     }
     
     isNavigating.current = false
@@ -417,7 +420,7 @@ function App() {
         called_by: [],
         params: [],
       })
-      setGoToLine(funcFromOutline.line)
+      setGoToLine({ line: funcFromOutline.line, timestamp: Date.now() })
     } else {
       // Try to find in flow trees for line info
       if (result) {
@@ -448,7 +451,7 @@ function App() {
             params: [],
           })
           if (node.location?.line) {
-            setGoToLine(node.location.line)
+            setGoToLine({ line: node.location.line, timestamp: Date.now() })
           }
         } else {
           // External function, show basic info
@@ -478,7 +481,7 @@ function App() {
     if (searchResult.file) {
       await handleAnalyze(searchResult.file)
       if (searchResult.line) {
-        setGoToLine(searchResult.line)
+        setGoToLine({ line: searchResult.line, timestamp: Date.now() })
       }
       // 记录导航历史
       pushNavHistory({ 
@@ -548,7 +551,7 @@ function App() {
   // Handle outline item click
   const handleOutlineClick = (item: OutlineItem) => {
     setSelectedFunction(item.name)
-    setGoToLine(item.line)
+    setGoToLine({ line: item.line, timestamp: Date.now() })
     // 记录导航历史
     if (filePath) {
       pushNavHistory({ filePath, selectedFunction: item.name, line: item.line })
@@ -560,7 +563,7 @@ function App() {
     if (item.path) {
       await handleAnalyze(item.path)
       if (item.line) {
-        setGoToLine(item.line)
+        setGoToLine({ line: item.line, timestamp: Date.now() })
       }
       if (item.type === 'symbol') {
         setSelectedFunction(item.name)
@@ -801,11 +804,37 @@ function App() {
             )}
             {(viewMode === 'flow' || viewMode === 'split') && (
               <div className="flow-panel">
-                <FlowView 
-                  flowTrees={flowTrees} 
-                  onNodeClick={handleNodeClick}
-                  selectedFunction={selectedFunction || undefined}
-                />
+                {/* 执行流视图模式切换 */}
+                <div className="flow-mode-toggle">
+                  <button 
+                    className={flowDisplayMode === 'graph' ? 'active' : ''}
+                    onClick={() => setFlowDisplayMode('graph')}
+                    title="图形视图"
+                  >
+                    📊 图形
+                  </button>
+                  <button 
+                    className={flowDisplayMode === 'text' ? 'active' : ''}
+                    onClick={() => setFlowDisplayMode('text')}
+                    title="文本视图 (ftrace风格)"
+                  >
+                    📝 文本
+                  </button>
+                </div>
+                
+                {flowDisplayMode === 'graph' ? (
+                  <FlowView 
+                    flowTrees={flowTrees} 
+                    onNodeClick={handleNodeClick}
+                    selectedFunction={selectedFunction || undefined}
+                  />
+                ) : (
+                  <FlowTextView 
+                    flowTrees={flowTrees}
+                    onNodeClick={(name) => handleNodeClick('', name)}
+                    selectedFunction={selectedFunction || undefined}
+                  />
+                )}
               </div>
             )}
           </div>

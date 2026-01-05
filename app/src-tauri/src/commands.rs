@@ -388,3 +388,10 @@ pub async fn expand_directory(path: String) -> Result<Vec<FileNode>, String> {
     list_directory(path, false).await
 }
 
+/// Export flow analysis text to file
+#[tauri::command]
+pub async fn export_flow_text(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Failed to write file: {}", e))
+}
+
