@@ -136,21 +136,64 @@ static struct file_operations fops = {
 
 ### 从源码构建
 
-```bash
-# 前置条件
-# - Rust 1.75+
-# - Node.js 20+
-# - pnpm
+#### 前置条件
 
-# 克隆仓库
+| 依赖 | 版本 | 安装说明 |
+|------|------|----------|
+| Rust | 1.75+ | [rustup.rs](https://rustup.rs/) |
+| Node.js | 20+ | [nodejs.org](https://nodejs.org/) |
+| pnpm | 8+ | `npm install -g pnpm` |
+
+#### Windows 构建
+
+```powershell
+# 1. 安装 Rust (在 PowerShell 中运行)
+winget install Rustlang.Rustup
+# 或从 https://rustup.rs 下载安装程序
+
+# 2. 安装 Node.js
+winget install OpenJS.NodeJS.LTS
+
+# 3. 安装 pnpm
+npm install -g pnpm
+
+# 4. 克隆并构建
 git clone https://github.com/TbusOS/flowsight.git
-cd flowsight
-
-# 安装依赖
+cd flowsight/app
 pnpm install
+pnpm tauri dev
 
-# 开发模式运行
-cargo tauri dev
+# 5. 构建发布版本 (生成安装包)
+pnpm tauri build
+# 输出: target/release/bundle/msi/flowsight_*.msi
+```
+
+#### macOS / Linux 构建
+
+```bash
+# 1. 安装 Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+
+# 2. 安装 Node.js (推荐使用 nvm)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install 20
+nvm use 20
+
+# 3. 安装 pnpm
+npm install -g pnpm
+
+# 4. 克隆并构建
+git clone https://github.com/TbusOS/flowsight.git
+cd flowsight/app
+pnpm install
+pnpm tauri dev
+
+# 5. 构建发布版本
+pnpm tauri build
+# macOS: target/release/bundle/dmg/flowsight_*.dmg
+# Linux: target/release/bundle/deb/flowsight_*.deb
+#        target/release/bundle/appimage/flowsight_*.AppImage
 ```
 
 ---
@@ -160,26 +203,46 @@ cargo tauri dev
 ### 1. 打开项目
 
 ```
-文件 → 打开文件夹 → 选择源代码目录
+📁 打开项目 → 选择 C 代码目录
+或
+📄 打开文件 → 选择单个 .c/.h 文件
 ```
 
-### 2. 等待索引
+### 2. 浏览代码
 
-FlowSight 会自动索引项目。对于 Linux 内核这样的大型项目，可能需要几分钟。
+- **左侧面板**: 文件树 + 函数列表
+- **中间面板**: 代码编辑器 (多标签页)
+- **右侧面板**: 执行流图
 
-### 3. 探索执行流
+### 3. 分析执行流
 
-- **右键点击** 函数 → "显示执行流"
-- **Ctrl+Click** 跳转到定义
-- 使用 **执行流视图** 面板查看异步调用链
+- 点击右侧 **函数列表** 中的函数
+- 查看该函数的 **完整调用链**
+- 点击节点跳转到代码
 
-### 4. 理解异步模式
+### 4. 切换视图
 
-FlowSight 自动检测：
-- 工作队列处理函数
-- 定时器回调
-- 中断处理程序
-- 函数指针赋值
+| 视图 | 说明 |
+|------|------|
+| 📊 图形 | 可视化调用图 (默认) |
+| 📝 文本 | ftrace 风格文本输出 |
+| 🌳 树形 | 缩进层级树 |
+
+### ⌨️ 快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+P` / `Cmd+P` | 打开命令面板 (搜索文件/符号) |
+| `Alt+←` / `Alt+→` | 后退/前进导航 |
+| `Ctrl+\` | 切换侧边栏 |
+| 鼠标侧键 | 后退导航 |
+
+### 5. 导出分析结果
+
+在文本视图中，点击 **📥 导出** 按钮：
+- `.txt` - 纯文本 ftrace 格式
+- `.md` - Markdown 文档
+- `.json` - 结构化 JSON
 
 ---
 
