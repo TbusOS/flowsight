@@ -4,6 +4,7 @@
 //! Supports incremental updates for large codebases.
 
 use flowsight_core::{FunctionDef, StructDef};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -11,18 +12,44 @@ use std::time::SystemTime;
 mod file_tracker;
 mod tree_cache;
 mod batch_indexer;
+mod storage;
 
 pub use file_tracker::FileVersionTracker;
 pub use tree_cache::TreeCache;
 pub use batch_indexer::BatchIndexer;
+pub use storage::{IndexStorage, StorageError};
 
 /// File version information for incremental indexing
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileVersion {
     pub path: PathBuf,
     pub hash: u64,
+    #[serde(with = "system_time_serde")]
     pub mtime: SystemTime,
+    #[serde(with = "system_time_serde")]
     pub indexed_at: SystemTime,
+}
+
+/// Serde helper for SystemTime
+mod system_time_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    pub fn serialize<S>(time: &SystemTime, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let duration = time.duration_since(UNIX_EPOCH).unwrap_or_default();
+        (duration.as_secs(), duration.subsec_nanos()).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<SystemTime, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (secs, nanos): (u64, u32) = Deserialize::deserialize(deserializer)?;
+        Ok(UNIX_EPOCH + Duration::new(secs, nanos))
+    }
 }
 
 /// Symbol index containing all indexed information
@@ -167,6 +194,16 @@ impl IndexManager {
     /// Get mutable tree cache
     pub fn tree_cache_mut(&mut self) -> &mut TreeCache {
         &mut self.tree_cache
+    }
+
+    /// Get file tracker
+    pub fn file_tracker(&self) -> &FileVersionTracker {
+        &self.file_tracker
+    }
+
+    /// Get mutable file tracker
+    pub fn file_tracker_mut(&mut self) -> &mut FileVersionTracker {
+        &mut self.file_tracker
     }
 
     /// Check which files need reindexing

@@ -2,7 +2,7 @@
 //!
 //! High-level query interface for code analysis.
 
-use flowsight_core::{Result, FunctionDef};
+use flowsight_core::FunctionDef;
 use flowsight_index::SymbolIndex;
 
 /// Query engine

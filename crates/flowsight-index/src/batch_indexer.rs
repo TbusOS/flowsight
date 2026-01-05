@@ -4,7 +4,6 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender, Receiver};
-use std::sync::Arc;
 
 /// Progress event for indexing operations
 #[derive(Debug, Clone)]

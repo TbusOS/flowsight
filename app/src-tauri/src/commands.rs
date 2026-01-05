@@ -2,8 +2,12 @@
 
 use flowsight_parser::get_parser;
 use flowsight_analysis::Analyzer;
+use flowsight_index::SymbolIndex;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use walkdir::WalkDir;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnalysisResult {
@@ -87,5 +91,136 @@ pub async fn get_functions(path: String) -> Result<Vec<FunctionInfo>, String> {
 pub async fn read_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path)
         .map_err(|e| e.to_string())
+}
+
+/// Global index state
+static INDEX: Lazy<Mutex<SymbolIndex>> = Lazy::new(|| Mutex::new(SymbolIndex::new()));
+
+/// Project information
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProjectInfo {
+    pub path: String,
+    pub files_count: usize,
+    pub functions_count: usize,
+    pub structs_count: usize,
+    pub indexed: bool,
+}
+
+/// Search result
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub name: String,
+    pub kind: String, // "function" or "struct"
+    pub file: Option<String>,
+    pub line: Option<u32>,
+    pub is_callback: bool,
+}
+
+/// Open a project directory and index it
+#[tauri::command]
+pub async fn open_project(path: String) -> Result<ProjectInfo, String> {
+    let project_path = PathBuf::from(&path);
+    
+    if !project_path.is_dir() {
+        return Err("Path is not a directory".into());
+    }
+    
+    // Find all C files
+    let c_files: Vec<PathBuf> = WalkDir::new(&project_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path().extension()
+                .map(|ext| ext == "c" || ext == "h")
+                .unwrap_or(false)
+        })
+        .map(|e| e.path().to_path_buf())
+        .collect();
+
+    let parser = get_parser();
+    let mut index = INDEX.lock().map_err(|e| e.to_string())?;
+    
+    // Clear previous index
+    *index = SymbolIndex::new();
+    
+    // Index all files
+    for file in &c_files {
+        if let Ok(result) = parser.parse_file(file) {
+            for (_, func) in result.functions {
+                index.add_function(func, file);
+            }
+            for (_, st) in result.structs {
+                index.add_struct(st);
+            }
+        }
+    }
+
+    Ok(ProjectInfo {
+        path,
+        files_count: c_files.len(),
+        functions_count: index.stats().total_functions,
+        structs_count: index.stats().total_structs,
+        indexed: true,
+    })
+}
+
+/// Search for symbols in the index
+#[tauri::command]
+pub async fn search_symbols(query: String) -> Result<Vec<SearchResult>, String> {
+    let index = INDEX.lock().map_err(|e| e.to_string())?;
+    let query_lower = query.to_lowercase();
+    
+    let mut results = Vec::new();
+    
+    // Search functions
+    for (name, func) in &index.functions {
+        if name.to_lowercase().contains(&query_lower) {
+            results.push(SearchResult {
+                name: name.clone(),
+                kind: "function".into(),
+                file: func.location.as_ref().map(|l| l.file.clone()),
+                line: func.location.as_ref().map(|l| l.line),
+                is_callback: func.is_callback,
+            });
+        }
+    }
+    
+    // Search structs
+    for (name, st) in &index.structs {
+        if name.to_lowercase().contains(&query_lower) {
+            results.push(SearchResult {
+                name: name.clone(),
+                kind: "struct".into(),
+                file: st.location.as_ref().map(|l| l.file.clone()),
+                line: st.location.as_ref().map(|l| l.line),
+                is_callback: false,
+            });
+        }
+    }
+    
+    // Limit results
+    results.truncate(50);
+    
+    Ok(results)
+}
+
+/// Get index statistics
+#[tauri::command]
+pub async fn get_index_stats() -> Result<IndexStats, String> {
+    let index = INDEX.lock().map_err(|e| e.to_string())?;
+    let stats = index.stats();
+    
+    Ok(IndexStats {
+        functions: stats.total_functions,
+        structs: stats.total_structs,
+        files: stats.total_files,
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IndexStats {
+    pub functions: usize,
+    pub structs: usize,
+    pub files: usize,
 }
 
