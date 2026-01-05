@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { FlowView } from './components/FlowView'
+import { CodeEditor } from './components/Editor'
 import { AnalysisResult, FlowTreeNode } from './types'
 
 interface ProjectInfo {
@@ -30,12 +31,17 @@ interface IndexStats {
   files: number
 }
 
+type ViewMode = 'flow' | 'code' | 'split'
+
 function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedFunction, setSelectedFunction] = useState<string | null>(null)
   const [filePath, setFilePath] = useState('')
+  const [fileContent, setFileContent] = useState('')
+  const [goToLine, setGoToLine] = useState<number | undefined>()
+  const [viewMode, setViewMode] = useState<ViewMode>('split')
   
   // Project state
   const [project, setProject] = useState<ProjectInfo | null>(null)
@@ -86,7 +92,7 @@ function App() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Analyze file
+  // Analyze and load file
   const handleAnalyze = async (path?: string) => {
     const targetPath = path || filePath
     if (!targetPath) return
@@ -95,9 +101,14 @@ function App() {
     setError(null)
     
     try {
+      // Load file content
+      const content = await invoke<string>('read_file', { path: targetPath })
+      setFileContent(content)
+      setFilePath(targetPath)
+      
+      // Analyze file
       const analysis = await invoke<AnalysisResult>('analyze_file', { path: targetPath })
       setResult(analysis)
-      setFilePath(targetPath)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -105,18 +116,72 @@ function App() {
     }
   }
 
+  // Open file dialog
+  const handleOpenFile = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        title: '选择源文件',
+        filters: [
+          { name: 'C/C++ Files', extensions: ['c', 'h', 'cpp', 'hpp', 'cc'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      })
+      
+      if (selected && typeof selected === 'string') {
+        handleAnalyze(selected)
+      }
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   const handleNodeClick = useCallback((_nodeId: string, functionName: string) => {
     setSelectedFunction(functionName)
-    console.log('Selected function:', functionName)
-  }, [])
-
-  const handleSearchResultClick = (result: SearchResult) => {
-    if (result.file) {
-      handleAnalyze(result.file)
+    
+    // Find function line and jump to it
+    if (result) {
+      // Search in flow trees for the function location
+      const findLine = (nodes: FlowTreeNode[]): number | null => {
+        for (const node of nodes) {
+          if (node.name === functionName && node.location) {
+            return node.location.line
+          }
+          if (node.children) {
+            const found = findLine(node.children)
+            if (found) return found
+          }
+        }
+        return null
+      }
+      
+      const line = findLine(result.flow_trees)
+      if (line) {
+        setGoToLine(line)
+      }
     }
-    setSelectedFunction(result.name)
+  }, [result])
+
+  const handleSearchResultClick = (searchResult: SearchResult) => {
+    if (searchResult.file) {
+      handleAnalyze(searchResult.file)
+      if (searchResult.line) {
+        setGoToLine(searchResult.line)
+      }
+    }
+    setSelectedFunction(searchResult.name)
     setSearchQuery('')
     setSearchResults([])
+  }
+
+  const handleEditorLineClick = (line: number) => {
+    console.log('Clicked line:', line)
+  }
+
+  // Get highlight lines from async handlers
+  const highlightLines: number[] = []
+  if (result) {
+    // Could add logic to highlight callback function lines
   }
 
   const flowTrees: FlowTreeNode[] = result?.flow_trees || []
@@ -131,7 +196,10 @@ function App() {
           </div>
           <div className="header-actions">
             <button onClick={handleOpenProject} className="button secondary">
-              📂 打开项目
+              📂 项目
+            </button>
+            <button onClick={handleOpenFile} className="button secondary">
+              📄 文件
             </button>
             <div className="search-container">
               <input
@@ -162,15 +230,31 @@ function App() {
                 </div>
               )}
             </div>
-            <input
-              type="text"
-              className="file-input"
-              value={filePath}
-              onChange={(e) => setFilePath(e.target.value)}
-              placeholder="文件路径..."
-            />
-            <button onClick={() => handleAnalyze()} disabled={loading} className="button primary">
-              {loading ? '⏳' : '🔍'}
+            <div className="view-toggle">
+              <button 
+                className={`toggle-btn ${viewMode === 'code' ? 'active' : ''}`}
+                onClick={() => setViewMode('code')}
+                title="代码视图"
+              >
+                📝
+              </button>
+              <button 
+                className={`toggle-btn ${viewMode === 'split' ? 'active' : ''}`}
+                onClick={() => setViewMode('split')}
+                title="分屏视图"
+              >
+                ⚡
+              </button>
+              <button 
+                className={`toggle-btn ${viewMode === 'flow' ? 'active' : ''}`}
+                onClick={() => setViewMode('flow')}
+                title="执行流视图"
+              >
+                📊
+              </button>
+            </div>
+            <button onClick={() => handleAnalyze()} disabled={loading || !filePath} className="button primary">
+              {loading ? '⏳' : '🔄'}
             </button>
           </div>
         </div>
@@ -206,7 +290,8 @@ function App() {
           ) : (
             <div className="welcome-project">
               <h2>👋 开始使用</h2>
-              <p>点击"打开项目"选择代码目录</p>
+              <p>点击"项目"打开代码目录</p>
+              <p>或点击"文件"打开单个文件</p>
             </div>
           )}
 
@@ -243,7 +328,11 @@ function App() {
                 <h3>🚀 入口点</h3>
                 <ul>
                   {result.entry_points.map((entry, i) => (
-                    <li key={i} className={selectedFunction === entry ? 'selected' : ''}>
+                    <li 
+                      key={i} 
+                      className={selectedFunction === entry ? 'selected' : ''}
+                      onClick={() => handleNodeClick('', entry)}
+                    >
                       <code>{entry}()</code>
                     </li>
                   ))}
@@ -259,23 +348,50 @@ function App() {
                 <li>🔌 回调函数解析</li>
                 <li>📦 数据结构关系</li>
               </ul>
-              <p className="hint">输入源码文件路径开始分析</p>
+              <p className="hint">打开源码文件开始分析</p>
             </div>
           )}
         </div>
 
-        {/* 中间区域 - 执行流可视化 */}
+        {/* 中间区域 - 代码/执行流可视化 */}
         <div className="panel main-content">
           <div className="panel-header">
-            <h2>📊 执行流视图</h2>
+            <h2>
+              {viewMode === 'code' ? '📝 代码编辑器' : 
+               viewMode === 'flow' ? '📊 执行流视图' : 
+               '⚡ 代码 + 执行流'}
+            </h2>
             {selectedFunction && (
               <span className="selected-info">
                 已选择: <code>{selectedFunction}()</code>
               </span>
             )}
           </div>
-          <div className="flow-container">
-            <FlowView flowTrees={flowTrees} onNodeClick={handleNodeClick} />
+          
+          <div className={`content-area ${viewMode}`}>
+            {(viewMode === 'code' || viewMode === 'split') && (
+              <div className="editor-panel">
+                {fileContent ? (
+                  <CodeEditor
+                    content={fileContent}
+                    filePath={filePath}
+                    goToLine={goToLine}
+                    highlightLines={highlightLines}
+                    onLineClick={handleEditorLineClick}
+                    readOnly={true}
+                  />
+                ) : (
+                  <div className="empty-editor">
+                    <p>📄 打开文件查看代码</p>
+                  </div>
+                )}
+              </div>
+            )}
+            {(viewMode === 'flow' || viewMode === 'split') && (
+              <div className="flow-panel">
+                <FlowView flowTrees={flowTrees} onNodeClick={handleNodeClick} />
+              </div>
+            )}
           </div>
         </div>
 
