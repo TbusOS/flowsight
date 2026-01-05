@@ -4,14 +4,37 @@
  * 显示快速入门指南和快捷键说明
  */
 
+import { useState, useEffect } from 'react'
+import { getRecentFiles, formatTimestamp, clearRecentFiles, type RecentFile } from '../../utils/recentFiles'
 import './Welcome.css'
 
 interface WelcomeProps {
   onOpenFile: () => void
   onOpenProject: () => void
+  onOpenRecentFile?: (path: string) => void
+  onOpenRecentProject?: (path: string) => void
 }
 
-export function Welcome({ onOpenFile, onOpenProject }: WelcomeProps) {
+export function Welcome({ onOpenFile, onOpenProject, onOpenRecentFile, onOpenRecentProject }: WelcomeProps) {
+  const [recentFiles, setRecentFiles] = useState<RecentFile[]>([])
+
+  useEffect(() => {
+    setRecentFiles(getRecentFiles())
+  }, [])
+
+  const handleClearRecent = () => {
+    clearRecentFiles()
+    setRecentFiles([])
+  }
+
+  const handleOpenRecent = (file: RecentFile) => {
+    if (file.isProject && onOpenRecentProject) {
+      onOpenRecentProject(file.path)
+    } else if (onOpenRecentFile) {
+      onOpenRecentFile(file.path)
+    }
+  }
+
   return (
     <div className="welcome-container">
       <div className="welcome-content">
@@ -41,6 +64,34 @@ export function Welcome({ onOpenFile, onOpenProject }: WelcomeProps) {
           </button>
         </div>
 
+        {/* Recent Files */}
+        {recentFiles.length > 0 && (
+          <div className="welcome-recent">
+            <div className="recent-header">
+              <h3>🕐 最近打开</h3>
+              <button className="clear-btn" onClick={handleClearRecent} title="清除记录">
+                清除
+              </button>
+            </div>
+            <div className="recent-list">
+              {recentFiles.map((file, index) => (
+                <button 
+                  key={index} 
+                  className="recent-item"
+                  onClick={() => handleOpenRecent(file)}
+                >
+                  <span className="recent-icon">{file.isProject ? '📁' : '📄'}</span>
+                  <span className="recent-info">
+                    <span className="recent-name">{file.name}</span>
+                    <span className="recent-path">{file.path}</span>
+                  </span>
+                  <span className="recent-time">{formatTimestamp(file.timestamp)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Shortcuts */}
         <div className="welcome-shortcuts">
           <h3>⌨️ 快捷键</h3>
@@ -50,24 +101,24 @@ export function Welcome({ onOpenFile, onOpenProject }: WelcomeProps) {
               <span>命令面板</span>
             </div>
             <div className="shortcut">
+              <kbd>Ctrl</kbd> + <kbd>F</kbd>
+              <span>查找</span>
+            </div>
+            <div className="shortcut">
               <kbd>Ctrl</kbd> + <kbd>S</kbd>
               <span>保存文件</span>
             </div>
             <div className="shortcut">
-              <kbd>Alt</kbd> + <kbd>←</kbd>
-              <span>后退导航</span>
+              <kbd>?</kbd>
+              <span>快捷键帮助</span>
             </div>
             <div className="shortcut">
-              <kbd>Alt</kbd> + <kbd>→</kbd>
-              <span>前进导航</span>
+              <kbd>Ctrl</kbd> + <kbd>B</kbd>
+              <span>切换侧边栏</span>
             </div>
             <div className="shortcut">
-              <kbd>1</kbd> - <kbd>5</kbd>
-              <span>按层级折叠</span>
-            </div>
-            <div className="shortcut">
-              <kbd>右键</kbd>
-              <span>子树聚焦</span>
+              <kbd>Ctrl</kbd> + <kbd>1/2/3</kbd>
+              <span>切换视图</span>
             </div>
           </div>
         </div>
@@ -113,4 +164,3 @@ export function Welcome({ onOpenFile, onOpenProject }: WelcomeProps) {
 }
 
 export default Welcome
-

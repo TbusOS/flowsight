@@ -16,6 +16,8 @@ import { StatusBar } from './components/StatusBar'
 import { Welcome } from './components/Welcome'
 import { Settings, defaultSettings, type AppSettings } from './components/Settings'
 import { FindReplace, type FindMatch } from './components/FindReplace'
+import { KeyboardShortcuts } from './components/KeyboardShortcuts'
+import { addRecentFile } from './utils/recentFiles'
 import { 
   AnalysisResult, 
   FlowTreeNode, 
@@ -84,6 +86,9 @@ function App() {
   // 查找替换状态
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [findMatches, setFindMatches] = useState<FindMatch[]>([])
+  
+  // 快捷键帮助状态
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   
   // Panel width state (percentage)
   const [leftPanelWidth, setLeftPanelWidth] = useState(220)
@@ -284,6 +289,29 @@ function App() {
         e.preventDefault()
         setFindReplaceOpen(true)
       }
+      // ? 打开快捷键帮助 (只有在没有焦点在输入框时)
+      if (e.key === '?' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+        e.preventDefault()
+        setShortcutsOpen(true)
+      }
+      // Ctrl+B 切换侧边栏
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault()
+        setLeftPanelOpen(prev => !prev)
+      }
+      // Ctrl+1/2/3 切换视图
+      if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+        e.preventDefault()
+        setViewMode('code')
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '2') {
+        e.preventDefault()
+        setViewMode('split')
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '3') {
+        e.preventDefault()
+        setViewMode('flow')
+      }
       // Alt+Left or Cmd+[ 后退
       if ((e.altKey && e.key === 'ArrowLeft') || (e.metaKey && e.key === '[')) {
         e.preventDefault()
@@ -331,6 +359,7 @@ function App() {
         setError(null)
         const info = await invoke<ProjectInfo>('open_project', { path: selected })
         setProject(info)
+        addRecentFile(selected, true) // 记录最近项目
         const stats = await invoke<IndexStats>('get_index_stats')
         setIndexStats(stats)
         
@@ -402,6 +431,7 @@ function App() {
       setActiveTabId(newTab.id)
       setFilePath(path)
       setFileContent(content)
+      addRecentFile(path, false) // 记录最近文件
       
       return newTab.id
     } catch (err) {
@@ -930,6 +960,9 @@ function App() {
             <button onClick={() => handleAnalyze()} disabled={loading || !filePath} className="button primary">
               {loading ? '⏳' : '🔄'}
             </button>
+            <button onClick={() => setShortcutsOpen(true)} className="button icon" title="快捷键帮助 (?)">
+              ⌨️
+            </button>
             <button onClick={() => setSettingsOpen(true)} className="button icon" title="设置">
               ⚙️
             </button>
@@ -1074,6 +1107,23 @@ function App() {
                   <Welcome 
                     onOpenFile={handleOpenFile}
                     onOpenProject={handleOpenProject}
+                    onOpenRecentFile={(path) => handleAnalyze(path)}
+                    onOpenRecentProject={async (path) => {
+                      try {
+                        setLoading(true)
+                        const info = await invoke<ProjectInfo>('open_project', { path })
+                        setProject(info)
+                        const stats = await invoke<IndexStats>('get_index_stats')
+                        setIndexStats(stats)
+                        const tree = await invoke<FileNode[]>('list_directory', { path, recursive: false })
+                        setFileTree(tree)
+                        setLeftPanelOpen(true)
+                      } catch (e) {
+                        setError(String(e))
+                      } finally {
+                        setLoading(false)
+                      }
+                    }}
                   />
                 )}
               </div>
@@ -1286,6 +1336,12 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         settings={appSettings}
         onSettingsChange={setAppSettings}
+      />
+      
+      {/* 快捷键帮助 */}
+      <KeyboardShortcuts
+        isOpen={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
       />
       
       {/* 状态栏 */}
