@@ -459,3 +459,157 @@ code {
     max-height: 200px;
   }
 }
+
+/* ============================================
+   搜索功能
+   ============================================ */
+.search-container {
+  position: relative;
+}
+
+.search-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 1rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  width: 280px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-top: 0.25rem;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: var(--shadow-lg);
+}
+
+.search-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.search-item:last-child {
+  border-bottom: none;
+}
+
+.search-item:hover {
+  background: var(--bg-hover);
+}
+
+.search-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.search-name {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.search-kind {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: 0.125rem 0.375rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.search-file {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
+   项目信息
+   ============================================ */
+.project-info {
+  margin-bottom: 1rem;
+}
+
+.info-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.info-item {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.info-number {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.info-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.info-value.small {
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+.welcome-project {
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+.welcome-project h2 {
+  margin-bottom: 0.5rem;
+}
+
+.welcome-project p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1rem 0;
+}
+
+/* ============================================
+   按钮变体
+   ============================================ */
+.button.secondary {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+
+.button.secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}

@@ -2,25 +2,102 @@
  * FlowSight - 跨平台执行流可视化 IDE
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 import { FlowView } from './components/FlowView'
 import { AnalysisResult, FlowTreeNode } from './types'
+
+interface ProjectInfo {
+  path: string
+  files_count: number
+  functions_count: number
+  structs_count: number
+  indexed: boolean
+}
+
+interface SearchResult {
+  name: string
+  kind: string
+  file: string | null
+  line: number | null
+  is_callback: boolean
+}
+
+interface IndexStats {
+  functions: number
+  structs: number
+  files: number
+}
 
 function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedFunction, setSelectedFunction] = useState<string | null>(null)
-  const [filePath, setFilePath] = useState('/tmp/test.c')
+  const [filePath, setFilePath] = useState('')
+  
+  // Project state
+  const [project, setProject] = useState<ProjectInfo | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [indexStats, setIndexStats] = useState<IndexStats | null>(null)
 
-  const handleAnalyze = async () => {
+  // Open project directory
+  const handleOpenProject = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: '选择项目目录'
+      })
+      
+      if (selected && typeof selected === 'string') {
+        setLoading(true)
+        setError(null)
+        const info = await invoke<ProjectInfo>('open_project', { path: selected })
+        setProject(info)
+        const stats = await invoke<IndexStats>('get_index_stats')
+        setIndexStats(stats)
+      }
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Search symbols
+  useEffect(() => {
+    if (searchQuery.length < 2) {
+      setSearchResults([])
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const results = await invoke<SearchResult[]>('search_symbols', { query: searchQuery })
+        setSearchResults(results)
+      } catch (e) {
+        console.error('Search error:', e)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Analyze file
+  const handleAnalyze = async (path?: string) => {
+    const targetPath = path || filePath
+    if (!targetPath) return
+    
     setLoading(true)
     setError(null)
     
     try {
-      const analysis = await invoke<AnalysisResult>('analyze_file', { path: filePath })
+      const analysis = await invoke<AnalysisResult>('analyze_file', { path: targetPath })
       setResult(analysis)
+      setFilePath(targetPath)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -33,7 +110,15 @@ function App() {
     console.log('Selected function:', functionName)
   }, [])
 
-  // 获取要显示的执行流树
+  const handleSearchResultClick = (result: SearchResult) => {
+    if (result.file) {
+      handleAnalyze(result.file)
+    }
+    setSelectedFunction(result.name)
+    setSearchQuery('')
+    setSearchResults([])
+  }
+
   const flowTrees: FlowTreeNode[] = result?.flow_trees || []
 
   return (
@@ -45,23 +130,88 @@ function App() {
             <p>看见代码的"灵魂" — 执行流可视化 IDE</p>
           </div>
           <div className="header-actions">
+            <button onClick={handleOpenProject} className="button secondary">
+              📂 打开项目
+            </button>
+            <div className="search-container">
+              <input
+                type="text"
+                className="search-input"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="🔍 搜索函数或结构体..."
+              />
+              {searchResults.length > 0 && (
+                <div className="search-dropdown">
+                  {searchResults.map((r, i) => (
+                    <div 
+                      key={i} 
+                      className="search-item"
+                      onClick={() => handleSearchResultClick(r)}
+                    >
+                      <span className="search-icon">
+                        {r.kind === 'function' ? (r.is_callback ? '⚡' : '📦') : '🏗️'}
+                      </span>
+                      <span className="search-name">{r.name}</span>
+                      <span className="search-kind">{r.kind}</span>
+                      {r.file && (
+                        <span className="search-file">{r.file.split('/').pop()}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <input
               type="text"
               className="file-input"
               value={filePath}
               onChange={(e) => setFilePath(e.target.value)}
-              placeholder="输入文件路径..."
+              placeholder="文件路径..."
             />
-            <button onClick={handleAnalyze} disabled={loading} className="button primary">
-              {loading ? '⏳ 分析中...' : '🔍 分析代码'}
+            <button onClick={() => handleAnalyze()} disabled={loading} className="button primary">
+              {loading ? '⏳' : '🔍'}
             </button>
           </div>
         </div>
       </header>
 
       <main className="main">
-        {/* 左侧面板 - 分析信息 */}
+        {/* 左侧面板 - 项目和分析信息 */}
         <div className="panel sidebar">
+          {project ? (
+            <>
+              <h2>📁 项目</h2>
+              <div className="project-info">
+                <div className="info-card">
+                  <span className="info-label">路径</span>
+                  <span className="info-value small">{project.path.split('/').pop()}</span>
+                </div>
+                <div className="info-row">
+                  <div className="info-item">
+                    <span className="info-number">{indexStats?.files || 0}</span>
+                    <span className="info-text">文件</span>
+                  </div>
+                  <div className="info-item">
+                    <span className="info-number">{indexStats?.functions || 0}</span>
+                    <span className="info-text">函数</span>
+                  </div>
+                  <div className="info-item">
+                    <span className="info-number">{indexStats?.structs || 0}</span>
+                    <span className="info-text">结构体</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="welcome-project">
+              <h2>👋 开始使用</h2>
+              <p>点击"打开项目"选择代码目录</p>
+            </div>
+          )}
+
+          <hr className="divider" />
+          
           <h2>📋 分析概览</h2>
           
           {error && (
@@ -139,7 +289,6 @@ function App() {
               <p className="detail-hint">
                 点击节点查看函数详情
               </p>
-              {/* 后续添加更多详情信息 */}
             </div>
           ) : (
             <div className="detail-placeholder">
