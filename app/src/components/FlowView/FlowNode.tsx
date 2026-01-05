@@ -16,6 +16,7 @@ interface FlowNodeData {
   childCount: number
   isSelected: boolean
   onToggle: () => void
+  onContextMenu?: (e: React.MouseEvent) => void
 }
 
 export const FlowNodeComponent = memo(({ data }: NodeProps) => {
@@ -30,6 +31,7 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
     childCount,
     isSelected,
     onToggle,
+    onContextMenu,
   } = nodeData
 
   const handleToggleClick = (e: React.MouseEvent) => {
@@ -38,7 +40,10 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
   }
 
   return (
-    <div className={`flow-node node-${nodeClass} ${isSelected ? 'selected' : ''}`}>
+    <div 
+      className={`flow-node node-${nodeClass} ${isSelected ? 'selected' : ''}`}
+      onContextMenu={onContextMenu}
+    >
       <Handle type="target" position={Position.Left} />
       
       {/* 异步标签 */}

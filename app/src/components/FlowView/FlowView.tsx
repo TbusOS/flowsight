@@ -175,6 +175,8 @@ function isKernelApi(name: string): boolean {
 function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewProps) {
   const [expandedNodes, setExpandedNodes] = useState<ExpandState>({})
   const [hideKernelApi, setHideKernelApi] = useState(false) // 隐藏内核API开关
+  const [focusedNode, setFocusedNode] = useState<string | null>(null) // 聚焦的节点
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeName: string } | null>(null)
   const functionMap = useMemo(() => buildFunctionMap(flowTrees), [flowTrees])
   const { fitView, setCenter, getNode } = useReactFlow()
   const isInitialized = useRef(false)
@@ -200,6 +202,12 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
       ...prev,
       [nodeName]: !prev[nodeName]
     }))
+  }, [])
+  
+  // 处理右键菜单
+  const handleContextMenu = useCallback((e: React.MouseEvent, nodeName: string) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, nodeName })
   }, [])
 
   // 构建可视化节点和边
@@ -263,6 +271,7 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
           childCount,
           isSelected: selectedFunction === node.name,
           onToggle: () => toggleExpand(node.name),
+          onContextMenu: (e: React.MouseEvent) => handleContextMenu(e, node.name),
         },
       })
 
@@ -298,14 +307,36 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
       }
     }
 
-    // 处理所有入口点
-    flowTrees.forEach(tree => {
-      processNode(tree, 0, null)
-      globalY += 20 // 入口点之间的间距
-    })
+    // 在树中查找聚焦节点
+    const findNode = (node: FlowTreeNode, name: string): FlowTreeNode | null => {
+      if (node.name === name) return node
+      if (node.children) {
+        for (const child of node.children) {
+          const found = findNode(child, name)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    
+    // 处理所有入口点 (如果有聚焦节点，只处理该子树)
+    if (focusedNode) {
+      for (const tree of flowTrees) {
+        const focused = findNode(tree, focusedNode)
+        if (focused) {
+          processNode(focused, 0, null)
+          break
+        }
+      }
+    } else {
+      flowTrees.forEach(tree => {
+        processNode(tree, 0, null)
+        globalY += 20 // 入口点之间的间距
+      })
+    }
 
     return { nodes, edges, nodeIdMap }
-  }, [flowTrees, expandedNodes, selectedFunction, toggleExpand, hideKernelApi])
+  }, [flowTrees, expandedNodes, selectedFunction, toggleExpand, hideKernelApi, focusedNode, handleContextMenu])
 
   const [flowNodes, setNodes, onNodesChange] = useNodesState(nodes)
   const [flowEdges, setEdges, onEdgesChange] = useEdgesState(edges)
@@ -382,6 +413,33 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
     flowTrees.forEach(tree => traverse(tree, 0))
     setExpandedNodes(result)
   }, [flowTrees])
+  
+  // 聚焦到子树
+  const focusOnNode = useCallback((nodeName: string) => {
+    setFocusedNode(nodeName)
+    // 展开聚焦节点
+    setExpandedNodes(prev => ({
+      ...prev,
+      [nodeName]: true,
+    }))
+  }, [])
+  
+  // 恢复全部视图
+  const clearFocus = useCallback(() => {
+    setFocusedNode(null)
+  }, [])
+  
+  // 关闭右键菜单
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null)
+  }, [])
+  
+  // 点击空白处关闭右键菜单
+  useEffect(() => {
+    const handleClick = () => closeContextMenu()
+    window.addEventListener('click', handleClick)
+    return () => window.removeEventListener('click', handleClick)
+  }, [closeContextMenu])
 
   // 手动 fitView
   const handleFitView = useCallback(() => {
@@ -446,7 +504,34 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
         >
           {hideKernelApi ? '🔇 已过滤' : '⚙️ 内核API'}
         </button>
+        {focusedNode && (
+          <>
+            <div className="toolbar-divider" />
+            <span className="focus-indicator">
+              🔍 聚焦: <code>{focusedNode}</code>
+            </span>
+            <button onClick={clearFocus} className="clear-focus-btn" title="显示全部">
+              ✖ 退出聚焦
+            </button>
+          </>
+        )}
       </div>
+      
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <div
+          className="context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={closeContextMenu}
+        >
+          <button onClick={() => { focusOnNode(contextMenu.nodeName); closeContextMenu() }}>
+            🔍 只看此分支
+          </button>
+          <button onClick={() => { toggleExpand(contextMenu.nodeName); closeContextMenu() }}>
+            {expandedNodes[contextMenu.nodeName] ? '📁 收起' : '📂 展开'}
+          </button>
+        </div>
+      )}
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
