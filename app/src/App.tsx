@@ -31,6 +31,19 @@ interface IndexStats {
   files: number
 }
 
+interface FunctionDetail {
+  name: string
+  return_type: string
+  file: string | null
+  line: number
+  end_line: number
+  is_callback: boolean
+  callback_context: string | null
+  calls: string[]
+  called_by: string[]
+  params: { name: string; type_name: string }[]
+}
+
 type ViewMode = 'flow' | 'code' | 'split'
 
 function App() {
@@ -48,6 +61,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [indexStats, setIndexStats] = useState<IndexStats | null>(null)
+  const [functionDetail, setFunctionDetail] = useState<FunctionDetail | null>(null)
 
   // Open project directory
   const handleOpenProject = async () => {
@@ -136,8 +150,20 @@ function App() {
     }
   }
 
-  const handleNodeClick = useCallback((_nodeId: string, functionName: string) => {
+  const handleNodeClick = useCallback(async (_nodeId: string, functionName: string) => {
     setSelectedFunction(functionName)
+    
+    // Get function detail
+    try {
+      const detail = await invoke<FunctionDetail | null>('get_function_detail', { name: functionName })
+      setFunctionDetail(detail)
+      
+      if (detail && detail.line > 0) {
+        setGoToLine(detail.line)
+      }
+    } catch (e) {
+      console.error('Failed to get function detail:', e)
+    }
     
     // Find function line and jump to it
     if (result) {
@@ -399,12 +425,62 @@ function App() {
         <div className="panel sidebar">
           <h2>📝 详情</h2>
           
-          {selectedFunction ? (
+          {functionDetail ? (
+            <div className="function-detail">
+              <div className="detail-header">
+                <h3>
+                  {functionDetail.is_callback && <span className="callback-badge">⚡</span>}
+                  {functionDetail.name}()
+                </h3>
+                <span className="return-type">{functionDetail.return_type}</span>
+              </div>
+              
+              {functionDetail.callback_context && (
+                <div className="detail-badge">
+                  🔌 {functionDetail.callback_context}
+                </div>
+              )}
+              
+              {functionDetail.params.length > 0 && (
+                <div className="detail-section">
+                  <h4>参数</h4>
+                  <ul className="param-list">
+                    {functionDetail.params.map((p, i) => (
+                      <li key={i}>
+                        <span className="param-type">{p.type_name}</span>
+                        <span className="param-name">{p.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {functionDetail.calls.length > 0 && (
+                <div className="detail-section">
+                  <h4>调用 ({functionDetail.calls.length})</h4>
+                  <ul className="call-list">
+                    {functionDetail.calls.slice(0, 10).map((c, i) => (
+                      <li key={i} onClick={() => handleNodeClick('', c)}>
+                        <code>{c}()</code>
+                      </li>
+                    ))}
+                    {functionDetail.calls.length > 10 && (
+                      <li className="more">...还有 {functionDetail.calls.length - 10} 个</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+              
+              {functionDetail.file && (
+                <div className="detail-location">
+                  📍 {functionDetail.file.split('/').pop()}:{functionDetail.line}
+                </div>
+              )}
+            </div>
+          ) : selectedFunction ? (
             <div className="function-detail">
               <h3>{selectedFunction}()</h3>
-              <p className="detail-hint">
-                点击节点查看函数详情
-              </p>
+              <p className="detail-hint">加载中...</p>
             </div>
           ) : (
             <div className="detail-placeholder">

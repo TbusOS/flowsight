@@ -224,3 +224,87 @@ pub struct IndexStats {
     pub files: usize,
 }
 
+/// Function detail with location info
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FunctionDetail {
+    pub name: String,
+    pub return_type: String,
+    pub file: Option<String>,
+    pub line: u32,
+    pub end_line: u32,
+    pub is_callback: bool,
+    pub callback_context: Option<String>,
+    pub calls: Vec<String>,
+    pub called_by: Vec<String>,
+    pub params: Vec<ParamInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ParamInfo {
+    pub name: String,
+    pub type_name: String,
+}
+
+/// Get function detail from index
+#[tauri::command]
+pub async fn get_function_detail(name: String) -> Result<Option<FunctionDetail>, String> {
+    let index = INDEX.lock().map_err(|e| e.to_string())?;
+    
+    if let Some(func) = index.get_function(&name) {
+        Ok(Some(FunctionDetail {
+            name: func.name.clone(),
+            return_type: func.return_type.clone(),
+            file: func.location.as_ref().map(|l| l.file.clone()),
+            line: func.location.as_ref().map(|l| l.line).unwrap_or(0),
+            end_line: func.location.as_ref().map(|l| l.line + 10).unwrap_or(0), // Approximate
+            is_callback: func.is_callback,
+            callback_context: func.callback_context.clone(),
+            calls: func.calls.clone(),
+            called_by: func.called_by.clone(),
+            params: func.params.iter().map(|p| ParamInfo {
+                name: p.name.clone(),
+                type_name: p.type_name.clone(),
+            }).collect(),
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Get all functions with their locations (for code navigation)
+#[tauri::command]
+pub async fn get_function_locations(path: String) -> Result<Vec<FunctionLocation>, String> {
+    let path = PathBuf::from(&path);
+    
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(&path)
+        .map_err(|e| e.to_string())?;
+
+    let source = std::fs::read_to_string(&path)
+        .map_err(|e| e.to_string())?;
+    
+    let mut analyzer = Analyzer::new();
+    let _ = analyzer.analyze(&source, &mut parse_result)
+        .map_err(|e| e.to_string())?;
+
+    let locations: Vec<FunctionLocation> = parse_result.functions
+        .into_iter()
+        .map(|(name, func)| FunctionLocation {
+            name,
+            line: func.location.as_ref().map(|l| l.line).unwrap_or(0),
+            column: func.location.as_ref().map(|l| l.column).unwrap_or(0),
+            is_callback: func.is_callback,
+        })
+        .collect();
+
+    Ok(locations)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FunctionLocation {
+    pub name: String,
+    pub line: u32,
+    pub column: u32,
+    pub is_callback: bool,
+}
+
