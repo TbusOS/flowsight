@@ -23,9 +23,10 @@ const shortcuts = [
     category: '导航',
     items: [
       { keys: ['Ctrl/⌘', 'P'], description: '打开命令面板' },
-      { keys: ['Ctrl/⌘', 'G'], description: '跳转到行' },
+      { keys: ['Ctrl/⌘', 'G'], description: '跳转到行号' },
       { keys: ['Alt/⌥', '←'], description: '后退' },
       { keys: ['Alt/⌥', '→'], description: '前进' },
+      { keys: ['Ctrl/⌘', 'W'], description: '关闭当前标签' },
     ]
   },
   {

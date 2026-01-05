@@ -17,6 +17,7 @@ import { Welcome } from './components/Welcome'
 import { Settings, defaultSettings, type AppSettings } from './components/Settings'
 import { FindReplace, type FindMatch } from './components/FindReplace'
 import { KeyboardShortcuts } from './components/KeyboardShortcuts'
+import { GoToLine } from './components/GoToLine'
 import { addRecentFile } from './utils/recentFiles'
 import { 
   AnalysisResult, 
@@ -89,6 +90,9 @@ function App() {
   
   // 快捷键帮助状态
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  
+  // 跳转行号状态
+  const [goToLineOpen, setGoToLineOpen] = useState(false)
   
   // Panel width state (percentage)
   const [leftPanelWidth, setLeftPanelWidth] = useState(220)
@@ -298,6 +302,18 @@ function App() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault()
         setLeftPanelOpen(prev => !prev)
+      }
+      // Ctrl+G 跳转行号
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
+        e.preventDefault()
+        setGoToLineOpen(true)
+      }
+      // Ctrl+W 关闭当前标签
+      if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
+        e.preventDefault()
+        if (activeTabId) {
+          closeTab(activeTabId)
+        }
       }
       // Ctrl+1/2/3 切换视图
       if ((e.ctrlKey || e.metaKey) && e.key === '1') {
@@ -1342,6 +1358,14 @@ function App() {
       <KeyboardShortcuts
         isOpen={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
+      />
+      
+      {/* 跳转行号 */}
+      <GoToLine
+        isOpen={goToLineOpen}
+        onClose={() => setGoToLineOpen(false)}
+        onGoTo={(line) => setGoToLine({ line, timestamp: Date.now() })}
+        totalLines={fileContent?.split('\n').length || 1}
       />
       
       {/* 状态栏 */}

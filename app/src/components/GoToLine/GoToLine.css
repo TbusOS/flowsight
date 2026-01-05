@@ -1,0 +1,61 @@
+/* 跳转行号样式 */
+
+.goto-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 20vh;
+  z-index: 1000;
+}
+
+.goto-panel {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 320px;
+  padding: 1rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.goto-header {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.total-hint {
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+}
+
+.goto-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+}
+
+.goto-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.goto-input.invalid {
+  border-color: var(--error);
+}
+
+.goto-error {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--error);
+  text-align: center;
+}
+
