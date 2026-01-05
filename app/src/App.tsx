@@ -388,15 +388,18 @@ function App() {
   }, [tabs])
   
   // 关闭标签页
-  const closeTab = useCallback((tabId: string) => {
+  const closeTab = useCallback(async (tabId: string) => {
     const tabIndex = tabs.findIndex(t => t.id === tabId)
     if (tabIndex === -1) return
     
     const tab = tabs[tabIndex]
     
-    // TODO: 如果有未保存的更改，提示用户
+    // 如果有未保存的更改，提示用户
     if (tab.isDirty) {
-      // 暂时直接关闭
+      const confirmed = window.confirm(
+        `文件 "${tab.fileName}" 有未保存的更改。\n确定要关闭吗？`
+      )
+      if (!confirmed) return
     }
     
     const newTabs = tabs.filter(t => t.id !== tabId)
@@ -642,6 +645,57 @@ function App() {
   const handleEditorLineClick = (line: number) => {
     console.log('Clicked line:', line)
   }
+  
+  // 处理编辑器内容变化
+  const handleContentChange = useCallback((newContent: string) => {
+    setFileContent(newContent)
+    
+    // 标记当前标签为已修改
+    if (activeTabId) {
+      setTabs(prev => prev.map(tab => 
+        tab.id === activeTabId 
+          ? { ...tab, content: newContent, isDirty: true }
+          : tab
+      ))
+    }
+  }, [activeTabId])
+  
+  // 保存当前文件
+  const saveCurrentFile = useCallback(async () => {
+    if (!filePath || !activeTabId) return
+    
+    const currentTab = tabs.find(t => t.id === activeTabId)
+    if (!currentTab || !currentTab.isDirty) return
+    
+    try {
+      await invoke('write_file', { path: filePath, contents: fileContent })
+      
+      // 标记为已保存
+      setTabs(prev => prev.map(tab => 
+        tab.id === activeTabId 
+          ? { ...tab, isDirty: false }
+          : tab
+      ))
+      
+      console.log('文件已保存:', filePath)
+    } catch (err) {
+      console.error('保存失败:', err)
+      setError(`保存失败: ${err}`)
+    }
+  }, [filePath, fileContent, activeTabId, tabs])
+  
+  // Ctrl+S 保存快捷键
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        saveCurrentFile()
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [saveCurrentFile])
   
   // 代码-图联动：光标所在函数名变化时高亮图中节点
   const handleWordAtCursor = useCallback((word: string | null) => {
@@ -925,7 +979,8 @@ function App() {
                     onLineClick={handleEditorLineClick}
                     onWordAtCursor={handleWordAtCursor}
                     knownFunctions={knownFunctions}
-                    readOnly={true}
+                    onChange={handleContentChange}
+                    readOnly={false}
                   />
                 ) : (
                   <div className="empty-editor">
