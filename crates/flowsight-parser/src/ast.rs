@@ -1,7 +1,7 @@
 //! AST types for parsed code
 
-use serde::{Deserialize, Serialize};
 use flowsight_core::Location;
+use serde::{Deserialize, Serialize};
 
 /// AST node types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,4 +150,3 @@ pub enum ExpressionNode {
         value: Box<ExpressionNode>,
     },
 }
-

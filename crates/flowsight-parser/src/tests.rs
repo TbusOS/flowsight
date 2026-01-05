@@ -24,7 +24,7 @@ static int driver_probe(struct usb_interface *intf) {
     let result = parser.parse_source(source, "test.c").unwrap();
 
     assert_eq!(result.functions.len(), 2);
-    
+
     let probe = result.functions.get("driver_probe").unwrap();
     assert!(probe.calls.contains(&"INIT_WORK".to_string()));
     assert!(probe.calls.contains(&"get_dev".to_string()));
@@ -49,11 +49,11 @@ static int setup_timer(struct my_device *dev) {
     let result = parser.parse_source(source, "test.c").unwrap();
 
     assert_eq!(result.functions.len(), 2);
-    
+
     let setup = result.functions.get("setup_timer").unwrap();
     assert!(setup.calls.contains(&"timer_setup".to_string()));
     assert!(setup.calls.contains(&"mod_timer".to_string()));
-    
+
     let callback = result.functions.get("timer_callback").unwrap();
     assert!(callback.calls.contains(&"schedule_work".to_string()));
 }
@@ -114,7 +114,7 @@ struct outer_container {
     let result = parser.parse_source(source, "test.c").unwrap();
 
     assert_eq!(result.structs.len(), 2);
-    
+
     let outer = result.structs.get("outer_container").unwrap();
     assert!(outer.referenced_structs.contains(&"inner_data".to_string()));
 }
@@ -153,7 +153,7 @@ static int setup_irq(struct my_device *dev) {
     let result = parser.parse_source(source, "test.c").unwrap();
 
     assert_eq!(result.functions.len(), 2);
-    
+
     let setup = result.functions.get("setup_irq").unwrap();
     assert!(setup.calls.contains(&"request_irq".to_string()));
 }
@@ -193,4 +193,3 @@ static int driver_init(struct platform_device *pdev) {
     assert!(init.calls.contains(&"clk_prepare_enable".to_string()));
     assert!(init.calls.contains(&"platform_set_drvdata".to_string()));
 }
-

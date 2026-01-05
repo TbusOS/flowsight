@@ -1,12 +1,12 @@
 //! Tauri Commands
 
-use flowsight_parser::get_parser;
 use flowsight_analysis::Analyzer;
 use flowsight_index::SymbolIndex;
+use flowsight_parser::get_parser;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use once_cell::sync::Lazy;
 use walkdir::WalkDir;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,16 +33,15 @@ pub struct FunctionInfo {
 #[tauri::command]
 pub async fn analyze_file(path: String) -> Result<AnalysisResult, String> {
     let path = PathBuf::from(&path);
-    
-    let parser = get_parser();
-    let mut parse_result = parser.parse_file(&path)
-        .map_err(|e| e.to_string())?;
 
-    let source = std::fs::read_to_string(&path)
-        .map_err(|e| e.to_string())?;
-    
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
+
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+
     let mut analyzer = Analyzer::new();
-    let analysis = analyzer.analyze(&source, &mut parse_result)
+    let analysis = analyzer
+        .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
 
     Ok(AnalysisResult {
@@ -59,19 +58,19 @@ pub async fn analyze_file(path: String) -> Result<AnalysisResult, String> {
 #[tauri::command]
 pub async fn get_functions(path: String) -> Result<Vec<FunctionInfo>, String> {
     let path = PathBuf::from(&path);
-    
+
     let parser = get_parser();
-    let mut parse_result = parser.parse_file(&path)
-        .map_err(|e| e.to_string())?;
+    let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
 
-    let source = std::fs::read_to_string(&path)
-        .map_err(|e| e.to_string())?;
-    
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+
     let mut analyzer = Analyzer::new();
-    let _ = analyzer.analyze(&source, &mut parse_result)
+    let _ = analyzer
+        .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
 
-    let functions: Vec<FunctionInfo> = parse_result.functions
+    let functions: Vec<FunctionInfo> = parse_result
+        .functions
         .into_iter()
         .map(|(name, func)| FunctionInfo {
             name,
@@ -89,8 +88,7 @@ pub async fn get_functions(path: String) -> Result<Vec<FunctionInfo>, String> {
 /// Read file content
 #[tauri::command]
 pub async fn read_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path)
-        .map_err(|e| e.to_string())
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
 /// Global index state
@@ -120,17 +118,18 @@ pub struct SearchResult {
 #[tauri::command]
 pub async fn open_project(path: String) -> Result<ProjectInfo, String> {
     let project_path = PathBuf::from(&path);
-    
+
     if !project_path.is_dir() {
         return Err("Path is not a directory".into());
     }
-    
+
     // Find all C files
     let c_files: Vec<PathBuf> = WalkDir::new(&project_path)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.path().extension()
+            e.path()
+                .extension()
                 .map(|ext| ext == "c" || ext == "h")
                 .unwrap_or(false)
         })
@@ -139,10 +138,10 @@ pub async fn open_project(path: String) -> Result<ProjectInfo, String> {
 
     let parser = get_parser();
     let mut index = INDEX.lock().map_err(|e| e.to_string())?;
-    
+
     // Clear previous index
     *index = SymbolIndex::new();
-    
+
     // Index all files
     for file in &c_files {
         if let Ok(result) = parser.parse_file(file) {
@@ -169,9 +168,9 @@ pub async fn open_project(path: String) -> Result<ProjectInfo, String> {
 pub async fn search_symbols(query: String) -> Result<Vec<SearchResult>, String> {
     let index = INDEX.lock().map_err(|e| e.to_string())?;
     let query_lower = query.to_lowercase();
-    
+
     let mut results = Vec::new();
-    
+
     // Search functions
     for (name, func) in &index.functions {
         if name.to_lowercase().contains(&query_lower) {
@@ -184,7 +183,7 @@ pub async fn search_symbols(query: String) -> Result<Vec<SearchResult>, String> 
             });
         }
     }
-    
+
     // Search structs
     for (name, st) in &index.structs {
         if name.to_lowercase().contains(&query_lower) {
@@ -197,10 +196,10 @@ pub async fn search_symbols(query: String) -> Result<Vec<SearchResult>, String> 
             });
         }
     }
-    
+
     // Limit results
     results.truncate(50);
-    
+
     Ok(results)
 }
 
@@ -209,7 +208,7 @@ pub async fn search_symbols(query: String) -> Result<Vec<SearchResult>, String> 
 pub async fn get_index_stats() -> Result<IndexStats, String> {
     let index = INDEX.lock().map_err(|e| e.to_string())?;
     let stats = index.stats();
-    
+
     Ok(IndexStats {
         functions: stats.total_functions,
         structs: stats.total_structs,
@@ -249,7 +248,7 @@ pub struct ParamInfo {
 #[tauri::command]
 pub async fn get_function_detail(name: String) -> Result<Option<FunctionDetail>, String> {
     let index = INDEX.lock().map_err(|e| e.to_string())?;
-    
+
     if let Some(func) = index.get_function(&name) {
         Ok(Some(FunctionDetail {
             name: func.name.clone(),
@@ -261,10 +260,14 @@ pub async fn get_function_detail(name: String) -> Result<Option<FunctionDetail>,
             callback_context: func.callback_context.clone(),
             calls: func.calls.clone(),
             called_by: func.called_by.clone(),
-            params: func.params.iter().map(|p| ParamInfo {
-                name: p.name.clone(),
-                type_name: p.type_name.clone(),
-            }).collect(),
+            params: func
+                .params
+                .iter()
+                .map(|p| ParamInfo {
+                    name: p.name.clone(),
+                    type_name: p.type_name.clone(),
+                })
+                .collect(),
         }))
     } else {
         Ok(None)
@@ -275,19 +278,19 @@ pub async fn get_function_detail(name: String) -> Result<Option<FunctionDetail>,
 #[tauri::command]
 pub async fn get_function_locations(path: String) -> Result<Vec<FunctionLocation>, String> {
     let path = PathBuf::from(&path);
-    
+
     let parser = get_parser();
-    let mut parse_result = parser.parse_file(&path)
-        .map_err(|e| e.to_string())?;
+    let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
 
-    let source = std::fs::read_to_string(&path)
-        .map_err(|e| e.to_string())?;
-    
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+
     let mut analyzer = Analyzer::new();
-    let _ = analyzer.analyze(&source, &mut parse_result)
+    let _ = analyzer
+        .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
 
-    let locations: Vec<FunctionLocation> = parse_result.functions
+    let locations: Vec<FunctionLocation> = parse_result
+        .functions
         .into_iter()
         .map(|(name, func)| FunctionLocation {
             name,
@@ -322,41 +325,54 @@ pub struct FileNode {
 #[tauri::command]
 pub async fn list_directory(path: String, recursive: bool) -> Result<Vec<FileNode>, String> {
     let dir_path = PathBuf::from(&path);
-    
+
     if !dir_path.is_dir() {
         return Err("Path is not a directory".into());
     }
-    
-    fn read_dir_entries(path: &Path, recursive: bool, depth: usize) -> Result<Vec<FileNode>, String> {
+
+    fn read_dir_entries(
+        path: &Path,
+        recursive: bool,
+        depth: usize,
+    ) -> Result<Vec<FileNode>, String> {
         if depth > 10 {
             return Ok(vec![]); // Limit depth
         }
-        
+
         let mut entries: Vec<FileNode> = std::fs::read_dir(path)
             .map_err(|e| e.to_string())?
             .filter_map(|e| e.ok())
             .filter(|e| {
                 // Skip hidden files and common non-source directories
                 let name = e.file_name().to_string_lossy().to_string();
-                !name.starts_with('.') && 
-                !["node_modules", "target", "build", "dist", "__pycache__", ".git"].contains(&name.as_str())
+                !name.starts_with('.')
+                    && ![
+                        "node_modules",
+                        "target",
+                        "build",
+                        "dist",
+                        "__pycache__",
+                        ".git",
+                    ]
+                    .contains(&name.as_str())
             })
             .map(|e| {
                 let path = e.path();
                 let name = e.file_name().to_string_lossy().to_string();
                 let is_dir = path.is_dir();
                 let extension = if !is_dir {
-                    path.extension().map(|ext| ext.to_string_lossy().to_string())
+                    path.extension()
+                        .map(|ext| ext.to_string_lossy().to_string())
                 } else {
                     None
                 };
-                
+
                 let children = if is_dir && recursive {
                     read_dir_entries(&path, recursive, depth + 1).ok()
                 } else {
                     None
                 };
-                
+
                 FileNode {
                     name,
                     path: path.to_string_lossy().to_string(),
@@ -366,19 +382,17 @@ pub async fn list_directory(path: String, recursive: bool) -> Result<Vec<FileNod
                 }
             })
             .collect();
-        
+
         // Sort: directories first, then by name
-        entries.sort_by(|a, b| {
-            match (a.is_dir, b.is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            }
+        entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
         });
-        
+
         Ok(entries)
     }
-    
+
     read_dir_entries(&dir_path, recursive, 0)
 }
 
@@ -391,7 +405,5 @@ pub async fn expand_directory(path: String) -> Result<Vec<FileNode>, String> {
 /// Export flow analysis text to file
 #[tauri::command]
 pub async fn export_flow_text(path: String, content: String) -> Result<(), String> {
-    std::fs::write(&path, content)
-        .map_err(|e| format!("Failed to write file: {}", e))
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
 }
-

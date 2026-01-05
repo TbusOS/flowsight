@@ -100,88 +100,130 @@ impl KnowledgeBase {
     fn load_builtin_frameworks(&mut self) {
         // USB driver framework
         let mut usb_callbacks = HashMap::new();
-        usb_callbacks.insert("probe".into(), FrameworkCallback {
-            description: "Called when a USB device matching the ID table is connected".into(),
-            trigger: "USB device insertion and ID match".into(),
-            context: "Process context, can sleep".into(),
-            signature: Some("int (*)(struct usb_interface *, const struct usb_device_id *)".into()),
-        });
-        usb_callbacks.insert("disconnect".into(), FrameworkCallback {
-            description: "Called when the USB device is disconnected".into(),
-            trigger: "USB device removal or driver unload".into(),
-            context: "Process context, can sleep".into(),
-            signature: Some("void (*)(struct usb_interface *)".into()),
-        });
+        usb_callbacks.insert(
+            "probe".into(),
+            FrameworkCallback {
+                description: "Called when a USB device matching the ID table is connected".into(),
+                trigger: "USB device insertion and ID match".into(),
+                context: "Process context, can sleep".into(),
+                signature: Some(
+                    "int (*)(struct usb_interface *, const struct usb_device_id *)".into(),
+                ),
+            },
+        );
+        usb_callbacks.insert(
+            "disconnect".into(),
+            FrameworkCallback {
+                description: "Called when the USB device is disconnected".into(),
+                trigger: "USB device removal or driver unload".into(),
+                context: "Process context, can sleep".into(),
+                signature: Some("void (*)(struct usb_interface *)".into()),
+            },
+        );
 
-        self.frameworks.insert("usb_driver".into(), Framework {
-            description: "USB device driver framework".into(),
-            header: Some("linux/usb.h".into()),
-            callbacks: usb_callbacks,
-        });
+        self.frameworks.insert(
+            "usb_driver".into(),
+            Framework {
+                description: "USB device driver framework".into(),
+                header: Some("linux/usb.h".into()),
+                callbacks: usb_callbacks,
+            },
+        );
 
         // file_operations
         let mut fops_callbacks = HashMap::new();
-        fops_callbacks.insert("open".into(), FrameworkCallback {
-            description: "Called when the device is opened".into(),
-            trigger: "User space open() system call".into(),
-            context: "Process context".into(),
-            signature: Some("int (*)(struct inode *, struct file *)".into()),
-        });
-        fops_callbacks.insert("read".into(), FrameworkCallback {
-            description: "Called to read from the device".into(),
-            trigger: "User space read() system call".into(),
-            context: "Process context".into(),
-            signature: Some("ssize_t (*)(struct file *, char __user *, size_t, loff_t *)".into()),
-        });
-        fops_callbacks.insert("write".into(), FrameworkCallback {
-            description: "Called to write to the device".into(),
-            trigger: "User space write() system call".into(),
-            context: "Process context".into(),
-            signature: Some("ssize_t (*)(struct file *, const char __user *, size_t, loff_t *)".into()),
-        });
+        fops_callbacks.insert(
+            "open".into(),
+            FrameworkCallback {
+                description: "Called when the device is opened".into(),
+                trigger: "User space open() system call".into(),
+                context: "Process context".into(),
+                signature: Some("int (*)(struct inode *, struct file *)".into()),
+            },
+        );
+        fops_callbacks.insert(
+            "read".into(),
+            FrameworkCallback {
+                description: "Called to read from the device".into(),
+                trigger: "User space read() system call".into(),
+                context: "Process context".into(),
+                signature: Some(
+                    "ssize_t (*)(struct file *, char __user *, size_t, loff_t *)".into(),
+                ),
+            },
+        );
+        fops_callbacks.insert(
+            "write".into(),
+            FrameworkCallback {
+                description: "Called to write to the device".into(),
+                trigger: "User space write() system call".into(),
+                context: "Process context".into(),
+                signature: Some(
+                    "ssize_t (*)(struct file *, const char __user *, size_t, loff_t *)".into(),
+                ),
+            },
+        );
 
-        self.frameworks.insert("file_operations".into(), Framework {
-            description: "Character device file operations".into(),
-            header: Some("linux/fs.h".into()),
-            callbacks: fops_callbacks,
-        });
+        self.frameworks.insert(
+            "file_operations".into(),
+            Framework {
+                description: "Character device file operations".into(),
+                header: Some("linux/fs.h".into()),
+                callbacks: fops_callbacks,
+            },
+        );
     }
 
     fn load_builtin_apis(&mut self) {
-        self.kernel_apis.insert("kzalloc".into(), KernelApi {
-            description: "Allocate zeroed kernel memory".into(),
-            can_sleep: true,
-            can_fail: true,
-            params: Some(vec!["size".into(), "gfp_flags".into()]),
-        });
-        
-        self.kernel_apis.insert("kfree".into(), KernelApi {
-            description: "Free kernel memory".into(),
-            can_sleep: false,
-            can_fail: false,
-            params: Some(vec!["ptr".into()]),
-        });
+        self.kernel_apis.insert(
+            "kzalloc".into(),
+            KernelApi {
+                description: "Allocate zeroed kernel memory".into(),
+                can_sleep: true,
+                can_fail: true,
+                params: Some(vec!["size".into(), "gfp_flags".into()]),
+            },
+        );
 
-        self.kernel_apis.insert("mutex_lock".into(), KernelApi {
-            description: "Acquire a mutex".into(),
-            can_sleep: true,
-            can_fail: false,
-            params: Some(vec!["mutex".into()]),
-        });
+        self.kernel_apis.insert(
+            "kfree".into(),
+            KernelApi {
+                description: "Free kernel memory".into(),
+                can_sleep: false,
+                can_fail: false,
+                params: Some(vec!["ptr".into()]),
+            },
+        );
 
-        self.kernel_apis.insert("spin_lock".into(), KernelApi {
-            description: "Acquire a spinlock".into(),
-            can_sleep: false,
-            can_fail: false,
-            params: Some(vec!["lock".into()]),
-        });
+        self.kernel_apis.insert(
+            "mutex_lock".into(),
+            KernelApi {
+                description: "Acquire a mutex".into(),
+                can_sleep: true,
+                can_fail: false,
+                params: Some(vec!["mutex".into()]),
+            },
+        );
 
-        self.kernel_apis.insert("printk".into(), KernelApi {
-            description: "Print a kernel message".into(),
-            can_sleep: false,
-            can_fail: false,
-            params: Some(vec!["fmt".into(), "...".into()]),
-        });
+        self.kernel_apis.insert(
+            "spin_lock".into(),
+            KernelApi {
+                description: "Acquire a spinlock".into(),
+                can_sleep: false,
+                can_fail: false,
+                params: Some(vec!["lock".into()]),
+            },
+        );
+
+        self.kernel_apis.insert(
+            "printk".into(),
+            KernelApi {
+                description: "Print a kernel message".into(),
+                can_sleep: false,
+                can_fail: false,
+                params: Some(vec!["fmt".into(), "...".into()]),
+            },
+        );
     }
 
     /// Get framework info
@@ -199,4 +241,3 @@ impl KnowledgeBase {
         self.kernel_apis.get(name)
     }
 }
-

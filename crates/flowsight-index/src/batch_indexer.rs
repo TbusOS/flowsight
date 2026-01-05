@@ -3,7 +3,7 @@
 //! Efficient batch indexing with progress reporting.
 
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 /// Progress event for indexing operations
 #[derive(Debug, Clone)]
@@ -100,7 +100,7 @@ impl BatchIndexer {
     /// Scan directory for source files
     pub fn scan_directory(&self, root: &Path) -> Vec<PathBuf> {
         let mut files = Vec::new();
-        
+
         self.send_progress(ProgressEvent {
             phase: IndexPhase::Scanning,
             current: 0,
@@ -135,10 +135,8 @@ impl BatchIndexer {
 
     /// Check if a file should be included based on patterns
     fn should_include(&self, path: &Path) -> bool {
-        let filename = path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-        
+        let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+
         // Check exclude patterns first
         for pattern in &self.config.exclude_patterns {
             if Self::matches_pattern(filename, pattern) {
@@ -161,7 +159,7 @@ impl BatchIndexer {
         if pattern.starts_with('*') {
             filename.ends_with(&pattern[1..])
         } else if pattern.ends_with('*') {
-            filename.starts_with(&pattern[..pattern.len()-1])
+            filename.starts_with(&pattern[..pattern.len() - 1])
         } else {
             filename == pattern
         }
@@ -207,4 +205,3 @@ mod tests {
         assert!(config.incremental);
     }
 }
-

@@ -3,8 +3,8 @@
 //! Provides fast incremental parsing using tree-sitter.
 
 use flowsight_core::{FunctionDef, Location, Parameter, Result, StructDef, StructField};
-use tree_sitter::{Parser as TSParser, Node, Tree};
 use tracing::debug;
+use tree_sitter::{Node, Parser as TSParser, Tree};
 
 use crate::ParseResult;
 
@@ -422,9 +422,7 @@ impl TreeSitterParser {
     }
 
     fn node_text(&self, node: Node, source: &str) -> String {
-        node.utf8_text(source.as_bytes())
-            .unwrap_or("")
-            .to_string()
+        node.utf8_text(source.as_bytes()).unwrap_or("").to_string()
     }
 }
 
@@ -511,4 +509,3 @@ static int my_probe(struct usb_interface *intf) {
         assert!(result.functions.contains_key("my_probe"));
     }
 }
-

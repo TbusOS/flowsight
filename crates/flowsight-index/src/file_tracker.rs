@@ -2,11 +2,11 @@
 //!
 //! Tracks file modifications to determine which files need reindexing.
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 
 /// File version information
 #[derive(Debug, Clone)]
@@ -46,7 +46,7 @@ impl FileVersionTracker {
     pub fn track(&mut self, path: &Path) -> std::io::Result<()> {
         let metadata = std::fs::metadata(path)?;
         let mtime = metadata.modified()?;
-        
+
         self.files.insert(
             path.to_path_buf(),
             TrackedFile {
@@ -56,7 +56,7 @@ impl FileVersionTracker {
                 content_hash: None,
             },
         );
-        
+
         Ok(())
     }
 
@@ -64,11 +64,11 @@ impl FileVersionTracker {
     pub fn track_with_hash(&mut self, path: &Path, content: &str) -> std::io::Result<()> {
         let metadata = std::fs::metadata(path)?;
         let mtime = metadata.modified()?;
-        
+
         let mut hasher = DefaultHasher::new();
         content.hash(&mut hasher);
         let hash = hasher.finish();
-        
+
         self.files.insert(
             path.to_path_buf(),
             TrackedFile {
@@ -78,7 +78,7 @@ impl FileVersionTracker {
                 content_hash: Some(hash),
             },
         );
-        
+
         Ok(())
     }
 
@@ -147,19 +147,18 @@ mod tests {
     #[test]
     fn test_file_tracker() {
         let mut tracker = FileVersionTracker::new();
-        
+
         // Create a temp file
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "test content").unwrap();
-        
+
         // Track it
         tracker.track(file.path()).unwrap();
-        
+
         // Should not need reindex immediately
         assert!(!tracker.needs_reindex(file.path()));
-        
+
         // Unknown file should need reindex
         assert!(tracker.needs_reindex(Path::new("/nonexistent")));
     }
 }
-

@@ -32,4 +32,3 @@ pub enum Error {
 
 /// Result type alias for FlowSight
 pub type Result<T> = std::result::Result<T, Error>;
-

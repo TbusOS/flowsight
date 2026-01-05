@@ -1,11 +1,14 @@
 //! Call graph construction
 
-use flowsight_core::{CallEdge, CallType, AsyncBinding, FlowNode, FlowNodeType, AsyncMechanism};
+use flowsight_core::{AsyncBinding, AsyncMechanism, CallEdge, CallType, FlowNode, FlowNodeType};
 use flowsight_parser::ParseResult;
 use std::collections::HashSet;
 
 /// Build call edges from parse result
-pub fn build_call_edges(parse_result: &ParseResult, async_bindings: &[AsyncBinding]) -> Vec<CallEdge> {
+pub fn build_call_edges(
+    parse_result: &ParseResult,
+    async_bindings: &[AsyncBinding],
+) -> Vec<CallEdge> {
     let mut edges = Vec::new();
 
     // Direct calls
@@ -137,7 +140,9 @@ pub fn build_flow_tree(
     for callee in &func.calls {
         if parse_result.functions.contains_key(callee) {
             // Recurse for internal functions
-            if let Some(child) = build_flow_tree(callee, parse_result, async_bindings, visited, depth + 1) {
+            if let Some(child) =
+                build_flow_tree(callee, parse_result, async_bindings, visited, depth + 1)
+            {
                 children.push(child);
             }
         } else {
@@ -160,7 +165,13 @@ pub fn build_flow_tree(
             if let Some(func_loc) = &func.location {
                 if trigger_loc.line >= func_loc.line && trigger_loc.line <= func_loc.end_line {
                     // This function triggers an async handler
-                    if let Some(async_child) = build_flow_tree(&binding.handler, parse_result, async_bindings, visited, depth + 1) {
+                    if let Some(async_child) = build_flow_tree(
+                        &binding.handler,
+                        parse_result,
+                        async_bindings,
+                        visited,
+                        depth + 1,
+                    ) {
                         children.push(async_child);
                     }
                 }
@@ -180,4 +191,3 @@ pub fn build_flow_tree(
         description: func.callback_context.clone(),
     })
 }
-

@@ -3,12 +3,12 @@
 //! Code parsing using tree-sitter for fast incremental parsing,
 //! with optional libclang integration for precise semantic analysis.
 
-pub mod treesitter;
 pub mod ast;
+pub mod treesitter;
 
-use flowsight_core::{Result, FunctionDef, StructDef};
-use std::path::Path;
+use flowsight_core::{FunctionDef, Result, StructDef};
 use std::collections::HashMap;
+use std::path::Path;
 
 /// Parse result containing extracted information
 #[derive(Debug, Default)]
@@ -25,17 +25,17 @@ pub struct ParseResult {
 pub trait Parser: Send + Sync {
     /// Parse source code string
     fn parse(&self, source: &str, filename: &str) -> Result<ParseResult>;
-    
+
     /// Parse a file
     fn parse_file(&self, path: &Path) -> Result<ParseResult> {
         let source = std::fs::read_to_string(path)?;
         let filename = path.to_string_lossy();
         self.parse(&source, &filename)
     }
-    
+
     /// Get parser name
     fn name(&self) -> &str;
-    
+
     /// Check if parser is available
     fn is_available(&self) -> bool;
 }
@@ -58,4 +58,3 @@ mod basic_tests {
         assert!(parser.is_available());
     }
 }
-

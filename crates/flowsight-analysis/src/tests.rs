@@ -28,14 +28,19 @@ static int probe(struct usb_interface *intf) {
 "#;
     let mut parser = TreeSitterParser::new();
     let mut parse_result = parser.parse_source(source, "test.c").unwrap();
-    
+
     let mut analyzer = Analyzer::new();
     let result = analyzer.analyze(source, &mut parse_result).unwrap();
-    
+
     // Should find INIT_WORK binding
-    assert!(!result.async_bindings.is_empty(), "Should find async bindings");
-    
-    let binding = result.async_bindings.iter()
+    assert!(
+        !result.async_bindings.is_empty(),
+        "Should find async bindings"
+    );
+
+    let binding = result
+        .async_bindings
+        .iter()
         .find(|b| b.handler == "my_work_handler");
     assert!(binding.is_some(), "Should find my_work_handler binding");
 }
@@ -56,12 +61,14 @@ static int init_device(struct my_device *dev) {
 "#;
     let mut parser = TreeSitterParser::new();
     let mut parse_result = parser.parse_source(source, "test.c").unwrap();
-    
+
     let mut analyzer = Analyzer::new();
     let result = analyzer.analyze(source, &mut parse_result).unwrap();
-    
+
     // Should find timer_setup binding
-    let timer_binding = result.async_bindings.iter()
+    let timer_binding = result
+        .async_bindings
+        .iter()
         .find(|b| b.handler == "timer_fn");
     assert!(timer_binding.is_some(), "Should find timer_fn binding");
 }
@@ -82,10 +89,10 @@ module_exit(my_exit);
 "#;
     let mut parser = TreeSitterParser::new();
     let mut parse_result = parser.parse_source(source, "test.c").unwrap();
-    
+
     let mut analyzer = Analyzer::new();
     let result = analyzer.analyze(source, &mut parse_result).unwrap();
-    
+
     assert!(result.entry_points.contains(&"my_init".to_string()));
     assert!(result.entry_points.contains(&"my_exit".to_string()));
 }
@@ -104,12 +111,14 @@ static void caller(void) {
 "#;
     let mut parser = TreeSitterParser::new();
     let mut parse_result = parser.parse_source(source, "test.c").unwrap();
-    
+
     let mut analyzer = Analyzer::new();
     let result = analyzer.analyze(source, &mut parse_result).unwrap();
-    
+
     // Should have call edge from caller to helper
-    let edge = result.call_edges.iter()
+    let edge = result
+        .call_edges
+        .iter()
         .find(|e| e.caller == "caller" && e.callee == "helper");
     assert!(edge.is_some(), "Should find caller->helper edge");
 }
@@ -146,15 +155,17 @@ module_init(my_probe);
 "#;
     let mut parser = TreeSitterParser::new();
     let mut parse_result = parser.parse_source(source, "test.c").unwrap();
-    
+
     let mut analyzer = Analyzer::new();
     let result = analyzer.analyze(source, &mut parse_result).unwrap();
-    
+
     // Should find async binding
     assert!(!result.async_bindings.is_empty());
-    
+
     // work_handler should be marked as callback
     let work_handler = parse_result.functions.get("work_handler").unwrap();
-    assert!(work_handler.is_callback, "work_handler should be marked as callback");
+    assert!(
+        work_handler.is_callback,
+        "work_handler should be marked as callback"
+    );
 }
-

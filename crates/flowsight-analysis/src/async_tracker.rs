@@ -7,7 +7,7 @@
 //! - Tasklets (tasklet_init)
 //! - Kernel threads (kthread_run)
 
-use flowsight_core::{AsyncBinding, AsyncMechanism, ExecutionContext, Location, FunctionDef};
+use flowsight_core::{AsyncBinding, AsyncMechanism, ExecutionContext, FunctionDef, Location};
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -38,9 +38,10 @@ impl AsyncTracker {
             AsyncPattern {
                 mechanism: AsyncMechanism::WorkQueue { delayed: false },
                 context: ExecutionContext::Process,
-                bind_patterns: vec![
-                    Regex::new(r"INIT_WORK\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)").unwrap(),
-                ],
+                bind_patterns: vec![Regex::new(
+                    r"INIT_WORK\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)",
+                )
+                .unwrap()],
                 trigger_patterns: vec![
                     Regex::new(r"schedule_work\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
                     Regex::new(r"queue_work\s*\([^,]+,\s*&?([\w\.\->]+)\s*\)").unwrap(),
@@ -50,16 +51,20 @@ impl AsyncTracker {
             AsyncPattern {
                 mechanism: AsyncMechanism::WorkQueue { delayed: true },
                 context: ExecutionContext::Process,
-                bind_patterns: vec![
-                    Regex::new(r"INIT_DELAYED_WORK\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)").unwrap(),
-                ],
-                trigger_patterns: vec![
-                    Regex::new(r"schedule_delayed_work\s*\(\s*&?([\w\.\->]+)\s*,").unwrap(),
-                ],
+                bind_patterns: vec![Regex::new(
+                    r"INIT_DELAYED_WORK\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)",
+                )
+                .unwrap()],
+                trigger_patterns: vec![Regex::new(
+                    r"schedule_delayed_work\s*\(\s*&?([\w\.\->]+)\s*,",
+                )
+                .unwrap()],
             },
             // Timer
             AsyncPattern {
-                mechanism: AsyncMechanism::Timer { high_resolution: false },
+                mechanism: AsyncMechanism::Timer {
+                    high_resolution: false,
+                },
                 context: ExecutionContext::SoftIrq,
                 bind_patterns: vec![
                     Regex::new(r"timer_setup\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*,").unwrap(),
@@ -72,13 +77,13 @@ impl AsyncTracker {
             },
             // High-resolution timer
             AsyncPattern {
-                mechanism: AsyncMechanism::Timer { high_resolution: true },
+                mechanism: AsyncMechanism::Timer {
+                    high_resolution: true,
+                },
                 context: ExecutionContext::HardIrq,
-                bind_patterns: vec![
-                    Regex::new(r"([\w\.\->]+)\.function\s*=\s*(\w+)").unwrap(),
-                ],
+                bind_patterns: vec![Regex::new(r"([\w\.\->]+)\.function\s*=\s*(\w+)").unwrap()],
                 trigger_patterns: vec![
-                    Regex::new(r"hrtimer_start\s*\(\s*&?([\w\.\->]+)\s*,").unwrap(),
+                    Regex::new(r"hrtimer_start\s*\(\s*&?([\w\.\->]+)\s*,").unwrap()
                 ],
             },
             // Interrupt
@@ -95,9 +100,10 @@ impl AsyncTracker {
             AsyncPattern {
                 mechanism: AsyncMechanism::Interrupt { threaded: true },
                 context: ExecutionContext::Process,
-                bind_patterns: vec![
-                    Regex::new(r"request_threaded_irq\s*\([^,]+,\s*\w+\s*,\s*(\w+)\s*,").unwrap(),
-                ],
+                bind_patterns: vec![Regex::new(
+                    r"request_threaded_irq\s*\([^,]+,\s*\w+\s*,\s*(\w+)\s*,",
+                )
+                .unwrap()],
                 trigger_patterns: vec![],
             },
             // Tasklet
@@ -109,7 +115,7 @@ impl AsyncTracker {
                     Regex::new(r"DECLARE_TASKLET\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)").unwrap(),
                 ],
                 trigger_patterns: vec![
-                    Regex::new(r"tasklet_schedule\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"tasklet_schedule\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap()
                 ],
             },
             // Kernel thread
@@ -120,9 +126,7 @@ impl AsyncTracker {
                     Regex::new(r"kthread_run\s*\(\s*(\w+)\s*,").unwrap(),
                     Regex::new(r"kthread_create\s*\(\s*(\w+)\s*,").unwrap(),
                 ],
-                trigger_patterns: vec![
-                    Regex::new(r"wake_up_process\s*\(").unwrap(),
-                ],
+                trigger_patterns: vec![Regex::new(r"wake_up_process\s*\(").unwrap()],
             },
             // RCU callback
             AsyncPattern {
@@ -141,8 +145,12 @@ impl AsyncTracker {
                 bind_patterns: vec![
                     Regex::new(r"register_reboot_notifier\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
                     Regex::new(r"register_netdevice_notifier\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
-                    Regex::new(r"blocking_notifier_chain_register\s*\([^,]+,\s*&?([\w\.\->]+)\s*\)").unwrap(),
-                    Regex::new(r"atomic_notifier_chain_register\s*\([^,]+,\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(
+                        r"blocking_notifier_chain_register\s*\([^,]+,\s*&?([\w\.\->]+)\s*\)",
+                    )
+                    .unwrap(),
+                    Regex::new(r"atomic_notifier_chain_register\s*\([^,]+,\s*&?([\w\.\->]+)\s*\)")
+                        .unwrap(),
                 ],
                 trigger_patterns: vec![],
             },
@@ -151,7 +159,7 @@ impl AsyncTracker {
                 mechanism: AsyncMechanism::Softirq,
                 context: ExecutionContext::SoftIrq,
                 bind_patterns: vec![
-                    Regex::new(r"open_softirq\s*\(\s*\w+\s*,\s*(\w+)\s*\)").unwrap(),
+                    Regex::new(r"open_softirq\s*\(\s*\w+\s*,\s*(\w+)\s*\)").unwrap()
                 ],
                 trigger_patterns: vec![
                     Regex::new(r"raise_softirq\s*\(").unwrap(),
@@ -190,9 +198,10 @@ impl AsyncTracker {
             AsyncPattern {
                 mechanism: AsyncMechanism::WorkQueue { delayed: false },
                 context: ExecutionContext::Process,
-                bind_patterns: vec![
-                    Regex::new(r"INIT_WORK_ONSTACK\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)").unwrap(),
-                ],
+                bind_patterns: vec![Regex::new(
+                    r"INIT_WORK_ONSTACK\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)",
+                )
+                .unwrap()],
                 trigger_patterns: vec![
                     Regex::new(r"schedule_work_on\s*\([^,]+,\s*&?([\w\.\->]+)\s*\)").unwrap(),
                     Regex::new(r"queue_work_on\s*\([^,]+,\s*[^,]+,\s*&?([\w\.\->]+)\s*\)").unwrap(),
@@ -203,18 +212,23 @@ impl AsyncTracker {
             AsyncPattern {
                 mechanism: AsyncMechanism::Custom("irq_work".to_string()),
                 context: ExecutionContext::HardIrq,
-                bind_patterns: vec![
-                    Regex::new(r"init_irq_work\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)").unwrap(),
-                ],
+                bind_patterns: vec![Regex::new(
+                    r"init_irq_work\s*\(\s*&?([\w\.\->]+)\s*,\s*(\w+)\s*\)",
+                )
+                .unwrap()],
                 trigger_patterns: vec![
-                    Regex::new(r"irq_work_queue\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap(),
+                    Regex::new(r"irq_work_queue\s*\(\s*&?([\w\.\->]+)\s*\)").unwrap()
                 ],
             },
         ]
     }
 
     /// Analyze source code for async patterns
-    pub fn analyze(&self, source: &str, functions: &HashMap<String, FunctionDef>) -> Vec<AsyncBinding> {
+    pub fn analyze(
+        &self,
+        source: &str,
+        functions: &HashMap<String, FunctionDef>,
+    ) -> Vec<AsyncBinding> {
         let mut bindings = Vec::new();
         let lines: Vec<&str> = source.lines().collect();
 
@@ -223,20 +237,27 @@ impl AsyncTracker {
                 for (line_num, line) in lines.iter().enumerate() {
                     if let Some(caps) = bind_re.captures(line) {
                         // Extract handler name (usually last capture group)
-                        let handler = caps.get(caps.len() - 1)
+                        let handler = caps
+                            .get(caps.len() - 1)
                             .map(|m| m.as_str().to_string())
                             .unwrap_or_default();
 
                         // Extract variable (if present)
                         let variable = if caps.len() > 2 {
-                            caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default()
+                            caps.get(1)
+                                .map(|m| m.as_str().to_string())
+                                .unwrap_or_default()
                         } else {
                             String::new()
                         };
 
-                        if !handler.is_empty() && handler != "NULL" && functions.contains_key(&handler) {
+                        if !handler.is_empty()
+                            && handler != "NULL"
+                            && functions.contains_key(&handler)
+                        {
                             // Find trigger locations
-                            let trigger_locations = self.find_triggers(source, &pattern.trigger_patterns, &variable);
+                            let trigger_locations =
+                                self.find_triggers(source, &pattern.trigger_patterns, &variable);
 
                             bindings.push(AsyncBinding {
                                 mechanism: pattern.mechanism.clone(),
@@ -311,21 +332,23 @@ static int my_probe(void) {
 "#;
 
         let mut functions = HashMap::new();
-        functions.insert("my_work_handler".to_string(), FunctionDef {
-            name: "my_work_handler".to_string(),
-            return_type: "void".to_string(),
-            params: vec![],
-            location: None,
-            calls: vec![],
-            called_by: vec![],
-            is_callback: false,
-            callback_context: None,
-            attributes: vec![],
-        });
+        functions.insert(
+            "my_work_handler".to_string(),
+            FunctionDef {
+                name: "my_work_handler".to_string(),
+                return_type: "void".to_string(),
+                params: vec![],
+                location: None,
+                calls: vec![],
+                called_by: vec![],
+                is_callback: false,
+                callback_context: None,
+                attributes: vec![],
+            },
+        );
 
         let bindings = tracker.analyze(source, &functions);
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0].handler, "my_work_handler");
     }
 }
-

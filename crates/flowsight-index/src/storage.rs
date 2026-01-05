@@ -81,7 +81,9 @@ impl IndexStorage {
         let mut file_funcs = self.get_file_functions(file)?;
         if !file_funcs.contains(&func.name) {
             file_funcs.push(func.name.clone());
-            let value = serde_json::to_vec(&FileFunctions { functions: file_funcs })?;
+            let value = serde_json::to_vec(&FileFunctions {
+                functions: file_funcs,
+            })?;
             self.files_tree.insert(file_key.as_bytes(), value)?;
         }
 
@@ -258,7 +260,9 @@ impl IndexStorage {
         // Store file mappings
         for (path, funcs) in &index.functions_by_file {
             let key = path.to_string_lossy();
-            let value = serde_json::to_vec(&FileFunctions { functions: funcs.clone() })?;
+            let value = serde_json::to_vec(&FileFunctions {
+                functions: funcs.clone(),
+            })?;
             self.files_tree.insert(key.as_bytes(), value)?;
         }
 
@@ -350,4 +354,3 @@ mod tests {
         assert_eq!(results.len(), 2);
     }
 }
-

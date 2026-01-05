@@ -2,11 +2,11 @@
 //!
 //! Command-line interface for code analysis.
 
-use clap::{Parser, Subcommand};
-use flowsight_parser::get_parser;
-use flowsight_analysis::Analyzer;
-use std::path::PathBuf;
 use anyhow::Result;
+use clap::{Parser, Subcommand};
+use flowsight_analysis::Analyzer;
+use flowsight_parser::get_parser;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "flowsight")]
@@ -66,7 +66,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Analyze { file, output, format } => {
+        Commands::Analyze {
+            file,
+            output,
+            format,
+        } => {
             cmd_analyze(&file, output.as_deref(), &format)?;
         }
         Commands::Flow { file, function } => {
@@ -89,17 +93,21 @@ fn cmd_analyze(file: &PathBuf, output: Option<&std::path::Path>, format: &str) -
     let parser = get_parser();
     let mut parse_result = parser.parse_file(file)?;
 
-    println!("   Found {} functions, {} structs", 
+    println!(
+        "   Found {} functions, {} structs",
         parse_result.functions.len(),
-        parse_result.structs.len());
+        parse_result.structs.len()
+    );
 
     let source = std::fs::read_to_string(file)?;
     let mut analyzer = Analyzer::new();
     let analysis = analyzer.analyze(&source, &mut parse_result)?;
 
-    println!("   Found {} async handlers, {} entry points",
+    println!(
+        "   Found {} async handlers, {} entry points",
         analysis.async_bindings.len(),
-        analysis.entry_points.len());
+        analysis.entry_points.len()
+    );
 
     if format == "json" {
         let result = serde_json::json!({
@@ -112,7 +120,7 @@ fn cmd_analyze(file: &PathBuf, output: Option<&std::path::Path>, format: &str) -
         });
 
         let json = serde_json::to_string_pretty(&result)?;
-        
+
         if let Some(out_path) = output {
             std::fs::write(out_path, &json)?;
             println!("   Output written to: {}", out_path.display());
@@ -190,7 +198,8 @@ fn cmd_async(file: &PathBuf) -> Result<()> {
             "cannot sleep"
         };
 
-        println!("  {} {}()", 
+        println!(
+            "  {} {}()",
             match &binding.mechanism {
                 flowsight_core::AsyncMechanism::WorkQueue { .. } => "⚙️ ",
                 flowsight_core::AsyncMechanism::Timer { .. } => "⏲️ ",
@@ -199,7 +208,8 @@ fn cmd_async(file: &PathBuf) -> Result<()> {
                 flowsight_core::AsyncMechanism::KThread => "🧵",
                 _ => "📍",
             },
-            binding.handler);
+            binding.handler
+        );
         println!("     Type: {}", mechanism);
         println!("     Context: {}", context);
         if !binding.variable.is_empty() {
@@ -233,4 +243,3 @@ fn cmd_callbacks(file: &PathBuf) -> Result<()> {
 
     Ok(())
 }
-

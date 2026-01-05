@@ -1,7 +1,7 @@
 //! Core type definitions
 
-use serde::{Deserialize, Serialize};
 use crate::location::Location;
+use serde::{Deserialize, Serialize};
 
 /// Function definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,4 +181,3 @@ pub enum FlowNodeType {
     /// External function
     External,
 }
-

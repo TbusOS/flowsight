@@ -52,4 +52,3 @@ impl std::fmt::Display for Location {
         write!(f, "{}:{}:{}", self.file, self.line, self.column)
     }
 }
-

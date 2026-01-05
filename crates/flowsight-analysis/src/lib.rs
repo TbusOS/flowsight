@@ -7,10 +7,10 @@
 //! - Data flow analysis
 
 pub mod async_tracker;
-pub mod funcptr;
 pub mod callgraph;
+pub mod funcptr;
 
-use flowsight_core::{Result, FunctionDef, AsyncBinding, CallEdge, FlowNode};
+use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};
 use flowsight_parser::ParseResult;
 use std::collections::HashMap;
 
@@ -43,7 +43,11 @@ impl Analyzer {
     }
 
     /// Analyze parsed code
-    pub fn analyze(&mut self, source: &str, parse_result: &mut ParseResult) -> Result<AnalysisResult> {
+    pub fn analyze(
+        &mut self,
+        source: &str,
+        parse_result: &mut ParseResult,
+    ) -> Result<AnalysisResult> {
         let mut result = AnalysisResult::default();
 
         // Track async mechanisms
@@ -58,7 +62,9 @@ impl Analyzer {
         }
 
         // Resolve function pointers from ops tables
-        let ops_mappings = self.funcptr_resolver.analyze_ops_tables(source, &parse_result.functions);
+        let ops_mappings = self
+            .funcptr_resolver
+            .analyze_ops_tables(source, &parse_result.functions);
         for (context, func_name) in &ops_mappings {
             if let Some(func) = parse_result.functions.get_mut(func_name) {
                 func.is_callback = true;
@@ -73,12 +79,17 @@ impl Analyzer {
         result.call_edges = callgraph::build_call_edges(parse_result, &result.async_bindings);
 
         // Build flow trees for entry points
-        result.flow_trees = self.build_flow_trees(&result.entry_points, parse_result, &result.async_bindings);
+        result.flow_trees =
+            self.build_flow_trees(&result.entry_points, parse_result, &result.async_bindings);
 
         Ok(result)
     }
 
-    fn find_entry_points(&self, source: &str, functions: &HashMap<String, FunctionDef>) -> Vec<String> {
+    fn find_entry_points(
+        &self,
+        source: &str,
+        functions: &HashMap<String, FunctionDef>,
+    ) -> Vec<String> {
         let mut entries = Vec::new();
 
         // module_init (always first)
@@ -107,10 +118,10 @@ impl Analyzer {
                 (name.clone(), line)
             })
             .collect();
-        
+
         // Sort by line number (definition order in source file)
         callbacks.sort_by_key(|(_, line)| *line);
-        
+
         for (name, _) in callbacks {
             entries.push(name);
         }
@@ -127,7 +138,13 @@ impl Analyzer {
         entry_points
             .iter()
             .filter_map(|entry| {
-                callgraph::build_flow_tree(entry, parse_result, async_bindings, &mut std::collections::HashSet::new(), 0)
+                callgraph::build_flow_tree(
+                    entry,
+                    parse_result,
+                    async_bindings,
+                    &mut std::collections::HashSet::new(),
+                    0,
+                )
             })
             .collect()
     }
@@ -141,4 +158,3 @@ impl Default for Analyzer {
 
 #[cfg(test)]
 mod tests;
-

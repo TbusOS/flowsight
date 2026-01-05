@@ -116,20 +116,20 @@ mod tests {
     #[test]
     fn test_tree_cache() {
         let mut cache = TreeCache::new(2);
-        
+
         let path1 = PathBuf::from("file1.c");
         let path2 = PathBuf::from("file2.c");
         let path3 = PathBuf::from("file3.c");
-        
+
         cache.insert(path1.clone(), vec![1, 2, 3], 100);
         cache.insert(path2.clone(), vec![4, 5, 6], 200);
-        
+
         assert!(cache.get(&path1, 100).is_some());
         assert!(cache.get(&path2, 200).is_some());
-        
+
         // Inserting third should evict path2 (LRU after path1 was accessed)
         cache.insert(path3.clone(), vec![7, 8, 9], 300);
-        
+
         assert_eq!(cache.stats().entries, 2);
     }
 
@@ -137,14 +137,13 @@ mod tests {
     fn test_hash_invalidation() {
         let mut cache = TreeCache::new(10);
         let path = PathBuf::from("test.c");
-        
+
         cache.insert(path.clone(), vec![1, 2, 3], 100);
-        
+
         // Same hash should return cached
         assert!(cache.get(&path, 100).is_some());
-        
+
         // Different hash should return None
         assert!(cache.get(&path, 200).is_none());
     }
 }
-

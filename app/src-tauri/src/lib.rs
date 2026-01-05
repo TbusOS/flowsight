@@ -2,7 +2,10 @@
 
 mod commands;
 
-pub use commands::{AnalysisResult, FunctionInfo, ProjectInfo, SearchResult, IndexStats, FunctionDetail, FunctionLocation, FileNode};
+pub use commands::{
+    AnalysisResult, FileNode, FunctionDetail, FunctionInfo, FunctionLocation, IndexStats,
+    ProjectInfo, SearchResult,
+};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

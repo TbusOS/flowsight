@@ -4,4 +4,3 @@
 fn main() {
     flowsight_app_lib::run()
 }
-

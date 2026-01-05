@@ -149,14 +149,12 @@ impl FuncPtrResolver {
         //     .open = my_open,
         //     .read = my_read,
         // };
-        let struct_init_re = Regex::new(
-            r"(?s)static\s+(?:const\s+)?struct\s+(\w+)\s+(\w+)\s*=\s*\{([^}]+)\}"
-        ).unwrap();
+        let struct_init_re =
+            Regex::new(r"(?s)static\s+(?:const\s+)?struct\s+(\w+)\s+(\w+)\s*=\s*\{([^}]+)\}")
+                .unwrap();
 
         // Pattern to match field assignments
-        let field_assign_re = Regex::new(
-            r"\.(\w+)\s*=\s*(\w+)"
-        ).unwrap();
+        let field_assign_re = Regex::new(r"\.(\w+)\s*=\s*(\w+)").unwrap();
 
         for caps in struct_init_re.captures_iter(source) {
             let struct_type = caps.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -165,15 +163,18 @@ impl FuncPtrResolver {
 
             // Find matching ops pattern
             for pattern in &self.ops_patterns {
-                if pattern.struct_pattern.is_match(&format!("struct {}", struct_type)) {
+                if pattern
+                    .struct_pattern
+                    .is_match(&format!("struct {}", struct_type))
+                {
                     // Extract field assignments
                     for field_caps in field_assign_re.captures_iter(body) {
                         let field = field_caps.get(1).map(|m| m.as_str()).unwrap_or("");
                         let func_name = field_caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
                         // Check if it's a known callback field and function exists
-                        if pattern.field_mappings.contains_key(field) 
-                            && functions.contains_key(func_name) 
+                        if pattern.field_mappings.contains_key(field)
+                            && functions.contains_key(func_name)
                         {
                             let context = format!("{}.{}", var_name, field);
                             mappings.push((context, func_name.to_string()));
@@ -195,9 +196,7 @@ impl FuncPtrResolver {
         let mut bindings = Vec::new();
 
         // Pattern: variable.field = function_name
-        let assign_re = Regex::new(
-            r"(\w+(?:\.\w+|->+\w+)*)\s*=\s*(\w+)\s*;"
-        ).unwrap();
+        let assign_re = Regex::new(r"(\w+(?:\.\w+|->+\w+)*)\s*=\s*(\w+)\s*;").unwrap();
 
         for caps in assign_re.captures_iter(source) {
             let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -211,7 +210,7 @@ impl FuncPtrResolver {
                     if let Some(field) = parts.last() {
                         if Self::looks_like_callback_field(field) {
                             bindings.push(FuncPtrBinding {
-                                source: parts[..parts.len()-1].join("."),
+                                source: parts[..parts.len() - 1].join("."),
                                 field: field.to_string(),
                                 function: func_name.to_string(),
                                 confidence: Confidence::Medium,
@@ -228,11 +227,10 @@ impl FuncPtrResolver {
     /// Check if a field name looks like a callback
     fn looks_like_callback_field(field: &str) -> bool {
         let callback_patterns = [
-            "callback", "handler", "func", "fn", "ops",
-            "probe", "remove", "open", "close", "read", "write",
-            "init", "exit", "start", "stop", "notify",
+            "callback", "handler", "func", "fn", "ops", "probe", "remove", "open", "close", "read",
+            "write", "init", "exit", "start", "stop", "notify",
         ];
-        
+
         let field_lower = field.to_lowercase();
         callback_patterns.iter().any(|p| field_lower.contains(p))
     }

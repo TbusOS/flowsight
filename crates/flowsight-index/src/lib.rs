@@ -9,15 +9,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-mod file_tracker;
-mod tree_cache;
 mod batch_indexer;
+mod file_tracker;
 mod storage;
+mod tree_cache;
 
-pub use file_tracker::FileVersionTracker;
-pub use tree_cache::TreeCache;
 pub use batch_indexer::BatchIndexer;
+pub use file_tracker::FileVersionTracker;
 pub use storage::{IndexStorage, StorageError};
+pub use tree_cache::TreeCache;
 
 /// File version information for incremental indexing
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,7 +75,7 @@ impl SymbolIndex {
     pub fn add_function(&mut self, func: FunctionDef, file: &Path) {
         let name = func.name.clone();
         self.functions.insert(name.clone(), func);
-        
+
         self.functions_by_file
             .entry(file.to_path_buf())
             .or_default()
@@ -111,12 +111,7 @@ impl SymbolIndex {
     pub fn get_functions_in_file(&self, file: &Path) -> Vec<&FunctionDef> {
         self.functions_by_file
             .get(file)
-            .map(|names| {
-                names
-                    .iter()
-                    .filter_map(|n| self.functions.get(n))
-                    .collect()
-            })
+            .map(|names| names.iter().filter_map(|n| self.functions.get(n)).collect())
             .unwrap_or_default()
     }
 
@@ -237,7 +232,7 @@ mod tests {
     #[test]
     fn test_symbol_index() {
         let mut index = SymbolIndex::new();
-        
+
         let func = FunctionDef {
             name: "my_func".into(),
             return_type: "int".into(),
@@ -249,9 +244,9 @@ mod tests {
             callback_context: None,
             attributes: vec![],
         };
-        
+
         index.add_function(func, Path::new("test.c"));
-        
+
         assert!(index.get_function("my_func").is_some());
         assert_eq!(index.stats().total_functions, 1);
     }
