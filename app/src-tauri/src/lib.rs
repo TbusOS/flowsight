@@ -2,7 +2,7 @@
 
 mod commands;
 
-pub use commands::{AnalysisResult, FunctionInfo, ProjectInfo, SearchResult, IndexStats, FunctionDetail, FunctionLocation};
+pub use commands::{AnalysisResult, FunctionInfo, ProjectInfo, SearchResult, IndexStats, FunctionDetail, FunctionLocation, FileNode};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +18,8 @@ pub fn run() {
             commands::get_index_stats,
             commands::get_function_detail,
             commands::get_function_locations,
+            commands::list_directory,
+            commands::expand_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

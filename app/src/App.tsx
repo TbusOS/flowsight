@@ -7,42 +7,15 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { FlowView } from './components/FlowView'
 import { CodeEditor } from './components/Editor'
-import { AnalysisResult, FlowTreeNode } from './types'
-
-interface ProjectInfo {
-  path: string
-  files_count: number
-  functions_count: number
-  structs_count: number
-  indexed: boolean
-}
-
-interface SearchResult {
-  name: string
-  kind: string
-  file: string | null
-  line: number | null
-  is_callback: boolean
-}
-
-interface IndexStats {
-  functions: number
-  structs: number
-  files: number
-}
-
-interface FunctionDetail {
-  name: string
-  return_type: string
-  file: string | null
-  line: number
-  end_line: number
-  is_callback: boolean
-  callback_context: string | null
-  calls: string[]
-  called_by: string[]
-  params: { name: string; type_name: string }[]
-}
+import { FileTree, FileNode } from './components/Explorer'
+import { 
+  AnalysisResult, 
+  FlowTreeNode, 
+  ProjectInfo, 
+  SearchResult, 
+  IndexStats,
+  FunctionDetail 
+} from './types'
 
 type ViewMode = 'flow' | 'code' | 'split'
 
@@ -62,6 +35,7 @@ function App() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [indexStats, setIndexStats] = useState<IndexStats | null>(null)
   const [functionDetail, setFunctionDetail] = useState<FunctionDetail | null>(null)
+  const [fileTree, setFileTree] = useState<FileNode[]>([])
 
   // Open project directory
   const handleOpenProject = async () => {
@@ -79,6 +53,10 @@ function App() {
         setProject(info)
         const stats = await invoke<IndexStats>('get_index_stats')
         setIndexStats(stats)
+        
+        // Load file tree
+        const tree = await invoke<FileNode[]>('list_directory', { path: selected, recursive: true })
+        setFileTree(tree)
       }
     } catch (e) {
       setError(String(e))
@@ -200,6 +178,25 @@ function App() {
     setSearchResults([])
   }
 
+  // Handle file selection from tree
+  const handleFileSelect = async (path: string) => {
+    // Only analyze C/H files
+    const ext = path.split('.').pop()?.toLowerCase()
+    if (['c', 'h', 'cpp', 'hpp', 'cc', 'cxx'].includes(ext || '')) {
+      await handleAnalyze(path)
+    } else {
+      // Just show the file content
+      try {
+        const content = await invoke<string>('read_file', { path })
+        setFileContent(content)
+        setFilePath(path)
+        setResult(null)
+      } catch (e) {
+        setError(String(e))
+      }
+    }
+  }
+
   const handleEditorLineClick = (line: number) => {
     console.log('Clicked line:', line)
   }
@@ -287,30 +284,25 @@ function App() {
       </header>
 
       <main className="main">
-        {/* 左侧面板 - 项目和分析信息 */}
-        <div className="panel sidebar">
+        {/* 左侧面板 - 文件浏览器 */}
+        <div className="panel sidebar explorer-sidebar">
           {project ? (
             <>
-              <h2>📁 项目</h2>
-              <div className="project-info">
-                <div className="info-card">
-                  <span className="info-label">路径</span>
-                  <span className="info-value small">{project.path.split('/').pop()}</span>
+              <div className="project-header">
+                <h2>📁 {project.path.split('/').pop()}</h2>
+                <div className="project-stats">
+                  <span>{indexStats?.files || 0} 文件</span>
+                  <span>•</span>
+                  <span>{indexStats?.functions || 0} 函数</span>
                 </div>
-                <div className="info-row">
-                  <div className="info-item">
-                    <span className="info-number">{indexStats?.files || 0}</span>
-                    <span className="info-text">文件</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-number">{indexStats?.functions || 0}</span>
-                    <span className="info-text">函数</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-number">{indexStats?.structs || 0}</span>
-                    <span className="info-text">结构体</span>
-                  </div>
-                </div>
+              </div>
+              
+              <div className="file-tree-container">
+                <FileTree 
+                  nodes={fileTree}
+                  onFileSelect={handleFileSelect}
+                  selectedPath={filePath}
+                />
               </div>
             </>
           ) : (
@@ -320,61 +312,10 @@ function App() {
               <p>或点击"文件"打开单个文件</p>
             </div>
           )}
-
-          <hr className="divider" />
-          
-          <h2>📋 分析概览</h2>
           
           {error && (
             <div className="error">
               <strong>❌ 错误：</strong> {error}
-            </div>
-          )}
-
-          {result ? (
-            <div className="analysis-info">
-              <div className="info-card">
-                <span className="info-label">文件</span>
-                <span className="info-value">{result.file.split('/').pop()}</span>
-              </div>
-              <div className="info-card">
-                <span className="info-label">函数</span>
-                <span className="info-value">{result.functions_count}</span>
-              </div>
-              <div className="info-card">
-                <span className="info-label">结构体</span>
-                <span className="info-value">{result.structs_count}</span>
-              </div>
-              <div className="info-card">
-                <span className="info-label">异步处理器</span>
-                <span className="info-value highlight">{result.async_handlers_count}</span>
-              </div>
-              
-              <div className="entry-points">
-                <h3>🚀 入口点</h3>
-                <ul>
-                  {result.entry_points.map((entry, i) => (
-                    <li 
-                      key={i} 
-                      className={selectedFunction === entry ? 'selected' : ''}
-                      onClick={() => handleNodeClick('', entry)}
-                    >
-                      <code>{entry}()</code>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          ) : (
-            <div className="welcome">
-              <p>FlowSight 帮助你理解代码执行流程：</p>
-              <ul>
-                <li>📊 函数调用图谱</li>
-                <li>⚡ 异步机制追踪</li>
-                <li>🔌 回调函数解析</li>
-                <li>📦 数据结构关系</li>
-              </ul>
-              <p className="hint">打开源码文件开始分析</p>
             </div>
           )}
         </div>
@@ -421,9 +362,48 @@ function App() {
           </div>
         </div>
 
-        {/* 右侧面板 - 详情 */}
+        {/* 右侧面板 - 分析详情 */}
         <div className="panel sidebar">
-          <h2>📝 详情</h2>
+          {/* 分析概览 */}
+          {result && (
+            <div className="analysis-overview">
+              <h2>📋 分析概览</h2>
+              <div className="overview-stats">
+                <div className="stat-item">
+                  <span className="stat-value">{result.functions_count}</span>
+                  <span className="stat-label">函数</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-value">{result.structs_count}</span>
+                  <span className="stat-label">结构体</span>
+                </div>
+                <div className="stat-item highlight">
+                  <span className="stat-value">{result.async_handlers_count}</span>
+                  <span className="stat-label">异步</span>
+                </div>
+              </div>
+              
+              {result.entry_points.length > 0 && (
+                <div className="entry-points">
+                  <h3>🚀 入口点</h3>
+                  <ul>
+                    {result.entry_points.map((entry, i) => (
+                      <li 
+                        key={i} 
+                        className={selectedFunction === entry ? 'selected' : ''}
+                        onClick={() => handleNodeClick('', entry)}
+                      >
+                        <code>{entry}()</code>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <hr className="divider" />
+            </div>
+          )}
+          
+          <h2>📝 函数详情</h2>
           
           {functionDetail ? (
             <div className="function-detail">

@@ -4,7 +4,7 @@ use flowsight_parser::get_parser;
 use flowsight_analysis::Analyzer;
 use flowsight_index::SymbolIndex;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use walkdir::WalkDir;
@@ -306,5 +306,85 @@ pub struct FunctionLocation {
     pub line: u32,
     pub column: u32,
     pub is_callback: bool,
+}
+
+/// File node for file tree
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileNode {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub children: Option<Vec<FileNode>>,
+    pub extension: Option<String>,
+}
+
+/// List directory contents for file tree
+#[tauri::command]
+pub async fn list_directory(path: String, recursive: bool) -> Result<Vec<FileNode>, String> {
+    let dir_path = PathBuf::from(&path);
+    
+    if !dir_path.is_dir() {
+        return Err("Path is not a directory".into());
+    }
+    
+    fn read_dir_entries(path: &Path, recursive: bool, depth: usize) -> Result<Vec<FileNode>, String> {
+        if depth > 10 {
+            return Ok(vec![]); // Limit depth
+        }
+        
+        let mut entries: Vec<FileNode> = std::fs::read_dir(path)
+            .map_err(|e| e.to_string())?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                // Skip hidden files and common non-source directories
+                let name = e.file_name().to_string_lossy().to_string();
+                !name.starts_with('.') && 
+                !["node_modules", "target", "build", "dist", "__pycache__", ".git"].contains(&name.as_str())
+            })
+            .map(|e| {
+                let path = e.path();
+                let name = e.file_name().to_string_lossy().to_string();
+                let is_dir = path.is_dir();
+                let extension = if !is_dir {
+                    path.extension().map(|ext| ext.to_string_lossy().to_string())
+                } else {
+                    None
+                };
+                
+                let children = if is_dir && recursive {
+                    read_dir_entries(&path, recursive, depth + 1).ok()
+                } else {
+                    None
+                };
+                
+                FileNode {
+                    name,
+                    path: path.to_string_lossy().to_string(),
+                    is_dir,
+                    children,
+                    extension,
+                }
+            })
+            .collect();
+        
+        // Sort: directories first, then by name
+        entries.sort_by(|a, b| {
+            match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            }
+        });
+        
+        Ok(entries)
+    }
+    
+    read_dir_entries(&dir_path, recursive, 0)
+}
+
+/// Expand a single directory (lazy loading)
+#[tauri::command]
+pub async fn expand_directory(path: String) -> Result<Vec<FileNode>, String> {
+    list_directory(path, false).await
 }
 

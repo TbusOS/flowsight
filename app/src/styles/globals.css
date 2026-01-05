@@ -827,3 +827,156 @@ code {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* ============================================
+   Explorer 侧边栏
+   ============================================ */
+.explorer-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.project-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-header h2 {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.project-stats {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.file-tree-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+/* ============================================
+   分析概览
+   ============================================ */
+.analysis-overview {
+  margin-bottom: 0.5rem;
+}
+
+.overview-stats {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.stat-item {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem 0.25rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.stat-item .stat-value {
+  display: block;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stat-item .stat-label {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.stat-item.highlight .stat-value {
+  color: var(--warning);
+}
+
+/* File Tree 样式 (集成 Explorer.css) */
+.file-tree {
+  font-size: 13px;
+}
+
+.tree-node {
+  user-select: none;
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+  border-left: 2px solid transparent;
+}
+
+.tree-item:hover {
+  background: var(--bg-hover);
+}
+
+.tree-item.selected {
+  background: var(--bg-tertiary);
+  border-left-color: var(--accent);
+}
+
+.tree-item.directory {
+  font-weight: 500;
+}
+
+.chevron {
+  font-size: 8px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  width: 12px;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.file-icon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+}
+
+.file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-children {
+  animation: slideDown 0.15s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.empty-tree {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
