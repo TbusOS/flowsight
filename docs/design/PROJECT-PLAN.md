@@ -1724,10 +1724,63 @@ flowsight> exit
 
 #### 5.7.2 发布准备
 
-*   **多平台打包**: Windows, Linux, macOS
-*   **国际化**: 完善中英文翻译
-*   **插件系统**: 初步支持用户脚本查询图数据库
+**多平台安装包构建**:
+
+| 平台 | 安装包格式 | 构建方式 | 备注 |
+|------|------------|----------|------|
+| **Windows** | `.msi` / `.exe` | Tauri bundler + NSIS | 主要用户群 |
+| **macOS** | `.dmg` / `.app` | Tauri bundler | Intel + Apple Silicon |
+| **Linux** | `.deb` / `.AppImage` | Tauri bundler | Ubuntu/Debian 优先 |
+
+**GitHub Actions 自动构建**:
+```yaml
+# 每次 Release Tag 自动触发
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+```
+
+**安装包内容**:
+```
+FlowSight-v1.0.0-windows-x64.msi
+├── flowsight.exe          # 主程序
+├── resources/             # 前端资源
+├── icons/                 # 应用图标
+└── README.txt             # 快速开始
+
+AI 模型（首次启动时下载）:
+~/.flowsight/models/
+└── flowsight-code-v1.gguf  # ~2GB
+```
+
+**发布清单**:
+*   [ ] Windows x64 安装包 (.msi)
+*   [ ] Windows x64 便携版 (.zip)
+*   [ ] macOS Intel 安装包 (.dmg)
+*   [ ] macOS Apple Silicon 安装包 (.dmg)
+*   [ ] Linux x64 安装包 (.deb)
+*   [ ] Linux x64 便携版 (.AppImage)
+*   [ ] 模型文件托管 (GitHub Releases)
+*   [ ] 校验文件 (SHA256)
+
+**其他发布准备**:
+*   **国际化**: 简体中文 + 英文（首发双语）
 *   **文档完善**: 用户手册、API 文档、贡献指南
+*   **官网**: 下载页面、功能介绍、截图/视频
 
 ---
 
