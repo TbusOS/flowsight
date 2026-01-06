@@ -43,6 +43,43 @@ enum Commands {
         #[arg(value_name = "FUNCTION")]
         function: String,
     },
+    
+    /// Show execution flow in ftrace style
+    Trace {
+        /// Source file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Function name
+        #[arg(value_name = "FUNCTION")]
+        function: String,
+        
+        /// Output format (ftrace, markdown, json)
+        #[arg(short, long, default_value = "ftrace")]
+        format: String,
+    },
+    
+    /// Show who calls a function
+    Callers {
+        /// Source file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Function name
+        #[arg(value_name = "FUNCTION")]
+        function: String,
+    },
+    
+    /// Show what a function calls
+    Callees {
+        /// Source file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Function name
+        #[arg(value_name = "FUNCTION")]
+        function: String,
+    },
 
     /// List all async handlers
     Async {
@@ -75,6 +112,15 @@ fn main() -> Result<()> {
         }
         Commands::Flow { file, function } => {
             cmd_flow(&file, &function)?;
+        }
+        Commands::Trace { file, function, format } => {
+            cmd_trace(&file, &function, &format)?;
+        }
+        Commands::Callers { file, function } => {
+            cmd_callers(&file, &function)?;
+        }
+        Commands::Callees { file, function } => {
+            cmd_callees(&file, &function)?;
         }
         Commands::Async { file } => {
             cmd_async(&file)?;
@@ -239,6 +285,174 @@ fn cmd_callbacks(file: &PathBuf) -> Result<()> {
             println!("     Context: {}", context);
             println!();
         }
+    }
+
+    Ok(())
+}
+
+/// Print execution flow in ftrace style
+fn cmd_trace(file: &PathBuf, function: &str, format: &str) -> Result<()> {
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(file)?;
+
+    let source = std::fs::read_to_string(file)?;
+    let mut analyzer = Analyzer::new();
+    let analysis = analyzer.analyze(&source, &mut parse_result)?;
+
+    // Find the flow tree for the specified function
+    let tree = analysis.flow_trees.iter().find(|t| t.name == function);
+    
+    match format {
+        "ftrace" => {
+            if let Some(tree) = tree {
+                print_ftrace_tree(tree, 0, &parse_result.functions);
+            } else {
+                println!("Function '{}' not found in entry points", function);
+            }
+        }
+        "markdown" => {
+            println!("# Execution Flow: {}()", function);
+            println!();
+            println!("```");
+            if let Some(tree) = tree {
+                print_ftrace_tree(tree, 0, &parse_result.functions);
+            }
+            println!("```");
+        }
+        "json" => {
+            if let Some(tree) = tree {
+                let json = serde_json::to_string_pretty(tree)?;
+                println!("{}", json);
+            }
+        }
+        _ => {
+            println!("Unknown format: {}", format);
+        }
+    }
+
+    Ok(())
+}
+
+fn print_ftrace_tree(node: &flowsight_core::FlowNode, depth: usize, functions: &std::collections::HashMap<String, flowsight_core::FunctionDef>) {
+    let indent = "  ".repeat(depth);
+    let cpu = " 0)";
+    
+    // Get line number info
+    let line_info = if let Some(loc) = &node.location {
+        format!("L{:<4}", loc.line)
+    } else if let Some(func) = functions.get(&node.name) {
+        if let Some(loc) = &func.location {
+            format!("L{:<4}", loc.line)
+        } else {
+            "     ".to_string()
+        }
+    } else {
+        "     ".to_string()
+    };
+    
+    // Get async info
+    let async_tag = match &node.node_type {
+        flowsight_core::FlowNodeType::AsyncCallback { mechanism } => {
+            match mechanism {
+                flowsight_core::AsyncMechanism::WorkQueue { .. } => " [WQ]",
+                flowsight_core::AsyncMechanism::Timer { .. } => " [TM]",
+                flowsight_core::AsyncMechanism::Interrupt { .. } => " [IRQ]",
+                flowsight_core::AsyncMechanism::Tasklet => " [TL]",
+                flowsight_core::AsyncMechanism::KThread => " [KT]",
+                _ => " [A]",
+            }
+        }
+        flowsight_core::FlowNodeType::KernelApi => " [K]",
+        flowsight_core::FlowNodeType::External => " [E]",
+        _ => "",
+    };
+    
+    if node.children.is_empty() {
+        println!("{}{} {} |{}{}();{}", cpu, line_info, indent, indent, node.name, async_tag);
+    } else {
+        println!("{}{} {} |{}{}() {{{}", cpu, line_info, indent, indent, node.name, async_tag);
+        for child in &node.children {
+            print_ftrace_tree(child, depth + 1, functions);
+        }
+        println!("{}{} {} |{}}}", cpu, line_info, indent, indent);
+    }
+}
+
+/// Show who calls a function
+fn cmd_callers(file: &PathBuf, function: &str) -> Result<()> {
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(file)?;
+
+    let source = std::fs::read_to_string(file)?;
+    let mut analyzer = Analyzer::new();
+    let analysis = analyzer.analyze(&source, &mut parse_result)?;
+
+    println!("📥 Callers of {}():", function);
+    println!();
+
+    let mut found = false;
+    
+    // Direct callers
+    for (name, func) in &parse_result.functions {
+        if func.calls.contains(&function.to_string()) {
+            found = true;
+            let loc = func.location.as_ref()
+                .map(|l| format!("{}:{}", l.file.split('/').last().unwrap_or(&l.file), l.line))
+                .unwrap_or_default();
+            println!("  → {}() [Direct]", name);
+            if !loc.is_empty() {
+                println!("     at {}", loc);
+            }
+        }
+    }
+    
+    // Async callers (via bindings)
+    for binding in &analysis.async_bindings {
+        if binding.handler == function {
+            found = true;
+            let mechanism = format!("{:?}", binding.mechanism);
+            println!("  → [Async: {}]", mechanism);
+            if !binding.variable.is_empty() {
+                println!("     via {}", binding.variable);
+            }
+        }
+    }
+
+    if !found {
+        println!("  (No callers found - may be an entry point)");
+    }
+
+    Ok(())
+}
+
+/// Show what a function calls
+fn cmd_callees(file: &PathBuf, function: &str) -> Result<()> {
+    let parser = get_parser();
+    let parse_result = parser.parse_file(file)?;
+
+    println!("📤 {}() calls:", function);
+    println!();
+
+    if let Some(func) = parse_result.functions.get(function) {
+        if func.calls.is_empty() {
+            println!("  (No function calls found)");
+        } else {
+            for (i, callee) in func.calls.iter().enumerate() {
+                let is_last = i == func.calls.len() - 1;
+                let prefix = if is_last { "└── " } else { "├── " };
+                
+                // Check if callee is known
+                let suffix = if parse_result.functions.contains_key(callee) {
+                    ""
+                } else {
+                    " [External]"
+                };
+                
+                println!("  {}{}(){}", prefix, callee, suffix);
+            }
+        }
+    } else {
+        println!("  Function '{}' not found", function);
     }
 
     Ok(())
