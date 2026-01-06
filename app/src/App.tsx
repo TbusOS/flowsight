@@ -17,6 +17,7 @@ import { Welcome } from './components/Welcome'
 import { Settings, defaultSettings, type AppSettings } from './components/Settings'
 import { FindReplace, type FindMatch } from './components/FindReplace'
 import { KeyboardShortcuts } from './components/KeyboardShortcuts'
+import { ScenarioPanel } from './components/ScenarioPanel'
 import { GoToLine } from './components/GoToLine'
 import { ToastContainer, useToast } from './components/Toast'
 import { AboutDialog } from './components/AboutDialog'
@@ -117,6 +118,13 @@ function App() {
   
   // 快速打开状态
   const [quickOpenOpen, setQuickOpenOpen] = useState(false)
+  
+  // 场景化数据流分析状态
+  const [scenarioPanelOpen, setScenarioPanelOpen] = useState(false)
+  const [scenarioResults, setScenarioResults] = useState<{
+    path: string[]
+    states: { location: string; variables: Record<string, string> }[]
+  } | null>(null)
   
   // 拖放文件处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -1343,6 +1351,15 @@ function App() {
                   <span className="return-type">{functionDetail.return_type}</span>
                 </div>
                 
+                {/* 场景化分析按钮 - 核心功能入口 */}
+                <button 
+                  className="scenario-btn"
+                  onClick={() => setScenarioPanelOpen(true)}
+                  title="场景化数据流分析"
+                >
+                  🎯 场景分析
+                </button>
+                
                 {/* 回调绑定信息 - 核心亮点 */}
                 {functionDetail.is_callback && (
                   <div className="callback-info">
@@ -1516,6 +1533,20 @@ function App() {
           timestamp: rf.timestamp
         }))}
         onSelect={handleAnalyze}
+      />
+      
+      {/* 场景化数据流分析面板 */}
+      <ScenarioPanel
+        isOpen={scenarioPanelOpen}
+        onClose={() => setScenarioPanelOpen(false)}
+        entryFunction={functionDetail?.name || ''}
+        params={functionDetail?.params || []}
+        onExecute={(scenario) => {
+          console.log('Execute scenario:', scenario)
+          // TODO: 调用后端执行场景分析
+          setScenarioPanelOpen(false)
+          success(`场景 "${scenario.name}" 已开始分析`)
+        }}
       />
     </div>
   )
