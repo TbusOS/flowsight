@@ -205,6 +205,63 @@
 
 **这才是让人真正理解 Linux 内核运行机制的工具！**
 
+### 技术实现架构 (已实现)
+
+```rust
+// flowsight-knowledge 知识库核心数据结构
+
+/// 调用链节点 - 记录每一步调用
+pub struct CallChainNode {
+    pub function: String,           // 函数名
+    pub file: Option<String>,       // 内核源码路径
+    pub context: ExecutionContext,  // 执行上下文
+    pub description: Option<String>,// 说明
+    pub is_user_entry: bool,        // 是否是用户代码入口
+}
+
+/// 完整调用链 - 从触发源到用户代码
+pub struct CallChain {
+    pub name: String,               // 如 "USB probe 调用链"
+    pub trigger_source: String,     // 如 "USB 设备插入"
+    pub nodes: Vec<CallChainNode>,  // 完整调用路径
+}
+
+/// 异步时间线 - 展示两条执行流的关系
+pub struct AsyncTimeline {
+    pub phase1: TimelinePhase,      // 第一阶段 (如中断上半部)
+    pub separation: String,         // 分割说明
+    pub phase2: TimelinePhase,      // 第二阶段 (如 WorkQueue)
+}
+```
+
+### 已内置的调用链
+
+| 子系统 | 回调 | 调用链深度 | 状态 |
+|--------|------|-----------|------|
+| USB Driver | probe | 9 层 | ✅ 已实现 |
+| USB Driver | disconnect | 6 层 | ✅ 已实现 |
+| file_operations | open | 6 层 | ✅ 已实现 |
+| WorkQueue | work handler | 5 层 | ✅ 已实现 |
+| Timer | timer callback | 5 层 | ✅ 已实现 |
+| Interrupt | IRQ handler | 3 层 | ✅ 已实现 |
+
+### 关键 API
+
+```rust
+// 获取框架回调的完整内核调用链
+kb.get_callback_call_chain("usb_driver", "probe")
+
+// 获取异步模式的 handler 调用链
+kb.get_async_handler_chain("work_struct")
+
+// 获取异步模式的时间线关系
+kb.get_async_timeline("work_struct")
+```
+
+### 下一步：在 UI 中展示
+
+分析引擎检测到用户代码 → 匹配知识库模式 → 注入内核调用链 → UI 展示完整时间线
+
 ---
 
 ## 🎯 核心开发策略
