@@ -1541,11 +1541,49 @@ function App() {
         onClose={() => setScenarioPanelOpen(false)}
         entryFunction={functionDetail?.name || ''}
         params={functionDetail?.params || []}
-        onExecute={(scenario) => {
-          console.log('Execute scenario:', scenario)
-          // TODO: 调用后端执行场景分析
-          setScenarioPanelOpen(false)
-          success(`场景 "${scenario.name}" 已开始分析`)
+        onExecute={async (scenario) => {
+          try {
+            setScenarioPanelOpen(false)
+            info(`正在执行场景 "${scenario.name}"...`)
+            
+            const result = await invoke<{
+              success: boolean
+              path: { function: string; line: number; variables: Record<string, string> }[]
+              annotated_flow_tree: FlowTreeNode | null
+              error: string | null
+            }>('execute_scenario', {
+              filePath: filePath,
+              scenario: {
+                name: scenario.name,
+                entry_function: scenario.entryFunction,
+                bindings: scenario.bindings.map(b => ({
+                  path: b.path,
+                  value: b.value,
+                  type: b.type,
+                })),
+                options: null,
+              },
+            })
+            
+            if (result.success) {
+              // 更新执行流树显示带注解的版本
+              if (result.annotated_flow_tree) {
+                setFlowTrees([result.annotated_flow_tree])
+              }
+              setScenarioResults({
+                path: result.path.map(p => p.function),
+                states: result.path.map(p => ({
+                  location: `${p.function}:${p.line}`,
+                  variables: p.variables,
+                })),
+              })
+              success(`场景 "${scenario.name}" 分析完成！执行路径包含 ${result.path.length} 个节点`)
+            } else {
+              showError(`场景分析失败: ${result.error}`)
+            }
+          } catch (e) {
+            showError(`场景分析出错: ${e}`)
+          }
         }}
       />
     </div>
