@@ -4,6 +4,109 @@
 
 ---
 
+## ⭐ 核心补充：内核调用链 (2025-01 更新)
+
+### 什么是真正的"执行流"
+
+**执行流 ≠ 简单的函数调用关系**
+
+**执行流 = 代码真正是怎么运行的，包括完整的内核调用链！**
+
+例如：很多人以为 `insmod` 时就执行了 `probe`，其实并不是！
+
+```
+insmod my_driver.ko
+  └── sys_init_module()
+        └── do_init_module()
+              └── mod->init()
+                    └── my_init()
+                          └── usb_register(&my_driver)
+                                └── return 0
+
+═══════════════════════════════════════
+↑ insmod 到这里就返回了！probe 还没执行！
+═══════════════════════════════════════
+
+                ... 时间流逝 ...
+
+═══════════════════════════════════════
+↓ 某个时刻：USB 设备插入
+═══════════════════════════════════════
+
+USB 设备插入
+  └── usb_hub_port_connect()
+        └── usb_new_device()
+              └── device_add()
+                    └── bus_probe_device()
+                          └── driver_probe_device()
+                                └── really_probe()
+                                      └── usb_probe_interface()
+                                            └── drv->probe()
+                                                  └── my_probe()  ← 这才执行！
+```
+
+### 内核调用链 Schema
+
+```yaml
+# 新增 Schema：完整的内核调用链
+kernel_call_chains:
+  usb_probe:
+    name: "USB probe 调用链"
+    trigger_source: "USB 设备插入"
+    nodes:
+      - function: "usb_hub_port_connect"
+        file: "drivers/usb/core/hub.c"
+        context: "process"    # process / softirq / hardirq
+        description: "USB hub 检测到端口连接"
+        is_user_entry: false
+      
+      - function: "usb_new_device"
+        file: "drivers/usb/core/hub.c"
+        context: "process"
+        is_user_entry: false
+      
+      # ... 更多节点 ...
+      
+      - function: "drv->probe()"
+        file: null            # 用户代码
+        context: "process"
+        description: "调用驱动的 probe 回调"
+        is_user_entry: true   # ⭐ 这是用户代码入口点
+```
+
+### 异步时间线 Schema
+
+```yaml
+# 展示两条执行流之间的关系
+async_timelines:
+  irq_to_workqueue:
+    name: "中断 + WorkQueue 异步时间线"
+    
+    phase1:
+      name: "中断上半部"
+      context: "hardirq"
+      call_chain:
+        - function: "do_IRQ"
+          file: "arch/x86/kernel/irq.c"
+        - function: "handle_irq"
+        - function: "my_irq_handler"
+          is_user_entry: true
+    
+    separation: "中断返回 → CPU 执行其他任务 → 调度器选择 kworker"
+    
+    phase2:
+      name: "WorkQueue 执行"
+      context: "process"
+      call_chain:
+        - function: "worker_thread"
+          file: "kernel/workqueue.c"
+        - function: "process_one_work"
+        - function: "my_work_handler"
+          is_user_entry: true
+```
+
+---
+
 ## 目录
 
 1. [设计原则](#1-设计原则)
