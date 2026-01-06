@@ -326,19 +326,39 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
       // 添加边
       if (parentId) {
         const isAsync = typeof node.node_type === 'object' && 'AsyncCallback' in node.node_type
+        const asyncLabel = getAsyncLabel(node.node_type)
+        
+        // 根据异步类型选择颜色
+        let edgeColor = '#475569' // 默认
+        if (isAsync) {
+          const mechanism = (node.node_type as any)?.AsyncCallback?.mechanism
+          if (mechanism) {
+            if ('WorkQueue' in mechanism) edgeColor = '#f59e0b' // 橙色 - 工作队列
+            else if ('Timer' in mechanism) edgeColor = '#22c55e' // 绿色 - 定时器
+            else if ('Interrupt' in mechanism || 'Irq' in mechanism) edgeColor = '#ef4444' // 红色 - 中断
+            else if ('Tasklet' in mechanism) edgeColor = '#a855f7' // 紫色 - Tasklet
+            else if ('KThread' in mechanism) edgeColor = '#3b82f6' // 蓝色 - 内核线程
+            else edgeColor = '#f59e0b' // 默认橙色
+          }
+        }
+        
         edges.push({
           id: `${parentId}-${nodeId}`,
           source: parentId,
           target: nodeId,
           type: 'smoothstep',
           animated: isAsync,
+          label: isAsync ? asyncLabel : undefined,
+          labelStyle: { fill: edgeColor, fontSize: 10, fontWeight: 600 },
+          labelBgStyle: { fill: '#0f1419', fillOpacity: 0.8 },
+          labelBgPadding: [4, 2] as [number, number],
           style: {
-            stroke: isAsync ? '#f59e0b' : '#475569',
+            stroke: edgeColor,
             strokeWidth: isAsync ? 2 : 1,
           },
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            color: isAsync ? '#f59e0b' : '#475569',
+            color: edgeColor,
             width: 12,
             height: 12,
           },
@@ -525,6 +545,22 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
         <button onClick={collapseAll} title="收起全部">
           📁 收起
         </button>
+        
+        {/* 异步机制图例 */}
+        <div className="async-legend">
+          <span className="legend-item" title="工作队列 (进程上下文，可睡眠)">
+            <span className="legend-dot workqueue"></span>WorkQueue
+          </span>
+          <span className="legend-item" title="定时器 (软中断上下文)">
+            <span className="legend-dot timer"></span>Timer
+          </span>
+          <span className="legend-item" title="中断 (中断上下文，不可睡眠)">
+            <span className="legend-dot irq"></span>IRQ
+          </span>
+          <span className="legend-item" title="Tasklet (软中断上下文)">
+            <span className="legend-dot tasklet"></span>Tasklet
+          </span>
+        </div>
         <div className="depth-selector">
           <span className="depth-label">层级:</span>
           {[1, 2, 3, 4, 5].map(depth => (

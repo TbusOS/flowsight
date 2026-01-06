@@ -48,19 +48,68 @@
   opacity: 0.85;
 }
 
-/* 异步类型标签 */
+/* 异步类型标签 - 不同机制不同颜色 */
 .node-async-badge {
   position: absolute;
-  top: -9px;
+  top: -10px;
   left: 50%;
   transform: translateX(-50%);
-  background: #f59e0b;
-  color: #000;
   font-size: 9px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 默认异步标签 - 橙色 */
+.node-async-badge {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+}
+
+/* 工作队列 - 橙色 */
+.node-async-badge.async-workqueue {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+}
+
+/* 定时器 - 绿色 */
+.node-async-badge.async-timer {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #000;
+}
+
+/* 中断 - 红色 */
+.node-async-badge.async-irq {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #fff;
+}
+
+/* Tasklet - 紫色 */
+.node-async-badge.async-tasklet {
+  background: linear-gradient(135deg, #a855f7, #9333ea);
+  color: #fff;
+}
+
+/* 内核线程 - 蓝色 */
+.node-async-badge.async-kthread {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #fff;
+}
+
+/* 软中断 - 青色 */
+.node-async-badge.async-softirq {
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  color: #000;
+}
+
+/* 通用异步 */
+.node-async-badge.async-async {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
 }
 
 /* 节点主体内容 */

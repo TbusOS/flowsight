@@ -54,6 +54,51 @@
   margin: 0 4px;
 }
 
+/* 异步机制图例 */
+.async-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid #334155;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #94a3b8;
+  cursor: help;
+}
+
+.legend-item:hover {
+  color: #e2e8f0;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.legend-dot.workqueue {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.legend-dot.timer {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+.legend-dot.irq {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+.legend-dot.tasklet {
+  background: linear-gradient(135deg, #a855f7, #9333ea);
+}
+
 /* 深度选择器 */
 .depth-selector {
   display: flex;

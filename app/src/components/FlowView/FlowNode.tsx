@@ -48,25 +48,38 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
 
   // 构建详细 tooltip
   const buildTooltip = () => {
-    const parts = [`${name}()`]
+    const parts = [`📌 ${name}()`]
     if (nodeType) {
       const typeLabels: Record<string, string> = {
-        'user': '用户函数',
-        'kernel-api': '内核 API',
-        'external': '外部函数',
-        'callback': '回调函数',
+        'user': '👤 用户定义函数',
+        'kernel-api': '🔧 内核 API',
+        'external': '📦 外部函数',
+        'callback': '⚡ 回调函数',
+        'async-callback': '⏰ 异步回调',
       }
-      parts.push(`类型: ${typeLabels[nodeType] || nodeType}`)
+      parts.push(`${typeLabels[nodeType] || nodeType}`)
+    }
+    // 异步机制信息
+    if (asyncLabel) {
+      const asyncInfo: Record<string, string> = {
+        'WorkQueue': '🔄 工作队列 (进程上下文，可睡眠)',
+        'Timer': '⏱️ 定时器 (软中断上下文，不可睡眠)',
+        'IRQ': '⚡ 硬中断 (中断上下文，不可睡眠)',
+        'Tasklet': '📋 Tasklet (软中断上下文)',
+        'KThread': '🧵 内核线程 (进程上下文，可睡眠)',
+        'Async': '⏳ 异步调用',
+      }
+      parts.push(asyncInfo[asyncLabel] || `异步: ${asyncLabel}`)
     }
     if (file) {
       const fileName = file.split('/').pop()
-      parts.push(`文件: ${fileName}`)
+      parts.push(`📄 ${fileName}`)
     }
     if (line !== undefined) {
-      parts.push(`行号: ${line}`)
+      parts.push(`📍 第 ${line} 行`)
     }
     if (hasChildren) {
-      parts.push(`调用: ${childCount} 个函数`)
+      parts.push(`📊 调用 ${childCount} 个函数`)
     }
     return parts.join('\n')
   }
@@ -79,9 +92,14 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
     >
       <Handle type="target" position={Position.Left} />
       
-      {/* 异步标签 */}
+      {/* 异步标签 - 根据类型显示不同颜色 */}
       {asyncLabel && (
-        <div className="node-async-badge">{asyncLabel}</div>
+        <div 
+          className={`node-async-badge async-${asyncLabel.toLowerCase()}`}
+          data-async-type={asyncLabel}
+        >
+          {asyncLabel}
+        </div>
       )}
       
       <div className="node-main">
