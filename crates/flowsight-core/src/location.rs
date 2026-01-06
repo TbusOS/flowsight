@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Represents a location in source code
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct Location {
     /// File path
     pub file: String,

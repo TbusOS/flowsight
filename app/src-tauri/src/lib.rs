@@ -24,6 +24,7 @@ pub fn run() {
             commands::list_directory,
             commands::expand_directory,
             commands::export_flow_text,
+            commands::execute_scenario,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

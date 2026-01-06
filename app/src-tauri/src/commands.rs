@@ -407,3 +407,124 @@ pub async fn expand_directory(path: String) -> Result<Vec<FileNode>, String> {
 pub async fn export_flow_text(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
 }
+
+/// Scenario request for symbolic execution
+#[derive(Debug, Deserialize)]
+pub struct ScenarioRequest {
+    pub name: String,
+    pub entry_function: String,
+    pub bindings: Vec<ScenarioBinding>,
+    pub options: Option<ScenarioOptionsReq>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ScenarioBinding {
+    pub path: String,
+    pub value: String,
+    #[serde(rename = "type")]
+    pub value_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ScenarioOptionsReq {
+    pub follow_async: Option<bool>,
+    pub show_kernel_api: Option<bool>,
+    pub max_depth: Option<usize>,
+}
+
+/// Scenario execution result
+#[derive(Debug, Serialize)]
+pub struct ScenarioResult {
+    pub success: bool,
+    pub path: Vec<ScenarioState>,
+    pub annotated_flow_tree: Option<flowsight_core::FlowNode>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ScenarioState {
+    pub function: String,
+    pub line: u32,
+    pub variables: std::collections::HashMap<String, String>,
+}
+
+/// Execute scenario-based symbolic analysis
+#[tauri::command]
+pub async fn execute_scenario(
+    file_path: String,
+    scenario: ScenarioRequest,
+) -> Result<ScenarioResult, String> {
+    use flowsight_analysis::scenario::{Scenario, ScenarioExecutor, ScenarioOptions, SymbolicValue, ValueBinding};
+    
+    let path = PathBuf::from(&file_path);
+    
+    // Parse file
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
+    
+    // Read source for analysis
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    
+    // Run analysis to get flow trees
+    let mut analyzer = Analyzer::new();
+    let analysis = analyzer
+        .analyze(&source, &mut parse_result)
+        .map_err(|e| e.to_string())?;
+    
+    // Find the flow tree for the entry function
+    let entry_tree = analysis.flow_trees.iter()
+        .find(|tree| tree.name == scenario.entry_function);
+    
+    let Some(entry_tree) = entry_tree else {
+        return Ok(ScenarioResult {
+            success: false,
+            path: vec![],
+            annotated_flow_tree: None,
+            error: Some(format!("Entry function '{}' not found in flow trees", scenario.entry_function)),
+        });
+    };
+    
+    // Convert bindings
+    let bindings: Vec<ValueBinding> = scenario.bindings.iter()
+        .map(|b| ValueBinding {
+            path: b.path.clone(),
+            value: SymbolicValue::parse(&b.value, &b.value_type),
+        })
+        .collect();
+    
+    // Build scenario
+    let options = scenario.options.as_ref().map(|o| ScenarioOptions {
+        follow_async: o.follow_async.unwrap_or(true),
+        show_kernel_api: o.show_kernel_api.unwrap_or(true),
+        max_depth: o.max_depth.unwrap_or(10),
+    }).unwrap_or_default();
+    
+    let scenario_config = Scenario {
+        name: scenario.name,
+        entry_function: scenario.entry_function,
+        bindings,
+        options: options.clone(),
+    };
+    
+    // Execute scenario
+    let mut executor = ScenarioExecutor::new(options);
+    let result = executor.execute(&scenario_config, entry_tree);
+    
+    // Convert states
+    let states: Vec<ScenarioState> = result.states.iter()
+        .map(|s| ScenarioState {
+            function: s.function.clone(),
+            line: s.location.line,
+            variables: s.variables.iter()
+                .map(|(k, v)| (k.clone(), v.display()))
+                .collect(),
+        })
+        .collect();
+    
+    Ok(ScenarioResult {
+        success: true,
+        path: states,
+        annotated_flow_tree: result.flow_tree,
+        error: None,
+    })
+}

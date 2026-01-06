@@ -4,11 +4,13 @@
 //! - Async mechanism tracking (work queues, timers, interrupts)
 //! - Function pointer resolution
 //! - Call graph construction
+//! - Scenario-based symbolic execution
 //! - Data flow analysis
 
 pub mod async_tracker;
 pub mod callgraph;
 pub mod funcptr;
+pub mod scenario;
 
 use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};
 use flowsight_parser::ParseResult;
