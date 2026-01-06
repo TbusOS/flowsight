@@ -1343,9 +1343,34 @@ function App() {
                   <span className="return-type">{functionDetail.return_type}</span>
                 </div>
                 
-                {functionDetail.callback_context && (
-                  <div className="detail-badge">
-                    🔌 {functionDetail.callback_context}
+                {/* 回调绑定信息 - 核心亮点 */}
+                {functionDetail.is_callback && (
+                  <div className="callback-info">
+                    <h4>⚡ 回调绑定信息</h4>
+                    {functionDetail.callback_context ? (
+                      <div className="callback-binding">
+                        <span className="binding-label">绑定来源:</span>
+                        <code className="binding-context">{functionDetail.callback_context}</code>
+                        {functionDetail.callback_context.includes('async_') && (
+                          <div className="context-note">
+                            {functionDetail.callback_context.includes('WorkQueue') && (
+                              <span className="context-tag workqueue">🔄 工作队列 · 进程上下文 · 可睡眠</span>
+                            )}
+                            {functionDetail.callback_context.includes('Timer') && (
+                              <span className="context-tag timer">⏱️ 定时器 · 软中断上下文 · 不可睡眠</span>
+                            )}
+                            {functionDetail.callback_context.includes('Interrupt') && (
+                              <span className="context-tag irq">⚡ 中断 · 中断上下文 · 不可睡眠</span>
+                            )}
+                            {functionDetail.callback_context.includes('Tasklet') && (
+                              <span className="context-tag tasklet">📋 Tasklet · 软中断上下文</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="binding-unknown">此函数是回调函数，但绑定信息未知</p>
+                    )}
                   </div>
                 )}
                 
