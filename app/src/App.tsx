@@ -19,6 +19,7 @@ import { FindReplace, type FindMatch } from './components/FindReplace'
 import { KeyboardShortcuts } from './components/KeyboardShortcuts'
 import { GoToLine } from './components/GoToLine'
 import { ToastContainer, useToast } from './components/Toast'
+import { AboutDialog } from './components/AboutDialog'
 import { addRecentFile } from './utils/recentFiles'
 import { 
   AnalysisResult, 
@@ -105,6 +106,9 @@ function App() {
   
   // 拖放文件状态
   const [isDragging, setIsDragging] = useState(false)
+  
+  // 关于对话框状态
+  const [aboutOpen, setAboutOpen] = useState(false)
   
   // 拖放文件处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -1042,6 +1046,9 @@ function App() {
             <button onClick={() => setSettingsOpen(true)} className="button icon" title="设置">
               ⚙️
             </button>
+            <button onClick={() => setAboutOpen(true)} className="button icon" title="关于 FlowSight">
+              ℹ️
+            </button>
           </div>
         </div>
       </header>
@@ -1441,6 +1448,9 @@ function App() {
       
       {/* Toast 通知 */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
+      
+      {/* 关于对话框 */}
+      <AboutDialog isOpen={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   )
 }

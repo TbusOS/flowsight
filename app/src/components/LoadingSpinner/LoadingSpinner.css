@@ -1,0 +1,102 @@
+/* 加载动画样式 */
+
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.spinner-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 尺寸变体 */
+.loading-spinner.small .spinner-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.loading-spinner.medium .spinner-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.loading-spinner.large .spinner-icon {
+  width: 64px;
+  height: 64px;
+}
+
+/* 旋转环 */
+.spinner-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+.loading-spinner.small .spinner-ring {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
+}
+
+.loading-spinner.medium .spinner-ring {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+
+.loading-spinner.large .spinner-ring {
+  width: 52px;
+  height: 52px;
+  border-width: 4px;
+}
+
+.spinner-ring:nth-child(1) {
+  border-top-color: var(--accent);
+  animation-delay: -0.45s;
+}
+
+.spinner-ring:nth-child(2) {
+  border-right-color: var(--accent);
+  animation-delay: -0.3s;
+  opacity: 0.8;
+}
+
+.spinner-ring:nth-child(3) {
+  border-bottom-color: var(--accent);
+  animation-delay: -0.15s;
+  opacity: 0.6;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-message {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+/* 遮罩层 */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 20, 25, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
