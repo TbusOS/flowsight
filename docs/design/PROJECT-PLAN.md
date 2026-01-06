@@ -612,12 +612,14 @@ flowsight> exit
 | 7 | **CLI 交互模式** | 3h | ⭐ |
 | 8 | **SVG 图片导出** | 2h | ⭐ |
 
-**状态** (2026-01-06 更新): 
+**状态** (2026-01-07 更新): 
 - [x] ftrace 格式渲染器 ✅
 - [x] 视图切换 UI ✅
 - [x] Markdown 导出 ✅
 - [x] 帮助文档弹窗 ✅
-- [ ] CLI 命令增强 (延后，GUI 已足够使用)
+- [x] CLI trace 命令 ✅ - ftrace/markdown/json 格式输出
+- [x] CLI callers 命令 ✅ - 显示调用者
+- [x] CLI callees 命令 ✅ - 显示被调用者
 
 ---
 
