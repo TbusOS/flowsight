@@ -8,6 +8,7 @@ import './Settings.css'
 export interface AppSettings {
   autoSave: boolean
   autoSaveDelay: number // 毫秒
+  autoReanalyze: boolean // 代码修改后自动重新分析
   fontSize: number
   theme: 'dark' | 'light'
   hideKernelApiByDefault: boolean
@@ -16,6 +17,7 @@ export interface AppSettings {
 const defaultSettings: AppSettings = {
   autoSave: true,
   autoSaveDelay: 2000,
+  autoReanalyze: true,
   fontSize: 14,
   theme: 'dark',
   hideKernelApiByDefault: false,
@@ -87,6 +89,21 @@ export function Settings({ isOpen, onClose, settings, onSettingsChange }: Settin
                 </select>
               </div>
             )}
+            
+            <div className="setting-item">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={localSettings.autoReanalyze}
+                  onChange={e => setLocalSettings(prev => ({
+                    ...prev,
+                    autoReanalyze: e.target.checked
+                  }))}
+                />
+                实时分析
+              </label>
+              <span className="setting-desc">代码修改后自动更新执行流图</span>
+            </div>
 
             <div className="setting-item">
               <label>字体大小</label>

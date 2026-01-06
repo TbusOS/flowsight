@@ -792,6 +792,9 @@ function App() {
     console.log('Clicked line:', line)
   }
   
+  // 实时分析定时器
+  const reanalyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  
   // 处理编辑器内容变化
   const handleContentChange = useCallback((newContent: string) => {
     setFileContent(newContent)
@@ -804,7 +807,40 @@ function App() {
           : tab
       ))
     }
-  }, [activeTabId])
+    
+    // 实时重新分析（防抖 1.5 秒）
+    if (appSettings.autoReanalyze && filePath) {
+      if (reanalyzeTimerRef.current) {
+        clearTimeout(reanalyzeTimerRef.current)
+      }
+      
+      reanalyzeTimerRef.current = setTimeout(async () => {
+        try {
+          // 先保存到临时文件然后分析
+          const result = await invoke<AnalysisResult>('analyze_file', { path: filePath })
+          
+          if (result.flow_trees && result.flow_trees.length > 0) {
+            setFlowTrees(result.flow_trees)
+            
+            // 更新大纲
+            const funcs = await invoke<FunctionInfo[]>('get_functions', { path: filePath })
+            const items: OutlineItem[] = funcs.map(f => ({
+              name: f.name,
+              kind: 'function',
+              line: f.line,
+              is_callback: f.is_callback,
+              callback_context: f.callback_context,
+            }))
+            items.sort((a, b) => a.line - b.line)
+            setOutlineItems(items)
+          }
+        } catch (e) {
+          // 静默失败，不打扰用户
+          console.debug('Auto-reanalyze failed:', e)
+        }
+      }, 1500)
+    }
+  }, [activeTabId, appSettings.autoSaveEnabled, filePath])
   
   // 保存当前文件
   const saveCurrentFile = useCallback(async () => {
