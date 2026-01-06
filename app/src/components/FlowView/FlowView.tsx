@@ -173,10 +173,46 @@ function isKernelApi(name: string): boolean {
   return KERNEL_API_LIST.has(name)
 }
 
+// 本地存储键
+const STORAGE_KEY_EXPANDED = 'flowsight_expanded_nodes'
+const STORAGE_KEY_HIDE_KERNEL = 'flowsight_hide_kernel_api'
+
+// 加载保存的状态
+function loadPersistedState(): { expanded: ExpandState; hideKernel: boolean } {
+  try {
+    const expanded = localStorage.getItem(STORAGE_KEY_EXPANDED)
+    const hideKernel = localStorage.getItem(STORAGE_KEY_HIDE_KERNEL)
+    return {
+      expanded: expanded ? JSON.parse(expanded) : {},
+      hideKernel: hideKernel === 'true',
+    }
+  } catch {
+    return { expanded: {}, hideKernel: false }
+  }
+}
+
+// 保存状态
+function persistExpandedState(state: ExpandState) {
+  try {
+    localStorage.setItem(STORAGE_KEY_EXPANDED, JSON.stringify(state))
+  } catch (e) {
+    console.warn('Failed to persist expanded state:', e)
+  }
+}
+
+function persistHideKernel(hide: boolean) {
+  try {
+    localStorage.setItem(STORAGE_KEY_HIDE_KERNEL, String(hide))
+  } catch (e) {
+    console.warn('Failed to persist hide kernel state:', e)
+  }
+}
+
 // 内部组件
 function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewProps) {
-  const [expandedNodes, setExpandedNodes] = useState<ExpandState>({})
-  const [hideKernelApi, setHideKernelApi] = useState(false) // 隐藏内核API开关
+  const persistedState = useMemo(loadPersistedState, [])
+  const [expandedNodes, setExpandedNodes] = useState<ExpandState>(persistedState.expanded)
+  const [hideKernelApi, setHideKernelApi] = useState(persistedState.hideKernel) // 隐藏内核API开关
   const [focusedNode, setFocusedNode] = useState<string | null>(null) // 聚焦的节点
   const [isFullscreen, setIsFullscreen] = useState(false) // 全屏模式
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeName: string } | null>(null)
@@ -240,10 +276,14 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
 
   // 切换节点展开状态
   const toggleExpand = useCallback((nodeName: string) => {
-    setExpandedNodes(prev => ({
-      ...prev,
-      [nodeName]: !prev[nodeName]
-    }))
+    setExpandedNodes(prev => {
+      const newState = {
+        ...prev,
+        [nodeName]: !prev[nodeName]
+      }
+      persistExpandedState(newState)
+      return newState
+    })
   }, [])
   
   // 处理右键菜单
@@ -478,6 +518,7 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
     
     flowTrees.forEach(tree => traverse(tree, 0))
     setExpandedNodes(result)
+    persistExpandedState(result)
   }, [flowTrees])
   
   // 聚焦到子树
@@ -514,7 +555,11 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
 
   // 切换内核API过滤
   const toggleKernelApiFilter = useCallback(() => {
-    setHideKernelApi(prev => !prev)
+    setHideKernelApi(prev => {
+      const newVal = !prev
+      persistHideKernel(newVal)
+      return newVal
+    })
   }, [])
   
   // 键盘快捷键: 数字 1-5 折叠到对应层级
