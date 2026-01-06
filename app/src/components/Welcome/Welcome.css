@@ -156,6 +156,24 @@
   border-color: var(--border);
 }
 
+.recent-item.project {
+  background: rgba(245, 158, 11, 0.05);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.recent-item.project:hover {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.welcome-recent.projects {
+  margin-bottom: 1rem;
+}
+
+.welcome-recent.files {
+  margin-top: 0;
+}
+
 .recent-icon {
   font-size: 1rem;
   flex-shrink: 0;

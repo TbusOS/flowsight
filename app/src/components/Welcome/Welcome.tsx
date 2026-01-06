@@ -64,23 +64,48 @@ export function Welcome({ onOpenFile, onOpenProject, onOpenRecentFile, onOpenRec
           </button>
         </div>
 
-        {/* Recent Files */}
-        {recentFiles.length > 0 && (
-          <div className="welcome-recent">
+        {/* Recent Projects */}
+        {recentFiles.filter(f => f.isProject).length > 0 && (
+          <div className="welcome-recent projects">
             <div className="recent-header">
-              <h3>🕐 最近打开</h3>
+              <h3>📂 最近项目</h3>
+            </div>
+            <div className="recent-list">
+              {recentFiles.filter(f => f.isProject).slice(0, 5).map((file, index) => (
+                <button 
+                  key={index} 
+                  className="recent-item project"
+                  onClick={() => handleOpenRecent(file)}
+                >
+                  <span className="recent-icon">📁</span>
+                  <span className="recent-info">
+                    <span className="recent-name">{file.name}</span>
+                    <span className="recent-path">{file.path}</span>
+                  </span>
+                  <span className="recent-time">{formatTimestamp(file.timestamp)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recent Files */}
+        {recentFiles.filter(f => !f.isProject).length > 0 && (
+          <div className="welcome-recent files">
+            <div className="recent-header">
+              <h3>📄 最近文件</h3>
               <button className="clear-btn" onClick={handleClearRecent} title="清除记录">
                 清除
               </button>
             </div>
             <div className="recent-list">
-              {recentFiles.map((file, index) => (
+              {recentFiles.filter(f => !f.isProject).slice(0, 5).map((file, index) => (
                 <button 
                   key={index} 
                   className="recent-item"
                   onClick={() => handleOpenRecent(file)}
                 >
-                  <span className="recent-icon">{file.isProject ? '📁' : '📄'}</span>
+                  <span className="recent-icon">📄</span>
                   <span className="recent-info">
                     <span className="recent-name">{file.name}</span>
                     <span className="recent-path">{file.path}</span>
