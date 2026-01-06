@@ -408,6 +408,54 @@ pub async fn export_flow_text(path: String, content: String) -> Result<(), Strin
     std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
 }
 
+/// Caller information
+#[derive(Debug, Serialize)]
+pub struct CallerInfo {
+    pub name: String,
+    pub file: String,
+    pub line: u32,
+    pub call_type: String,
+    pub async_mechanism: Option<String>,
+}
+
+/// Get callers of a function
+#[tauri::command]
+pub async fn get_function_callers(
+    function_name: String,
+    _project_path: Option<String>,
+) -> Result<std::collections::HashMap<String, Vec<CallerInfo>>, String> {
+    let index = INDEX.lock().map_err(|e| e.to_string())?;
+    
+    let mut callers = Vec::new();
+    
+    // Search through all functions to find callers
+    for (name, func) in &index.functions {
+        // Check if this function calls the target
+        if func.calls.contains(&function_name) {
+            let call_type = if func.is_callback {
+                "async"
+            } else {
+                "direct"
+            };
+            
+            callers.push(CallerInfo {
+                name: name.clone(),
+                file: func.location.as_ref().map(|l| l.file.clone()).unwrap_or_default(),
+                line: func.location.as_ref().map(|l| l.line).unwrap_or(0),
+                call_type: call_type.to_string(),
+                async_mechanism: func.callback_context.clone(),
+            });
+        }
+    }
+    
+    // Also check async bindings for indirect callers
+    // This would require tracking async bindings in the index
+    
+    let mut result = std::collections::HashMap::new();
+    result.insert("callers".to_string(), callers);
+    Ok(result)
+}
+
 /// Scenario request for symbolic execution
 #[derive(Debug, Deserialize)]
 pub struct ScenarioRequest {

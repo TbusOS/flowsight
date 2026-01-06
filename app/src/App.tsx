@@ -19,6 +19,7 @@ import { FindReplace, type FindMatch } from './components/FindReplace'
 import { KeyboardShortcuts } from './components/KeyboardShortcuts'
 import { ScenarioPanel } from './components/ScenarioPanel'
 import { ScenarioResults } from './components/ScenarioResults'
+import { CallersView } from './components/CallersView'
 import { GoToLine } from './components/GoToLine'
 import { ToastContainer, useToast } from './components/Toast'
 import { AboutDialog } from './components/AboutDialog'
@@ -128,6 +129,10 @@ function App() {
     path: string[]
     states: { location: string; variables: Record<string, string> }[]
   } | null>(null)
+  
+  // 调用者分析状态
+  const [callersViewOpen, setCallersViewOpen] = useState(false)
+  const [callersTargetFunc, setCallersTargetFunc] = useState('')
   
   // 拖放文件处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -1354,22 +1359,32 @@ function App() {
                   <span className="return-type">{functionDetail.return_type}</span>
                 </div>
                 
-                {/* 场景化分析按钮 - 核心功能入口 */}
-                <div className="scenario-buttons">
+                {/* 核心功能按钮 */}
+                <div className="function-actions">
                   <button 
-                    className="scenario-btn"
+                    className="action-btn primary"
                     onClick={() => setScenarioPanelOpen(true)}
                     title="场景化数据流分析"
                   >
-                    🎯 新场景分析
+                    🎯 场景分析
+                  </button>
+                  <button 
+                    className="action-btn"
+                    onClick={() => {
+                      setCallersTargetFunc(functionDetail.name)
+                      setCallersViewOpen(true)
+                    }}
+                    title="查看谁调用了这个函数"
+                  >
+                    📥 调用者
                   </button>
                   {scenarioResults && (
                     <button 
-                      className="scenario-btn secondary"
+                      className="action-btn secondary"
                       onClick={() => setScenarioResultsOpen(true)}
                       title="查看上次分析结果"
                     >
-                      📊 查看结果
+                      📊 结果
                     </button>
                   )}
                 </div>
@@ -1563,6 +1578,22 @@ function App() {
           }}
         />
       )}
+      
+      {/* 调用者分析视图 */}
+      <CallersView
+        isOpen={callersViewOpen}
+        onClose={() => setCallersViewOpen(false)}
+        functionName={callersTargetFunc}
+        projectPath={project?.root_path}
+        onFunctionClick={(funcName, file, line) => {
+          setCallersViewOpen(false)
+          if (file && line) {
+            handleAnalyze(file)
+            setGoToLine({ line, timestamp: Date.now() })
+          }
+          handleNodeClick('', funcName)
+        }}
+      />
       
       {/* 场景化数据流分析面板 */}
       <ScenarioPanel
