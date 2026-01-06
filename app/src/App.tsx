@@ -18,6 +18,7 @@ import { Settings, defaultSettings, type AppSettings } from './components/Settin
 import { FindReplace, type FindMatch } from './components/FindReplace'
 import { KeyboardShortcuts } from './components/KeyboardShortcuts'
 import { ScenarioPanel } from './components/ScenarioPanel'
+import { ScenarioResults } from './components/ScenarioResults'
 import { GoToLine } from './components/GoToLine'
 import { ToastContainer, useToast } from './components/Toast'
 import { AboutDialog } from './components/AboutDialog'
@@ -121,6 +122,8 @@ function App() {
   
   // 场景化数据流分析状态
   const [scenarioPanelOpen, setScenarioPanelOpen] = useState(false)
+  const [scenarioResultsOpen, setScenarioResultsOpen] = useState(false)
+  const [currentScenarioName, setCurrentScenarioName] = useState('')
   const [scenarioResults, setScenarioResults] = useState<{
     path: string[]
     states: { location: string; variables: Record<string, string> }[]
@@ -1352,13 +1355,24 @@ function App() {
                 </div>
                 
                 {/* 场景化分析按钮 - 核心功能入口 */}
-                <button 
-                  className="scenario-btn"
-                  onClick={() => setScenarioPanelOpen(true)}
-                  title="场景化数据流分析"
-                >
-                  🎯 场景分析
-                </button>
+                <div className="scenario-buttons">
+                  <button 
+                    className="scenario-btn"
+                    onClick={() => setScenarioPanelOpen(true)}
+                    title="场景化数据流分析"
+                  >
+                    🎯 新场景分析
+                  </button>
+                  {scenarioResults && (
+                    <button 
+                      className="scenario-btn secondary"
+                      onClick={() => setScenarioResultsOpen(true)}
+                      title="查看上次分析结果"
+                    >
+                      📊 查看结果
+                    </button>
+                  )}
+                </div>
                 
                 {/* 回调绑定信息 - 核心亮点 */}
                 {functionDetail.is_callback && (
@@ -1535,6 +1549,21 @@ function App() {
         onSelect={handleAnalyze}
       />
       
+      {/* 场景化分析结果显示 */}
+      {scenarioResults && (
+        <ScenarioResults
+          isOpen={scenarioResultsOpen}
+          onClose={() => setScenarioResultsOpen(false)}
+          scenarioName={currentScenarioName}
+          path={scenarioResults.path}
+          states={scenarioResults.states}
+          onNodeClick={(funcName) => {
+            // 跳转到对应函数
+            handleNodeClick('', funcName)
+          }}
+        />
+      )}
+      
       {/* 场景化数据流分析面板 */}
       <ScenarioPanel
         isOpen={scenarioPanelOpen}
@@ -1577,6 +1606,8 @@ function App() {
                   variables: p.variables,
                 })),
               })
+              setCurrentScenarioName(scenario.name)
+              setScenarioResultsOpen(true)
               success(`场景 "${scenario.name}" 分析完成！执行路径包含 ${result.path.length} 个节点`)
             } else {
               showError(`场景分析失败: ${result.error}`)
