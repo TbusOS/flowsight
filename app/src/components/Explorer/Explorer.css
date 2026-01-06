@@ -227,3 +227,63 @@
   background: var(--text-muted, #606080);
 }
 
+/* Context Menu */
+.file-context-menu {
+  background: var(--bg-secondary, #1a1a2e);
+  border: 1px solid var(--border-color, #2d3a5a);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.file-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #e0e0e8);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.file-context-menu button:hover {
+  background: var(--bg-hover, #2a2a4a);
+}
+
+.file-context-menu button.danger {
+  color: #ef4444;
+}
+
+.file-context-menu button.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.file-context-menu .menu-divider {
+  height: 1px;
+  background: var(--border-color, #2d3a5a);
+  margin: 4px 8px;
+}
+
+/* Rename Input */
+.tree-item.editing {
+  background: var(--bg-selected, #3d4a6d);
+}
+
+.rename-input {
+  flex: 1;
+  padding: 2px 6px;
+  background: var(--bg-input, #0f0f1a);
+  border: 1px solid var(--accent-color, #6c5ce7);
+  border-radius: 4px;
+  color: var(--text-primary, #e0e0e8);
+  font-size: 13px;
+  outline: none;
+}
+

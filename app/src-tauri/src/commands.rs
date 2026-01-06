@@ -408,6 +408,72 @@ pub async fn export_flow_text(path: String, content: String) -> Result<(), Strin
     std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
 }
 
+/// Create a new file
+#[tauri::command]
+pub async fn create_file(path: String) -> Result<(), String> {
+    let path = PathBuf::from(&path);
+    
+    // Check if file already exists
+    if path.exists() {
+        return Err("File already exists".to_string());
+    }
+    
+    // Create parent directories if needed
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
+    }
+    
+    // Create empty file
+    std::fs::File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
+    
+    Ok(())
+}
+
+/// Create a new directory
+#[tauri::command]
+pub async fn create_directory(path: String) -> Result<(), String> {
+    let path = PathBuf::from(&path);
+    
+    if path.exists() {
+        return Err("Directory already exists".to_string());
+    }
+    
+    std::fs::create_dir_all(&path).map_err(|e| format!("Failed to create directory: {}", e))
+}
+
+/// Rename a file or directory
+#[tauri::command]
+pub async fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
+    let old_path = PathBuf::from(&old_path);
+    let new_path = PathBuf::from(&new_path);
+    
+    if !old_path.exists() {
+        return Err("Source path does not exist".to_string());
+    }
+    
+    if new_path.exists() {
+        return Err("Target path already exists".to_string());
+    }
+    
+    std::fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename: {}", e))
+}
+
+/// Delete a file or directory
+#[tauri::command]
+pub async fn delete_file_or_dir(path: String) -> Result<(), String> {
+    let path = PathBuf::from(&path);
+    
+    if !path.exists() {
+        return Err("Path does not exist".to_string());
+    }
+    
+    if path.is_dir() {
+        std::fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
+    } else {
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))
+    }
+}
+
 /// Caller information
 #[derive(Debug, Serialize)]
 pub struct CallerInfo {

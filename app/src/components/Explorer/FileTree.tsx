@@ -2,9 +2,10 @@
  * FileTree - 文件树浏览组件
  * 
  * 支持延迟加载目录内容
+ * 支持右键菜单: 新建文件/文件夹、删除、重命名
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import './Explorer.css'
 
@@ -16,11 +17,19 @@ export interface FileNode {
   extension?: string
 }
 
+interface ContextMenuState {
+  visible: boolean
+  x: number
+  y: number
+  node: FileNode | null
+}
+
 interface FileTreeProps {
   nodes: FileNode[]
   onFileSelect: (path: string) => void
   selectedPath?: string
   onTreeUpdate?: (nodes: FileNode[]) => void
+  onRefresh?: () => void
 }
 
 interface FileTreeItemProps {
@@ -31,18 +40,62 @@ interface FileTreeItemProps {
   onToggle: (path: string, node: FileNode) => Promise<void>
   expanded: Set<string>
   loading: Set<string>
+  onContextMenu: (e: React.MouseEvent, node: FileNode) => void
+  editingPath: string | null
+  editingValue: string
+  onEditChange: (value: string) => void
+  onEditSubmit: () => void
+  onEditCancel: () => void
 }
 
-const FileTreeItem = ({ node, depth, onFileSelect, selectedPath, onToggle, expanded, loading }: FileTreeItemProps) => {
+const FileTreeItem = ({ 
+  node, 
+  depth, 
+  onFileSelect, 
+  selectedPath, 
+  onToggle, 
+  expanded, 
+  loading,
+  onContextMenu,
+  editingPath,
+  editingValue,
+  onEditChange,
+  onEditSubmit,
+  onEditCancel,
+}: FileTreeItemProps) => {
   const isExpanded = expanded.has(node.path)
   const isSelected = selectedPath === node.path
   const isLoading = loading.has(node.path)
+  const isEditing = editingPath === node.path
+  const inputRef = useRef<HTMLInputElement>(null)
+  
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
   
   const handleClick = () => {
+    if (isEditing) return
     if (node.is_dir) {
       onToggle(node.path, node)
     } else {
       onFileSelect(node.path)
+    }
+  }
+  
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onContextMenu(e, node)
+  }
+  
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      onEditSubmit()
+    } else if (e.key === 'Escape') {
+      onEditCancel()
     }
   }
   
@@ -76,9 +129,10 @@ const FileTreeItem = ({ node, depth, onFileSelect, selectedPath, onToggle, expan
   return (
     <div className="tree-node">
       <div 
-        className={`tree-item ${isSelected ? 'selected' : ''} ${node.is_dir ? 'directory' : 'file'}`}
+        className={`tree-item ${isSelected ? 'selected' : ''} ${node.is_dir ? 'directory' : 'file'} ${isEditing ? 'editing' : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
       >
         {node.is_dir && (
           <span className={`chevron ${isExpanded ? 'expanded' : ''} ${isLoading ? 'loading' : ''}`}>
@@ -86,7 +140,20 @@ const FileTreeItem = ({ node, depth, onFileSelect, selectedPath, onToggle, expan
           </span>
         )}
         <span className="file-icon">{getFileIcon()}</span>
-        <span className="file-name">{node.name}</span>
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            className="rename-input"
+            value={editingValue}
+            onChange={(e) => onEditChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={onEditCancel}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="file-name">{node.name}</span>
+        )}
       </div>
       
       {node.is_dir && isExpanded && node.children && (
@@ -101,6 +168,12 @@ const FileTreeItem = ({ node, depth, onFileSelect, selectedPath, onToggle, expan
               onToggle={onToggle}
               expanded={expanded}
               loading={loading}
+              onContextMenu={onContextMenu}
+              editingPath={editingPath}
+              editingValue={editingValue}
+              onEditChange={onEditChange}
+              onEditSubmit={onEditSubmit}
+              onEditCancel={onEditCancel}
             />
           ))}
         </div>
@@ -109,10 +182,30 @@ const FileTreeItem = ({ node, depth, onFileSelect, selectedPath, onToggle, expan
   )
 }
 
-export const FileTree = ({ nodes, onFileSelect, selectedPath, onTreeUpdate }: FileTreeProps) => {
+export const FileTree = ({ nodes, onFileSelect, selectedPath, onTreeUpdate, onRefresh }: FileTreeProps) => {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState<Set<string>>(new Set())
   const [localNodes, setLocalNodes] = useState<FileNode[]>(nodes)
+  
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    node: null,
+  })
+  
+  // Editing state (for rename)
+  const [editingPath, setEditingPath] = useState<string | null>(null)
+  const [editingValue, setEditingValue] = useState('')
+  const [editingAction, setEditingAction] = useState<'rename' | 'new-file' | 'new-folder' | null>(null)
+  
+  // Close context menu on click outside
+  useEffect(() => {
+    const handleClick = () => setContextMenu(prev => ({ ...prev, visible: false }))
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [])
   
   // Update local nodes when prop changes
   if (nodes !== localNodes && nodes.length > 0 && localNodes.length === 0) {
@@ -170,6 +263,106 @@ export const FileTree = ({ nodes, onFileSelect, selectedPath, onTreeUpdate }: Fi
     setExpanded(prev => new Set(prev).add(path))
   }, [expanded, updateNodeChildren, onTreeUpdate])
   
+  // Context menu handlers
+  const handleContextMenu = useCallback((e: React.MouseEvent, node: FileNode) => {
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      node,
+    })
+  }, [])
+  
+  const handleNewFile = useCallback(async () => {
+    if (!contextMenu.node) return
+    const parentPath = contextMenu.node.is_dir ? contextMenu.node.path : contextMenu.node.path.substring(0, contextMenu.node.path.lastIndexOf('/'))
+    
+    // Start editing for new file
+    setEditingPath(parentPath + '/__new_file__')
+    setEditingValue('untitled.c')
+    setEditingAction('new-file')
+    setContextMenu(prev => ({ ...prev, visible: false }))
+    
+    // Expand parent if directory
+    if (contextMenu.node.is_dir && !expanded.has(contextMenu.node.path)) {
+      await handleToggle(contextMenu.node.path, contextMenu.node)
+    }
+  }, [contextMenu.node, expanded, handleToggle])
+  
+  const handleNewFolder = useCallback(async () => {
+    if (!contextMenu.node) return
+    const parentPath = contextMenu.node.is_dir ? contextMenu.node.path : contextMenu.node.path.substring(0, contextMenu.node.path.lastIndexOf('/'))
+    
+    setEditingPath(parentPath + '/__new_folder__')
+    setEditingValue('new_folder')
+    setEditingAction('new-folder')
+    setContextMenu(prev => ({ ...prev, visible: false }))
+    
+    if (contextMenu.node.is_dir && !expanded.has(contextMenu.node.path)) {
+      await handleToggle(contextMenu.node.path, contextMenu.node)
+    }
+  }, [contextMenu.node, expanded, handleToggle])
+  
+  const handleRename = useCallback(() => {
+    if (!contextMenu.node) return
+    setEditingPath(contextMenu.node.path)
+    setEditingValue(contextMenu.node.name)
+    setEditingAction('rename')
+    setContextMenu(prev => ({ ...prev, visible: false }))
+  }, [contextMenu.node])
+  
+  const handleDelete = useCallback(async () => {
+    if (!contextMenu.node) return
+    
+    const confirmMsg = contextMenu.node.is_dir 
+      ? `确定要删除文件夹 "${contextMenu.node.name}" 及其所有内容吗？`
+      : `确定要删除文件 "${contextMenu.node.name}" 吗？`
+    
+    if (!window.confirm(confirmMsg)) return
+    
+    try {
+      await invoke('delete_file_or_dir', { path: contextMenu.node.path })
+      onRefresh?.()
+    } catch (e) {
+      alert(`删除失败: ${e}`)
+    }
+    setContextMenu(prev => ({ ...prev, visible: false }))
+  }, [contextMenu.node, onRefresh])
+  
+  const handleEditSubmit = useCallback(async () => {
+    if (!editingPath || !editingValue.trim()) {
+      setEditingPath(null)
+      setEditingAction(null)
+      return
+    }
+    
+    try {
+      if (editingAction === 'rename') {
+        const newPath = editingPath.substring(0, editingPath.lastIndexOf('/') + 1) + editingValue
+        await invoke('rename_file', { oldPath: editingPath, newPath })
+      } else if (editingAction === 'new-file') {
+        const parentPath = editingPath.replace('/__new_file__', '')
+        const filePath = parentPath + '/' + editingValue
+        await invoke('create_file', { path: filePath })
+      } else if (editingAction === 'new-folder') {
+        const parentPath = editingPath.replace('/__new_folder__', '')
+        const dirPath = parentPath + '/' + editingValue
+        await invoke('create_directory', { path: dirPath })
+      }
+      onRefresh?.()
+    } catch (e) {
+      alert(`操作失败: ${e}`)
+    }
+    
+    setEditingPath(null)
+    setEditingAction(null)
+  }, [editingPath, editingValue, editingAction, onRefresh])
+  
+  const handleEditCancel = useCallback(() => {
+    setEditingPath(null)
+    setEditingAction(null)
+  }, [])
+  
   const displayNodes = localNodes.length > 0 ? localNodes : nodes
   
   if (displayNodes.length === 0) {
@@ -192,8 +385,42 @@ export const FileTree = ({ nodes, onFileSelect, selectedPath, onTreeUpdate }: Fi
           onToggle={handleToggle}
           expanded={expanded}
           loading={loading}
+          onContextMenu={handleContextMenu}
+          editingPath={editingPath}
+          editingValue={editingValue}
+          onEditChange={setEditingValue}
+          onEditSubmit={handleEditSubmit}
+          onEditCancel={handleEditCancel}
         />
       ))}
+      
+      {/* Context Menu */}
+      {contextMenu.visible && contextMenu.node && (
+        <div 
+          className="file-context-menu"
+          style={{ 
+            position: 'fixed', 
+            left: contextMenu.x, 
+            top: contextMenu.y,
+            zIndex: 1000,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button onClick={handleNewFile}>
+            📄 新建文件
+          </button>
+          <button onClick={handleNewFolder}>
+            📁 新建文件夹
+          </button>
+          <div className="menu-divider" />
+          <button onClick={handleRename}>
+            ✏️ 重命名
+          </button>
+          <button onClick={handleDelete} className="danger">
+            🗑️ 删除
+          </button>
+        </div>
+      )}
     </div>
   )
 }
