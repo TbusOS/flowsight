@@ -21,6 +21,7 @@ import { GoToLine } from './components/GoToLine'
 import { ToastContainer, useToast } from './components/Toast'
 import { AboutDialog } from './components/AboutDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { QuickOpen } from './components/QuickOpen'
 import { addRecentFile } from './utils/recentFiles'
 import { 
   AnalysisResult, 
@@ -113,6 +114,9 @@ function App() {
   
   // 关闭未保存标签确认对话框状态
   const [closeConfirm, setCloseConfirm] = useState<{ tabId: string; fileName: string } | null>(null)
+  
+  // 快速打开状态
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false)
   
   // 拖放文件处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -359,6 +363,12 @@ function App() {
       // Ctrl+G 跳转行号
       if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
         e.preventDefault()
+        setGoToLineOpen(true)
+      }
+      // Ctrl+E 快速打开最近文件
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        e.preventDefault()
+        setQuickOpenOpen(true)
         setGoToLineOpen(true)
       }
       // Ctrl+W 关闭当前标签
@@ -1469,6 +1479,18 @@ function App() {
           setCloseConfirm(null)
         }}
         onCancel={() => setCloseConfirm(null)}
+      />
+      
+      {/* 快速打开 */}
+      <QuickOpen
+        isOpen={quickOpenOpen}
+        onClose={() => setQuickOpenOpen(false)}
+        recentFiles={recentFiles.map(rf => ({
+          path: rf.path,
+          name: rf.name,
+          timestamp: rf.timestamp
+        }))}
+        onSelect={handleAnalyze}
       />
     </div>
   )
