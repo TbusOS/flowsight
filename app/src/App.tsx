@@ -20,6 +20,7 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts'
 import { GoToLine } from './components/GoToLine'
 import { ToastContainer, useToast } from './components/Toast'
 import { AboutDialog } from './components/AboutDialog'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { addRecentFile } from './utils/recentFiles'
 import { 
   AnalysisResult, 
@@ -109,6 +110,9 @@ function App() {
   
   // 关于对话框状态
   const [aboutOpen, setAboutOpen] = useState(false)
+  
+  // 关闭未保存标签确认对话框状态
+  const [closeConfirm, setCloseConfirm] = useState<{ tabId: string; fileName: string } | null>(null)
   
   // 拖放文件处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -506,18 +510,16 @@ function App() {
   }, [tabs])
   
   // 关闭标签页
-  const closeTab = useCallback(async (tabId: string) => {
+  const closeTab = useCallback(async (tabId: string, force = false) => {
     const tabIndex = tabs.findIndex(t => t.id === tabId)
     if (tabIndex === -1) return
     
     const tab = tabs[tabIndex]
     
-    // 如果有未保存的更改，提示用户
-    if (tab.isDirty) {
-      const confirmed = window.confirm(
-        `文件 "${tab.fileName}" 有未保存的更改。\n确定要关闭吗？`
-      )
-      if (!confirmed) return
+    // 如果有未保存的更改，显示确认对话框
+    if (tab.isDirty && !force) {
+      setCloseConfirm({ tabId, fileName: tab.fileName })
+      return
     }
     
     const newTabs = tabs.filter(t => t.id !== tabId)
@@ -1451,6 +1453,23 @@ function App() {
       
       {/* 关于对话框 */}
       <AboutDialog isOpen={aboutOpen} onClose={() => setAboutOpen(false)} />
+      
+      {/* 关闭未保存文件确认 */}
+      <ConfirmDialog
+        isOpen={!!closeConfirm}
+        title="未保存的更改"
+        message={`文件 "${closeConfirm?.fileName}" 有未保存的更改。确定要关闭吗？`}
+        confirmText="关闭"
+        cancelText="取消"
+        variant="danger"
+        onConfirm={() => {
+          if (closeConfirm) {
+            closeTab(closeConfirm.tabId, true)
+          }
+          setCloseConfirm(null)
+        }}
+        onCancel={() => setCloseConfirm(null)}
+      />
     </div>
   )
 }
