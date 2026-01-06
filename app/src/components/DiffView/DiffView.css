@@ -1,0 +1,105 @@
+/* 差异视图样式 */
+
+.diff-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.diff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-filename {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.diff-stats {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.diff-stats .stat.added {
+  color: #22c55e;
+}
+
+.diff-stats .stat.removed {
+  color: #ef4444;
+}
+
+.diff-content {
+  flex: 1;
+  overflow: auto;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.diff-line {
+  display: flex;
+  min-height: 1.5em;
+}
+
+.diff-line.unchanged {
+  background: transparent;
+}
+
+.diff-line.added {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.diff-line.removed {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.line-numbers {
+  display: flex;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+}
+
+.line-numbers .old-num,
+.line-numbers .new-num {
+  width: 40px;
+  text-align: right;
+  padding: 0 8px;
+}
+
+.diff-line.added .old-num {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.diff-line.removed .new-num {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.line-prefix {
+  width: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.diff-line.added .line-prefix {
+  color: #22c55e;
+}
+
+.diff-line.removed .line-prefix {
+  color: #ef4444;
+}
+
+.line-content {
+  flex: 1;
+  padding: 0 8px;
+  white-space: pre;
+}
+
