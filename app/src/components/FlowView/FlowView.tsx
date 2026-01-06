@@ -23,7 +23,7 @@ import {
 import '@xyflow/react/dist/style.css'
 
 import { FlowNodeComponent } from './FlowNode'
-import { toPng } from 'html-to-image'
+import { toPng, toSvg } from 'html-to-image'
 import type { FlowTreeNode } from '../../types'
 import './FlowView.css'
 
@@ -216,6 +216,9 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
   const [focusedNode, setFocusedNode] = useState<string | null>(null) // 聚焦的节点
   const [isFullscreen, setIsFullscreen] = useState(false) // 全屏模式
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeName: string } | null>(null)
+  const [searchQuery, setSearchQuery] = useState('') // 搜索查询
+  const [searchResults, setSearchResults] = useState<string[]>([]) // 搜索结果
+  const [searchIndex, setSearchIndex] = useState(0) // 当前搜索结果索引
   const functionMap = useMemo(() => buildFunctionMap(flowTrees), [flowTrees])
   const { fitView, setCenter, getNode, zoomIn, zoomOut, setViewport } = useReactFlow()
   const { zoom } = useViewport()
@@ -239,6 +242,26 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
       link.click()
     } catch (err) {
       console.error('导出失败:', err)
+    }
+  }, [])
+  
+  // 导出为 SVG
+  const exportToSvg = useCallback(async () => {
+    const flowElement = document.querySelector('.react-flow__viewport') as HTMLElement
+    if (!flowElement) return
+    
+    try {
+      const dataUrl = await toSvg(flowElement, {
+        backgroundColor: '#0c1222',
+      })
+      
+      // 创建下载链接
+      const link = document.createElement('a')
+      link.download = 'flowsight-execution-flow.svg'
+      link.href = dataUrl
+      link.click()
+    } catch (err) {
+      console.error('SVG 导出失败:', err)
     }
   }, [])
   
@@ -562,6 +585,61 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
     })
   }, [])
   
+  // 搜索函数
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query)
+    if (!query.trim()) {
+      setSearchResults([])
+      setSearchIndex(0)
+      return
+    }
+    
+    const lowerQuery = query.toLowerCase()
+    const results = Array.from(functionMap.keys())
+      .filter(name => name.toLowerCase().includes(lowerQuery))
+    
+    setSearchResults(results)
+    setSearchIndex(0)
+    
+    // 跳转到第一个结果
+    if (results.length > 0) {
+      jumpToFunction(results[0])
+    }
+  }, [functionMap])
+  
+  // 跳转到指定函数
+  const jumpToFunction = useCallback((funcName: string) => {
+    // 展开父节点
+    setExpandedNodes(prev => ({
+      ...prev,
+      [funcName]: true,
+    }))
+    
+    // 等待节点渲染后居中
+    setTimeout(() => {
+      const node = getNode(funcName)
+      if (node) {
+        setCenter(node.position.x + 100, node.position.y + 30, { zoom: 1.2, duration: 300 })
+      }
+    }, 100)
+  }, [getNode, setCenter])
+  
+  // 跳转到下一个搜索结果
+  const nextSearchResult = useCallback(() => {
+    if (searchResults.length === 0) return
+    const nextIndex = (searchIndex + 1) % searchResults.length
+    setSearchIndex(nextIndex)
+    jumpToFunction(searchResults[nextIndex])
+  }, [searchResults, searchIndex, jumpToFunction])
+  
+  // 跳转到上一个搜索结果
+  const prevSearchResult = useCallback(() => {
+    if (searchResults.length === 0) return
+    const prevIndex = (searchIndex - 1 + searchResults.length) % searchResults.length
+    setSearchIndex(prevIndex)
+    jumpToFunction(searchResults[prevIndex])
+  }, [searchResults, searchIndex, jumpToFunction])
+  
   // 键盘快捷键: 数字 1-5 折叠到对应层级
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -644,11 +722,41 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
         )}
         <div className="toolbar-divider" />
         <button onClick={exportToPng} title="导出为 PNG 图片">
-          📷 导出
+          📷 PNG
+        </button>
+        <button onClick={exportToSvg} title="导出为 SVG 矢量图">
+          🖼️ SVG
         </button>
         <button onClick={toggleFullscreen} title={isFullscreen ? '退出全屏 (Esc)' : '全屏显示'}>
           {isFullscreen ? '⊗' : '⛶'} {isFullscreen ? '退出' : '全屏'}
         </button>
+        
+        {/* 搜索框 */}
+        <div className="toolbar-divider" />
+        <div className="flow-search">
+          <input
+            type="text"
+            placeholder="🔍 搜索函数..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (e.shiftKey) {
+                  prevSearchResult()
+                } else {
+                  nextSearchResult()
+                }
+              }
+            }}
+          />
+          {searchResults.length > 0 && (
+            <>
+              <span className="search-count">{searchIndex + 1}/{searchResults.length}</span>
+              <button onClick={prevSearchResult} title="上一个 (Shift+Enter)">▲</button>
+              <button onClick={nextSearchResult} title="下一个 (Enter)">▼</button>
+            </>
+          )}
+        </div>
       </div>
       
       {/* 右键菜单 */}

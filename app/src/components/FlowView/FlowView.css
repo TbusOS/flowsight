@@ -342,3 +342,51 @@
   bottom: 16px;
   right: 16px;
 }
+
+/* 搜索框 */
+.flow-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.flow-search input {
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 12px;
+  width: 140px;
+}
+
+.flow-search input:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+.flow-search input::placeholder {
+  color: #64748b;
+}
+
+.flow-search .search-count {
+  font-size: 11px;
+  color: #94a3b8;
+  padding: 0 4px;
+}
+
+.flow-search button {
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.flow-search button:hover {
+  background: rgba(0, 0, 0, 0.5);
+  color: #e2e8f0;
+}
