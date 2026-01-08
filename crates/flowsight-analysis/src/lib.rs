@@ -10,6 +10,7 @@
 //! - Data flow analysis
 
 pub mod async_tracker;
+pub mod callback;
 pub mod callgraph;
 pub mod constraint;
 pub mod evaluator;

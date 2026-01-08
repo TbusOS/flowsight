@@ -82,6 +82,16 @@ pub enum Constraint {
         field: String,
         src: Location,
     },
+    /// arr[i] = func: array element assignment
+    ArrayStore {
+        array: String,
+        src: Location,
+    },
+    /// p = arr[i]: array element load
+    ArrayLoad {
+        dest: Location,
+        array: String,
+    },
 }
 
 /// Result of pointer analysis
@@ -270,6 +280,18 @@ impl AndersenSolver {
                                 self.union_pts(&field_key, &src_key);
                             }
                         }
+                    }
+                    Constraint::ArrayStore { array, src } => {
+                        // arr[i] = func: all elements point to same targets
+                        let array_key = format!("{}[]", array);
+                        let src_key = Self::loc_key(&src);
+                        self.union_pts(&array_key, &src_key);
+                    }
+                    Constraint::ArrayLoad { dest, array } => {
+                        // p = arr[i]: dest gets all possible array element targets
+                        let dest_key = Self::loc_key(&dest);
+                        let array_key = format!("{}[]", array);
+                        self.union_pts(&dest_key, &array_key);
                     }
                 }
             }

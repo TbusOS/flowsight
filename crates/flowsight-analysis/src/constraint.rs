@@ -155,8 +155,35 @@ impl ConstraintCollector {
         }
 
         if let (Some(l), Some(r)) = (lhs, rhs) {
+            // Check for array subscript assignment: arr[i] = func
+            if l.kind() == "subscript_expression" {
+                self.handle_array_assignment(l, r, source);
+                return;
+            }
             let lhs_text = self.node_text(l, source);
             self.collect_assignment_constraint(&lhs_text, r, source);
+        }
+    }
+
+    /// Handle array assignment: arr[i] = func
+    fn handle_array_assignment(&mut self, lhs: Node, rhs: Node, source: &str) {
+        let rhs_text = self.node_text(rhs, source);
+
+        // Extract array name from subscript expression
+        let mut cursor = lhs.walk();
+        for child in lhs.children(&mut cursor) {
+            if child.kind() == "identifier" {
+                let array_name = self.node_text(child, source);
+
+                // Check if RHS is a function
+                if self.functions.contains_key(&rhs_text) {
+                    self.constraints.push(Constraint::ArrayStore {
+                        array: array_name,
+                        src: Location::func(&rhs_text),
+                    });
+                }
+                return;
+            }
         }
     }
 
@@ -466,5 +493,27 @@ void init(void) {
 
         let loc = collector.parse_location("dev->callback");
         assert!(matches!(loc, Location::Field(b, f) if b == "dev" && f == "callback"));
+    }
+
+    #[test]
+    fn test_array_assignment() {
+        let source = r#"
+void handler1(void) {}
+void handler2(void) {}
+
+void init(void) {
+    handlers[0] = handler1;
+    handlers[1] = handler2;
+}
+"#;
+        let mut collector = ConstraintCollector::new();
+        collector.set_functions(vec!["handler1".to_string(), "handler2".to_string()]);
+        let constraints = collector.collect(source);
+
+        let array_stores: Vec<_> = constraints.iter().filter(|c| {
+            matches!(c, Constraint::ArrayStore { array, .. } if array == "handlers")
+        }).collect();
+
+        assert_eq!(array_stores.len(), 2);
     }
 }
