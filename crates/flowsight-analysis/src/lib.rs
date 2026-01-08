@@ -15,6 +15,7 @@ pub mod constraint;
 pub mod evaluator;
 pub mod funcptr;
 pub mod pointer;
+pub mod propagation;
 pub mod scenario;
 
 use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};
