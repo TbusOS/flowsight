@@ -5,10 +5,12 @@
 //! - Function pointer resolution
 //! - Call graph construction
 //! - Scenario-based symbolic execution
+//! - Expression evaluation
 //! - Data flow analysis
 
 pub mod async_tracker;
 pub mod callgraph;
+pub mod evaluator;
 pub mod funcptr;
 pub mod scenario;
 
