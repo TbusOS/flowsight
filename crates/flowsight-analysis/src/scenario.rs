@@ -7,6 +7,8 @@ use flowsight_core::{FlowNode, FlowNodeType, Location};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::propagation::{ConstantPropagator, BranchResult};
+
 /// User-defined scenario for analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scenario {
