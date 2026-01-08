@@ -22,7 +22,7 @@
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  Phase 0: 原型验证              ████████████████████ 100% ✅ 已完成         │
-│  Phase 1: 核心引擎增强          ████████░░░░░░░░░░░░  40% 🔴 进行中         │
+│  Phase 1: 核心引擎增强          ██████████░░░░░░░░░░  50% 🔴 进行中         │
 │  Phase 2: IDE 交互体验          ██████████████░░░░░░  70% 🔴 进行中         │
 │  Phase 3: 高级可视化            ░░░░░░░░░░░░░░░░░░░░   0% ⚪ 待开始         │
 │  Phase 4: AI 集成               ░░░░░░░░░░░░░░░░░░░░   0% ⚪ 待开始         │
@@ -1159,7 +1159,14 @@ flowsight> exit
 #### 5.3.4 分析能力增强
 
 *   **LSP 集成**: 实现与 `clangd` 的通信，获取精确符号信息
-*   **Kconfig 解析**: 读取 `.config` 文件，构建条件编译上下文
+*   [x] **Clang 预处理器集成**: 实现准确的 C 代码预处理
+    *   [x] ConfigExtractor: 从 .config 提取内核配置宏
+    *   [x] ClangPreprocessor: 封装 Clang 预处理器调用
+    *   [x] HeaderResolver: 解析 Linux 内核头文件路径
+    *   [x] PreprocessorCache: 基于文件哈希的预处理结果缓存
+    *   [x] 支持多架构: x86_64, arm64, riscv64, arm, mips, powerpc
+    *   参考文档: `docs/architecture/PREPROCESSOR-INTEGRATION.md`
+*   [x] **Kconfig 解析**: 读取 `.config` 文件，构建条件编译上下文
 *   [x] **高级异步追踪**: 支持 timer, tasklet, irq 等 15+ 种模式
 *   [x] **函数指针解析**: 实现基于 ops 表和变量赋值的解析算法
 *   **完整 Linux 内核模式识别**:
