@@ -6,11 +6,14 @@
 docs/
 ├── README.md                    # 本文件 - 文档导航
 ├── design/                      # 项目设计与规划
-│   └── PROJECT-PLAN.md          # 完整项目计划
+│   ├── PROJECT-PLAN.md          # 完整项目计划
+│   ├── VISUALIZATION-STRATEGY.md # 可视化策略（分层渲染）
+│   └── TARGET-ARCHITECTURE.md   # 目标架构选择设计
 ├── architecture/                # 技术架构文档
 │   ├── KNOWLEDGE-BASE-SCHEMA.md # 知识库 Schema 设计
 │   ├── POINTER-ANALYSIS.md      # 指针分析算法
-│   └── MULTI-LANGUAGE-ABSTRACTION.md # 多语言抽象层
+│   ├── MULTI-LANGUAGE-ABSTRACTION.md # 多语言抽象层
+│   └── AI-MODEL-SELECTION.md    # AI 模型策略（外部 LLM API）
 ├── user-guide/                  # 用户使用指南
 │   └── (待添加)
 └── developer/                   # 开发者文档
@@ -27,6 +30,11 @@ docs/
 - [知识库 Schema 设计](architecture/KNOWLEDGE-BASE-SCHEMA.md) - 如何设计和扩展知识库
 - [指针分析算法](architecture/POINTER-ANALYSIS.md) - 函数指针解析的核心算法
 - [多语言抽象层](architecture/MULTI-LANGUAGE-ABSTRACTION.md) - 统一 IR 和跨语言分析
+- [AI 模型策略](architecture/AI-MODEL-SELECTION.md) - 外部 LLM API 集成方案
+
+### 设计文档
+- [可视化策略](design/VISUALIZATION-STRATEGY.md) - 分层渲染解决大规模图性能问题
+- [目标架构选择](design/TARGET-ARCHITECTURE.md) - 条件编译处理，确保执行流唯一
 
 ### 用户指南
 - (开发中) 安装指南

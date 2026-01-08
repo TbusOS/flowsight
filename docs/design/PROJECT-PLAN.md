@@ -772,12 +772,13 @@ static struct file_operations fops = {
 | **前端框架** | React 18 + TS | 生态成熟、组件丰富 |
 | **代码编辑器** | Monaco Editor | VS Code 同款，功能完整 |
 | **LSP 客户端** | monaco-languageclient | 连接 clangd/rust-analyzer |
-| **执行流可视化** | React Flow | 交互式图谱，开发效率高 |
+| **执行流可视化** | React Flow + 分层渲染 | 交互式图谱 + 按需展开，详见 [VISUALIZATION-STRATEGY.md](VISUALIZATION-STRATEGY.md) |
 | **终端** | xterm.js | 成熟的 Web 终端实现 |
 | **核心引擎** | Rust | 内存安全、高性能 |
 | **解析** | tree-sitter + clangd | 速度与精度的平衡 |
 | **存储** | SQLite + sled | 关系型与图数据的结合 |
-| **AI 后端** | Ollama / OpenAI API | 本地+云端双支持 |
+| **目标架构** | 用户选择 (x86_64/arm64) | 条件编译处理，详见 [TARGET-ARCHITECTURE.md](TARGET-ARCHITECTURE.md) |
+| **AI 后端** | 外部 LLM API (Claude/GPT) | 知识库优先 + AI 补充，详见 [AI-MODEL-SELECTION.md](../architecture/AI-MODEL-SELECTION.md) |
 
 ### 4.2 为什么我们能做好完整 IDE？
 
