@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Code parser for FlowSight (tree-sitter + libclang)"
+description = "Code parser for FlowSight (tree-sitter + Clang preprocessor)"
 
 [dependencies]
 flowsight-core = { workspace = true }
@@ -14,7 +14,9 @@ regex = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = "1.4"
+tempfile = "3.10"
 

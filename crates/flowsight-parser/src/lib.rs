@@ -2,8 +2,15 @@
 //!
 //! Code parsing using tree-sitter for fast incremental parsing,
 //! with optional libclang integration for precise semantic analysis.
+//!
+//! ## Modules
+//!
+//! - `treesitter` - Fast incremental parsing using tree-sitter
+//! - `preprocessor` - C preprocessor integration using Clang
+//! - `ast` - AST types and utilities
 
 pub mod ast;
+pub mod preprocessor;
 pub mod treesitter;
 
 use flowsight_core::{FunctionDef, Result, StructDef};
