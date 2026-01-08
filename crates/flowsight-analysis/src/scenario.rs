@@ -186,10 +186,10 @@ pub struct ExecutionPath {
     pub flow_tree: Option<FlowNode>,
 }
 
-/// Scenario executor
+/// Scenario executor with constant propagation
 pub struct ScenarioExecutor {
-    /// Current variable bindings
-    bindings: HashMap<String, SymbolicValue>,
+    /// Constant propagator for branch analysis
+    propagator: ConstantPropagator,
     /// Execution path being built
     path: Vec<ProgramState>,
     /// Options
@@ -200,25 +200,25 @@ impl ScenarioExecutor {
     /// Create a new executor
     pub fn new(options: ScenarioOptions) -> Self {
         Self {
-            bindings: HashMap::new(),
+            propagator: ConstantPropagator::new(),
             path: Vec::new(),
             options,
         }
     }
-    
+
     /// Execute scenario on a flow tree
     pub fn execute(&mut self, scenario: &Scenario, flow_tree: &FlowNode) -> ExecutionPath {
-        // Initialize bindings from scenario
-        self.bindings.clear();
-        for binding in &scenario.bindings {
-            self.bindings.insert(binding.path.clone(), binding.value.clone());
-        }
-        
+        // Initialize propagator from scenario bindings
+        let bindings: Vec<_> = scenario.bindings.iter()
+            .map(|b| (b.path.clone(), b.value.clone()))
+            .collect();
+        self.propagator.init_from_bindings(&bindings);
+
         self.path.clear();
-        
+
         // Walk the flow tree and build execution path
-        let annotated_tree = self.walk_tree(flow_tree, 0);
-        
+        let annotated_tree = self.walk_tree(flow_tree, 0, true);
+
         ExecutionPath {
             states: self.path.clone(),
             completed: true,
@@ -226,82 +226,135 @@ impl ScenarioExecutor {
             flow_tree: Some(annotated_tree),
         }
     }
-    
-    fn walk_tree(&mut self, node: &FlowNode, depth: usize) -> FlowNode {
+
+    fn walk_tree(&mut self, node: &FlowNode, depth: usize, reachable: bool) -> FlowNode {
         if depth > self.options.max_depth {
             return node.clone();
         }
-        
+
+        // Get current variable values for state
+        let variables = self.propagator.all_vars().clone();
+
         // Record state at this point
         let state = ProgramState {
             location: node.location.clone().unwrap_or_default(),
             function: node.name.clone(),
-            variables: self.bindings.clone(),
+            variables,
             branch_condition: None,
-            reachable: true,
+            reachable,
         };
         self.path.push(state);
-        
+
         // Build description with variable values
-        let description = self.build_description(node);
-        
-        // Filter children first to avoid borrow issues
+        let description = self.build_description(node, reachable);
+
+        // Determine node type for reachability display
+        let node_type = if reachable {
+            node.node_type.clone()
+        } else {
+            // Mark unreachable nodes (could add a new type or use description)
+            node.node_type.clone()
+        };
+
+        // Filter and process children
         let show_kernel_api = self.options.show_kernel_api;
         let filtered_children: Vec<_> = node.children.iter()
             .filter(|child| {
-                // Filter based on options
-                if !show_kernel_api {
-                    if matches!(child.node_type, FlowNodeType::KernelApi) {
-                        return false;
-                    }
+                if !show_kernel_api && matches!(child.node_type, FlowNodeType::KernelApi) {
+                    return false;
                 }
                 true
             })
             .collect();
-        
-        // Process children
+
+        // Process children with reachability
         let children: Vec<FlowNode> = filtered_children.into_iter()
-            .map(|child| self.walk_tree(child, depth + 1))
+            .map(|child| {
+                // Check if this is a conditional branch
+                let child_reachable = if reachable {
+                    self.check_branch_reachability(child)
+                } else {
+                    false // Parent unreachable means children unreachable
+                };
+                self.walk_tree(child, depth + 1, child_reachable)
+            })
             .collect();
-        
+
         FlowNode {
             id: node.id.clone(),
             name: node.name.clone(),
             display_name: node.display_name.clone(),
             location: node.location.clone(),
-            node_type: node.node_type.clone(),
+            node_type,
             children,
             description: Some(description),
         }
     }
-    
-    fn build_description(&self, node: &FlowNode) -> String {
+
+    /// Check if a branch is reachable based on conditions
+    fn check_branch_reachability(&mut self, node: &FlowNode) -> bool {
+        // Check if node name contains condition hints
+        let name = &node.name;
+
+        // Look for common condition patterns in function names
+        if name.contains("if_") || name.contains("_check") {
+            // Try to extract and evaluate condition
+            if let Some(condition) = self.extract_condition(name) {
+                match self.propagator.eval_condition(&condition) {
+                    BranchResult::AlwaysFalse => return false,
+                    BranchResult::AlwaysTrue => return true,
+                    BranchResult::Unknown => return true, // Assume reachable if unknown
+                }
+            }
+        }
+
+        // Default: assume reachable
+        true
+    }
+
+    /// Try to extract a condition from node name or description
+    fn extract_condition(&self, name: &str) -> Option<String> {
+        // Simple heuristic: look for patterns like "if_ptr_null" -> "ptr == NULL"
+        if name.contains("_null") {
+            let var = name.replace("if_", "").replace("_null", "").replace("_check", "");
+            return Some(format!("{} == NULL", var));
+        }
+        if name.contains("_valid") || name.contains("_not_null") {
+            let var = name.replace("if_", "").replace("_valid", "").replace("_not_null", "").replace("_check", "");
+            return Some(format!("{} != NULL", var));
+        }
+        None
+    }
+
+    fn build_description(&self, node: &FlowNode, reachable: bool) -> String {
         let mut desc = Vec::new();
-        
+
+        // Add reachability indicator
+        if !reachable {
+            desc.push("[unreachable]".to_string());
+        }
+
         // Add location info
         if let Some(loc) = &node.location {
             desc.push(format!("L{}", loc.line));
         }
-        
+
         // Add relevant variable values
-        // Try to match variable names in function context
-        for (path, value) in &self.bindings {
-            // Simple heuristic: show variables that might be relevant
+        let vars = self.propagator.all_vars();
+        for (path, value) in vars {
             if self.is_relevant_variable(path, &node.name) {
                 desc.push(format!("{}={}", path, value.display()));
             }
         }
-        
+
         if desc.is_empty() {
             node.description.clone().unwrap_or_default()
         } else {
             desc.join(" | ")
         }
     }
-    
+
     fn is_relevant_variable(&self, path: &str, _func_name: &str) -> bool {
-        // For now, show all bound variables
-        // In the future, could do more sophisticated matching
         !path.is_empty()
     }
 }
