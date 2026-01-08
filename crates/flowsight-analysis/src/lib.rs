@@ -3,6 +3,7 @@
 //! Provides advanced code analysis capabilities:
 //! - Async mechanism tracking (work queues, timers, interrupts)
 //! - Function pointer resolution
+//! - Andersen-style pointer analysis
 //! - Call graph construction
 //! - Scenario-based symbolic execution
 //! - Expression evaluation
@@ -10,8 +11,10 @@
 
 pub mod async_tracker;
 pub mod callgraph;
+pub mod constraint;
 pub mod evaluator;
 pub mod funcptr;
+pub mod pointer;
 pub mod scenario;
 
 use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};
