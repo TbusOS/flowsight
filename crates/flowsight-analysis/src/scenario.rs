@@ -372,33 +372,34 @@ pub fn annotate_flow_tree(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use flowsight_core::FlowNodeType;
+
     #[test]
     fn test_parse_integer() {
         assert!(matches!(
             SymbolicValue::parse("42", "integer"),
             SymbolicValue::Integer(42)
         ));
-        
+
         assert!(matches!(
             SymbolicValue::parse("0x1234", "integer"),
             SymbolicValue::Integer(0x1234)
         ));
     }
-    
+
     #[test]
     fn test_parse_pointer() {
         assert!(matches!(
             SymbolicValue::parse("null", "pointer"),
             SymbolicValue::Pointer { is_null: true, .. }
         ));
-        
+
         assert!(matches!(
             SymbolicValue::parse("valid", "pointer"),
             SymbolicValue::Pointer { is_null: false, .. }
         ));
     }
-    
+
     #[test]
     fn test_parse_range() {
         if let SymbolicValue::Range { min, max } = SymbolicValue::parse("0..100", "range") {
@@ -407,6 +408,82 @@ mod tests {
         } else {
             panic!("Expected Range");
         }
+    }
+
+    #[test]
+    fn test_scenario_executor_basic() {
+        let scenario = Scenario {
+            name: "test".to_string(),
+            entry_function: "main".to_string(),
+            bindings: vec![
+                ValueBinding {
+                    path: "x".to_string(),
+                    value: SymbolicValue::Integer(42),
+                },
+            ],
+            options: ScenarioOptions::default(),
+        };
+
+        let flow_tree = FlowNode {
+            id: "1".to_string(),
+            name: "main".to_string(),
+            display_name: "main()".to_string(),
+            location: Some(Location::new("test.c", 1, 0)),
+            node_type: FlowNodeType::Function,
+            children: vec![],
+            description: None,
+        };
+
+        let mut executor = ScenarioExecutor::new(ScenarioOptions::default());
+        let result = executor.execute(&scenario, &flow_tree);
+
+        assert!(result.completed);
+        assert!(result.flow_tree.is_some());
+        assert!(!result.states.is_empty());
+        assert!(result.states[0].reachable);
+    }
+
+    #[test]
+    fn test_scenario_executor_with_null_check() {
+        let scenario = Scenario {
+            name: "null_test".to_string(),
+            entry_function: "check_ptr".to_string(),
+            bindings: vec![
+                ValueBinding {
+                    path: "ptr".to_string(),
+                    value: SymbolicValue::Pointer { is_null: true, size: None },
+                },
+            ],
+            options: ScenarioOptions::default(),
+        };
+
+        let flow_tree = FlowNode {
+            id: "1".to_string(),
+            name: "check_ptr".to_string(),
+            display_name: "check_ptr()".to_string(),
+            location: Some(Location::new("test.c", 1, 0)),
+            node_type: FlowNodeType::Function,
+            children: vec![
+                FlowNode {
+                    id: "2".to_string(),
+                    name: "if_ptr_null".to_string(),
+                    display_name: "if (ptr == NULL)".to_string(),
+                    location: Some(Location::new("test.c", 2, 0)),
+                    node_type: FlowNodeType::Function,
+                    children: vec![],
+                    description: None,
+                },
+            ],
+            description: None,
+        };
+
+        let mut executor = ScenarioExecutor::new(ScenarioOptions::default());
+        let result = executor.execute(&scenario, &flow_tree);
+
+        assert!(result.completed);
+        // The if_ptr_null branch should be reachable since ptr is NULL
+        let tree = result.flow_tree.unwrap();
+        assert!(!tree.children.is_empty());
     }
 }
 

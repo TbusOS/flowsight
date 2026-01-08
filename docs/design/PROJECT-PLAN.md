@@ -966,6 +966,9 @@ Q1        Q2        Q3        Q4        Q1        Q2        Q3
 - 子树聚焦 (右键菜单)
 - 文件保存 (Ctrl+S)
 
+**✅ 已完成** (2026-01-08):
+- ScenarioExecutor 单元测试 (分支判定验证)
+
 ---
 
 ### 5.1.2 ⭐ 执行流多视图 + CLI 交互 (高优先级)
@@ -1708,6 +1711,8 @@ flowsight> exit
 **5.6.1.2 模型选择**:
 
 > 详细方案见：`docs/architecture/AI-MODEL-SELECTION.md`
+>
+> ⭐ **最新设计**：`docs/architecture/LOCAL-AI-DESIGN.md` - 多版本可选 + 自学习 + 众包共享
 
 | 角色 | 模型 | 参数量 | 选择理由 |
 |------|------|--------|----------|
