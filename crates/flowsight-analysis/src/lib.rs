@@ -9,6 +9,7 @@
 //! - Expression evaluation
 //! - Data flow analysis
 //! - Result classification (Certain/Possible/Unknown)
+//! - User-assisted learning for uncertain cases
 
 pub mod async_tracker;
 pub mod callback;
@@ -17,6 +18,7 @@ pub mod classification;
 pub mod constraint;
 pub mod evaluator;
 pub mod funcptr;
+pub mod learning;
 pub mod pointer;
 pub mod propagation;
 pub mod scenario;
