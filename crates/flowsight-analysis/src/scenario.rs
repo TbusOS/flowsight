@@ -6,6 +6,9 @@
 use flowsight_core::{FlowNode, FlowNodeType, Location};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::io;
+use std::path::Path;
 
 use crate::propagation::{ConstantPropagator, BranchResult};
 
@@ -123,6 +126,173 @@ impl SymbolicValue {
                 hint.as_ref().map(|h| format!("<?:{}>", h)).unwrap_or_else(|| "?".to_string())
             }
         }
+    }
+}
+
+/// Error type for scenario operations
+#[derive(Debug)]
+pub enum ScenarioError {
+    /// IO error
+    Io(io::Error),
+    /// Serialization error (JSON)
+    Json(serde_json::Error),
+    /// YAML serialization error
+    Yaml(String),
+    /// Invalid file format
+    InvalidFormat(String),
+}
+
+impl std::fmt::Display for ScenarioError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScenarioError::Io(e) => write!(f, "IO error: {}", e),
+            ScenarioError::Json(e) => write!(f, "JSON error: {}", e),
+            ScenarioError::Yaml(e) => write!(f, "YAML error: {}", e),
+            ScenarioError::InvalidFormat(s) => write!(f, "Invalid format: {}", s),
+        }
+    }
+}
+
+impl std::error::Error for ScenarioError {}
+
+impl From<io::Error> for ScenarioError {
+    fn from(e: io::Error) -> Self {
+        ScenarioError::Io(e)
+    }
+}
+
+impl From<serde_json::Error> for ScenarioError {
+    fn from(e: serde_json::Error) -> Self {
+        ScenarioError::Json(e)
+    }
+}
+
+impl Scenario {
+    /// Create a new empty scenario
+    pub fn new(name: &str, entry_function: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            entry_function: entry_function.to_string(),
+            bindings: Vec::new(),
+            options: ScenarioOptions::default(),
+        }
+    }
+
+    /// Add a value binding
+    pub fn bind(&mut self, path: &str, value: SymbolicValue) -> &mut Self {
+        self.bindings.push(ValueBinding {
+            path: path.to_string(),
+            value,
+        });
+        self
+    }
+
+    /// Save scenario to a JSON file
+    pub fn save_json<P: AsRef<Path>>(&self, path: P) -> Result<(), ScenarioError> {
+        let json = serde_json::to_string_pretty(self)?;
+        fs::write(path, json)?;
+        Ok(())
+    }
+
+    /// Load scenario from a JSON file
+    pub fn load_json<P: AsRef<Path>>(path: P) -> Result<Self, ScenarioError> {
+        let content = fs::read_to_string(path)?;
+        let scenario = serde_json::from_str(&content)?;
+        Ok(scenario)
+    }
+
+    /// Save scenario to a YAML file
+    pub fn save_yaml<P: AsRef<Path>>(&self, path: P) -> Result<(), ScenarioError> {
+        let yaml = serde_yaml::to_string(self)
+            .map_err(|e| ScenarioError::Yaml(e.to_string()))?;
+        fs::write(path, yaml)?;
+        Ok(())
+    }
+
+    /// Load scenario from a YAML file
+    pub fn load_yaml<P: AsRef<Path>>(path: P) -> Result<Self, ScenarioError> {
+        let content = fs::read_to_string(path)?;
+        let scenario = serde_yaml::from_str(&content)
+            .map_err(|e| ScenarioError::Yaml(e.to_string()))?;
+        Ok(scenario)
+    }
+
+    /// Load scenario from file, auto-detecting format by extension
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, ScenarioError> {
+        let path = path.as_ref();
+        let ext = path.extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        match ext.to_lowercase().as_str() {
+            "json" => Self::load_json(path),
+            "yaml" | "yml" => Self::load_yaml(path),
+            _ => Err(ScenarioError::InvalidFormat(
+                format!("Unknown file extension: {}", ext)
+            )),
+        }
+    }
+
+    /// Save scenario to file, auto-detecting format by extension
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), ScenarioError> {
+        let path = path.as_ref();
+        let ext = path.extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        match ext.to_lowercase().as_str() {
+            "json" => self.save_json(path),
+            "yaml" | "yml" => self.save_yaml(path),
+            _ => Err(ScenarioError::InvalidFormat(
+                format!("Unknown file extension: {}", ext)
+            )),
+        }
+    }
+}
+
+/// A collection of scenarios for a project
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ScenarioCollection {
+    /// Collection name
+    pub name: String,
+    /// Description
+    pub description: Option<String>,
+    /// List of scenarios
+    pub scenarios: Vec<Scenario>,
+}
+
+impl ScenarioCollection {
+    /// Create a new empty collection
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            description: None,
+            scenarios: Vec::new(),
+        }
+    }
+
+    /// Add a scenario to the collection
+    pub fn add(&mut self, scenario: Scenario) {
+        self.scenarios.push(scenario);
+    }
+
+    /// Find a scenario by name
+    pub fn find(&self, name: &str) -> Option<&Scenario> {
+        self.scenarios.iter().find(|s| s.name == name)
+    }
+
+    /// Save collection to a JSON file
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), ScenarioError> {
+        let json = serde_json::to_string_pretty(self)?;
+        fs::write(path, json)?;
+        Ok(())
+    }
+
+    /// Load collection from a JSON file
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, ScenarioError> {
+        let content = fs::read_to_string(path)?;
+        let collection = serde_json::from_str(&content)?;
+        Ok(collection)
     }
 }
 
@@ -484,6 +654,111 @@ mod tests {
         // The if_ptr_null branch should be reachable since ptr is NULL
         let tree = result.flow_tree.unwrap();
         assert!(!tree.children.is_empty());
+    }
+
+    #[test]
+    fn test_scenario_new_and_bind() {
+        let mut scenario = Scenario::new("usb_probe_test", "usb_probe");
+        scenario
+            .bind("id->idVendor", SymbolicValue::Integer(0x1234))
+            .bind("id->idProduct", SymbolicValue::Integer(0x5678))
+            .bind("interface", SymbolicValue::Pointer { is_null: false, size: None });
+
+        assert_eq!(scenario.name, "usb_probe_test");
+        assert_eq!(scenario.entry_function, "usb_probe");
+        assert_eq!(scenario.bindings.len(), 3);
+    }
+
+    #[test]
+    fn test_scenario_save_load_json() {
+        let mut scenario = Scenario::new("test_scenario", "main");
+        scenario
+            .bind("x", SymbolicValue::Integer(42))
+            .bind("ptr", SymbolicValue::Pointer { is_null: false, size: None });
+
+        // Save to a temp file
+        let temp_path = std::env::temp_dir().join("test_scenario.json");
+        scenario.save_json(&temp_path).expect("Failed to save JSON");
+
+        // Load it back
+        let loaded = Scenario::load_json(&temp_path).expect("Failed to load JSON");
+
+        assert_eq!(loaded.name, "test_scenario");
+        assert_eq!(loaded.entry_function, "main");
+        assert_eq!(loaded.bindings.len(), 2);
+
+        // Clean up
+        let _ = fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn test_scenario_save_load_yaml() {
+        let mut scenario = Scenario::new("yaml_test", "usb_probe");
+        scenario
+            .bind("id->idVendor", SymbolicValue::Integer(0x1234))
+            .bind("range_val", SymbolicValue::Range { min: 0, max: 100 });
+
+        // Save to a temp file
+        let temp_path = std::env::temp_dir().join("test_scenario.yaml");
+        scenario.save_yaml(&temp_path).expect("Failed to save YAML");
+
+        // Load it back
+        let loaded = Scenario::load_yaml(&temp_path).expect("Failed to load YAML");
+
+        assert_eq!(loaded.name, "yaml_test");
+        assert_eq!(loaded.bindings.len(), 2);
+
+        // Clean up
+        let _ = fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn test_scenario_auto_format_detection() {
+        let scenario = Scenario::new("auto_test", "main");
+
+        // Test JSON extension
+        let json_path = std::env::temp_dir().join("auto_test.json");
+        scenario.save(&json_path).expect("Failed to save");
+        let loaded = Scenario::load(&json_path).expect("Failed to load");
+        assert_eq!(loaded.name, "auto_test");
+        let _ = fs::remove_file(&json_path);
+
+        // Test YAML extension
+        let yaml_path = std::env::temp_dir().join("auto_test.yml");
+        scenario.save(&yaml_path).expect("Failed to save");
+        let loaded = Scenario::load(&yaml_path).expect("Failed to load");
+        assert_eq!(loaded.name, "auto_test");
+        let _ = fs::remove_file(&yaml_path);
+    }
+
+    #[test]
+    fn test_scenario_collection() {
+        let mut collection = ScenarioCollection::new("USB Driver Tests");
+        collection.description = Some("Test scenarios for USB driver".to_string());
+
+        let mut scenario1 = Scenario::new("normal_probe", "usb_probe");
+        scenario1.bind("id->idVendor", SymbolicValue::Integer(0x1234));
+
+        let mut scenario2 = Scenario::new("null_interface", "usb_probe");
+        scenario2.bind("interface", SymbolicValue::Pointer { is_null: true, size: None });
+
+        collection.add(scenario1);
+        collection.add(scenario2);
+
+        // Test find
+        assert!(collection.find("normal_probe").is_some());
+        assert!(collection.find("null_interface").is_some());
+        assert!(collection.find("nonexistent").is_none());
+
+        // Save and load collection
+        let temp_path = std::env::temp_dir().join("test_collection.json");
+        collection.save(&temp_path).expect("Failed to save collection");
+
+        let loaded = ScenarioCollection::load(&temp_path).expect("Failed to load collection");
+        assert_eq!(loaded.name, "USB Driver Tests");
+        assert_eq!(loaded.scenarios.len(), 2);
+
+        let _ = fs::remove_file(&temp_path);
     }
 }
 

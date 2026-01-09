@@ -8,10 +8,12 @@
 //! - Scenario-based symbolic execution
 //! - Expression evaluation
 //! - Data flow analysis
+//! - Result classification (Certain/Possible/Unknown)
 
 pub mod async_tracker;
 pub mod callback;
 pub mod callgraph;
+pub mod classification;
 pub mod constraint;
 pub mod evaluator;
 pub mod funcptr;

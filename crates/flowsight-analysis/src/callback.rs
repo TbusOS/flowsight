@@ -4,6 +4,8 @@
 //! - Pattern 1: Simple callback (obj->callback = handler; obj->callback())
 //! - Pattern 2: Register function (register_xxx(handler))
 //! - Pattern 3: Event loop (while(1) handlers[event]())
+//! - Pattern 4: Queue pattern (enqueue(work); work = dequeue(); work->func())
+//! - Pattern 5: Signal/Slot pattern (connect(signal, slot); emit(signal))
 
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Parser as TSParser};
@@ -48,6 +50,34 @@ pub struct EventLoopPattern {
     pub line: u32,
 }
 
+/// A queue pattern: enqueue(work); work = dequeue(); work->func()
+#[derive(Debug, Clone)]
+pub struct QueuePattern {
+    /// The enqueue function name
+    pub enqueue_func: String,
+    /// The dequeue function name
+    pub dequeue_func: Option<String>,
+    /// The work struct field that holds the callback
+    pub callback_field: Option<String>,
+    /// Line number
+    pub line: u32,
+}
+
+/// A signal/slot pattern: connect(signal, handler); emit(signal)
+#[derive(Debug, Clone)]
+pub struct SignalSlotPattern {
+    /// The connect function name
+    pub connect_func: String,
+    /// The signal identifier
+    pub signal: String,
+    /// The handler function name
+    pub handler: String,
+    /// The emit/trigger function (if found)
+    pub emit_func: Option<String>,
+    /// Line number
+    pub line: u32,
+}
+
 /// Result of callback pattern analysis
 #[derive(Debug, Default)]
 pub struct CallbackAnalysis {
@@ -59,6 +89,10 @@ pub struct CallbackAnalysis {
     pub registrations: Vec<RegistrationCall>,
     /// Event loop patterns found
     pub event_loops: Vec<EventLoopPattern>,
+    /// Queue patterns found
+    pub queue_patterns: Vec<QueuePattern>,
+    /// Signal/slot patterns found
+    pub signal_slots: Vec<SignalSlotPattern>,
     /// Resolved mappings: invocation expr -> possible handlers
     pub resolved: HashMap<String, HashSet<String>>,
 }
@@ -94,6 +128,8 @@ impl CallbackAnalyzer {
             self.collect_invocations(tree.root_node(), source, &mut result);
             self.collect_registrations(tree.root_node(), source, &mut result);
             self.collect_event_loops(tree.root_node(), source, &mut result);
+            self.collect_queue_patterns(tree.root_node(), source, &mut result);
+            self.collect_signal_slots(tree.root_node(), source, &mut result);
         }
 
         // Resolve bindings to invocations
@@ -371,6 +407,165 @@ impl CallbackAnalyzer {
     fn node_text(&self, node: Node, source: &str) -> String {
         node.utf8_text(source.as_bytes()).unwrap_or("").to_string()
     }
+
+    /// Collect queue patterns (enqueue/dequeue style)
+    fn collect_queue_patterns(&self, node: Node, source: &str, result: &mut CallbackAnalysis) {
+        if node.kind() == "call_expression" {
+            if let Some(pattern) = self.try_extract_queue_pattern(node, source) {
+                result.queue_patterns.push(pattern);
+            }
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.collect_queue_patterns(child, source, result);
+        }
+    }
+
+    fn try_extract_queue_pattern(&self, node: Node, source: &str) -> Option<QueuePattern> {
+        let mut cursor = node.walk();
+        let children: Vec<Node> = node.children(&mut cursor).collect();
+
+        if children.is_empty() {
+            return None;
+        }
+
+        let callee = children.first()?;
+        if callee.kind() != "identifier" {
+            return None;
+        }
+
+        let func_name = self.node_text(*callee, source);
+
+        // Check if it's a queue operation function
+        if !self.is_queue_function(&func_name) {
+            return None;
+        }
+
+        // Try to identify the callback field from arguments
+        let callback_field = self.find_callback_field_in_args(&children, source);
+
+        Some(QueuePattern {
+            enqueue_func: func_name,
+            dequeue_func: None, // Would need cross-function analysis
+            callback_field,
+            line: node.start_position().row as u32 + 1,
+        })
+    }
+
+    fn is_queue_function(&self, name: &str) -> bool {
+        let patterns = [
+            "queue_work", "schedule_work", "schedule_delayed_work",
+            "enqueue", "push", "add_task", "submit",
+            "kthread_queue_work", "queue_delayed_work",
+            "tasklet_schedule", "tasklet_hi_schedule",
+        ];
+        let name_lower = name.to_lowercase();
+        patterns.iter().any(|p| name_lower.contains(p))
+    }
+
+    fn find_callback_field_in_args(&self, children: &[Node], source: &str) -> Option<String> {
+        for child in children {
+            if child.kind() == "argument_list" {
+                let mut cursor = child.walk();
+                for arg in child.children(&mut cursor) {
+                    let arg_text = self.node_text(arg, source);
+                    // Look for work struct references like &dev->work
+                    if arg_text.contains("->") && arg_text.contains("work") {
+                        return Some(arg_text);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Collect signal/slot patterns (connect/emit style)
+    fn collect_signal_slots(&self, node: Node, source: &str, result: &mut CallbackAnalysis) {
+        if node.kind() == "call_expression" {
+            if let Some(pattern) = self.try_extract_signal_slot(node, source) {
+                result.signal_slots.push(pattern);
+            }
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.collect_signal_slots(child, source, result);
+        }
+    }
+
+    fn try_extract_signal_slot(&self, node: Node, source: &str) -> Option<SignalSlotPattern> {
+        let mut cursor = node.walk();
+        let children: Vec<Node> = node.children(&mut cursor).collect();
+
+        if children.is_empty() {
+            return None;
+        }
+
+        let callee = children.first()?;
+        if callee.kind() != "identifier" {
+            return None;
+        }
+
+        let func_name = self.node_text(*callee, source);
+
+        // Check if it's a signal connect function
+        if !self.is_signal_connect_function(&func_name) {
+            return None;
+        }
+
+        // Extract signal and handler from arguments
+        let (signal, handler) = self.extract_signal_handler_args(&children, source)?;
+
+        Some(SignalSlotPattern {
+            connect_func: func_name,
+            signal,
+            handler,
+            emit_func: None, // Would need additional analysis
+            line: node.start_position().row as u32 + 1,
+        })
+    }
+
+    fn is_signal_connect_function(&self, name: &str) -> bool {
+        let patterns = [
+            "connect", "signal_connect", "g_signal_connect",
+            "on", "bind", "subscribe", "attach_handler",
+            "add_signal_handler", "notify_register",
+        ];
+        let name_lower = name.to_lowercase();
+        patterns.iter().any(|p| name_lower.contains(p))
+    }
+
+    fn extract_signal_handler_args(&self, children: &[Node], source: &str) -> Option<(String, String)> {
+        for child in children {
+            if child.kind() == "argument_list" {
+                let mut cursor = child.walk();
+                let args: Vec<Node> = child.children(&mut cursor)
+                    .filter(|n| n.kind() != "," && n.kind() != "(" && n.kind() != ")")
+                    .collect();
+
+                // Typically: connect(signal, handler) or connect(object, signal, handler)
+                if args.len() >= 2 {
+                    let signal = self.node_text(args[0], source);
+                    let last_arg = self.node_text(*args.last()?, source);
+
+                    // Check if last arg is a known function
+                    if self.functions.contains(&last_arg) {
+                        return Some((signal, last_arg));
+                    }
+
+                    // Try second-to-last for cases like connect(obj, signal, handler, data)
+                    if args.len() >= 3 {
+                        let second_last = self.node_text(args[args.len() - 2], source);
+                        if self.functions.contains(&second_last) {
+                            return Some((signal, second_last));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 impl Default for CallbackAnalyzer {
@@ -484,5 +679,84 @@ void event_loop(void) {
 
         assert_eq!(result.event_loops.len(), 1);
         assert!(result.event_loops[0].dispatch_expr.contains("handlers"));
+    }
+
+    #[test]
+    fn test_queue_pattern() {
+        let source = r#"
+void work_handler(struct work_struct *work) {
+    printk("work done\n");
+}
+
+void setup(struct my_device *dev) {
+    INIT_WORK(&dev->work, work_handler);
+    schedule_work(&dev->work);
+}
+"#;
+        let mut analyzer = CallbackAnalyzer::new();
+        analyzer.set_functions(vec!["work_handler".to_string()]);
+
+        let result = analyzer.analyze(source);
+
+        assert_eq!(result.queue_patterns.len(), 1);
+        assert_eq!(result.queue_patterns[0].enqueue_func, "schedule_work");
+        assert!(result.queue_patterns[0].callback_field.is_some());
+    }
+
+    #[test]
+    fn test_queue_work_pattern() {
+        let source = r#"
+void my_work_fn(struct work_struct *work) {}
+
+void trigger(void) {
+    queue_work(my_wq, &my_device->work);
+}
+"#;
+        let mut analyzer = CallbackAnalyzer::new();
+        analyzer.set_functions(vec!["my_work_fn".to_string()]);
+
+        let result = analyzer.analyze(source);
+
+        assert_eq!(result.queue_patterns.len(), 1);
+        assert_eq!(result.queue_patterns[0].enqueue_func, "queue_work");
+    }
+
+    #[test]
+    fn test_signal_slot_pattern() {
+        let source = r#"
+void on_button_clicked(void *data) {
+    printf("Button clicked!\n");
+}
+
+void setup(void) {
+    g_signal_connect(button, "clicked", on_button_clicked, NULL);
+}
+"#;
+        let mut analyzer = CallbackAnalyzer::new();
+        analyzer.set_functions(vec!["on_button_clicked".to_string()]);
+
+        let result = analyzer.analyze(source);
+
+        assert_eq!(result.signal_slots.len(), 1);
+        assert_eq!(result.signal_slots[0].connect_func, "g_signal_connect");
+        assert_eq!(result.signal_slots[0].handler, "on_button_clicked");
+    }
+
+    #[test]
+    fn test_signal_connect_pattern() {
+        let source = r#"
+void signal_handler(int sig) {}
+
+void setup(void) {
+    signal_connect(SIGINT, signal_handler);
+}
+"#;
+        let mut analyzer = CallbackAnalyzer::new();
+        analyzer.set_functions(vec!["signal_handler".to_string()]);
+
+        let result = analyzer.analyze(source);
+
+        assert_eq!(result.signal_slots.len(), 1);
+        assert_eq!(result.signal_slots[0].handler, "signal_handler");
     }
 }
