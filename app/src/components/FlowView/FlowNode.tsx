@@ -4,6 +4,7 @@
 
 import { memo } from 'react'
 import { Handle, Position, NodeProps } from '@xyflow/react'
+import type { ConfidenceLevel, CallConfidence } from '../../types'
 import './FlowNode.css'
 
 interface FlowNodeData {
@@ -21,6 +22,15 @@ interface FlowNodeData {
   file?: string
   line?: number
   nodeType?: string
+  // 置信度信息
+  confidence?: CallConfidence
+}
+
+// 置信度对应的图标和颜色
+const confidenceInfo: Record<ConfidenceLevel, { icon: string; label: string; color: string }> = {
+  'Certain': { icon: '✓', label: '确定', color: '#22c55e' },
+  'Possible': { icon: '?', label: '可能', color: '#f59e0b' },
+  'Unknown': { icon: '!', label: '未知', color: '#ef4444' },
 }
 
 export const FlowNodeComponent = memo(({ data }: NodeProps) => {
@@ -39,6 +49,7 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
     file,
     line,
     nodeType,
+    confidence,
   } = nodeData
 
   const handleToggleClick = (e: React.MouseEvent) => {
@@ -71,6 +82,14 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
       }
       parts.push(asyncInfo[asyncLabel] || `异步: ${asyncLabel}`)
     }
+    // 置信度信息
+    if (confidence) {
+      const info = confidenceInfo[confidence.level]
+      parts.push(`${info.icon} 置信度: ${info.label}`)
+      if (confidence.reason) {
+        parts.push(`  └ ${confidence.reason}`)
+      }
+    }
     if (file) {
       const fileName = file.split('/').pop()
       parts.push(`📄 ${fileName}`)
@@ -84,28 +103,44 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
     return parts.join('\n')
   }
 
+  // 获取置信度样式类
+  const getConfidenceClass = () => {
+    if (!confidence) return ''
+    return `confidence-${confidence.level.toLowerCase()}`
+  }
+
   return (
-    <div 
-      className={`flow-node node-${nodeClass} ${isSelected ? 'selected' : ''}`}
+    <div
+      className={`flow-node node-${nodeClass} ${isSelected ? 'selected' : ''} ${getConfidenceClass()}`}
       onContextMenu={onContextMenu}
       title={buildTooltip()}
     >
       <Handle type="target" position={Position.Left} />
-      
+
+      {/* 置信度指示器 */}
+      {confidence && confidence.level !== 'Certain' && (
+        <div
+          className={`node-confidence-badge confidence-${confidence.level.toLowerCase()}`}
+          title={`${confidenceInfo[confidence.level].label}: ${confidence.reason}`}
+        >
+          {confidenceInfo[confidence.level].icon}
+        </div>
+      )}
+
       {/* 异步标签 - 根据类型显示不同颜色 */}
       {asyncLabel && (
-        <div 
+        <div
           className={`node-async-badge async-${asyncLabel.toLowerCase()}`}
           data-async-type={asyncLabel}
         >
           {asyncLabel}
         </div>
       )}
-      
+
       <div className="node-main">
         {/* 展开/收起按钮 */}
         {hasChildren && (
-          <button 
+          <button
             className={`node-toggle ${isExpanded ? 'expanded' : ''}`}
             onClick={handleToggleClick}
             title={isExpanded ? '收起' : `展开 (${childCount})`}
@@ -113,19 +148,19 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
             {isExpanded ? '▼' : '▶'}
           </button>
         )}
-        
+
         {/* 图标 */}
         <span className="node-icon">{icon}</span>
-        
+
         {/* 函数名 */}
         <span className="node-name">{name}()</span>
-        
+
         {/* 子节点数量 */}
         {hasChildren && !isExpanded && (
           <span className="node-count">{childCount}</span>
         )}
       </div>
-      
+
       <Handle type="source" position={Position.Right} />
     </div>
   )

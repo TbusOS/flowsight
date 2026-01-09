@@ -165,6 +165,28 @@ pub struct FlowNode {
     pub children: Vec<FlowNode>,
     /// Description
     pub description: Option<String>,
+    /// Confidence level for this call edge (None for direct calls)
+    pub confidence: Option<CallConfidence>,
+}
+
+/// Call confidence information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallConfidence {
+    /// Confidence level
+    pub level: ConfidenceLevel,
+    /// Reason for this confidence level
+    pub reason: String,
+}
+
+/// Confidence level enum for classification
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConfidenceLevel {
+    /// 100% certain - direct call or known binding
+    Certain,
+    /// Likely correct - type-matched or single candidate
+    Possible,
+    /// Uncertain - multiple candidates or unresolved
+    Unknown,
 }
 
 /// Type of flow node

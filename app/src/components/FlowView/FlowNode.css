@@ -200,3 +200,59 @@
 .node-entry .react-flow__handle {
   background: #22c55e;
 }
+
+/* ========== 置信度指示器样式 ========== */
+
+/* 置信度徽章 */
+.node-confidence-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  cursor: help;
+}
+
+/* 可能 - 黄色警告 */
+.node-confidence-badge.confidence-possible {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+  border: 2px solid #fbbf24;
+}
+
+/* 未知 - 红色警告 */
+.node-confidence-badge.confidence-unknown {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #fff;
+  border: 2px solid #f87171;
+}
+
+/* 节点边框置信度样式 */
+.flow-node.confidence-possible {
+  border-color: #f59e0b;
+  border-style: dashed;
+}
+
+.flow-node.confidence-unknown {
+  border-color: #ef4444;
+  border-style: dotted;
+}
+
+/* 置信度悬停效果 */
+.flow-node.confidence-possible:hover {
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+}
+
+.flow-node.confidence-unknown:hover {
+  border-color: #f87171;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3);
+}

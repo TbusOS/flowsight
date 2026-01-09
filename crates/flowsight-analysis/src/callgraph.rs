@@ -1,11 +1,11 @@
 //! Call graph construction
-//! 
+//!
 //! 核心功能：将用户代码的执行流与内核调用链关联
-//! 
+//!
 //! 当检测到入口点函数（如 probe, work handler）时，
 //! 自动注入完整的内核调用链，让用户看到真正的执行流程。
 
-use flowsight_core::{AsyncBinding, AsyncMechanism, CallEdge, CallType, FlowNode, FlowNodeType};
+use flowsight_core::{AsyncBinding, AsyncMechanism, CallEdge, CallType, FlowNode, FlowNodeType, CallConfidence, ConfidenceLevel};
 use flowsight_knowledge::{KnowledgeBase, CallChain};
 use flowsight_parser::ParseResult;
 use std::collections::HashSet;
@@ -80,6 +80,7 @@ pub fn build_flow_tree(
             node_type: FlowNodeType::Function,
             children: vec![],
             description: Some("递归调用，点击入口点查看完整树".to_string()),
+            confidence: None,
         });
     }
 
@@ -98,6 +99,10 @@ pub fn build_flow_tree(
                 node_type: FlowNodeType::External,
                 children: vec![],
                 description: Some("External function".to_string()),
+                confidence: Some(CallConfidence {
+                    level: ConfidenceLevel::Unknown,
+                    reason: "External function - definition not found".to_string(),
+                }),
             });
         }
     };
@@ -161,6 +166,10 @@ pub fn build_flow_tree(
                 node_type: FlowNodeType::KernelApi,
                 children: vec![],
                 description: None,
+                confidence: Some(CallConfidence {
+                    level: ConfidenceLevel::Certain,
+                    reason: "Direct call to kernel API".to_string(),
+                }),
             });
         }
     }
@@ -187,6 +196,27 @@ pub fn build_flow_tree(
 
     visited.remove(entry);
 
+    // Set confidence based on node type
+    let confidence = match &node_type {
+        FlowNodeType::EntryPoint => Some(CallConfidence {
+            level: ConfidenceLevel::Certain,
+            reason: "Callback entry point from ops table".to_string(),
+        }),
+        FlowNodeType::AsyncCallback { .. } => Some(CallConfidence {
+            level: ConfidenceLevel::Certain,
+            reason: "Async callback with known binding".to_string(),
+        }),
+        FlowNodeType::Function => None, // Direct call - certain by default
+        FlowNodeType::KernelApi => Some(CallConfidence {
+            level: ConfidenceLevel::Certain,
+            reason: "Kernel API call".to_string(),
+        }),
+        FlowNodeType::External => Some(CallConfidence {
+            level: ConfidenceLevel::Unknown,
+            reason: "External function - definition not available".to_string(),
+        }),
+    };
+
     Some(FlowNode {
         id: entry.to_string(),
         name: entry.to_string(),
@@ -195,6 +225,7 @@ pub fn build_flow_tree(
         node_type,
         children,
         description: func.callback_context.clone(),
+        confidence,
     })
 }
 
@@ -279,7 +310,7 @@ fn inject_kernel_chain(call_chain: &CallChain, user_tree: FlowNode) -> FlowNode 
     if call_chain.nodes.is_empty() {
         return user_tree;
     }
-    
+
     // 从触发源开始构建树
     let trigger_node = FlowNode {
         id: "trigger-source".to_string(),
@@ -289,8 +320,12 @@ fn inject_kernel_chain(call_chain: &CallChain, user_tree: FlowNode) -> FlowNode 
         node_type: FlowNodeType::External,
         children: vec![build_kernel_chain_tree(&call_chain.nodes, user_tree, 0)],
         description: Some(call_chain.name.clone()),
+        confidence: Some(CallConfidence {
+            level: ConfidenceLevel::Certain,
+            reason: "Kernel call chain trigger".to_string(),
+        }),
     };
-    
+
     trigger_node
 }
 
@@ -300,9 +335,9 @@ fn build_kernel_chain_tree(nodes: &[flowsight_knowledge::CallChainNode], user_tr
         // 所有内核节点都处理完了，返回用户树
         return user_tree;
     }
-    
+
     let node = &nodes[idx];
-    
+
     // 如果是用户入口点，替换为实际的用户树
     if node.is_user_entry {
         // 用户树替换这个占位符
@@ -314,12 +349,16 @@ fn build_kernel_chain_tree(nodes: &[flowsight_knowledge::CallChainNode], user_tr
             node_type: FlowNodeType::KernelApi,
             children: vec![user_tree],
             description: node.description.clone(),
+            confidence: Some(CallConfidence {
+                level: ConfidenceLevel::Certain,
+                reason: "Kernel to user callback".to_string(),
+            }),
         };
     }
-    
+
     // 继续构建链
     let child = build_kernel_chain_tree(nodes, user_tree, idx + 1);
-    
+
     let icon = match node.context {
         flowsight_knowledge::ExecutionContext::HardIrq => "⚡",
         flowsight_knowledge::ExecutionContext::SoftIrq => "🔄",
@@ -327,7 +366,7 @@ fn build_kernel_chain_tree(nodes: &[flowsight_knowledge::CallChainNode], user_tr
         flowsight_knowledge::ExecutionContext::User => "👤",
         flowsight_knowledge::ExecutionContext::Unknown => "❓",
     };
-    
+
     FlowNode {
         id: format!("kernel-{}", idx),
         name: node.function.clone(),
@@ -336,9 +375,13 @@ fn build_kernel_chain_tree(nodes: &[flowsight_knowledge::CallChainNode], user_tr
         node_type: FlowNodeType::KernelApi,
         children: vec![child],
         description: Some(format!(
-            "{} | {}", 
-            node.file.as_deref().unwrap_or("kernel"), 
+            "{} | {}",
+            node.file.as_deref().unwrap_or("kernel"),
             node.description.as_deref().unwrap_or("")
         )),
+        confidence: Some(CallConfidence {
+            level: ConfidenceLevel::Certain,
+            reason: "Kernel internal call".to_string(),
+        }),
     }
 }

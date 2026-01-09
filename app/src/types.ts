@@ -10,7 +10,7 @@ export interface Location {
 }
 
 // 流程节点类型
-export type FlowNodeType = 
+export type FlowNodeType =
   | 'Function'
   | 'EntryPoint'
   | { AsyncCallback: { mechanism: AsyncMechanism } }
@@ -18,7 +18,7 @@ export type FlowNodeType =
   | 'External'
 
 // 异步机制类型
-export type AsyncMechanism = 
+export type AsyncMechanism =
   | { WorkQueue: { work_struct: string; queue: string | null } }
   | { Timer: { timer_name: string; timer_type: string } }
   | { Tasklet: { tasklet_name: string } }
@@ -31,6 +31,15 @@ export type AsyncMechanism =
   | { WaitQueue: { queue_name: string } }
   | { Custom: string }
 
+// 置信度等级
+export type ConfidenceLevel = 'Certain' | 'Possible' | 'Unknown'
+
+// 调用置信度信息
+export interface CallConfidence {
+  level: ConfidenceLevel
+  reason: string
+}
+
 // 流程节点
 export interface FlowTreeNode {
   id: string
@@ -40,6 +49,7 @@ export interface FlowTreeNode {
   location?: Location
   children?: FlowTreeNode[]
   description?: string
+  confidence?: CallConfidence
 }
 
 // 分析结果

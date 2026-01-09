@@ -458,6 +458,7 @@ impl ScenarioExecutor {
             node_type,
             children,
             description: Some(description),
+            confidence: node.confidence.clone(),
         }
     }
 
@@ -602,6 +603,7 @@ mod tests {
             node_type: FlowNodeType::Function,
             children: vec![],
             description: None,
+            confidence: None,
         };
 
         let mut executor = ScenarioExecutor::new(ScenarioOptions::default());
@@ -642,9 +644,11 @@ mod tests {
                     node_type: FlowNodeType::Function,
                     children: vec![],
                     description: None,
+                    confidence: None,
                 },
             ],
             description: None,
+            confidence: None,
         };
 
         let mut executor = ScenarioExecutor::new(ScenarioOptions::default());

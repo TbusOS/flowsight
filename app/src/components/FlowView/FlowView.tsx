@@ -381,6 +381,8 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
           file: node.file,
           line: node.line,
           nodeType: getNodeClass(node.node_type),
+          // 置信度信息
+          confidence: node.confidence,
         },
       })
 
@@ -684,6 +686,20 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
             <span className="legend-dot tasklet"></span>Tasklet
           </span>
         </div>
+
+        {/* 置信度图例 */}
+        <div className="confidence-legend">
+          <span className="legend-item" title="确定 - 直接调用或已知绑定">
+            <span className="confidence-dot certain">✓</span>确定
+          </span>
+          <span className="legend-item" title="可能 - 类型匹配或单一候选">
+            <span className="confidence-dot possible">?</span>可能
+          </span>
+          <span className="legend-item" title="未知 - 多个候选或无法解析">
+            <span className="confidence-dot unknown">!</span>未知
+          </span>
+        </div>
+
         <div className="depth-selector">
           <span className="depth-label">层级:</span>
           {[1, 2, 3, 4, 5].map(depth => (
