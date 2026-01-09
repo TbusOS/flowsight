@@ -20,6 +20,7 @@ pub mod funcptr;
 pub mod pointer;
 pub mod propagation;
 pub mod scenario;
+pub mod types;
 
 use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};
 use flowsight_parser::ParseResult;
