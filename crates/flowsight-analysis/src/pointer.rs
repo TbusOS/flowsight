@@ -282,10 +282,21 @@ impl AndersenSolver {
                         }
                     }
                     Constraint::ArrayStore { array, src } => {
-                        // arr[i] = func: all elements point to same targets
+                        // arr[i] = func: the array element can point to src
                         let array_key = format!("{}[]", array);
                         let src_key = Self::loc_key(&src);
-                        self.union_pts(&array_key, &src_key);
+
+                        // For functions, add directly to array's points-to set
+                        // (similar to AddressOf, the array points to the function)
+                        match &src {
+                            Location::Function(_) => {
+                                self.add_to_pts(&array_key, &src_key);
+                            }
+                            _ => {
+                                // For non-functions, union the source's points-to set
+                                self.union_pts(&array_key, &src_key);
+                            }
+                        }
                     }
                     Constraint::ArrayLoad { dest, array } => {
                         // p = arr[i]: dest gets all possible array element targets
@@ -455,5 +466,85 @@ mod tests {
         assert!(result.get_function_targets("a").contains(&"func".to_string()));
         assert!(result.get_function_targets("b").contains(&"func".to_string()));
         assert!(result.get_function_targets("c").contains(&"func".to_string()));
+    }
+
+    #[test]
+    fn test_array_store_and_load() {
+        let mut solver = AndersenSolver::new();
+
+        // handlers[0] = func_a
+        solver.add_constraint(Constraint::ArrayStore {
+            array: "handlers".to_string(),
+            src: Location::func("func_a"),
+        });
+
+        // handlers[1] = func_b
+        solver.add_constraint(Constraint::ArrayStore {
+            array: "handlers".to_string(),
+            src: Location::func("func_b"),
+        });
+
+        // call_target = handlers[i]
+        solver.add_constraint(Constraint::ArrayLoad {
+            dest: Location::var("call_target"),
+            array: "handlers".to_string(),
+        });
+
+        let result = solver.solve();
+
+        // handlers[] should contain both functions
+        let array_targets = result.points_to.get("handlers[]");
+        assert!(array_targets.is_some());
+        let targets = array_targets.unwrap();
+        assert!(targets.contains("func_a"));
+        assert!(targets.contains("func_b"));
+
+        // call_target should also have both functions
+        let call_targets = result.get_function_targets("call_target");
+        assert!(call_targets.contains(&"func_a".to_string()));
+        assert!(call_targets.contains(&"func_b".to_string()));
+    }
+
+    #[test]
+    fn test_array_with_constraint_collector() {
+        use crate::constraint::ConstraintCollector;
+
+        let source = r#"
+void read_cmd(void) {}
+void write_cmd(void) {}
+
+void init(void) {
+    cmd_handlers[0] = read_cmd;
+    cmd_handlers[1] = write_cmd;
+}
+
+void dispatch(int cmd) {
+    cmd_handlers[cmd]();
+}
+"#;
+        let mut collector = ConstraintCollector::new();
+        collector.set_functions(vec![
+            "read_cmd".to_string(),
+            "write_cmd".to_string(),
+        ]);
+        let constraints = collector.collect(source);
+
+        let mut solver = AndersenSolver::new();
+        solver.add_constraints(constraints);
+        let result = solver.solve();
+
+        // cmd_handlers[] should point to both functions
+        let targets = result.points_to.get("cmd_handlers[]");
+        assert!(targets.is_some());
+        let targets = targets.unwrap();
+        assert!(targets.contains("read_cmd"));
+        assert!(targets.contains("write_cmd"));
+
+        // The call target should also resolve
+        let call_target = result.points_to.get("__call_from_cmd_handlers");
+        assert!(call_target.is_some());
+        let call_targets = call_target.unwrap();
+        assert!(call_targets.contains("read_cmd"));
+        assert!(call_targets.contains("write_cmd"));
     }
 }

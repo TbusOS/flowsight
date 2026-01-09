@@ -15,6 +15,8 @@ pub struct ConstraintCollector {
     functions: HashMap<String, bool>,
     /// Current function being analyzed
     current_function: Option<String>,
+    /// Array declarations with their element types (array_name -> is_function_pointer_array)
+    arrays: HashMap<String, bool>,
 }
 
 impl ConstraintCollector {
@@ -24,6 +26,7 @@ impl ConstraintCollector {
             constraints: Vec::new(),
             functions: HashMap::new(),
             current_function: None,
+            arrays: HashMap::new(),
         }
     }
 
@@ -56,6 +59,9 @@ impl ConstraintCollector {
                 self.visit_children(node, source);
                 self.current_function = None;
             }
+            "declaration" => {
+                self.handle_declaration(node, source);
+            }
             "init_declarator" => {
                 self.handle_init_declarator(node, source);
             }
@@ -78,6 +84,111 @@ impl ConstraintCollector {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             self.visit_node(child, source);
+        }
+    }
+
+    /// Handle array and variable declarations
+    fn handle_declaration(&mut self, node: Node, source: &str) {
+        // Check for function pointer array declaration: void (*handlers[])(void) = {...}
+        // Or simple array: handler_t handlers[] = {...}
+        let text = self.node_text(node, source);
+
+        // Extract array name and check if it's a function pointer array
+        let mut array_name = None;
+        let mut is_func_ptr_array = false;
+        let mut init_list = None;
+
+        // Parse for function pointer array pattern
+        if text.contains("(*") && text.contains("[") {
+            // Function pointer array: void (*handlers[N])(...)
+            if let Some(start) = text.find("(*") {
+                let after_paren = &text[start + 2..];
+                if let Some(bracket) = after_paren.find('[') {
+                    let name = after_paren[..bracket].trim();
+                    if !name.is_empty() {
+                        array_name = Some(name.to_string());
+                        is_func_ptr_array = true;
+                    }
+                }
+            }
+        }
+
+        // Look for array declarator pattern
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "init_declarator" {
+                let mut inner_cursor = child.walk();
+                for inner_child in child.children(&mut inner_cursor) {
+                    if inner_child.kind() == "array_declarator" {
+                        // Extract array name
+                        if let Some(name) = self.extract_array_name(inner_child, source) {
+                            array_name = Some(name);
+                        }
+                    } else if inner_child.kind() == "initializer_list" {
+                        init_list = Some(inner_child);
+                    }
+                }
+            }
+        }
+
+        // If we found an array with initializer list, extract function assignments
+        if let (Some(name), Some(init)) = (array_name.clone(), init_list) {
+            self.arrays.insert(name.clone(), is_func_ptr_array);
+            self.handle_array_initializer(&name, init, source);
+        } else if let Some(name) = array_name {
+            self.arrays.insert(name, is_func_ptr_array);
+        }
+
+        // Continue visiting children for other declarations
+        self.visit_children(node, source);
+    }
+
+    /// Extract array name from array_declarator node
+    fn extract_array_name(&self, node: Node, source: &str) -> Option<String> {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "identifier" {
+                return Some(self.node_text(child, source));
+            }
+            // Handle pointer declarator inside array declarator
+            if child.kind() == "pointer_declarator" || child.kind() == "parenthesized_declarator" {
+                if let Some(name) = self.extract_identifier(child, source) {
+                    return Some(name);
+                }
+            }
+        }
+        None
+    }
+
+    /// Handle array initializer list: handlers[] = {func1, func2, func3}
+    fn handle_array_initializer(&mut self, array_name: &str, init: Node, source: &str) {
+        let mut cursor = init.walk();
+        for child in init.children(&mut cursor) {
+            match child.kind() {
+                "identifier" => {
+                    let func_name = self.node_text(child, source);
+                    if self.functions.contains_key(&func_name) {
+                        self.constraints.push(Constraint::ArrayStore {
+                            array: array_name.to_string(),
+                            src: Location::func(&func_name),
+                        });
+                    }
+                }
+                "unary_expression" => {
+                    // Handle &func in initializer
+                    let text = self.node_text(child, source);
+                    if text.starts_with('&') {
+                        let func_name = text.trim_start_matches('&').trim();
+                        if self.functions.contains_key(func_name) {
+                            self.constraints.push(Constraint::ArrayStore {
+                                array: array_name.to_string(),
+                                src: Location::func(func_name),
+                            });
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -283,7 +394,28 @@ impl ConstraintCollector {
             return;
         }
 
-        let func_name = self.node_text(children[0], source);
+        let callee = children[0];
+
+        // Handle array-based indirect calls: handlers[i]()
+        if callee.kind() == "subscript_expression" {
+            self.handle_array_call(callee, source);
+            self.visit_children(node, source);
+            return;
+        }
+
+        // Handle pointer-based indirect calls: (*func_ptr)()
+        if callee.kind() == "parenthesized_expression" {
+            // The actual function pointer variable is inside
+            let inner = self.node_text(callee, source);
+            let inner = inner.trim_start_matches('(').trim_end_matches(')');
+            if inner.starts_with('*') {
+                let _ptr_name = inner.trim_start_matches('*').trim();
+                // Create an ArrayLoad-like constraint to track the call target
+                // This is handled elsewhere, just note the indirect call
+            }
+        }
+
+        let func_name = self.node_text(callee, source);
 
         // Handle common callback registration patterns
         match func_name.as_str() {
@@ -337,6 +469,24 @@ impl ConstraintCollector {
         }
 
         self.visit_children(node, source);
+    }
+
+    /// Handle array-based indirect calls: handlers[i]()
+    fn handle_array_call(&mut self, subscript: Node, source: &str) {
+        // Extract array name from subscript expression
+        let mut cursor = subscript.walk();
+        for child in subscript.children(&mut cursor) {
+            if child.kind() == "identifier" {
+                let array_name = self.node_text(child, source);
+                // Create a synthetic variable for the call target
+                let call_target = format!("__call_from_{}", array_name);
+                self.constraints.push(Constraint::ArrayLoad {
+                    dest: Location::var(&call_target),
+                    array: array_name.clone(),
+                });
+                return;
+            }
+        }
     }
 
     /// Handle struct initializer lists
@@ -515,5 +665,82 @@ void init(void) {
         }).collect();
 
         assert_eq!(array_stores.len(), 2);
+    }
+
+    #[test]
+    fn test_array_initialization() {
+        let source = r#"
+void func1(void) {}
+void func2(void) {}
+void func3(void) {}
+
+handler_t handlers[] = {func1, func2, func3};
+"#;
+        let mut collector = ConstraintCollector::new();
+        collector.set_functions(vec![
+            "func1".to_string(),
+            "func2".to_string(),
+            "func3".to_string(),
+        ]);
+        let constraints = collector.collect(source);
+
+        let array_stores: Vec<_> = constraints.iter().filter(|c| {
+            matches!(c, Constraint::ArrayStore { array, .. } if array == "handlers")
+        }).collect();
+
+        assert_eq!(array_stores.len(), 3);
+    }
+
+    #[test]
+    fn test_array_call() {
+        let source = r#"
+void dispatch(int cmd) {
+    handlers[cmd]();
+}
+"#;
+        let mut collector = ConstraintCollector::new();
+        let constraints = collector.collect(source);
+
+        let array_loads: Vec<_> = constraints.iter().filter(|c| {
+            matches!(c, Constraint::ArrayLoad { array, .. } if array == "handlers")
+        }).collect();
+
+        assert_eq!(array_loads.len(), 1);
+    }
+
+    #[test]
+    fn test_array_full_flow() {
+        // Test the complete flow: declaration, assignment, and call
+        let source = r#"
+void read_handler(void) {}
+void write_handler(void) {}
+
+void init(void) {
+    ops[0] = read_handler;
+    ops[1] = write_handler;
+}
+
+void dispatch(int cmd) {
+    ops[cmd]();
+}
+"#;
+        let mut collector = ConstraintCollector::new();
+        collector.set_functions(vec![
+            "read_handler".to_string(),
+            "write_handler".to_string(),
+        ]);
+        let constraints = collector.collect(source);
+
+        // Should have 2 ArrayStore for assignments
+        let array_stores: Vec<_> = constraints.iter().filter(|c| {
+            matches!(c, Constraint::ArrayStore { array, .. } if array == "ops")
+        }).collect();
+        assert_eq!(array_stores.len(), 2);
+
+        // Should have 1 ArrayLoad for call
+        let array_loads: Vec<_> = constraints.iter().filter(|c| {
+            matches!(c, Constraint::ArrayLoad { array, .. } if array == "ops")
+        }).collect();
+        assert_eq!(array_loads.len(), 1);
     }
 }
