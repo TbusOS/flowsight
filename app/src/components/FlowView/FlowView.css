@@ -1,7 +1,8 @@
 /* FlowView 容器样式 */
 
 .flow-view {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   background: #0c1222;
   position: relative;
@@ -227,7 +228,8 @@
 
 /* 空状态 */
 .flow-view-empty {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;

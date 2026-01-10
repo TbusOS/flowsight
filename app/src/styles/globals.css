@@ -304,8 +304,8 @@ body {
   padding: 0;
   flex: 1;
   min-width: 0;
-  min-height: 0;  /* 关键：允许flex子项收缩 */
-  overflow: hidden;  /* 防止内容溢出 */
+  min-height: 0;
+  overflow: hidden;
 }
 
 .panel-header {
@@ -314,7 +314,7 @@ body {
   align-items: center;
   padding: 1rem;
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;  /* 防止header被压缩 */
+  flex-shrink: 0;
 }
 
 .panel-header h2 {
