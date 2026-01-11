@@ -7,6 +7,7 @@
 | 文档 | 描述 |
 |------|------|
 | [PROJECT-PLAN.md](PROJECT-PLAN.md) | 完整项目计划，包括愿景、架构、技术选型和里程碑 |
+| [EXECUTION-FLOW-DESIGN.md](EXECUTION-FLOW-DESIGN.md) | **核心！** 执行流可视化设计，定义什么是"真正的执行流" |
 
 ## 📋 待添加
 
