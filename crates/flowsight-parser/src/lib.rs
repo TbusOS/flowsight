@@ -8,8 +8,12 @@
 //! - `treesitter` - Fast incremental parsing using tree-sitter
 //! - `preprocessor` - C preprocessor integration using Clang
 //! - `ast` - AST types and utilities
+//! - `cache` - LRU cache for parsed syntax trees
+//! - `parallel` - Parallel file parsing using rayon
 
 pub mod ast;
+pub mod cache;
+pub mod parallel;
 pub mod preprocessor;
 pub mod treesitter;
 
@@ -18,7 +22,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 /// Parse result containing extracted information
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ParseResult {
     /// Functions found in the source
     pub functions: HashMap<String, FunctionDef>,

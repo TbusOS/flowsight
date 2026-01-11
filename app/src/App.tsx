@@ -4,6 +4,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { FlowView, FlowTextView } from './components/FlowView'
 import { CodeEditor } from './components/Editor'
@@ -25,7 +26,7 @@ import { ToastContainer, useToast } from './components/Toast'
 import { AboutDialog } from './components/AboutDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { QuickOpen } from './components/QuickOpen'
-import { addRecentFile } from './utils/recentFiles'
+import { addRecentFile, getRecentFiles } from './utils/recentFiles'
 import { 
   AnalysisResult, 
   FlowTreeNode, 
@@ -95,10 +96,35 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', appSettings.theme)
   }, [appSettings.theme])
+
+  // 监听索引进度事件
+  useEffect(() => {
+    const unlisten = listen<{
+      phase: string
+      current: number
+      total: number
+      message: string
+      files?: number
+      functions?: number
+    }>('index-progress', (event) => {
+      setIndexProgress(event.payload)
+      if (event.payload.phase === 'done') {
+        // 更新索引统计
+        setIndexStats({
+          files: event.payload.files || event.payload.total,
+          functions: event.payload.functions || 0,
+          structs: 0,
+        })
+        // 3秒后清除进度
+        setTimeout(() => setIndexProgress(null), 3000)
+      }
+    })
+    return () => { unlisten.then(fn => fn()) }
+  }, [])
   
   // 查找替换状态
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
-  const [findMatches, setFindMatches] = useState<FindMatch[]>([])
+  const [, setFindMatches] = useState<FindMatch[]>([])
   
   // 快捷键帮助状态
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -111,6 +137,7 @@ function App() {
   
   // 拖放文件状态
   const [isDragging, setIsDragging] = useState(false)
+  const [droppedFile, setDroppedFile] = useState<string | null>(null)
   
   // 关于对话框状态
   const [aboutOpen, setAboutOpen] = useState(false)
@@ -133,6 +160,14 @@ function App() {
   // 调用者分析状态
   const [callersViewOpen, setCallersViewOpen] = useState(false)
   const [callersTargetFunc, setCallersTargetFunc] = useState('')
+
+  // 索引进度状态
+  const [indexProgress, setIndexProgress] = useState<{
+    phase: string
+    current: number
+    total: number
+    message: string
+  } | null>(null)
   
   // 拖放文件处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -151,21 +186,21 @@ function App() {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
-    
+
     const files = Array.from(e.dataTransfer.files)
     if (files.length === 0) return
-    
+
     // 获取文件路径 (Tauri 需要特殊处理)
     const file = files[0]
     const path = (file as any).path as string | undefined
-    
+
     if (path) {
       info(`正在打开: ${file.name}`)
-      handleAnalyze(path)
+      setDroppedFile(path)
     } else {
       showError('无法获取文件路径，请使用菜单打开文件')
     }
-  }, [handleAnalyze, info, showError])
+  }, [info, showError])
   
   // Panel width state (percentage)
   const [leftPanelWidth, setLeftPanelWidth] = useState(220)
@@ -672,6 +707,14 @@ function App() {
     }
   }
 
+  // 处理拖放的文件
+  useEffect(() => {
+    if (droppedFile) {
+      handleAnalyze(droppedFile)
+      setDroppedFile(null)
+    }
+  }, [droppedFile])
+
   const handleNodeClick = useCallback(async (_nodeId: string, functionName: string) => {
     setSelectedFunction(functionName)
     
@@ -817,19 +860,25 @@ function App() {
       reanalyzeTimerRef.current = setTimeout(async () => {
         try {
           // 先保存到临时文件然后分析
-          const result = await invoke<AnalysisResult>('analyze_file', { path: filePath })
-          
-          if (result.flow_trees && result.flow_trees.length > 0) {
-            setFlowTrees(result.flow_trees)
-            
+          const analysisResult = await invoke<AnalysisResult>('analyze_file', { path: filePath })
+
+          if (analysisResult.flow_trees && analysisResult.flow_trees.length > 0) {
+            setResult(analysisResult)
+
             // 更新大纲
-            const funcs = await invoke<FunctionInfo[]>('get_functions', { path: filePath })
+            const funcs = await invoke<Array<{
+              name: string
+              return_type: string
+              line: number
+              is_callback: boolean
+              callback_context?: string
+            }>>('get_functions', { path: filePath })
             const items: OutlineItem[] = funcs.map(f => ({
               name: f.name,
-              kind: 'function',
+              kind: 'function' as const,
               line: f.line,
-              is_callback: f.is_callback,
-              callback_context: f.callback_context,
+              isCallback: f.is_callback,
+              returnType: f.return_type,
             }))
             items.sort((a, b) => a.line - b.line)
             setOutlineItems(items)
@@ -840,7 +889,7 @@ function App() {
         }
       }, 1500)
     }
-  }, [activeTabId, appSettings.autoSaveEnabled, filePath])
+  }, [activeTabId, appSettings.autoSave, filePath])
   
   // 保存当前文件
   const saveCurrentFile = useCallback(async () => {
@@ -880,7 +929,7 @@ function App() {
   }, [saveCurrentFile])
   
   // 自动保存功能
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   useEffect(() => {
     // 清除之前的定时器
@@ -1144,7 +1193,22 @@ function App() {
                       <span>{indexStats?.functions || 0} 函数</span>
                     </div>
                   </div>
-                  
+
+                  {/* 索引进度条 */}
+                  {indexProgress && (
+                    <div className="index-progress">
+                      <div className="progress-message">{indexProgress.message}</div>
+                      {indexProgress.total > 0 && (
+                        <div className="progress-bar">
+                          <div
+                            className="progress-fill"
+                            style={{ width: `${(indexProgress.current / indexProgress.total) * 100}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="file-tree-container">
                     <FileTree 
                       nodes={fileTree}
@@ -1592,7 +1656,7 @@ function App() {
       <QuickOpen
         isOpen={quickOpenOpen}
         onClose={() => setQuickOpenOpen(false)}
-        recentFiles={recentFiles.map(rf => ({
+        recentFiles={getRecentFiles().map(rf => ({
           path: rf.path,
           name: rf.name,
           timestamp: rf.timestamp
@@ -1620,7 +1684,7 @@ function App() {
         isOpen={callersViewOpen}
         onClose={() => setCallersViewOpen(false)}
         functionName={callersTargetFunc}
-        projectPath={project?.root_path}
+        projectPath={project?.path}
         onFunctionClick={(funcName, file, line) => {
           setCallersViewOpen(false)
           if (file && line) {
@@ -1641,8 +1705,8 @@ function App() {
           try {
             setScenarioPanelOpen(false)
             info(`正在执行场景 "${scenario.name}"...`)
-            
-            const result = await invoke<{
+
+            const scenarioResult = await invoke<{
               success: boolean
               path: { function: string; line: number; variables: Record<string, string> }[]
               annotated_flow_tree: FlowTreeNode | null
@@ -1661,23 +1725,26 @@ function App() {
               },
             })
             
-            if (result.success) {
+            if (scenarioResult.success) {
               // 更新执行流树显示带注解的版本
-              if (result.annotated_flow_tree) {
-                setFlowTrees([result.annotated_flow_tree])
+              if (scenarioResult.annotated_flow_tree) {
+                setResult(prev => prev ? {
+                  ...prev,
+                  flow_trees: [scenarioResult.annotated_flow_tree!]
+                } : null)
               }
               setScenarioResults({
-                path: result.path.map(p => p.function),
-                states: result.path.map(p => ({
+                path: scenarioResult.path.map(p => p.function),
+                states: scenarioResult.path.map(p => ({
                   location: `${p.function}:${p.line}`,
                   variables: p.variables,
                 })),
               })
               setCurrentScenarioName(scenario.name)
               setScenarioResultsOpen(true)
-              success(`场景 "${scenario.name}" 分析完成！执行路径包含 ${result.path.length} 个节点`)
+              success(`场景 "${scenario.name}" 分析完成！执行路径包含 ${scenarioResult.path.length} 个节点`)
             } else {
-              showError(`场景分析失败: ${result.error}`)
+              showError(`场景分析失败: ${scenarioResult.error}`)
             }
           } catch (e) {
             showError(`场景分析出错: ${e}`)
