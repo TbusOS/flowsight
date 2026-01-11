@@ -459,6 +459,10 @@ impl ScenarioExecutor {
             children,
             description: Some(description),
             confidence: node.confidence.clone(),
+            execution_context: node.execution_context.clone(),
+            can_sleep: node.can_sleep,
+            source_file: node.source_file.clone(),
+            is_kernel_internal: node.is_kernel_internal,
         }
     }
 

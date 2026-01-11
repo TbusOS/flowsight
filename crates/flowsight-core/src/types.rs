@@ -167,6 +167,14 @@ pub struct FlowNode {
     pub description: Option<String>,
     /// Confidence level for this call edge (None for direct calls)
     pub confidence: Option<CallConfidence>,
+    /// ⭐ 执行上下文 (process/softirq/hardirq)
+    pub execution_context: Option<ExecutionContext>,
+    /// ⭐ 是否可以睡眠（基于执行上下文）
+    pub can_sleep: Option<bool>,
+    /// ⭐ 源文件路径（内核函数）
+    pub source_file: Option<String>,
+    /// ⭐ 是否是内核调用链的一部分（而非用户代码）
+    pub is_kernel_internal: bool,
 }
 
 /// Call confidence information
