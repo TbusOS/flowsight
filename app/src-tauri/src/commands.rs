@@ -131,11 +131,15 @@ pub async fn open_project(path: String, app_handle: tauri::AppHandle) -> Result<
         *index = SymbolIndex::new();
     }
 
-    // Spawn background indexing task
+    // Spawn background indexing task with larger stack (8MB)
     let path_clone = path.clone();
-    std::thread::spawn(move || {
-        index_project_background(project_path, app_handle);
-    });
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .name("indexer".into())
+        .spawn(move || {
+            index_project_background(project_path, app_handle);
+        })
+        .ok();
 
     // Return immediately with placeholder info
     Ok(ProjectInfo {
