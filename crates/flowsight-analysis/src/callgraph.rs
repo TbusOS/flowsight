@@ -81,6 +81,10 @@ pub fn build_flow_tree(
             children: vec![],
             description: Some("递归调用，点击入口点查看完整树".to_string()),
             confidence: None,
+            execution_context: None,
+            can_sleep: None,
+            source_file: None,
+            is_kernel_internal: false,
         });
     }
 
@@ -103,6 +107,10 @@ pub fn build_flow_tree(
                     level: ConfidenceLevel::Unknown,
                     reason: "External function - definition not found".to_string(),
                 }),
+                execution_context: None,
+                can_sleep: None,
+                source_file: None,
+                is_kernel_internal: false,
             });
         }
     };
@@ -170,6 +178,10 @@ pub fn build_flow_tree(
                     level: ConfidenceLevel::Certain,
                     reason: "Direct call to kernel API".to_string(),
                 }),
+                execution_context: None,
+                can_sleep: None,
+                source_file: None,
+                is_kernel_internal: false,
             });
         }
     }
@@ -226,6 +238,10 @@ pub fn build_flow_tree(
         children,
         description: func.callback_context.clone(),
         confidence,
+        execution_context: Some(flowsight_core::ExecutionContext::Process),
+        can_sleep: Some(true),
+        source_file: None,
+        is_kernel_internal: false,
     })
 }
 
@@ -324,6 +340,10 @@ fn inject_kernel_chain(call_chain: &CallChain, user_tree: FlowNode) -> FlowNode 
             level: ConfidenceLevel::Certain,
             reason: "Kernel call chain trigger".to_string(),
         }),
+        execution_context: None,
+        can_sleep: None,
+        source_file: None,
+        is_kernel_internal: true,
     };
 
     trigger_node
@@ -337,6 +357,16 @@ fn build_kernel_chain_tree(nodes: &[flowsight_knowledge::CallChainNode], user_tr
     }
 
     let node = &nodes[idx];
+
+    // 转换执行上下文类型
+    let exec_ctx = match node.context {
+        flowsight_knowledge::ExecutionContext::Process => flowsight_core::ExecutionContext::Process,
+        flowsight_knowledge::ExecutionContext::SoftIrq => flowsight_core::ExecutionContext::SoftIrq,
+        flowsight_knowledge::ExecutionContext::HardIrq => flowsight_core::ExecutionContext::HardIrq,
+        flowsight_knowledge::ExecutionContext::User => flowsight_core::ExecutionContext::Process,
+        flowsight_knowledge::ExecutionContext::Unknown => flowsight_core::ExecutionContext::Unknown,
+    };
+    let can_sleep = exec_ctx.can_sleep();
 
     // 如果是用户入口点，替换为实际的用户树
     if node.is_user_entry {
@@ -353,6 +383,10 @@ fn build_kernel_chain_tree(nodes: &[flowsight_knowledge::CallChainNode], user_tr
                 level: ConfidenceLevel::Certain,
                 reason: "Kernel to user callback".to_string(),
             }),
+            execution_context: Some(exec_ctx),
+            can_sleep: Some(can_sleep),
+            source_file: node.file.clone(),
+            is_kernel_internal: true,
         };
     }
 
@@ -383,5 +417,9 @@ fn build_kernel_chain_tree(nodes: &[flowsight_knowledge::CallChainNode], user_tr
             level: ConfidenceLevel::Certain,
             reason: "Kernel internal call".to_string(),
         }),
+        execution_context: Some(exec_ctx),
+        can_sleep: Some(can_sleep),
+        source_file: node.file.clone(),
+        is_kernel_internal: true,
     }
 }

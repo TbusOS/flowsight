@@ -25,6 +25,7 @@ pub mod scenario;
 pub mod types;
 
 use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};
+use flowsight_knowledge::KnowledgeBase;
 use flowsight_parser::ParseResult;
 use std::collections::HashMap;
 
@@ -37,22 +38,37 @@ pub struct AnalysisResult {
     pub call_edges: Vec<CallEdge>,
     /// Entry points (callbacks, module init, etc.)
     pub entry_points: Vec<String>,
-    /// Execution flow trees
+    /// Execution flow trees (with kernel call chain injection)
     pub flow_trees: Vec<FlowNode>,
 }
 
 /// Main analyzer
+///
+/// 分析引擎会自动注入内核调用链，让用户看到完整的执行流程。
+/// 例如：USB probe 函数会显示从 "USB 设备插入" 到用户代码的完整路径。
 pub struct Analyzer {
     async_tracker: async_tracker::AsyncTracker,
     funcptr_resolver: funcptr::FuncPtrResolver,
+    /// 知识库，包含内核调用链等信息
+    knowledge_base: KnowledgeBase,
 }
 
 impl Analyzer {
-    /// Create a new analyzer
+    /// Create a new analyzer with built-in knowledge base
     pub fn new() -> Self {
         Self {
             async_tracker: async_tracker::AsyncTracker::new(),
             funcptr_resolver: funcptr::FuncPtrResolver::new(),
+            knowledge_base: KnowledgeBase::builtin(),
+        }
+    }
+
+    /// Create a new analyzer with custom knowledge base
+    pub fn with_knowledge_base(kb: KnowledgeBase) -> Self {
+        Self {
+            async_tracker: async_tracker::AsyncTracker::new(),
+            funcptr_resolver: funcptr::FuncPtrResolver::new(),
+            knowledge_base: kb,
         }
     }
 
@@ -140,6 +156,39 @@ impl Analyzer {
             entries.push(name);
         }
 
+        // 如果没有找到任何入口点，使用所有非 static 函数作为入口点
+        // 这对于内核核心文件（如 do_mounts.c）很重要
+        if entries.is_empty() {
+            let mut all_funcs: Vec<_> = functions
+                .iter()
+                .filter(|(_, func)| {
+                    // 排除 static 函数（它们通常是内部辅助函数）
+                    // 但如果所有函数都是 static，则包含所有函数
+                    !func.attributes.contains(&"static".to_string())
+                })
+                .map(|(name, func)| {
+                    let line = func.location.as_ref().map(|l| l.line).unwrap_or(u32::MAX);
+                    (name.clone(), line)
+                })
+                .collect();
+
+            // 如果没有非 static 函数，使用所有函数
+            if all_funcs.is_empty() {
+                all_funcs = functions
+                    .iter()
+                    .map(|(name, func)| {
+                        let line = func.location.as_ref().map(|l| l.line).unwrap_or(u32::MAX);
+                        (name.clone(), line)
+                    })
+                    .collect();
+            }
+
+            all_funcs.sort_by_key(|(_, line)| *line);
+            for (name, _) in all_funcs {
+                entries.push(name);
+            }
+        }
+
         entries
     }
 
@@ -152,12 +201,12 @@ impl Analyzer {
         entry_points
             .iter()
             .filter_map(|entry| {
-                callgraph::build_flow_tree(
+                // 使用带内核调用链注入的完整执行流构建
+                callgraph::build_full_flow_tree(
                     entry,
                     parse_result,
                     async_bindings,
-                    &mut std::collections::HashSet::new(),
-                    0,
+                    &self.knowledge_base,
                 )
             })
             .collect()
