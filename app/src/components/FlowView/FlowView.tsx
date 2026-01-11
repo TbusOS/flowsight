@@ -220,9 +220,8 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
   const [searchResults, setSearchResults] = useState<string[]>([]) // 搜索结果
   const [searchIndex, setSearchIndex] = useState(0) // 当前搜索结果索引
   const functionMap = useMemo(() => buildFunctionMap(flowTrees), [flowTrees])
-  const { fitView, setCenter, getNode, zoomIn, zoomOut, setViewport } = useReactFlow()
+  const { fitView, setCenter, getNode, zoomIn, zoomOut } = useReactFlow()
   const { zoom } = useViewport()
-  const flowRef = useRef<HTMLDivElement>(null)
   
   // 导出为 PNG
   const exportToPng = useCallback(async () => {
@@ -378,8 +377,8 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
           onToggle: () => toggleExpand(node.name),
           onContextMenu: (e: React.MouseEvent) => handleContextMenu(e, node.name),
           // 详细信息
-          file: node.file,
-          line: node.line,
+          file: node.location?.file,
+          line: node.location?.line,
           nodeType: getNodeClass(node.node_type),
           // 置信度信息
           confidence: node.confidence,

@@ -3,10 +3,12 @@
 use flowsight_analysis::Analyzer;
 use flowsight_index::SymbolIndex;
 use flowsight_parser::get_parser;
+use flowsight_parser::parallel::{ParallelParser, ProgressPhase};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use tauri::Emitter;
 use walkdir::WalkDir;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -114,53 +116,113 @@ pub struct SearchResult {
     pub is_callback: bool,
 }
 
-/// Open a project directory and index it
+/// Open a project directory - returns immediately, indexing happens in background
 #[tauri::command]
-pub async fn open_project(path: String) -> Result<ProjectInfo, String> {
+pub async fn open_project(path: String, app_handle: tauri::AppHandle) -> Result<ProjectInfo, String> {
     let project_path = PathBuf::from(&path);
 
     if !project_path.is_dir() {
         return Err("Path is not a directory".into());
     }
 
-    // Find all C files
-    let c_files: Vec<PathBuf> = WalkDir::new(&project_path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map(|ext| ext == "c" || ext == "h")
-                .unwrap_or(false)
-        })
-        .map(|e| e.path().to_path_buf())
-        .collect();
-
-    let parser = get_parser();
-    let mut index = INDEX.lock().map_err(|e| e.to_string())?;
-
     // Clear previous index
-    *index = SymbolIndex::new();
+    {
+        let mut index = INDEX.lock().map_err(|e| e.to_string())?;
+        *index = SymbolIndex::new();
+    }
 
-    // Index all files
-    for file in &c_files {
-        if let Ok(result) = parser.parse_file(file) {
-            for (_, func) in result.functions {
-                index.add_function(func, file);
-            }
-            for (_, st) in result.structs {
-                index.add_struct(st);
+    // Spawn background indexing task
+    let path_clone = path.clone();
+    std::thread::spawn(move || {
+        index_project_background(project_path, app_handle);
+    });
+
+    // Return immediately with placeholder info
+    Ok(ProjectInfo {
+        path: path_clone,
+        files_count: 0,
+        functions_count: 0,
+        structs_count: 0,
+        indexed: false, // Will be updated via events
+    })
+}
+
+/// Background indexing function
+fn index_project_background(project_path: PathBuf, app_handle: tauri::AppHandle) {
+    let _ = app_handle.emit("index-progress", serde_json::json!({
+        "phase": "scanning",
+        "current": 0,
+        "total": 0,
+        "message": "Scanning files..."
+    }));
+
+    // Scan files
+    let mut c_files: Vec<PathBuf> = Vec::new();
+    for entry in WalkDir::new(&project_path).into_iter().filter_map(|e| e.ok()) {
+        if entry.path().extension().map(|ext| ext == "c" || ext == "h").unwrap_or(false) {
+            c_files.push(entry.path().to_path_buf());
+            if c_files.len() % 2000 == 0 {
+                let _ = app_handle.emit("index-progress", serde_json::json!({
+                    "phase": "scanning",
+                    "current": c_files.len(),
+                    "total": 0,
+                    "message": format!("Found {} files...", c_files.len())
+                }));
             }
         }
     }
 
-    Ok(ProjectInfo {
-        path,
-        files_count: c_files.len(),
-        functions_count: index.stats().total_functions,
-        structs_count: index.stats().total_structs,
-        indexed: true,
-    })
+    let total = c_files.len();
+    let _ = app_handle.emit("index-progress", serde_json::json!({
+        "phase": "parsing",
+        "current": 0,
+        "total": total,
+        "message": format!("Parsing {} files...", total)
+    }));
+
+    // Parse in parallel
+    let parallel_parser = ParallelParser::new();
+    let results = parallel_parser.parse_files(&c_files);
+
+    let _ = app_handle.emit("index-progress", serde_json::json!({
+        "phase": "indexing",
+        "current": 0,
+        "total": total,
+        "message": "Building index..."
+    }));
+
+    // Build index
+    if let Ok(mut index) = INDEX.lock() {
+        for (i, (file, result)) in results.iter().enumerate() {
+            if let Ok(parse_result) = result {
+                for (_, func) in &parse_result.functions {
+                    index.add_function(func.clone(), file);
+                }
+                for (_, st) in &parse_result.structs {
+                    index.add_struct(st.clone());
+                }
+            }
+            if i % 2000 == 0 && i > 0 {
+                let _ = app_handle.emit("index-progress", serde_json::json!({
+                    "phase": "indexing",
+                    "current": i,
+                    "total": total,
+                    "message": format!("Indexed {}/{}", i, total)
+                }));
+            }
+        }
+
+        let stats = index.stats();
+        let _ = app_handle.emit("index-progress", serde_json::json!({
+            "phase": "done",
+            "current": total,
+            "total": total,
+            "files": total,
+            "functions": stats.total_functions,
+            "structs": stats.total_structs,
+            "message": format!("Done! {} files, {} functions", total, stats.total_functions)
+        }));
+    }
 }
 
 /// Search for symbols in the index
