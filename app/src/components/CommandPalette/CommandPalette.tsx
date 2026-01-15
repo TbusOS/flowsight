@@ -1,8 +1,13 @@
 /**
  * CommandPalette - 命令面板组件
- * 
+ *
  * 类似 VS Code 的 Ctrl+P 功能
- * 支持搜索文件和符号
+ * 支持搜索文件、符号和 Agent 命令
+ *
+ * 前缀：
+ *   @ 搜索符号
+ *   > 执行命令
+ *   ? AI 对话 (Agent)
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
@@ -10,13 +15,46 @@ import './CommandPalette.css'
 
 interface CommandItem {
   id: string
-  type: 'file' | 'symbol' | 'command'
+  type: 'file' | 'symbol' | 'command' | 'agent'
   name: string
   description?: string
   icon: string
   path?: string
   line?: number
+  detail?: string
 }
+
+// Agent 命令定义
+const BUILTIN_COMMANDS: CommandItem[] = [
+  // 文件操作
+  { id: 'cmd:openFile', type: 'command', name: '打开文件', icon: '📂', description: '打开一个文件', detail: 'Ctrl+O' },
+  { id: 'cmd:saveFile', type: 'command', name: '保存文件', icon: '💾', description: '保存当前文件', detail: 'Ctrl+S' },
+  { id: 'cmd:closeTab', type: 'command', name: '关闭标签页', icon: '❌', description: '关闭当前标签页', detail: 'Ctrl+W' },
+
+  // 视图操作
+  { id: 'cmd:toggleSidebar', type: 'command', name: '切换侧边栏', icon: '📑', description: '显示/隐藏侧边栏', detail: 'Ctrl+\\' },
+  { id: 'cmd:togglePanel', type: 'command', name: '切换底部面板', icon: '📊', description: '显示/隐藏底部面板', detail: 'Ctrl+`' },
+  { id: 'cmd:toggleTerminal', type: 'command', name: '切换终端', icon: '💻', description: '显示/隐藏终端', detail: 'Ctrl+`' },
+
+  // 导航
+  { id: 'cmd:goBack', type: 'command', name: '后退', icon: '⬅️', description: '后退到上一个位置', detail: 'Alt+←' },
+  { id: 'cmd:goForward', type: 'command', name: '前进', icon: '➡️', description: '前进到下一个位置', detail: 'Alt+→' },
+  { id: 'cmd:goToLine', type: 'command', name: '跳转到行', icon: '📍', description: '跳转到指定行', detail: 'Ctrl+G' },
+
+  // 分析
+  { id: 'cmd:analyzeFile', type: 'command', name: '分析当前文件', icon: '🔍', description: '分析当前文件的执行流', detail: 'F5' },
+  { id: 'cmd:analyzeFunction', type: 'command', name: '分析当前函数', icon: '📊', description: '分析当前函数的调用链', detail: 'F6' },
+  { id: 'cmd:exportFlow', type: 'command', name: '导出执行流', icon: '📥', description: '导出分析结果', detail: 'Ctrl+E' },
+
+  // Agent 命令
+  { id: 'agent:analyze', type: 'agent', name: 'AI 分析', icon: '🤖', description: '让 AI 分析代码执行流', detail: 'Analyze Agent' },
+  { id: 'agent:explain', type: 'agent', name: 'AI 解释', icon: '💡', description: '让 AI 解释代码逻辑', detail: 'Explain Agent' },
+  { id: 'agent:search', type: 'agent', name: 'AI 搜索', icon: '🎯', description: '让 AI 搜索代码模式', detail: 'Search Agent' },
+
+  // 设置
+  { id: 'cmd:settings', type: 'command', name: '打开设置', icon: '⚙️', description: '打开设置面板', detail: 'Ctrl+,' },
+  { id: 'cmd:shortcuts', type: 'command', name: '键盘快捷键', icon: '⌨️', description: '查看所有快捷键', detail: 'Ctrl+K Ctrl+S' },
+]
 
 interface CommandPaletteProps {
   isOpen: boolean
@@ -74,7 +112,10 @@ export function CommandPalette({
   // 构建搜索项
   const allItems = useMemo<CommandItem[]>(() => {
     const items: CommandItem[] = []
-    
+
+    // 添加内置命令
+    items.push(...BUILTIN_COMMANDS)
+
     // 添加文件
     files.forEach(f => {
       if (!f.isDir) {
@@ -88,7 +129,7 @@ export function CommandPalette({
         })
       }
     })
-    
+
     // 添加符号
     symbols.forEach(s => {
       items.push({
@@ -101,44 +142,51 @@ export function CommandPalette({
         line: s.line,
       })
     })
-    
+
     return items
   }, [files, symbols])
 
   // 过滤和排序结果
   const filteredItems = useMemo(() => {
     if (!query.trim()) {
-      // 无查询时，显示最近的或前20个符号
-      return allItems.filter(item => item.type === 'symbol').slice(0, 20)
+      // 无查询时，显示命令和符号
+      return allItems.filter(item =>
+        item.type === 'command' || item.type === 'agent'
+      ).slice(0, 15)
     }
-    
+
     // 根据前缀判断搜索类型
     let searchQuery = query
-    let typeFilter: 'file' | 'symbol' | null = null
-    
-    if (query.startsWith('@')) {
+    let typeFilter: 'file' | 'symbol' | 'command' | 'agent' | null = null
+
+    if (query.startsWith('>')) {
+      // > 搜索命令
+      searchQuery = query.slice(1)
+      typeFilter = 'command'
+    } else if (query.startsWith('?')) {
+      // ? AI 对话
+      searchQuery = query.slice(1)
+      typeFilter = 'agent'
+    } else if (query.startsWith('@')) {
       // @ 搜索符号
       searchQuery = query.slice(1)
       typeFilter = 'symbol'
-    } else if (query.startsWith('>')) {
-      // > 搜索命令 (暂不实现)
-      return []
     }
-    
+
     const results: Array<CommandItem & { score: number }> = []
-    
+
     for (const item of allItems) {
       if (typeFilter && item.type !== typeFilter) continue
-      
+
       const match = fuzzyMatch(searchQuery, item.name)
       if (match.matched) {
         results.push({ ...item, score: match.score })
       }
     }
-    
+
     // 按分数排序
     results.sort((a, b) => b.score - a.score)
-    
+
     return results.slice(0, 30)
   }, [query, allItems])
 
@@ -191,6 +239,28 @@ export function CommandPalette({
 
   if (!isOpen) return null
 
+  // 获取类型标签
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'file': return '文件'
+      case 'symbol': return '符号'
+      case 'command': return '命令'
+      case 'agent': return 'AI'
+      default: return ''
+    }
+  }
+
+  // 获取类型图标
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'file': return '📄'
+      case 'symbol': return '📦'
+      case 'command': return '⚡'
+      case 'agent': return '🤖'
+      default: return '•'
+    }
+  }
+
   return (
     <div className="command-palette-overlay" onClick={onClose}>
       <div className="command-palette" onClick={e => e.stopPropagation()}>
@@ -203,21 +273,21 @@ export function CommandPalette({
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="搜索文件或符号... (@ 搜符号)"
+            placeholder="搜索文件、符号或命令... (@ 符号, > 命令, ? AI)"
           />
           <span className="palette-hint">ESC 关闭</span>
         </div>
-        
+
         <div className="palette-list" ref={listRef}>
           {filteredItems.length === 0 ? (
             <div className="palette-empty">
-              {query ? '未找到匹配项' : '开始输入以搜索...'}
+              {query ? '未找到匹配项' : '开始输入以搜索，或使用前缀：@ 符号, > 命令, ? AI'}
             </div>
           ) : (
             filteredItems.map((item, index) => (
               <div
                 key={item.id}
-                className={`palette-item ${index === selectedIndex ? 'selected' : ''}`}
+                className={`palette-item ${index === selectedIndex ? 'selected' : ''} ${item.type}`}
                 onClick={() => {
                   onSelect(item)
                   onClose()
@@ -231,16 +301,21 @@ export function CommandPalette({
                     <span className="item-desc">{item.description}</span>
                   )}
                 </div>
-                <span className="item-type">{item.type === 'file' ? '文件' : '符号'}</span>
+                <div className="item-right">
+                  {item.detail && <span className="item-shortcut">{item.detail}</span>}
+                  <span className={`item-type type-${item.type}`}>{getTypeLabel(item.type)}</span>
+                </div>
               </div>
             ))
           )}
         </div>
-        
+
         <div className="palette-footer">
           <span>↑↓ 导航</span>
           <span>↵ 选择</span>
           <span>@ 符号</span>
+          <span>&gt; 命令</span>
+          <span>? AI</span>
         </div>
       </div>
     </div>

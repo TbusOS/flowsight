@@ -1,0 +1,45 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["STYLE_GUIDE.md"],
+  "agent": {
+    "analyze": {
+      "description": "Code execution flow analysis",
+      "model": "claude-sonnet-4-5"
+    },
+    "explain": {
+      "description": "Natural language code explanation",
+      "model": "claude-sonnet-4-5"
+    },
+    "search": {
+      "description": "Code pattern search",
+      "model": "claude-haiku-4-5"
+    }
+  },
+  "tools": {
+    "read_file": true,
+    "search_symbols": true,
+    "analyze_code": true,
+    "get_functions": true,
+    "get_function_detail": true,
+    "get_function_callers": true,
+    "execute_scenario": true,
+    "export_flow_text": true,
+    "list_directory": true,
+    "expand_directory": true,
+    "create_file": false,
+    "create_directory": false,
+    "rename_file": false,
+    "delete_file_or_dir": false,
+    "run_commands": false
+  },
+  "knowledge": {
+    "linux_kernel_version": "6.1",
+    "enabled_patterns": ["usb", "pci", "netdev", "platform_driver", "i2c_driver", "file_operations"]
+  },
+  "mcp": {
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}

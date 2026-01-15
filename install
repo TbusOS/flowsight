@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+ORANGE='\033[38;5;214m'
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+APP=flowsight
+REPO=TbusOS/flowsight
+
+usage() {
+    cat <<EOF
+FlowSight Installer
+
+Usage: install.sh [options]
+
+Options:
+    -h, --help              Display this help message
+    -v, --version <version> Install a specific version (e.g., 0.1.0)
+    -s, --source            Build from source (default)
+    --no-desktop            Skip Tauri desktop app, CLI only
+    --no-modify-path        Don't modify shell config files
+
+Examples:
+    # Build from source (default)
+    curl -fsSL https://flowsight.ai/install | bash
+
+    # Install specific version
+    curl -fsSL https://flowsight.ai/install | bash -s -- --version 0.1.0
+
+    # CLI only (no desktop app)
+    curl -fsSL https://flowsight.ai/install | bash -s -- --no-desktop
+EOF
+}
+
+# Parse arguments
+version=""
+no_desktop=false
+no_modify_path=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -v|--version)
+            if [[ -n "${2:-}" ]]; then
+                version="$2"
+                shift 2
+            else
+                echo -e "${RED}Error: --version requires a version argument${NC}"
+                exit 1
+            fi
+            ;;
+        -s|--source)
+            # Source build is default, no-op for compatibility
+            shift
+            ;;
+        --no-desktop)
+            no_desktop=true
+            shift
+            ;;
+        --no-modify-path)
+            no_modify_path=true
+            shift
+            ;;
+        *)
+            echo -e "${ORANGE}Warning: Unknown option '$1'${NC}" >&2
+            shift
+            ;;
+    esac
+done
+
+# Detect OS
+raw_os=$(uname -s)
+os=$(echo "$raw_os" | tr '[:upper:]' '[:lower:]')
+case "$raw_os" in
+    Darwin*) os="darwin" ;;
+    Linux*) os="linux" ;;
+    MINGW*|MSYS*|CYGWIN*) os="windows" ;;
+esac
+
+# Detect architecture
+arch=$(uname -m)
+if [[ "$arch" == "aarch64" ]]; then
+    arch="arm64"
+elif [[ "$arch" == "x86_64" ]]; then
+    arch="x64"
+fi
+
+echo -e "${GREEN}FlowSight Installer${NC}"
+echo -e "${NC}Platform: $os-$arch"
+echo ""
+
+# Check prerequisites
+check_prerequisites() {
+    local missing=()
+
+    # Check Rust
+    if ! command -v cargo >/dev/null 2>&1; then
+        missing+=("Rust (cargo)")
+    fi
+
+    # Check Node.js (for desktop app)
+    if [[ "$no_desktop" == "false" ]]; then
+        if ! command -v node >/dev/null 2>&1; then
+            missing+=("Node.js")
+        fi
+        if ! command -v pnpm >/dev/null 2>&1; then
+            missing+=("pnpm (npm install -g pnpm)")
+        fi
+    fi
+
+    # Check Git
+    if ! command -v git >/dev/null 2>&1; then
+        missing+=("Git")
+    fi
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo -e "${RED}Missing prerequisites:${NC}"
+        for item in "${missing[@]}"; do
+            echo -e "  - $item"
+        done
+        echo ""
+        echo "Please install the missing dependencies and try again."
+        echo "Visit https://flowsight.ai/docs/install for detailed instructions."
+        exit 1
+    fi
+}
+
+# Print message
+print_message() {
+    local level=$1
+    local message=$2
+    local color=""
+
+    case $level in
+        info) color="${NC}" ;;
+        success) color="${GREEN}" ;;
+        warning) color="${ORANGE}" ;;
+        error) color="${RED}" ;;
+    esac
+
+    echo -e "${color}${message}${NC}"
+}
+
+# Install directory
+INSTALL_DIR=$HOME/.flowsight/bin
+mkdir -p "$INSTALL_DIR"
+
+# Build from source
+build_from_source() {
+    print_message info "Building FlowSight from source..."
+
+    local build_dir="${TMPDIR:-/tmp}/flowsight_build_$$"
+    mkdir -p "$build_dir"
+    cd "$build_dir"
+
+    # Clone repository
+    if [[ -n "$version" ]]; then
+        print_message info "Cloning repository at version $version..."
+        git clone --depth 1 --branch "v$version" "https://github.com/$REPO.git" .
+    else
+        print_message info "Cloning repository (main branch)..."
+        git clone --depth 1 "https://github.com/$REPO.git" .
+    fi
+
+    # Build CLI
+    print_message info "Building CLI..."
+    cargo build --release -p flowsight-cli
+
+    # Copy CLI binary
+    cp "target/release/flowsight" "$INSTALL_DIR"
+    chmod 755 "$INSTALL_DIR/flowsight"
+
+    # Build desktop app (optional)
+    if [[ "$no_desktop" == "false" ]]; then
+        print_message info "Building desktop app..."
+        cd app
+        pnpm install
+        pnpm tauri build
+        cp "src-tauri/target/release/bundle/"*/*"$app"* "$INSTALL_DIR" 2>/dev/null || true
+    fi
+
+    # Cleanup
+    cd /
+    rm -rf "$build_dir"
+
+    print_message success "Build complete!"
+}
+
+# Add to PATH
+add_to_path() {
+    local config_file=$1
+    local command=$2
+
+    if grep -Fxq "$command" "$config_file" 2>/dev/null; then
+        print_message info "Command already exists in $config_file, skipping."
+    elif [[ -w $config_file ]]; then
+        echo -e "\n# flowsight" >> "$config_file"
+        echo "$command" >> "$config_file"
+        print_message info "Added flowsight to PATH in $config_file"
+    else
+        print_message warning "Cannot write to $config_file"
+        print_message info "Manually add: $command"
+    fi
+}
+
+# Main
+check_prerequisites
+
+if [[ "$no_desktop" == "true" ]]; then
+    print_message info "Building CLI only (no desktop app)..."
+fi
+
+build_from_source
+
+# Add to PATH (if not already)
+if [[ "$no_modify_path" != "true" ]]; then
+    current_shell=$(basename "$SHELL")
+    local add_cmd="export PATH=\$HOME/.flowsight/bin:\$PATH"
+
+    case $current_shell in
+        fish)
+            add_cmd="fish_add_path \$HOME/.flowsight/bin"
+            ;;
+        zsh|bash|sh)
+            add_cmd="export PATH=\$HOME/.flowsight/bin:\$PATH"
+            ;;
+        *)
+            add_cmd="export PATH=\$HOME/.flowsight/bin:\$PATH"
+            ;;
+    esac
+
+    config_files=""
+    case $current_shell in
+        fish)
+            config_files="$HOME/.config/fish/config.fish"
+            ;;
+        zsh)
+            config_files="$HOME/.zshrc $HOME/.zshenv"
+            ;;
+        bash)
+            config_files="$HOME/.bashrc $HOME/.bash_profile"
+            ;;
+        sh)
+            config_files="$HOME/.profile"
+            ;;
+        *)
+            config_files="$HOME/.bashrc"
+            ;;
+    esac
+
+    for file in $config_files; do
+        if [[ -f $file ]]; then
+            add_to_path "$file" "$add_cmd"
+            break
+        fi
+    done
+fi
+
+echo ""
+echo -e "${GREEN}Installation complete!${NC}"
+echo ""
+echo -e "${NC}To get started:${NC}"
+echo ""
+echo -e "  flowsight --help     ${MUTED}# Show CLI options${NC}"
+echo -e "  flowsight analyze <file>  ${MUTED}# Analyze a C file${NC}"
+echo ""
+echo -e "${MUTED}For more information visit ${NC}https://flowsight.ai/docs"
+echo ""
