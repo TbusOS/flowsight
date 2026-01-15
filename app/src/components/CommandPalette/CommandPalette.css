@@ -138,12 +138,56 @@
   text-overflow: ellipsis;
 }
 
+/* 右侧区域 */
+.item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 快捷键样式 */
+.item-shortcut {
+  font-size: 10px;
+  color: #6e7681;
+  background: #242b3d;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+}
+
+/* 类型标签 */
 .item-type {
   font-size: 10px;
   color: #6e7681;
   background: #242b3d;
   padding: 2px 6px;
   border-radius: 3px;
+}
+
+/* 不同类型的颜色 */
+.palette-item.command .item-type.type-command {
+  background: rgba(88, 166, 255, 0.15);
+  color: #58a6ff;
+}
+
+.palette-item.agent .item-type.type-agent {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+
+.palette-item.agent .item-icon {
+  color: #a78bfa;
+}
+
+/* 命令项悬停效果 */
+.palette-item.command:hover .item-name,
+.palette-item.command.selected .item-name {
+  color: #58a6ff;
+}
+
+.palette-item.agent:hover .item-name,
+.palette-item.agent.selected .item-name {
+  color: #a78bfa;
 }
 
 /* 底部 */

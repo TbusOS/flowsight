@@ -3,7 +3,7 @@
 //! Core feature: Execute code symbolically with user-defined parameter values
 //! to visualize execution paths and variable states.
 
-use flowsight_core::{FlowNode, FlowNodeType, Location};
+use flowsight_core::{ExecutionContext, FlowNode, FlowNodeType, Location};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -608,6 +608,10 @@ mod tests {
             children: vec![],
             description: None,
             confidence: None,
+            execution_context: Some(ExecutionContext::Process),
+            can_sleep: Some(true),
+            source_file: None,
+            is_kernel_internal: false,
         };
 
         let mut executor = ScenarioExecutor::new(ScenarioOptions::default());
@@ -649,10 +653,18 @@ mod tests {
                     children: vec![],
                     description: None,
                     confidence: None,
+                    execution_context: Some(ExecutionContext::Process),
+                    can_sleep: Some(true),
+                    source_file: None,
+                    is_kernel_internal: false,
                 },
             ],
             description: None,
             confidence: None,
+            execution_context: Some(ExecutionContext::Process),
+            can_sleep: Some(true),
+            source_file: None,
+            is_kernel_internal: false,
         };
 
         let mut executor = ScenarioExecutor::new(ScenarioOptions::default());
