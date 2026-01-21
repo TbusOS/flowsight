@@ -1,0 +1,384 @@
+# Linux Kernel PCI/PCIe Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/PCI/index.html
+
+# ============================================================
+# PCI DRIVER
+# ============================================================
+
+pci_driver:
+  description: "PCI/PCIe Driver - PCI 设备驱动"
+  header: "linux/pci.h"
+  icon: "🎛️"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # pci_register_driver - 注册驱动
+    - pattern: 'pci_register_driver\s*\(\s*(?P<driver>[^)]+)\s*\)'
+      variable_capture: "driver"
+      description: "注册 PCI 驱动"
+
+    # module_pci_driver - 模块宏
+    - pattern: 'module_pci_driver\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "模块化的 PCI 驱动注册"
+
+  driver_structure:
+    - pattern: 'static struct pci_driver\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "PCI driver 结构体定义"
+
+  callbacks:
+    probe:
+      pattern: '\.probe\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Probe 回调 - 设备匹配后调用"
+
+    remove:
+      pattern: '\.remove\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Remove 回调 - 设备移除时调用"
+
+    shutdown:
+      pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Shutdown 回调"
+
+    suspend:
+      pattern: '\.suspend\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Suspend 回调"
+
+    suspend_late:
+      pattern: '\.suspend_late\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Late suspend 回调"
+
+    resume_early:
+      pattern: '\.resume_early\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Early resume 回调"
+
+    resume:
+      pattern: '\.resume\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Resume 回调"
+
+    err_handler:
+      pattern: '\.err_handler\s*=\s*'
+      description: "错误处理回调"
+
+  probe_signature:
+    return_type: "int"
+    parameters:
+      - name: "dev"
+        type: "struct pci_dev *"
+        description: "PCI 设备"
+      - name: "id"
+        type: "const struct pci_device_id *"
+        description: "匹配的设备 ID"
+
+  remove_signature:
+    return_type: "void"
+    parameters:
+      - name: "dev"
+        type: "struct pci_dev *"
+        description: "PCI 设备"
+
+  kernel_call_chain:
+    trigger: "PCI 设备枚举 + ID 匹配"
+    chain:
+      - function: "pci_bus_add_devices"
+        file: "drivers/pci/bus.c"
+        description: "PCI 总线枚举设备"
+      - function: "pci_device_add"
+        file: "drivers/pci/pci-driver.c"
+        description: "添加 PCI 设备"
+      - function: "pci_device_probe"
+        file: "drivers/pci/pci-driver.c"
+        description: "探测设备"
+      - function: "pci_match_device"
+        file: "drivers/pci/pci-driver.c"
+        description: "匹配驱动"
+      - function: "my_probe(dev, id)"
+        file: "用户代码"
+        description: "用户 probe 函数"
+        is_user_entry: true
+
+      # Remove 路径
+      - function: "pci_device_remove"
+        file: "drivers/pci/pci-driver.c"
+      - function: "my_remove(dev)"
+        file: "用户代码"
+        description: "用户 remove 函数"
+        is_user_entry: true
+
+  notes:
+    - "PCI 设备通过总线枚举自动发现"
+    - "probe 中通常进行 BAR 映射、中断配置"
+    - "MSI/MSI-X 是现代 PCIe 中断方式"
+
+
+# ============================================================
+# PCI DEVICE ID
+# ============================================================
+
+pci_device_id:
+  description: "PCI Device ID Table"
+  header: "linux/mod_devicetable.h"
+
+  bind_patterns:
+    # PCI ID 表格定义
+    - pattern: 'static struct pci_device_id\s+(?P<name>\w+)\s*\[\]\s*=\s*\{'
+      variable_capture: "name"
+      description: "PCI 设备 ID 表"
+
+    # 单个 ID 条目
+    - pattern: '\{\s*PCI_DEVICE\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*\)\s*\}'
+      extra_captures:
+        - name: "vendor"
+          description: "Vendor ID"
+        - name: "device"
+          description: "Device ID"
+
+    # 带子设备 ID
+    - pattern: '\{\s*PCI_DEVICE_SUB\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*,\s*(?P<subvendor>\w+)\s*,\s*(?P<subdevice>\w+)\s*\)\s*\}'
+      extra_captures:
+        - name: "subvendor"
+          description: "SubVendor ID"
+        - name: "subdevice"
+          description: "SubDevice ID"
+
+    # 类匹配
+    - pattern: '\{\s*PCI_DEVICE_CLASS\s*\(\s*(?P<class>\w+)\s*,\s*(?P<class_mask>\w+)\s*\)\s*\}'
+      extra_captures:
+        - name: "class"
+          description: "PCI Class"
+        - name: "class_mask"
+          description: "Class Mask"
+
+    # 终止符
+    - pattern: '\{\s*0\s*,\s*\}'
+      description: "ID 表终止符"
+
+    # MODULE_DEVICE_TABLE
+    - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*pci\s*,\s*(?P<table>\w+)\s*\)'
+      variable_capture: "table"
+      description: "模块导出 PCI ID 表"
+
+
+# ============================================================
+# PCI BAR AND RESOURCE
+# ============================================================
+
+pci_resource:
+  description: "PCI BAR (Base Address Register) Resources"
+  header: "linux/pci.h"
+
+  bind_patterns:
+    # pci_enable_device - 使能设备
+    - pattern: 'pci_enable_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "使能 PCI 设备"
+
+    # pci_disable_device - 禁用设备
+    - pattern: 'pci_disable_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "禁用 PCI 设备"
+
+    # pci_request_regions - 请求 BAR 区域
+    - pattern: 'pci_request_regions\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "请求 PCI 区域"
+
+    # pci_release_regions - 释放 BAR 区域
+    - pattern: 'pci_release_regions\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "释放 PCI 区域"
+
+    # pci_ioremap_bar - 映射 BAR
+    - pattern: 'pci_ioremap_bar\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      variable_capture: "dev"
+      extra_captures:
+        - name: "bar"
+          description: "BAR 编号 (0-5)"
+
+    # pci_resource_flags - 获取资源标志
+    - pattern: 'pci_resource_flags\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      variable_capture: "dev"
+      extra_captures:
+        - name: "bar"
+          description: "BAR 编号"
+
+    # pci_resource_start/end/len
+    - pattern: 'pci_resource_start\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      variable_capture: "dev"
+      description: "获取 BAR 起始地址"
+
+    - pattern: 'pci_resource_end\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      variable_capture: "dev"
+      description: "获取 BAR 结束地址"
+
+    - pattern: 'pci_resource_len\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      variable_capture: "dev"
+      description: "获取 BAR 长度"
+
+
+# ============================================================
+# PCI INTERRUPT (MSI/MSI-X)
+# ============================================================
+
+pci_interrupt:
+  description: "PCI/MSI Interrupt Handling"
+  header: "linux/pci.h"
+
+  bind_patterns:
+    # request_irq for PCI
+    - pattern: 'request_irq\s*\(\s*(?P<irq>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+      handler_capture: "handler"
+      description: "请求中断"
+
+    # pci_enable_msi - 启用 MSI
+    - pattern: 'pci_enable_msi\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "启用 MSI 中断"
+
+    # pci_disable_msi - 禁用 MSI
+    - pattern: 'pci_disable_msi\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "禁用 MSI 中断"
+
+    # pci_enable_msix - 启用 MSI-X
+    - pattern: 'pci_enable_msix_range\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<entries>[^)]+)\s*,\s*(?P<min>\d+)\s*,\s*(?P<max>\d+)\s*\)'
+      variable_capture: "dev"
+      description: "启用 MSI-X 中断"
+
+    # pci_disable_msix - 禁用 MSI-X
+    - pattern: 'pci_disable_msix\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "禁用 MSI-X 中断"
+
+    # pci_alloc_irq_vectors - 分配中断向量
+    - pattern: 'pci_alloc_irq_vectors\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<min_vecs>\d+)\s*,\s*(?P<max_vecs>\d+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "分配中断向量"
+
+    # pci_free_irq_vectors - 释放中断向量
+    - pattern: 'pci_free_irq_vectors\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "释放中断向量"
+
+
+# ============================================================
+# PCI CONFIG SPACE ACCESS
+# ============================================================
+
+pci_config:
+  description: "PCI Configuration Space Access"
+  header: "linux/pci.h"
+
+  bind_patterns:
+    # pci_read_config_byte/word/dword
+    - pattern: 'pci_read_config_(byte|word|dword)\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "读取配置空间"
+
+    # pci_write_config_byte/word/dword
+    - pattern: 'pci_write_config_(byte|word|dword)\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "写入配置空间"
+
+    # pci_find_capability - 查找能力结构
+    - pattern: 'pci_find_capability\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<cap>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "查找 PCI capability"
+
+    # pci_read_config_word with vendor/capabilities
+    - pattern: 'pci_find_capability\s*\([^)]+\)'
+      description: "查找 capability (MSI, PCIe, etc.)"
+
+
+# ============================================================
+# PCI DRIVER EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 PCI 驱动"
+    code: |
+      static int my_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
+          struct my_device *dev;
+          int bars, ret;
+
+          /* 使能设备 */
+          ret = pci_enable_device(pdev);
+          if (ret)
+              return ret;
+
+          /* 请求 BAR 区域 */
+          bars = pci_select_bars(pdev, IORESOURCE_MEM);
+          ret = pci_request_regions(pdev, "my_pci");
+          if (ret)
+              goto err_disable;
+
+          /* 映射 BAR */
+          dev->bar0 = pci_ioremap_bar(pdev, 0);
+          if (!dev->bar0) {
+              ret = -ENOMEM;
+              goto err_release;
+          }
+
+          /* 设置驱动数据 */
+          pci_set_drvdata(pdev, dev);
+
+          /* 启用 MSI 中断 */
+          ret = pci_enable_msi(pdev);
+          if (ret)
+              goto err_unmap;
+
+          /* 请求中断 */
+          ret = request_irq(pdev->irq, my_irq_handler, 0,
+                            "my_pci", dev);
+          if (ret)
+              goto err_msi;
+
+          return 0;
+
+      err_msi:
+          pci_disable_msi(pdev);
+      err_unmap:
+          iounmap(dev->bar0);
+      err_release:
+          pci_release_regions(pdev);
+      err_disable:
+          pci_disable_device(pdev);
+          return ret;
+      }
+
+      static void my_remove(struct pci_dev *pdev) {
+          struct my_device *dev = pci_get_drvdata(pdev);
+
+          free_irq(pdev->irq, dev);
+          pci_disable_msi(pdev);
+          iounmap(dev->bar0);
+          pci_release_regions(pdev);
+          pci_disable_device(pdev);
+      }
+
+      static struct pci_device_id my_id_table[] = {
+          { PCI_DEVICE(0x1234, 0x5678) },
+          { 0, }
+      };
+      MODULE_DEVICE_TABLE(pci, my_id_table);
+
+      static struct pci_driver my_driver = {
+          .name = "my_pci_driver",
+          .id_table = my_id_table,
+          .probe = my_probe,
+          .remove = my_remove,
+      };
+      module_pci_driver(my_driver);

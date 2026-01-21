@@ -1,0 +1,204 @@
+# Linux Kernel Watchdog Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/watchdog/index.html
+
+# ============================================================
+# WATCHDOG CORE
+# ============================================================
+
+watchdog_core:
+  description: "Watchdog Core - 看门狗核心"
+  header: "linux/watchdog.h"
+  icon: "⏱️"
+
+  context:
+    type: "process"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+    atomic_context: true
+
+  bind_patterns:
+    # watchdog_register_device - 注册看门狗设备
+    - pattern: 'watchdog_register_device\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      variable_capture: "wdd"
+      description: "注册看门狗设备"
+
+    # watchdog_unregister_device - 注销看门狗设备
+    - pattern: 'watchdog_unregister_device\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      variable_capture: "wdd"
+      description: "注销看门狗设备"
+
+    # devm_watchdog_register_device - 资源管理注册
+    - pattern: 'devm_watchdog_register_device\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<wdd>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理方式注册看门狗设备"
+
+
+# ============================================================
+# WATCHDOG DEVICE
+# ============================================================
+
+watchdog_device:
+  description: "Watchdog Device - 看门狗设备"
+  header: "linux/watchdog.h"
+
+  bind_patterns:
+    # watchdog_alloc_device - 分配看门狗设备
+    - pattern: 'watchdog_alloc_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "分配看门狗设备"
+
+    # watchdog_free_device - 释放看门狗设备
+    - pattern: 'watchdog_free_device\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      variable_capture: "wdd"
+      description: "释放看门狗设备"
+
+
+# ============================================================
+# WATCHDOG OPERATIONS
+# ============================================================
+
+watchdog_ops:
+  description: "Watchdog Operations - 看门狗操作"
+  header: "linux/watchdog.h"
+
+  bind_patterns:
+    # struct watchdog_ops
+    - pattern: 'struct watchdog_ops\s*\{[^}]+\}'
+      description: "看门狗操作结构"
+
+  callbacks:
+    start:
+      pattern: '\.start\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "启动看门狗"
+
+    stop:
+      pattern: '\.stop\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "停止看门狗"
+
+    ping:
+      pattern: '\.ping\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "喂狗"
+
+    set_timeout:
+      pattern: '\.set_timeout\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置超时"
+
+    get_timeleft:
+      pattern: '\.get_timeleft\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取剩余时间"
+
+    keepalive:
+      pattern: '\.keepalive\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "保持活跃"
+
+    scope:
+      pattern: '\.scope\s*=\s*(?P<scope>\w+)'
+      description: "操作范围"
+
+
+# ============================================================
+# WATCHDOG INFO
+# ============================================================
+
+watchdog_info:
+  description: "Watchdog Info - 看门狗信息"
+  header: "linux/watchdog.h"
+
+  bind_patterns:
+    # struct watchdog_info
+    - pattern: 'struct watchdog_info\s*\{[^}]+\}'
+      description: "看门狗信息结构"
+
+    # WATCHDOG_VERSION
+    - pattern: 'WATCHDOG_VERSION'
+      description: "看门狗版本"
+
+
+# ============================================================
+# WATCHDOG DEVICES
+# ============================================================
+
+watchdog_device_id:
+  description: "Watchdog Device ID Table"
+  header: "linux/mod_devicetable.h"
+
+  bind_patterns:
+    # WATCHDOG_ID_TABLE
+    - pattern: 'WATCHDOG_ID_TABLE\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "看门狗 ID 表"
+
+    # WATCHDOG_DEVICE_ID
+    - pattern: 'WATCHDOG_DEVICE_ID\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "看门狗设备 ID"
+
+
+# ============================================================
+# WATCHDOG EXAMPLES
+# ============================================================
+
+examples:
+  - description: "看门狗驱动"
+    code: |
+      static int my_wdd_start(struct watchdog_device *wdd) {
+          writel(0xABCD, wdt_base + WDT_START_REG);
+          return 0;
+      }
+
+      static int my_wdd_stop(struct watchdog_device *wdd) {
+          writel(0, wdt_base + WDT_START_REG);
+          return 0;
+      }
+
+      static int my_wdd_ping(struct watchdog_device *wdd) {
+          writel(0xABCD, wdt_base + WDT_CLEAR_REG);
+          return 0;
+      }
+
+      static int my_wdd_set_timeout(struct watchdog_device *wdd,
+                                    unsigned int timeout) {
+          u32 val;
+
+          wdd->timeout = timeout;
+          val = timeout * WDT_FREQ;
+          writel(val, wdt_base + WDT_TIMEOUT_REG);
+          return 0;
+      }
+
+      static const struct watchdog_ops my_wdt_ops = {
+          .owner = THIS_MODULE,
+          .start = my_wdd_start,
+          .stop = my_wdd_stop,
+          .ping = my_wdd_ping,
+          .set_timeout = my_wdd_set_timeout,
+      };
+
+      static const struct watchdog_info my_wdt_info = {
+          .options = WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING | WDIOF_MAGICCLOSE,
+          .firmware_version = 0,
+          .identity = "my-watchdog",
+      };
+
+      static struct watchdog_device my_wdt = {
+          .info = &my_wdt_info,
+          .ops = &my_wdt_ops,
+          .min_timeout = 1,
+          .max_timeout = 300,
+          .timeout = 30,
+      };
+
+      static int __init my_init(void) {
+          struct device *dev = &pdev->dev;
+
+          my_wdt.parent = dev;
+          return devm_watchdog_register_device(dev, &my_wdt);
+      }

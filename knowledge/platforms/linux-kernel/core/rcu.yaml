@@ -1,0 +1,347 @@
+# Linux Kernel RCU (Read-Copy-Update) Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/RCU/index.html
+
+# ============================================================
+# RCU CALLBACK (call_rcu)
+# ============================================================
+
+rcu_callback:
+  description: "RCU Callback - 延迟执行的回调"
+  header: "linux/rcupdate.h"
+  icon: "🔒"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # call_rcu - 标准 RCU 回调
+    - pattern: 'call_rcu\s*\(\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "head"
+      extra_captures:
+        - name: "head"
+          description: "RCU head 结构体"
+      description: "注册 RCU 回调"
+
+    # call_rcu 变体 (带参数)
+    - pattern: 'call_rcu\s*\(\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "head"
+      extra_captures:
+        - name: "data"
+          description: "传递给回调的数据"
+
+    # call_srcu - 可控 RCU
+    - pattern: 'call_srcu\s*\(\s*(?P<srcu>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "head"
+      extra_captures:
+        - name: "srcu"
+          description: "SRCU 结构体"
+
+    # kfree_rcu - 延迟释放
+    - pattern: 'kfree_rcu\s*\(\s*(?P<obj>\w+)\s*,\s*(?P<member>\w+)\s*\)'
+      variable_capture: "obj"
+      description: "延迟释放 RCU 保护的内存"
+      extra_captures:
+        - name: "member"
+          description: "结构体成员名"
+
+  trigger_patterns:
+    # RCU 回调在宽限期 (grace period) 后执行
+    trigger_type: "rcu_grace_period"
+    condition:
+      timing: "asynchronous"
+      requires_bind: true
+      description: "RCU 回调在宽限期结束后执行"
+
+  cancel_patterns:
+    # RCU 回调一旦注册通常无法取消
+    # 但可以使用 synchronize_rcu 等待
+
+  handler_signature:
+    return_type: "void"
+    parameters:
+      - name: "head"
+        type: "struct rcu_head *"
+        description: "RCU head 结构体"
+
+  kernel_call_chain:
+    trigger: "RCU 宽限期结束"
+    chain:
+      - function: "call_rcu() 之后..."
+        description: "回调注册，等待宽限期"
+
+      - function: "rcu_do_batch"
+        file: "kernel/rcu/tree.c"
+        description: "RCU 宽限期后的回调处理"
+      - function: "my_rcu_callback(head)"
+        file: "用户代码"
+        description: "用户 RCU 回调函数"
+        is_user_entry: true
+        actions:
+          - "通常在这里释放内存"
+          - "使用 container_of 获取父结构体"
+
+  notes:
+    - "回调在软中断上下文执行，不能 sleep"
+    - "宽限期长度不确定，取决于系统负载"
+    - "在回调执行前不能释放被保护的数据"
+    - "适合读多写少的场景"
+
+
+# ============================================================
+# RCU READ SIDE
+# ============================================================
+
+rcu_read_lock:
+  description: "RCU Read Side Critical Section - RCU 读取侧临界区"
+  header: "linux/rcupdate.h"
+  icon: "📖"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # rcu_read_lock - 进入读取临界区
+    - pattern: 'rcu_read_lock\s*\(\s*\)'
+      description: "获取 RCU 读取锁"
+
+    # rcu_read_unlock - 退出读取临界区
+    - pattern: 'rcu_read_unlock\s*\(\s*\)'
+      description: "释放 RCU 读取锁"
+
+    # rcu_read_lock_bh - BH 禁用版本
+    - pattern: 'rcu_read_lock_bh\s*\(\s*\)'
+      description: "获取 RCU 锁并禁用软中断"
+
+    # rcu_read_unlock_bh - BH 启用版本
+    - pattern: 'rcu_read_unlock_bh\s*\(\s*\)'
+      description: "释放 RCU 锁并启用软中断"
+
+    # rcu_read_lock_sched / rcu_read_unlock_sched
+    - pattern: 'rcu_read_lock_sched\s*\(\s*\)'
+      description: "获取 RCU 锁并禁用抢占"
+
+    - pattern: 'rcu_read_unlock_sched\s*\(\s*\)'
+      description: "释放 RCU 锁并启用抢占"
+
+  nesting:
+    - "rcu_read_lock/rcu_read_unlock 必须配对"
+    - "可以嵌套，但必须保持平衡"
+    - "在临界区内不能 sleep"
+
+  notes:
+    - "只读访问 RCU 保护的数据"
+    - "临界区必须快速完成"
+    - "不能调用可能 sleep 的函数"
+
+
+# ============================================================
+# RCU SYNCHRONIZE
+# ============================================================
+
+rcu_synchronize:
+  description: "RCU Synchronize - 同步等待宽限期"
+  header: "linux/rcupdate.h"
+  icon: "⏳"
+
+  bind_patterns:
+    # synchronize_rcu - 等待所有进行中的 RCU 读取完成
+    - pattern: 'synchronize_rcu\s*\(\s*\)'
+      description: "等待 RCU 宽限期"
+
+    # synchronize_rcu_expedited - 快速等待
+    - pattern: 'synchronize_rcu_expedited\s*\(\s*\)'
+      description: "快速等待 RCU 宽限期"
+
+    # synchronize_srcu - SRCU 同步
+    - pattern: 'synchronize_srcu\s*\(\s*(?P<srcu>\w+)\s*\)'
+      variable_capture: "srcu"
+      description: "等待 SRCU 宽限期"
+
+    # synchronize_net - 网络子系统同步
+    - pattern: 'synchronize_net\s*\(\s*\)'
+      description: "等待网络 RCU 宽限期"
+
+  behavior:
+    - "synchronize_rcu() 会阻塞直到宽限期结束"
+    - "不能在内核上下文调用 (可能 sleep)"
+    - "使用场景：更新数据前确保读者完成"
+
+  kernel_call_chain:
+    trigger: "synchronize_rcu() 调用"
+    chain:
+      - function: "synchronize_rcu()"
+        file: "kernel/rcu/tree.c"
+        description: "等待 RCU 宽限期"
+      - function: "wait_rcu_gp()"
+        file: "kernel/rcu/tree.c"
+      - function: "__synchronize_rcu()"
+        # 阻塞等待...
+      - function: "所有 rcu_read_unlock 完成"
+        description: "所有进行中的读取操作完成"
+      - function: "return"
+        description: "可以安全更新数据"
+
+
+# ============================================================
+# RCU USAGE PATTERNS
+# ============================================================
+
+rcu_patterns:
+  description: "Common RCU Usage Patterns"
+
+  pattern_1:
+    name: "RCU Update Pattern"
+    code: |
+      /* 读取侧 */
+      rcu_read_lock();
+      obj = rcu_dereference(g_ptr);
+      if (obj) {
+          use(obj);
+      }
+      rcu_read_unlock();
+
+      /* 更新侧 - 方式 1: 使用回调 */
+      struct my_obj *new_obj = kmalloc(...);
+      /* 初始化 new_obj */
+      rcu_assign_pointer(g_ptr, new_obj);
+      call_rcu(&old_obj->rcu_head, my_rcu_callback);
+
+      /* 更新侧 - 方式 2: 使用 synchronize_rcu */
+      struct my_obj *new_obj = kmalloc(...);
+      rcu_assign_pointer(g_ptr, new_obj);
+      synchronize_rcu();  /* 等待读者完成 */
+      kfree(old_obj);
+
+  pattern_2:
+    name: "SRCU Pattern"
+    code: |
+      /* 定义 SRCU */
+      static DEFINE_SRCU(my_srcu);
+
+      /* 读取侧 */
+      int idx = srcu_read_lock(&my_srcu);
+      obj = rcu_dereference(g_ptr);
+      use(obj);
+      srcu_read_unlock(&my_srcu, idx);
+
+      /* 更新侧 */
+      synchronize_srcu(&my_srcu);
+
+
+# ============================================================
+# RCU HELPER FUNCTIONS
+# ============================================================
+
+rcu_helpers:
+  description: "RCU Helper Functions"
+  header: "linux/rcupdate.h"
+
+  functions:
+    # 指针操作
+    rcu_dereference:
+      pattern: 'rcu_dereference\s*\([^)]+\)'
+      description: "读取 RCU 保护的指针"
+
+    rcu_dereference_protected:
+      pattern: 'rcu_dereference_protected\s*\([^)]+\)'
+      description: "受保护的指针读取 (需锁保护)"
+
+    rcu_access_index:
+      pattern: 'rcu_access_index\s*\([^)]+\)'
+      description: "只读访问索引"
+
+    rcu_assign_pointer:
+      pattern: 'rcu_assign_pointer\s*\([^)]+\)'
+      description: "更新 RCU 指针"
+
+    # SRCU
+    init_srcu_struct:
+      pattern: 'init_srcu_struct\s*\([^)]+\)'
+      description: "初始化 SRCU 结构体"
+
+    cleanup_srcu_struct:
+      pattern: 'cleanup_srcu_struct\s*\([^)]+\)'
+      description: "清理 SRCU 结构体"
+
+    srcu_read_lock:
+      pattern: 'srcu_read_lock\s*\([^)]+\)'
+      description: "SRCU 读取锁"
+
+    srcu_read_unlock:
+      pattern: 'srcu_read_unlock\s*\([^)]+\)'
+      description: "SRCU 读取解锁"
+
+    # 引用计数
+    rcu_get_gp_kthreads:
+      pattern: 'rcu_get_gp_kthreads\s*\(\s*\)'
+      description: "获取 RCU gp 线程"
+
+
+# ============================================================
+# RCU EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 RCU 使用"
+    code: |
+      static DEFINE_RWLOCK(g_list_lock);
+      static struct my_obj *g_obj;
+
+      /* RCU 回调：释放旧对象 */
+      static void my_rcu_callback(struct rcu_head *head) {
+          struct my_obj *obj = container_of(head, struct my_obj, rcu_head);
+          kfree(obj);
+      }
+
+      /* 读取对象 */
+      static void read_obj(void) {
+          struct my_obj *obj;
+
+          rcu_read_lock();
+          obj = rcu_dereference(g_obj);
+          if (obj) {
+              printk("obj->value = %d\n", obj->value);
+          }
+          rcu_read_unlock();
+      }
+
+      /* 更新对象 */
+      static void update_obj(int new_value) {
+          struct my_obj *new_obj, *old_obj;
+
+          new_obj = kmalloc(sizeof(*new_obj), GFP_KERNEL);
+          new_obj->value = new_value;
+
+          old_obj = g_obj;
+          rcu_assign_pointer(g_obj, new_obj);
+
+          /* 等待所有进行中的读取完成后释放 */
+          call_rcu(&old_obj->rcu_head, my_rcu_callback);
+      }
+
+  - description: "使用 synchronize_rcu"
+    code: |
+      static struct my_data *g_data;
+
+      static void update_data(int value) {
+          struct my_data *new_data = kmalloc(sizeof(*new_data), GFP_KERNEL);
+          new_data->value = value;
+
+          rcu_assign_pointer(g_data, new_data);
+
+          /* 等待所有读者完成 */
+          synchronize_rcu();
+
+          /* 现在可以安全释放旧数据 */
+          kfree(g_data);  /* 注意：这需要额外保存旧指针 */
+      }

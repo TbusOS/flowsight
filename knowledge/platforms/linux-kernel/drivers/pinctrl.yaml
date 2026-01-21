@@ -1,0 +1,223 @@
+# Linux Kernel Pin Control Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/pinctl.html
+
+# ============================================================
+# PINCTRL CORE
+# ============================================================
+
+pinctrl_core:
+  description: "Pin Control Core - 引脚控制核心"
+  header: "linux/pinctrl/pinctrl.h"
+  icon: "🔌"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # pinctrl_register - 注册引脚控制器
+    - pattern: 'pinctrl_register\s*\(\s*(?P<desc>[^)]+)\s*,\s*(?P<parent>[^)]+)\s*,\sP<data>[^)]+\s*\)'
+      description: "注册引脚控制器"
+
+    # pinctrl_unregister - 注销引脚控制器
+    - pattern: 'pinctrl_unregister\s*\(\s*(?P<pctldev>[^)]+)\s*\)'
+      variable_capture: "pctldev"
+      description: "注销引脚控制器"
+
+    # devm_pinctrl_register - 资源管理注册
+    - pattern: 'devm_pinctrl_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<desc>[^)]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理方式注册引脚控制器"
+
+
+# ============================================================
+# PINCTRL DEVICE
+# ============================================================
+
+pinctrl_device:
+  description: "Pin Control Device - 引脚控制设备"
+  header: "linux/pinctrl/pinctrl.h"
+
+  bind_patterns:
+    # pinctrl_add_gpio_range - 添加 GPIO 范围
+    - pattern: 'pinctrl_add_gpio_range\s*\(\s*(?P<pctldev>[^)]+)\s*,\s*(?P<range>[^)]+)\s*\)'
+      variable_capture: "pctldev"
+      description: "添加 GPIO 范围"
+
+    # pinctrl_remove_gpio_range - 移除 GPIO 范围
+    - pattern: 'pinctrl_remove_gpio_range\s*\(\s*(?P<pctldev>[^)]+)\s*,\s*(?P<range>[^)]+)\s*\)'
+      variable_capture: "pctldev"
+      description: "移除 GPIO 范围"
+
+
+# ============================================================
+# PINCTRL STATE
+# ============================================================
+
+pinctrl_state:
+  description: "Pin Control State - 引脚控制状态"
+  header: "linux/pinctrl/pinctrl.h"
+
+  bind_patterns:
+    # pinctrl_lookup_state - 查找状态
+    - pattern: 'pinctrl_lookup_state\s*\(\s*(?P<pctldev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "pctldev"
+      description: "查找引脚状态"
+
+    # pinctrl_select_state - 选择状态
+    - pattern: 'pinctrl_select_state\s*\(\s*(?P<pctldev>[^)]+)\s*,\s*(?P<state>[^)]+)\s*\)'
+      variable_capture: "pctldev"
+      description: "选择引脚状态"
+
+
+# ============================================================
+# PINCTRL CONFIGS
+# ============================================================
+
+pinctrl_config:
+  description: "Pin Control Config - 引脚配置"
+  header: "linux/pinctrl/pinctrl.h"
+
+  bind_patterns:
+    # PIN_CONFIG_*
+    - pattern: 'PIN_CONFIG_(?P<config>\w+)'
+      description: "引脚配置选项"
+
+
+# ============================================================
+# PINCTRL PIN
+# ============================================================
+
+pinctrl_pin:
+  description: "Pin Control Pin - 引脚"
+  header: "linux/pinctrl/pinctrl.h"
+
+  bind_patterns:
+    # struct pinctrl_pin_desc
+    - pattern: 'struct pinctrl_pin_desc\s*\{[^}]+\}'
+      description: "引脚描述结构"
+
+    # PINCTRL_PINS
+    - pattern: 'PINCTRL_PINS\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "引脚定义"
+
+
+# ============================================================
+# PINCTRL GPIO
+# ============================================================
+
+pinctrl_gpio:
+  description: "Pin Control GPIO - GPIO 引脚控制"
+  header: "linux/pinctrl/gpio.h"
+
+  bind_patterns:
+    # pinctrl_gpio_request - 请求 GPIO
+    - pattern: 'pinctrl_gpio_request\s*\(\s*(?P<gpio>[^)]+)\s*\)'
+      variable_capture: "gpio"
+      description: "请求 GPIO 引脚"
+
+    # pinctrl_gpio_free - 释放 GPIO
+    - pattern: 'pinctrl_gpio_free\s*\(\s*(?P<gpio>[^)]+)\s*\)'
+      variable_capture: "gpio"
+      description: "释放 GPIO 引脚"
+
+    # pinctrl_gpio_direction_input - 设置输入方向
+    - pattern: 'pinctrl_gpio_direction_input\s*\(\s*(?P<gpio>[^)]+)\s*\)'
+      variable_capture: "gpio"
+      description: "设置 GPIO 输入"
+
+    # pinctrl_gpio_direction_output - 设置输出方向
+    - pattern: 'pinctrl_gpio_direction_output\s*\(\s*(?P<gpio>[^)]+)\s*,\s*(?P<val>\w+)\s*\)'
+      variable_capture: "gpio"
+      description: "设置 GPIO 输出"
+
+    # pinctrl_gpio_get_direction - 获取方向
+    - pattern: 'pinctrl_gpio_get_direction\s*\(\s*(?P<gpio>[^)]+)\s*\)'
+      variable_capture: "gpio"
+      description: "获取 GPIO 方向"
+
+
+# ============================================================
+# PINCTRL MUX
+# ============================================================
+
+pinctrl_mux:
+  description: "Pin Control Multiplexing - 引脚复用"
+  header: "linux/pinctrl/pinctrl.h"
+
+  bind_patterns:
+    # PIN_MUX_*
+    - pattern: 'PIN_MUX_(?P<func>\w+)'
+      description: "引脚复用功能"
+
+
+# ============================================================
+# PINCTRL EXAMPLES
+# ============================================================
+
+examples:
+  - description: "引脚控制器驱动"
+    code: |
+      static const struct pinctrl_pin_desc my_pins[] = {
+          PINCTRL_PIN(0, "GPIO_A0"),
+          PINCTRL_PIN(1, "GPIO_A1"),
+          PINCTRL_PIN(2, "GPIO_A2"),
+      };
+
+      static int my_get_groups_count(struct pinctrl_dev *pctldev) {
+          return ARRAY_SIZE(my_groups);
+      }
+
+      static const char *my_get_group_name(struct pinctrl_dev *pctldev,
+                                           unsigned int group) {
+          return my_groups[group].name;
+      }
+
+      static int my_get_fns_count(struct pinctrl_dev *pctldev) {
+          return ARRAY_SIZE(my_functions);
+      }
+
+      static const char *my_get_fname(struct pinctrl_dev *pctldev,
+                                      unsigned int function) {
+          return my_functions[function].name;
+      }
+
+      static int my_set_mux(struct pinctrl_dev *pctldev,
+                           unsigned int function,
+                           unsigned int group) {
+          u32 val = my_functions[function].mux_val;
+          writel(val, REG_MUX(group));
+          return 0;
+      }
+
+      static const struct pinctrl_ops my_pctrl_ops = {
+          .get_groups_count = my_get_groups_count,
+          .get_group_name = my_get_group_name,
+          .get_functions_count = my_get_fns_count,
+          .get_function_name = my_get_fname,
+          .set_mux = my_set_mux,
+          .dt_node_to_map = my_dt_node_to_map,
+          .dt_free_map = my_dt_free_map,
+      };
+
+      static struct pinctrl_desc my_pctrl_desc = {
+          .name = "my-pinctrl",
+          .pins = my_pins,
+          .npins = ARRAY_SIZE(my_pins),
+          .owner = THIS_MODULE,
+          .pctlops = &my_pctrl_ops,
+      };
+
+      static int __init my_init(void) {
+          struct pinctrl_dev *pctldev;
+
+          pctldev = pinctrl_register(&my_pctrl_desc, &dev, NULL);
+          if (IS_ERR(pctldev))
+              return PTR_ERR(pctldev);
+
+          return 0;
+      }

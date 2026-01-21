@@ -1,0 +1,224 @@
+# Linux Kernel Reset Controller Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/reset.html
+
+# ============================================================
+# RESET CORE
+# ============================================================
+
+reset_core:
+  description: "Reset Core - 复位控制器核心"
+  header: "linux/reset.h"
+  icon: "🔄"
+
+  context:
+    type: "process"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+    atomic_context: true
+
+  bind_patterns:
+    # reset_controller_register - 注册复位控制器
+    - pattern: 'reset_controller_register\s*\(\s*(?P<rcdev>[^)]+)\s*\)'
+      variable_capture: "rcdev"
+      description: "注册复位控制器"
+
+    # reset_controller_unregister - 注销复位控制器
+    - pattern: 'reset_controller_unregister\s*\(\s*(?P<rcdev>[^)]+)\s*\)'
+      variable_capture: "rcdev"
+      description: "注销复位控制器"
+
+
+# ============================================================
+# RESET CONSUMER
+# ============================================================
+
+reset_consumer:
+  description: "Reset Consumer - 复位消费者"
+  header: "linux/reset.h"
+
+  bind_patterns:
+    # reset_control_get - 获取复位控制
+    - pattern: 'reset_control_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "获取复位控制"
+
+    # reset_control_get_exclusive - 独占获取复位
+    - pattern: 'reset_control_get_exclusive\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "独占获取复位控制"
+
+    # reset_control_get_optional - 可选获取复位
+    - pattern: 'reset_control_get_optional\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "可选获取复位控制"
+
+    # devm_reset_control_get - 资源管理获取复位
+    - pattern: 'devm_reset_control_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理获取复位控制"
+
+    # reset_control_put - 释放复位控制
+    - pattern: 'reset_control_put\s*\(\s*(?P<rst>[^)]+)\s*\)'
+      variable_capture: "rst"
+      description: "释放复位控制"
+
+
+# ============================================================
+# RESET OPERATIONS
+# ============================================================
+
+reset_ops:
+  description: "Reset Operations - 复位操作"
+  header: "linux/reset.h"
+
+  bind_patterns:
+    # struct reset_control_ops
+    - pattern: 'struct reset_control_ops\s*\{[^}]+\}'
+      description: "复位操作结构"
+
+  callbacks:
+    reset:
+      pattern: '\.reset\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "复位回调"
+
+    assert:
+      pattern: '\.assert\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "断言复位"
+
+    deassert:
+      pattern: '\.deassert\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "取消复位"
+
+    status:
+      pattern: '\.status\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取复位状态"
+
+
+# ============================================================
+# RESET ACTIONS
+# ============================================================
+
+reset_actions:
+  description: "Reset Actions - 复位操作"
+  header: "linux/reset.h"
+
+  bind_patterns:
+    # reset_control_reset - 执行复位
+    - pattern: 'reset_control_reset\s*\(\s*(?P<rst>[^)]+)\s*\)'
+      variable_capture: "rst"
+      description: "执行复位"
+
+    # reset_control_assert - 断言复位
+    - pattern: 'reset_control_assert\s*\(\s*(?P<rst>[^)]+)\s*\)'
+      variable_capture: "rst"
+      description: "断言复位"
+
+    # reset_control_deassert - 取消复位
+    - pattern: 'reset_control_deassert\s*\(\s*(?P<rst>[^)]+)\s*\)'
+      variable_capture: "rst"
+      description: "取消复位"
+
+    # reset_control_status - 获取复位状态
+    - pattern: 'reset_control_status\s*\(\s*(?P<rst>[^)]+)\s*\)'
+      variable_capture: "rst"
+      description: "获取复位状态"
+
+    # reset_control_acquire - 获取复位
+    - pattern: 'reset_control_acquire\s*\(\s*(?P<rst>[^)]+)\s*\)'
+      variable_capture: "rst"
+      description: "获取复位"
+
+    # reset_control_release - 释放复位
+    - pattern: 'reset_control_release\s*\(\s*(?P<rst>[^)]+)\s*\)'
+      variable_capture: "rst"
+      description: "释放复位"
+
+
+# ============================================================
+# RESET DEVICE
+# ============================================================
+
+reset_device:
+  description: "Reset Device - 复位设备"
+  header: "linux/reset.h"
+
+  bind_patterns:
+    # struct reset_controller_dev
+    - pattern: 'struct reset_controller_dev\s*\{[^}]+\}'
+      description: "复位控制器设备结构"
+
+
+# ============================================================
+# RESET EXAMPLES
+# ============================================================
+
+examples:
+  - description: "复位控制器驱动"
+    code: |
+      static int my_reset_reset(struct reset_controller_dev *rcdev,
+                                unsigned long id) {
+          writel(BIT(id), rst_base + RST_ASSERT_REG);
+          udelay(10);
+          writel(BIT(id), rst_base + RST_DEASSERT_REG);
+          return 0;
+      }
+
+      static int my_reset_assert(struct reset_controller_dev *rcdev,
+                                 unsigned long id) {
+          writel(BIT(id), rst_base + RST_ASSERT_REG);
+          return 0;
+      }
+
+      static int my_reset_deassert(struct reset_controller_dev *rcdev,
+                                   unsigned long id) {
+          writel(BIT(id), rst_base + RST_DEASSERT_REG);
+          return 0;
+      }
+
+      static int my_reset_status(struct reset_controller_dev *rcdev,
+                                 unsigned long id) {
+          return readl(rst_base + RST_STATUS_REG) & BIT(id);
+      }
+
+      static const struct reset_control_ops my_reset_ops = {
+          .reset = my_reset_reset,
+          .assert = my_reset_assert,
+          .deassert = my_reset_deassert,
+          .status = my_reset_status,
+      };
+
+      static struct reset_controller_dev my_rcdev = {
+          .ops = &my_reset_ops,
+          .owner = THIS_MODULE,
+          .nr_resets = 32,
+          .of_node = dev->of_node,
+      };
+
+      static int __init my_init(void) {
+          return reset_controller_register(&my_rcdev);
+      }
+
+      /* 消费者使用示例 */
+      static int my_probe(struct platform_device *pdev) {
+          struct reset_control *rst;
+
+          rst = devm_reset_control_get(&pdev->dev, NULL);
+          if (IS_ERR(rst))
+              return PTR_ERR(rst);
+
+          /* 解除复位 */
+          reset_control_deassert(rst);
+
+          /* 设备操作 */
+
+          /* 断言复位 */
+          reset_control_assert(rst);
+
+          return 0;
+      }

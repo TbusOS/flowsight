@@ -1,0 +1,515 @@
+# Linux Kernel IRQ and Interrupt Handling Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/interrupt.html
+
+# ============================================================
+# HARDWARE INTERRUPT (request_irq)
+# ============================================================
+
+irq_handler:
+  description: "Hardware Interrupt Handler - 硬件中断处理"
+  header: "linux/interrupt.h"
+  icon: "⚡"
+
+  context:
+    type: "hardirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # request_irq - 标准中断请求
+    - pattern: 'request_irq\s*\(\s*(?P<irq>\d+|\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*,\s*(?P<dev_id>[^)]+)\s*\)'
+      handler_capture: "handler"
+      extra_captures:
+        - name: "irq"
+          description: "中断号"
+        - name: "flags"
+          description: "IRQ flags (IRQF_SHARED, IRQF_TRIGGER_RISING, etc.)"
+        - name: "name"
+          description: "设备名称 (用于 /proc/interrupts)"
+        - name: "dev_id"
+          description: "设备 ID (传递给中断处理函数)"
+
+    # request_irq 简化形式
+    - pattern: 'request_irq\s*\(\s*(?P<irq>\d+|\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*\)'
+      handler_capture: "handler"
+      description: "无 dev_id 的 request_irq"
+
+    # devm_request_irq - 资源管理版本
+    - pattern: 'devm_request_irq\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<irq>\d+|\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*,\s*(?P<dev_id>[^)]+)\s*\)'
+      handler_capture: "handler"
+      extra_captures:
+        - name: "dev"
+          description: "struct device 指针"
+
+  trigger_patterns:
+    # 硬件触发，无软件触发模式
+    trigger_type: "hardware"
+    condition:
+      timing: "asynchronous"
+      requires_bind: true
+
+  cancel_patterns:
+    - pattern: 'free_irq\s*\(\s*(?P<irq>\d+|\w+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+      variable_capture: "irq"
+      behavior: "sync"
+      description: "释放中断"
+
+  handler_signature:
+    return_type: "irqreturn_t"
+    parameters:
+      - name: "irq"
+        type: "unsigned int"
+        description: "中断号"
+      - name: "dev_id"
+        type: "void *"
+        description: "设备 ID (request_irq 的最后一个参数)"
+
+  return_values:
+    - value: "IRQ_HANDLED"
+      description: "中断被正确处理"
+    - value: "IRQ_NONE"
+      description: "中断不是本设备的"
+    - value: "IRQ_WAKE_THREAD"
+      description: "唤醒线程化中断处理函数"
+
+  kernel_call_chain:
+    trigger: "硬件中断发生"
+    chain:
+      - function: "do_IRQ"
+        file: "arch/x86/kernel/irq.c"
+        description: "通用中断入口"
+      - function: "handle_irq"
+        file: "arch/x86/kernel/irq.c"
+        description: "特定架构的中断处理"
+      - function: "generic_handle_irq"
+        file: "kernel/irq/irqdesc.c"
+        description: "通用中断描述符处理"
+      - function: "handle_edge_irq"
+        file: "kernel/irq/chip.c"
+        description: "边沿触发中断处理"
+      - function: "my_irq_handler()"
+        file: "用户代码"
+        description: "用户中断处理函数"
+        is_user_entry: true
+
+  notes:
+    - "在硬中断上下文执行，不能 sleep"
+    - "应该尽快处理完成"
+    - "使用 IRQF_SHARED 时需要 dev_id 区分设备"
+    - "返回值 IRQ_WAKE_THREAD 会唤醒线程化处理"
+
+
+# ============================================================
+# THREADED INTERRUPT (request_threaded_irq)
+# ============================================================
+
+threaded_irq:
+  description: "Threaded Interrupt Handler - 线程化中断处理"
+  header: "linux/interrupt.h"
+  icon: "🧵"
+
+  context:
+    type: "process"  # 线程函数在进程上下文
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # request_threaded_irq - 线程化中断
+    - pattern: 'request_threaded_irq\s*\(\s*(?P<irq>\d+|\w+)\s*,\s*(?P<top_half>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+      handler_capture: "handler"
+      extra_captures:
+        - name: "irq"
+          description: "中断号"
+        - name: "top_half"
+          description: "顶半部处理函数 (可为 NULL)"
+        - name: "handler"
+          description: "线程化处理函数"
+        - name: "flags"
+          description: "IRQ flags"
+        - name: "name"
+          description: "设备名称"
+        - name: "dev_id"
+          description: "设备 ID"
+
+    # devm_request_threaded_irq
+    - pattern: 'devm_request_threaded_irq\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<irq>\d+|\w+)\s*,\s*(?P<top_half>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+      handler_capture: "handler"
+      extra_captures:
+        - name: "dev"
+          description: "struct device 指针"
+
+  top_half_signature:
+    return_type: "irqreturn_t"
+    parameters:
+      - name: "irq"
+        type: "unsigned int"
+      - name: "dev_id"
+        type: "void *"
+
+  thread_fn_signature:
+    return_type: "irqreturn_t"
+    parameters:
+      - name: "irq"
+        type: "unsigned int"
+      - name: "dev_id"
+        type: "void *"
+
+  kernel_call_chain:
+    trigger: "硬件中断发生"
+    chain:
+      - function: "do_IRQ"
+        file: "arch/x86/kernel/irq.c"
+      - function: "handle_irq"
+      - function: "my_top_half() [hardirq context]"
+        file: "用户代码"
+        description: "顶半部 (可选，快速处理)"
+        is_user_entry: true
+        context: "hardirq"
+
+      # 如果 top_half 返回 IRQ_WAKE_THREAD
+      - separation: "调度器选择线程"
+
+      - function: "irq_thread"
+        file: "kernel/irq/handle.c"
+        description: "中断线程"
+      - function: "my_thread_fn() [process context]"
+        file: "用户代码"
+        description: "线程化处理函数 (实际处理)"
+        is_user_entry: true
+        context: "process"
+
+  notes:
+    - "顶半部在硬中断上下文执行，必须快速返回"
+    - "线程函数在进程上下文执行，可以 sleep"
+    - "如果不需要顶半部，传递 NULL"
+    - "线程可以被 rt 优先级"
+
+
+# ============================================================
+# TASKLET
+# ============================================================
+
+tasklet:
+  description: "Tasklet - 软中断实现的延迟处理"
+  header: "linux/interrupt.h"
+  icon: "🔄"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # DECLARE_TASKLET - 静态声明
+    - pattern: 'DECLARE_TASKLET\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "global"
+      extra_captures:
+        - name: "data"
+          description: "传递给 handler 的 data 参数"
+
+    # DECLARE_TASKLET_DISABLED - 禁用状态
+    - pattern: 'DECLARE_TASKLET_DISABLED\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      description: "声明禁用状态的 tasklet"
+
+    # tasklet_init - 动态初始化
+    - pattern: 'tasklet_init\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "struct_field"
+      extra_captures:
+        - name: "data"
+          description: "传递给 handler 的 data 参数"
+
+    # tasklet_setup (新 API)
+    - pattern: 'tasklet_setup\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "使用 struct tasklet_struct 的 setup 宏"
+
+  trigger_patterns:
+    # tasklet_schedule - 调度 tasklet
+    - pattern: 'tasklet_schedule\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      condition:
+        timing: "deferred"
+        requires_bind: true
+
+    # tasklet_hi_schedule - 高优先级 tasklet
+    - pattern: 'tasklet_hi_schedule\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "高优先级软中断"
+      condition:
+        timing: "deferred"
+        requires_bind: true
+
+    # tasklet_disable / tasklet_enable
+    - pattern: 'tasklet_disable\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "禁用 tasklet"
+
+  cancel_patterns:
+    - pattern: 'tasklet_kill\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "sync"
+      description: "同步杀死 tasklet，等待完成"
+
+    - pattern: 'tasklet_disable\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "禁用 tasklet"
+
+    - pattern: 'tasklet_enable\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "启用 tasklet"
+
+  handler_signature:
+    return_type: "void"
+    parameters:
+      - name: "data"
+        type: "unsigned long"
+        description: "传递给 tasklet 的数据"
+
+  kernel_call_chain:
+    trigger: "软中断 (TASKLET_SOFTIRQ / HI_SOFTIRQ)"
+    chain:
+      - function: "tasklet_action"
+        file: "kernel/softirq.c"
+        description: "Tasklet 软中断处理"
+      - function: "tasklet_hi_action"
+        file: "kernel/softirq.c"
+        description: "高优先级 tasklet 处理"
+      - function: "my_tasklet_handler(data)"
+        file: "用户代码"
+        description: "用户 tasklet 处理函数"
+        is_user_entry: true
+
+  notes:
+    - "在软中断上下文执行，不能 sleep"
+    - "同一个 tasklet 不会并发执行"
+    - "可以被高优先级的 tasklet 延迟"
+    - "使用 container_of 恢复父结构体"
+
+
+# ============================================================
+# SOFTIRQ
+# ============================================================
+
+softirq:
+  description: "Softirq - 软中断"
+  header: "linux/interrupt.h"
+  icon: "📡"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # open_softirq - 注册软中断
+    - pattern: 'open_softirq\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      extra_captures:
+        - name: "nr"
+          description: "软中断号 (HI_SOFTIRQ, TASKLET_SOFTIRQ, etc.)"
+
+    # softirq_handle_begin / softirq_handle_end (内部宏)
+    - pattern: 'raise_softirq\s*\(\s*(?P<nr>\w+)\s*\)'
+      description: "触发软中断"
+
+    # raise_softirq_irqoff - 禁用中断版本
+    - pattern: 'raise_softirq_irqoff\s*\(\s*(?P<nr>\w+)\s*\)'
+      description: "在中断禁用状态下触发软中断"
+
+  softirq_types:
+    - name: "HI_SOFTIRQ"
+      priority: "high"
+      description: "高优先级软中断"
+    - name: "TIMER_SOFTIRQ"
+      priority: "normal"
+      description: "Timer 软中断"
+    - name: "NET_TX_SOFTIRQ"
+      priority: "normal"
+      description: "网络发送软中断"
+    - name: "NET_RX_SOFTIRQ"
+      priority: "normal"
+      description: "网络接收软中断"
+    - name: "BLOCK_SOFTIRQ"
+      priority: "normal"
+      description: "块设备软中断"
+    - name: "IRQ_POLL_SOFTIRQ"
+      priority: "normal"
+      description: "IRQ 轮询软中断"
+    - name: "TASKLET_SOFTIRQ"
+      priority: "normal"
+      description: "Tasklet 软中断"
+    - name: "SCHED_SOFTIRQ"
+      priority: "high"
+      description: "调度软中断"
+    - name: "HRTIMER_SOFTIRQ"
+      priority: "high"
+      description: "高精度定时器软中断"
+    - name: "RCU_SOFTIRQ"
+      priority: "high"
+      description: "RCU 软中断"
+
+  handler_signature:
+    return_type: "void"
+    parameters:
+      - name: "action"
+        type: "struct softirq_action *"
+        description: "软中断 action 结构体"
+
+  kernel_call_chain:
+    trigger: "软中断触发"
+    chain:
+      - function: "irq_exit"
+        file: "kernel/softirq.c"
+        description: "中断退出路径"
+      - function: "invoke_softirq"
+        file: "kernel/softirq.c"
+        description: "调用软中断处理"
+      - function: "__do_softirq"
+        file: "kernel/softirq.c"
+        description: "执行所有待处理的软中断"
+      - function: "my_softirq_handler(action)"
+        file: "用户代码"
+        description: "用户软中断处理函数"
+        is_user_entry: true
+
+  notes:
+    - "软中断数量有限，通常 reserved for core kernel"
+    - "驱动程序一般使用 tasklet 而不是自定义软中断"
+    - "在软中断上下文执行，不能 sleep"
+
+
+# ============================================================
+# INTERRUPT HELPERS
+# ============================================================
+
+irq_helpers:
+  description: "IRQ Helper Functions and Macros"
+  header: "linux/interrupt.h"
+
+  macros:
+    # IRQ 返回值
+    IRQ_HANDLED:
+      pattern: 'IRQ_HANDLED'
+      description: "中断已处理"
+    IRQ_NONE:
+      pattern: 'IRQ_NONE'
+      description: "中断不是本设备的"
+    IRQ_WAKE_THREAD:
+      pattern: 'IRQ_WAKE_THREAD'
+      description: "唤醒线程化中断处理"
+
+  flags:
+    IRQF_SHARED:
+      pattern: 'IRQF_SHARED'
+      description: "共享中断线"
+    IRQF_TRIGGER_RISING:
+      pattern: 'IRQF_TRIGGER_RISING'
+      description: "上升沿触发"
+    IRQF_TRIGGER_FALLING:
+      pattern: 'IRQF_TRIGGER_FALLING'
+      description: "下降沿触发"
+    IRQF_TRIGGER_HIGH:
+      pattern: 'IRQF_TRIGGER_HIGH'
+      description: "高电平触发"
+    IRQF_TRIGGER_LOW:
+      pattern: 'IRQF_TRIGGER_LOW'
+      description: "低电平触发"
+    IRQF_ONESHOT:
+      pattern: 'IRQF_ONESHOT'
+      description: "单次触发模式"
+
+
+# ============================================================
+# IRQ EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单 IRQ 处理"
+    code: |
+      static irqreturn_t my_irq_handler(int irq, void *dev_id) {
+          struct my_device *dev = dev_id;
+          unsigned long flags;
+
+          spin_lock_irqsave(&dev->lock, flags);
+          dev->status |= IRQ_PENDING;
+          spin_unlock_irqrestore(&dev->lock, flags);
+
+          return IRQ_HANDLED;
+      }
+
+      static int my_probe(struct platform_device *pdev) {
+          int ret;
+          struct my_device *dev = ...;
+
+          ret = request_irq(dev->irq, my_irq_handler,
+                           IRQF_SHARED, "my_device", dev);
+          if (ret)
+              return ret;
+
+          return 0;
+      }
+
+  - description: "线程化 IRQ"
+    code: |
+      static irqreturn_t my_top_half(int irq, void *dev_id) {
+          struct my_device *dev = dev_id;
+
+          /* 快速处理：设置标志，唤醒线程 */
+          if (device_has_data(dev)) {
+              return IRQ_WAKE_THREAD;
+          }
+          return IRQ_HANDLED;
+      }
+
+      static irqreturn_t my_thread_fn(int irq, void *dev_id) {
+          struct my_device *dev = dev_id;
+
+          /* 复杂处理：可以 sleep */
+          while (process_pending_data(dev)) {
+              /* 处理数据 */
+          }
+
+          return IRQ_HANDLED;
+      }
+
+      static int my_probe(struct platform_device *pdev) {
+          return request_threaded_irq(dev->irq, my_top_half,
+                                      my_thread_fn,
+                                      IRQF_ONESHOT,
+                                      "my_device", dev);
+      }
+
+  - description: "Tasklet 使用"
+    code: |
+      struct my_device {
+          struct tasklet_struct tasklet;
+          unsigned long data;
+      };
+
+      static void my_tasklet_fn(unsigned long data) {
+          printk("Tasklet running, data=%lu\n", data);
+      }
+
+      static int my_probe(struct platform_device *pdev) {
+          struct my_device *dev = ...;
+          tasklet_init(&dev->tasklet, my_tasklet_fn, dev->data);
+          return 0;
+      }
+
+      static irqreturn_t my_irq_handler(int irq, void *dev_id) {
+          struct my_device *dev = dev_id;
+          /* ... 处理 ... */
+          tasklet_schedule(&dev->tasklet);  // 调度 tasklet
+          return IRQ_HANDLED;
+      }

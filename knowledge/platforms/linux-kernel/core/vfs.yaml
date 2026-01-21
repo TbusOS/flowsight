@@ -1,0 +1,478 @@
+# Linux Kernel Virtual File System (VFS) Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/filesystems/vfs.html
+
+# ============================================================
+# VFS SUPERBLOCK
+# ============================================================
+
+vfs_superblock:
+  description: "VFS Superblock - 虚拟文件系统超级块"
+  header: "linux/fs.h"
+  icon: "📁"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # alloc_super - 分配超级块
+    - pattern: 'alloc_super\s*\(\s*(?P<sb>[^)]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "sb"
+      description: "分配超级块"
+
+    # deactivate_locked_super - 停用超级块
+    - pattern: 'deactivate_locked_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "停用超级块"
+
+    # deactivate_super - 停用超级块
+    - pattern: 'deactivate_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "停用超级块"
+
+    # get_active_super - 获取活动超级块
+    - pattern: 'get_active_super\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "获取活动超级块"
+
+
+# ============================================================
+# VFS INODE
+# ============================================================
+
+vfs_inode:
+  description: "VFS Inode - 虚拟文件系统索引节点"
+  header: "linux/fs.h"
+
+  bind_patterns:
+    # iget5_locked - 获取索引节点
+    - pattern: 'iget5_locked\s*\(\s*(?P<sb>[^)]+)\s*,\s*(?P<hashval>\w+)\s*,\s*(?P<test>\w+)\s*,\s*(?P<set>\w+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "获取索引节点 (带锁)"
+
+    # iget_locked - 获取索引节点
+    - pattern: 'iget_locked\s*\(\s*(?P<sb>[^)]+)\s*,\s*(?P<ino>\w+)\s*\)'
+      variable_capture: "sb"
+      description: "获取索引节点"
+
+    # ilookup - 查找索引节点
+    - pattern: 'ilookup\s*\(\s*(?P<sb>[^)]+)\s*,\s*(?P<ino>\w+)\s*\)'
+      variable_capture: "sb"
+      description: "查找索引节点"
+
+    # ilookup5 - 查找索引节点
+    - pattern: 'ilookup5\s*\(\s*(?P<sb>[^)]+)\s*,\s*(?P<hashval>\w+)\s*,\s*(?P<test>\w+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "带数据查找索引节点"
+
+    # iput - 释放索引节点
+    - pattern: 'iput\s*\(\s*(?P<inode>[^)]+)\s*\)'
+      variable_capture: "inode"
+      description: "释放索引节点"
+
+    # ihold - 增加引用计数
+    - pattern: 'ihold\s*\(\s*(?P<inode>[^)]+)\s*\)'
+      variable_capture: "inode"
+      description: "增加 inode 引用"
+
+    # iunique - 获取唯一 inode 号
+    - pattern: 'iunique\s*\(\s*(?P<sb>[^)]+)\s*,\s*(?P<max_ino>\w+)\s*\)'
+      variable_capture: "sb"
+      description: "获取唯一 inode 号"
+
+
+# ============================================================
+# VFS DENTRY
+# ============================================================
+
+vfs_dentry:
+  description: "VFS Dentry - 虚拟文件系统目录项"
+  header: "linux/dcache.h"
+
+  bind_patterns:
+    # d_alloc - 分配目录项
+    - pattern: 'd_alloc\s*\(\s*(?P<parent>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "parent"
+      description: "分配目录项"
+
+    # d_alloc_pseudo - 分配伪目录项
+    - pattern: 'd_alloc_pseudo\s*\(\s*(?P<sb>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "分配伪目录项"
+
+    # d_instantiate - 实例化目录项
+    - pattern: 'd_instantiate\s*\(\s*(?P<dentry>[^)]+)\s*,\s*(?P<inode>[^)]+)\s*\)'
+      variable_capture: "dentry"
+      description: "实例化目录项"
+
+    # d_add - 添加目录项
+    - pattern: 'd_add\s*\(\s*(?P<dentry>[^)]+)\s*,\s*(?P<inode>[^)]+)\s*\)'
+      variable_capture: "dentry"
+      description: "添加目录项"
+
+    # d_drop - 丢弃目录项
+    - pattern: 'd_drop\s*\(\s*(?P<dentry>[^)]+)\s*\)'
+      variable_capture: "dentry"
+      description: "丢弃目录项"
+
+    # dput - 释放目录项
+    - pattern: 'dput\s*\(\s*(?P<dentry>[^)]+)\s*\)'
+      variable_capture: "dentry"
+      description: "释放目录项"
+
+    # dget - 获取目录项
+    - pattern: 'dget\s*\(\s*(?P<dentry>[^)]+)\s*\)'
+      variable_capture: "dentry"
+      description: "获取目录项"
+
+
+# ============================================================
+# VFS FILE
+# ============================================================
+
+vfs_file:
+  description: "VFS File - 虚拟文件系统文件"
+  header: "linux/fs.h"
+
+  bind_patterns:
+    # alloc_file_pseudo - 分配伪文件
+    - pattern: 'alloc_file_pseudo\s*\(\s*(?P<inode>[^)]+)\s*,\s*(?P<dentry>[^)]+)\s*,\s*(?P<flags>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      variable_capture: "inode"
+      description: "分配伪文件"
+
+    # alloc_file - 分配文件
+    - pattern: 'alloc_file\s*\(\s*(?P<path>[^)]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      variable_capture: "path"
+      description: "分配文件"
+
+    # fput - 释放文件
+    - pattern: 'fput\s*\(\s*(?P<file>[^)]+)\s*\)'
+      variable_capture: "file"
+      description: "释放文件"
+
+    # fget - 获取文件
+    - pattern: 'fget\s*\(\s*(?P<fd>\w+)\s*\)'
+      variable_capture: "fd"
+      description: "通过 fd 获取文件"
+
+    # fget_light - 轻量获取文件
+    - pattern: 'fget_light\s*\(\s*(?P<fd>\w+)\s*,\s*(?P<fput_needed>\w+)\s*\)'
+      variable_capture: "fd"
+      description: "轻量获取文件"
+
+
+# ============================================================
+# VFS PATH
+# ============================================================
+
+vfs_path:
+  description: "VFS Path - 虚拟文件系统路径"
+  header: "linux/namei.h"
+
+  bind_patterns:
+    # kern_path - 内核路径查找
+    - pattern: 'kern_path\s*\(\s*(?P<name>[^)]+)\s*,\s*(?P<flags>\w+)\s*,\sP<path>[^)]+\s*\)'
+      description: "内核路径查找"
+
+    # user_path_at - 用户路径查找
+    - pattern: 'user_path_at\s*\(\s*(?P<dfd>\w+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<path>[^)]+)\s*\)'
+      description: "用户路径查找"
+
+    # path_lookup - 路径查找
+    - pattern: 'path_lookup\s*\(\s*(?P<name>[^)]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<path>[^)]+)\s*\)'
+      description: "路径查找"
+
+    # path_put - 释放路径
+    - pattern: 'path_put\s*\(\s*(?P<path>[^)]+)\s*\)'
+      variable_capture: "path"
+      description: "释放路径结构"
+
+    # get_empty_filp - 获取空文件结构
+    - pattern: 'get_empty_filp\s*\(\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "flags"
+      description: "分配空文件结构"
+
+
+# ============================================================
+# VFS MOUNT
+# ============================================================
+
+vfs_mount:
+  description: "VFS Mount - 虚拟文件系统挂载"
+  header: "linux/mount.h"
+
+  bind_patterns:
+    # alloc_vfsmnt - 分配挂载结构
+    - pattern: 'alloc_vfsmnt\s*\(\s*(?P<name>[^)]*)\s*\)'
+      variable_capture: "name"
+      description: "分配挂载结构"
+
+    # mntget - 增加挂载引用
+    - pattern: 'mntget\s*\(\s*(?P<mnt>[^)]+)\s*\)'
+      variable_capture: "mnt"
+      description: "获取挂载引用"
+
+    # mntput - 释放挂载
+    - pattern: 'mntput\s*\(\s*(?P<mnt>[^)]+)\s*\)'
+      variable_capture: "mnt"
+      description: "释放挂载"
+
+
+# ============================================================
+# FILE OPERATIONS
+# ============================================================
+
+file_operations:
+  description: "File Operations - 文件操作"
+  header: "linux/fs.h"
+
+  bind_patterns:
+    # struct file_operations
+    - pattern: 'static const struct file_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "文件操作结构定义"
+
+  callbacks:
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "打开文件"
+
+    release:
+      pattern: '\.release\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "释放文件"
+
+    read:
+      pattern: '\.read\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "读取数据"
+
+    write:
+      pattern: '\.write\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "写入数据"
+
+    llseek:
+      pattern: '\.llseek\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "移动文件指针"
+
+    poll:
+      pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "轮询"
+
+    mmap:
+      pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "内存映射"
+
+    fsync:
+      pattern: '\.fsync\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "同步文件"
+
+    aio_read:
+      pattern: '\.aio_read\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "异步读取"
+
+    aio_write:
+      pattern: '\.aio_write\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "异步写入"
+
+    read_iter:
+      pattern: '\.read_iter\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "迭代读取"
+
+    write_iter:
+      pattern: '\.write_iter\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "迭代写入"
+
+
+# ============================================================
+# INODE OPERATIONS
+# ============================================================
+
+inode_operations:
+  description: "Inode Operations - 索引节点操作"
+  header: "linux/fs.h"
+
+  bind_patterns:
+    # struct inode_operations
+    - pattern: 'static const struct inode_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "inode 操作结构定义"
+
+  callbacks:
+    create:
+      pattern: '\.create\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "创建 inode"
+
+    lookup:
+      pattern: '\.lookup\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "查找目录项"
+
+    link:
+      pattern: '\.link\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "创建硬链接"
+
+    unlink:
+      pattern: '\.unlink\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "删除链接"
+
+    symlink:
+      pattern: '\.symlink\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "创建符号链接"
+
+    mkdir:
+      pattern: '\.mkdir\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "创建目录"
+
+    rmdir:
+      pattern: '\.rmdir\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "删除目录"
+
+    mknod:
+      pattern: '\.mknod\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "创建特殊文件"
+
+    rename:
+      pattern: '\.rename\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "重命名"
+
+    getattr:
+      pattern: '\.getattr\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取属性"
+
+    setattr:
+      pattern: '\.setattr\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置属性"
+
+    setxattr:
+      pattern: '\.setxattr\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置扩展属性"
+
+    getxattr:
+      pattern: '\.getxattr\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取扩展属性"
+
+
+# ============================================================
+# SUPERBLOCK OPERATIONS
+# ============================================================
+
+superblock_operations:
+  description: "Superblock Operations - 超级块操作"
+  header: "linux/fs.h"
+
+  bind_patterns:
+    # struct super_operations
+    - pattern: 'static const struct super_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "超级块操作结构定义"
+
+  callbacks:
+    alloc_inode:
+      pattern: '\.alloc_inode\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "分配 inode"
+
+    destroy_inode:
+      pattern: '\.destroy_inode\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "销毁 inode"
+
+    free_inode:
+      pattern: '\.free_inode\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "释放 inode"
+
+    put_super:
+      pattern: '\.put_super\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "释放超级块"
+
+    write_super:
+      pattern: '\.write_super\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "写超级块"
+
+    sync_fs:
+      pattern: '\.sync_fs\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "同步文件系统"
+
+    statfs:
+      pattern: '\.statfs\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "文件系统统计"
+
+    remount_fs:
+      pattern: '\.remount_fs\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "重新挂载"
+
+    clear_inode:
+      pattern: '\.clear_inode\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "清除 inode"
+
+
+# ============================================================
+# VFS EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单字符设备文件操作"
+    code: |
+      static int my_open(struct inode *inode, struct file *file) {
+          struct my_device *dev;
+          dev = container_of(inode->i_cdev, struct my_device, cdev);
+          file->private_data = dev;
+          return 0;
+      }
+
+      static ssize_t my_read(struct file *file, char __user *buf,
+                             size_t count, loff_t *ppos) {
+          struct my_device *dev = file->private_data;
+          if (copy_to_user(buf, dev->buffer, dev->size))
+              return -EFAULT;
+          return dev->size;
+      }
+
+      static ssize_t my_write(struct file *file, const char __user *buf,
+                              size_t count, loff_t *ppos) {
+          struct my_device *dev = file->private_data;
+          if (copy_from_user(dev->buffer, buf, count))
+              return -EFAULT;
+          return count;
+      }
+
+      static const struct file_operations my_fops = {
+          .owner = THIS_MODULE,
+          .open = my_open,
+          .release = my_release,
+          .read = my_read,
+          .write = my_write,
+      };

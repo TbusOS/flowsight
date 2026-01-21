@@ -1,0 +1,539 @@
+# Linux Kernel Block Device Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/block-driver-api.html
+
+# ============================================================
+# BLOCK DEVICE
+# ============================================================
+
+block_device:
+  description: "Block Device - 块设备"
+  header: "linux/genhd.h"
+  icon: "💾"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # alloc_disk - 分配块设备
+    - pattern: 'alloc_disk\s*\(\s*(?P<nr_parts>\d+)\s*\)'
+      description: "分配块设备"
+
+    # del_gendisk - 删除通用磁盘
+    - pattern: 'del_gendisk\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      variable_capture: "disk"
+      description: "删除通用磁盘"
+
+    # add_disk - 添加磁盘
+    - pattern: 'add_disk\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      variable_capture: "disk"
+      description: "添加磁盘到系统"
+
+    # put_disk - 释放磁盘
+    - pattern: 'put_disk\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      variable_capture: "disk"
+      description: "释放磁盘结构"
+
+    # register_blkdev - 注册块设备
+    - pattern: 'register_blkdev\s*\(\s*(?P<major>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "major"
+      description: "注册块设备号"
+
+    # unregister_blkdev - 注销块设备
+    - pattern: 'unregister_blkdev\s*\(\s*(?P<major>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "major"
+      description: "注销块设备号"
+
+
+# ============================================================
+# BLOCK DEVICE OPERATIONS
+# ============================================================
+
+block_ops:
+  description: "Block Device Operations - 块设备操作"
+  header: "linux/blk_types.h"
+
+  bind_patterns:
+    # struct block_device_operations
+    - pattern: 'static const struct block_device_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "块设备操作结构"
+
+  callbacks:
+    # 打开/释放
+    owner:
+      pattern: '\.owner\s*=\s*(?P<owner>THIS_MODULE)'
+      description: "模块所有者"
+
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "打开设备"
+
+    release:
+      pattern: '\.release\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "释放设备"
+
+    # IOCTL
+    ioctl:
+      pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "IOCTL 命令"
+
+    # 读写
+    read:
+      pattern: '\.read\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "读取数据"
+
+    write:
+      pattern: '\.write\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "写入数据"
+
+    # 介质操作
+    media_changed:
+      pattern: '\.media_changed\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "检查介质变化"
+
+    revalidate_disk:
+      pattern: '\.revalidate_disk\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "重新验证磁盘"
+
+    # 电源管理
+    getgeo:
+      pattern: '\.getgeo\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取几何信息"
+
+    freeze:
+      pattern: '\.freeze\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "冻结设备"
+
+    thaw:
+      pattern: '\.thaw\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "解冻设备"
+
+
+# ============================================================
+# REQUEST QUEUE
+# ============================================================
+
+request_queue:
+  description: "Request Queue - 请求队列"
+  header: "linux/blkdev.h"
+  icon: "📋"
+
+  bind_patterns:
+    # blk_init_queue - 初始化请求队列
+    - pattern: 'blk_init_queue\s*\(\s*(?P<fn>[^)]+)\s*,\s*(?P<lock>[^)]+)\s*\)'
+      variable_capture: "fn"
+      description: "初始化请求队列"
+
+    # blk_cleanup_queue - 清理请求队列
+    - pattern: 'blk_cleanup_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
+      variable_capture: "q"
+      description: "清理请求队列"
+
+    # blk_mq_init_queue - 初始化多队列
+    - pattern: 'blk_mq_init_queue\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "初始化多队列请求"
+
+    # blk_alloc_queue - 分配队列
+    - pattern: 'blk_alloc_queue\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "分配请求队列"
+
+    # blk_queue_max_hw_sectors - 设置最大扇区
+    - pattern: 'blk_queue_max_hw_sectors\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<sectors>\w+)\s*\)'
+      variable_capture: "q"
+      description: "设置最大硬件扇区"
+
+    # blk_queue_logical_block_size - 设置逻辑块大小
+    - pattern: 'blk_queue_logical_block_size\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
+      variable_capture: "q"
+      description: "设置逻辑块大小"
+
+    # blk_queue_physical_block_size - 设置物理块大小
+    - pattern: 'blk_queue_physical_block_size\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
+      variable_capture: "q"
+      description: "设置物理块大小"
+
+    # blk_queue_io_opt - 设置 IO 选项
+    - pattern: 'blk_queue_io_opt\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<opt>\w+)\s*\)'
+      variable_capture: "q"
+      description: "设置 IO 选项"
+
+  callbacks:
+    # blk_init_queue request handler callback
+    request_fn:
+      pattern: 'blk_init_queue\s*\(\s*(?P<handler>\w+)\s*,\s*'
+      handler_capture: "handler"
+      description: "请求处理函数"
+
+
+# ============================================================
+# REQUEST
+# ============================================================
+
+request:
+  description: "Request - 请求"
+  header: "linux/blk_types.h"
+
+  bind_patterns:
+    # blk_mq_alloc_request - 分配请求
+    - pattern: 'blk_mq_alloc_request\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<start>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "q"
+      description: "分配请求"
+
+    # blk_mq_end_request - 结束请求
+    - pattern: 'blk_mq_end_request\s*\(\s*(?P<rq>[^)]+)\s*,\s*(?P<error>\w+)\s*\)'
+      variable_capture: "rq"
+      description: "结束请求"
+
+    # blk_mq_complete_request - 完成请求
+    - pattern: 'blk_mq_complete_request\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      variable_capture: "rq"
+      description: "完成请求"
+
+    # blk_mq_requeue_request - 重新入队
+    - pattern: 'blk_mq_requeue_request\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      variable_capture: "rq"
+      description: "重新入队请求"
+
+    # blk_update_request - 更新请求
+    - pattern: 'blk_update_request\s*\(\s*(?P<rq>[^)]+)\s*,\s*(?P<error>\w+)\s*,\s*(?P<nr_bytes>\w+)\s*\)'
+      variable_capture: "rq"
+      description: "更新请求"
+
+    # blk_rq_bytes - 获取请求字节数
+    - pattern: 'blk_rq_bytes\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      variable_capture: "rq"
+      description: "获取请求字节数"
+
+    # blk_rq_sectors - 获取请求扇区数
+    - pattern: 'blk_rq_sectors\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      variable_capture: "rq"
+      description: "获取请求扇区数"
+
+
+# ============================================================
+# BIO
+# ============================================================
+
+bio:
+  description: "BIO - 块 IO"
+  header: "linux/blk_types.h"
+  icon: "🧬"
+
+  bind_patterns:
+    # bio_alloc - 分配 BIO
+    - pattern: 'bio_alloc\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<nr_vecs>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      variable_capture: "q"
+      description: "分配 BIO"
+
+    # bio_free - 释放 BIO
+    - pattern: 'bio_free\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<q>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "释放 BIO"
+
+    # bio_add_page - 添加页
+    - pattern: 'bio_add_page\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<page>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<offset>\w+)\s*\)'
+      variable_capture: "bio"
+      description: "添加页到 BIO"
+
+    # bio_add_vmalloc - 添加 vmalloc 页
+    - pattern: 'bio_add_vmalloc\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<data>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
+      variable_capture: "bio"
+      description: "添加 vmalloc 页"
+
+    # bio_endio - 结束 BIO
+    - pattern: 'bio_endio\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<error>\w+)\s*\)'
+      variable_capture: "bio"
+      description: "结束 BIO"
+
+    # bio_io_error - IO 错误
+    - pattern: 'bio_io_error\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "BIO IO 错误"
+
+    # bio_copy_data - 复制数据
+    - pattern: 'bio_copy_data\s*\(\s*(?P<dst>[^)]+)\s*,\s*(?P<src>[^)]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      variable_capture: "dst"
+      description: "复制 BIO 数据"
+
+    # bio_advance - 推进 BIO
+    - pattern: 'bio_advance\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<bytes>\w+)\s*\)'
+      variable_capture: "bio"
+      description: "推进 BIO"
+
+
+# ============================================================
+# BIO OPERATIONS
+# ============================================================
+
+bio_ops:
+  description: "BIO Operations - BIO 操作"
+  header: "linux/blk_types.h"
+
+  bind_patterns:
+    # struct bio_ops
+    - pattern: 'struct bio_ops\s*\{[^}]+\}'
+      description: "BIO 操作结构"
+
+    # submit_bio - 提交 BIO
+    - pattern: 'submit_bio\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "提交 BIO"
+
+    # submit_bio_wait - 等待 BIO 完成
+    - pattern: 'submit_bio_wait\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "提交并等待 BIO"
+
+
+# ============================================================
+# DISK GEOMETRY
+# ============================================================
+
+disk_geometry:
+  description: "Disk Geometry - 磁盘几何"
+  header: "hdreg.h"
+
+  bind_patterns:
+    # struct hd_geometry
+    - pattern: 'struct hd_geometry\s*\{[^}]+\}'
+      description: "磁盘几何结构"
+
+    # set_capacity - 设置容量
+    - pattern: 'set_capacity\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P< sectors>\w+)\s*\)'
+      variable_capture: "disk"
+      description: "设置磁盘容量"
+
+
+# ============================================================
+# PARTITION
+# ============================================================
+
+partition:
+  description: "Partition - 分区"
+  header: "linux/genhd.h"
+
+  bind_patterns:
+    # add_partition - 添加分区
+    - pattern: 'add_partition\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<part>\d+)\s*,\s*(?P<start>\w+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<state>\w+)\s*\)'
+      variable_capture: "disk"
+      description: "添加分区"
+
+    # delete_partition - 删除分区
+    - pattern: 'delete_partition\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<part>\d+)\s*\)'
+      variable_capture: "disk"
+      description: "删除分区"
+
+    # alloc_part - 分配分区
+    - pattern: 'alloc_part\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<partno>\d+)\s*\)'
+      variable_capture: "disk"
+      description: "分配分区"
+
+    # free_part - 释放分区
+    - pattern: 'free_part\s*\(\s*(?P<part>[^)]+)\s*\)'
+      variable_capture: "part"
+      description: "释放分区"
+
+
+# ============================================================
+# DISK STATS
+# ============================================================
+
+disk_stats:
+  description: "Disk Statistics - 磁盘统计"
+  header: "linux/genhd.h"
+
+  bind_patterns:
+    # disk_stat_all - 收集所有统计
+    - pattern: 'disk_stat_all\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      variable_capture: "disk"
+      description: "收集所有统计"
+
+    # disk_stat_part - 收集分区统计
+    - pattern: 'disk_stat_part\s*\(\s*(?P<part>[^)]+)\s*\)'
+      variable_capture: "part"
+      description: "收集分区统计"
+
+    # part_stat_* - 分区统计函数
+    - pattern: 'part_stat_\w+\s*\([^)]+\)'
+      description: "分区统计操作"
+
+    # disk_inc_* - 增加统计
+    - pattern: 'disk_\w+\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      variable_capture: "disk"
+      description: "更新磁盘统计"
+
+
+# ============================================================
+# BLK ZONE
+# ============================================================
+
+blk_zone:
+  description: "Block Zone - 块区域 (ZBC/ZBD)"
+  header: "linux/blkdev.h"
+
+  bind_patterns:
+    # blkdev_report_zones - 报告区域
+    - pattern: 'blkdev_report_zones\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<zone>\w+)\s*,\s*(?P<nr_zones>\w+)\s*,\s*(?P<zones>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "报告块区域"
+
+    # blkdev_reset_zones - 重置区域
+    - pattern: 'blkdev_reset_zones\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<zone>\w+)\s*,\s*(?P<nr_zones>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "重置块区域"
+
+
+# ============================================================
+# BLK INTEGRITY
+# ============================================================
+
+blk_integrity:
+  description: "Block Integrity - 块完整性"
+  header: "linux/blk-integrity.h"
+
+  bind_patterns:
+    # blk_integrity_register - 注册完整性
+    - pattern: 'blk_integrity_register\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<integrity>[^)]+)\s*\)'
+      variable_capture: "disk"
+      description: "注册块完整性"
+
+    # blk_integrity_unregister - 注销完整性
+    - pattern: 'blk_integrity_unregister\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      variable_capture: "disk"
+      description: "注销块完整性"
+
+    # bio_integrity_prep - 准备完整性
+    - pattern: 'bio_integrity_prep\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "准备 BIO 完整性"
+
+
+# ============================================================
+# BLK EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单块设备驱动"
+    code: |
+      static struct my_dev {
+          struct request_queue *queue;
+          struct gendisk *disk;
+          spinlock_t lock;
+          sector_t capacity;
+      } my_dev;
+
+      static void my_request(struct request_queue *q) {
+          struct request *rq;
+
+          /* 遍历请求 */
+          rq = blk_mq_start_request(rq);
+
+          /* 处理请求 */
+          if (rq->cmd_flags & REQ_OP_READ) {
+              /* 读取数据 */
+              memcpy(rq->bio_data(rq), my_dev.data, blk_rq_bytes(rq));
+          } else {
+              /* 写入数据 */
+              memcpy(my_dev.data, rq->bio_data(rq), blk_rq_bytes(rq));
+          }
+
+          /* 完成请求 */
+          blk_mq_end_request(rq, 0);
+      }
+
+      static int my_open(struct block_device *bdev, fmode_t mode) {
+          return 0;
+      }
+
+      static void my_release(struct gendisk *disk, fmode_t mode) {
+      }
+
+      static int my_ioctl(struct block_device *bdev, fmode_t mode,
+                          unsigned int cmd, unsigned long arg) {
+          return -ENOTTY;
+      }
+
+      static const struct block_device_operations my_fops = {
+          .owner = THIS_MODULE,
+          .open = my_open,
+          .release = my_release,
+          .ioctl = my_ioctl,
+      };
+
+      static int __init my_init(void) {
+          /* 分配请求队列 */
+          my_dev.queue = blk_init_queue(my_request, &my_dev.lock);
+          if (!my_dev.queue)
+              return -ENOMEM;
+
+          /* 设置队列参数 */
+          blk_queue_max_hw_sectors(my_dev.queue, 256);
+
+          /* 分配磁盘 */
+          my_dev.disk = alloc_disk(16);
+          if (!my_dev.disk) {
+              blk_cleanup_queue(my_dev.queue);
+              return -ENOMEM;
+          }
+
+          /* 设置磁盘参数 */
+          my_dev.disk->major = MY_MAJOR;
+          my_dev.disk->first_minor = 0;
+          my_dev.disk->fops = &my_fops;
+          my_dev.disk->queue = my_dev.queue;
+          my_dev.disk->private_data = &my_dev;
+          sprintf(my_dev.disk->disk_name, "mydisk");
+
+          /* 设置容量 */
+          my_dev.capacity = 1024 * 1024;  /* 1MB */
+          set_capacity(my_dev.disk, my_dev.capacity);
+
+          /* 添加磁盘 */
+          add_disk(my_dev.disk);
+
+          return 0;
+      }
+
+  - description: "多队列块设备驱动"
+    code: |
+      static int my_mq_init(struct blk_mq_tag_set *set) {
+          struct my_dev *dev = container_of(set, struct my_dev, tag_set);
+
+          set->ops = &my_mq_ops;
+          set->nr_hw_queues = 4;
+          set->queue_depth = 128;
+          set->numa_node = NUMA_NO_NODE;
+
+          return blk_mq_alloc_tag_set(set);
+      }
+
+      static blk_status_t my_queue_rq(struct blk_mq_ctx *ctx,
+                                      const struct blk_mq_queue_data *qd) {
+          struct request *rq = qd->rq;
+
+          /* 处理请求 */
+          ...
+
+          blk_mq_end_request(rq, BLK_STS_OK);
+          return BLK_STS_OK;
+      }
+
+      static const struct blk_mq_ops my_mq_ops = {
+          .queue_rq = my_queue_rq,
+      };

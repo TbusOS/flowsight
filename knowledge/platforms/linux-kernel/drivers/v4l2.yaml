@@ -1,0 +1,307 @@
+# Linux Kernel V4L2 (Video4Linux2) Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/media/v4l-drivers/index.html
+
+# ============================================================
+# V4L2 CORE
+# ============================================================
+
+v4l2_core:
+  description: "V4L2 Core - 视频核心"
+  header: "linux/videodev2.h"
+  icon: "📹"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # video_register_device - 注册视频设备
+    - pattern: 'video_register_device\s*\(\s*(?P<vdev>[^)]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<nr>\w+)\s*\)'
+      variable_capture: "vdev"
+      description: "注册视频设备"
+
+    # video_unregister_device - 注销视频设备
+    - pattern: 'video_unregister_device\s*\(\s*(?P<vdev>[^)]+)\s*\)'
+      variable_capture: "vdev"
+      description: "注销视频设备"
+
+    # devm_video_register_device - 资源管理注册
+    - pattern: 'devm_video_register_device\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<vdev>[^)]+)\s*,\s*(?P<type>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理方式注册视频设备"
+
+
+# ============================================================
+# V4L2 DEVICE
+# ============================================================
+
+v4l2_device:
+  description: "V4L2 Device - 视频设备"
+  header: "media/v4l2-device.h"
+
+  bind_patterns:
+    # v4l2_device_register - 注册 V4L2 设备
+    - pattern: 'v4l2_device_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<v4l2_dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "注册 V4L2 设备"
+
+    # v4l2_device_unregister - 注销 V4L2 设备
+    - pattern: 'v4l2_device_unregister\s*\(\s*(?P<v4l2_dev>[^)]+)\s*\)'
+      variable_capture: "v4l2_dev"
+      description: "注销 V4L2 设备"
+
+    # v4l2_device_register_subdev - 注册子设备
+    - pattern: 'v4l2_device_register_subdev\s*\(\s*(?P<v4l2_dev>[^)]+)\s*,\s*(?P<sd>[^)]+)\s*\)'
+      variable_capture: "v4l2_dev"
+      description: "注册 V4L2 子设备"
+
+
+# ============================================================
+# V4L2 SUBDEV
+# ============================================================
+
+v4l2_subdev:
+  description: "V4L2 Subdev - 视频子设备"
+  header: "media/v4l2-subdev.h"
+
+  bind_patterns:
+    # v4l2_subdev_init - 初始化子设备
+    - pattern: 'v4l2_subdev_init\s*\(\s*(?P<sd>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      variable_capture: "sd"
+      description: "初始化 V4L2 子设备"
+
+  callbacks:
+    core:
+      pattern: '\.core\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "核心操作"
+
+    video:
+      pattern: '\.video\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "视频操作"
+
+    subdev:
+      pattern: '\.subdev\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "子设备操作"
+
+    sensor:
+      pattern: '\.sensor\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "传感器操作"
+
+
+# ============================================================
+# V4L2 FILE OPERATIONS
+# ============================================================
+
+v4l2_file_ops:
+  description: "V4L2 File Operations - 视频文件操作"
+  header: "linux/videodev2.h"
+
+  bind_patterns:
+    # struct v4l2_file_operations
+    - pattern: 'struct v4l2_file_operations\s*\{[^}]+\}'
+      description: "V4L2 文件操作结构"
+
+  callbacks:
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "打开操作"
+
+    release:
+      pattern: '\.release\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "释放操作"
+
+    read:
+      pattern: '\.read\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "读取操作"
+
+    write:
+      pattern: '\.write\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "写入操作"
+
+    poll:
+      pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "轮询操作"
+
+    mmap:
+      pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "内存映射操作"
+
+    ioctl:
+      pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "IOCTL 操作"
+
+
+# ============================================================
+# V4L2 IOCTL
+# ============================================================
+
+v4l2_ioctl:
+  description: "V4L2 IOCTL - 视频控制"
+  header: "linux/videodev2.h"
+
+  bind_patterns:
+    # VIDIOC_*
+    - pattern: 'VIDIOC_(?P<cmd>\w+)'
+      description: "V4L2 IOCTL 命令"
+
+    # VIDIOC_QUERYCAP
+    - pattern: 'VIDIOC_QUERYCAP'
+      description: "查询设备能力"
+
+    # VIDIOC_ENUM_FMT
+    - pattern: 'VIDIOC_ENUM_FMT'
+      description: "枚举格式"
+
+    # VIDIOC_S_FMT
+    - pattern: 'VIDIOC_S_FMT'
+      description: "设置格式"
+
+    # VIDIOC_G_FMT
+    - pattern: 'VIDIOC_G_FMT'
+      description: "获取格式"
+
+    # VIDIOC_REQBUFS
+    - pattern: 'VIDIOC_REQBUFS'
+      description: "请求缓冲区"
+
+    # VIDIOC_QBUF
+    - pattern: 'VIDIOC_QBUF'
+      description: "入队缓冲区"
+
+    # VIDIOC_DQBUF
+    - pattern: 'VIDIOC_DQBUF'
+      description: "出队缓冲区"
+
+    # VIDIOC_STREAMON
+    - pattern: 'VIDIOC_STREAMON'
+      description: "开启流"
+
+    # VIDIOC_STREAMOFF
+    - pattern: 'VIDIOC_STREAMOFF'
+      description: "关闭流"
+
+
+# ============================================================
+# V4L2 BUFFER
+# ============================================================
+
+v4l2_buffer:
+  description: "V4L2 Buffer - 视频缓冲区"
+  header: "linux/videodev2.h"
+
+  bind_patterns:
+    # struct v4l2_buffer
+    - pattern: 'struct v4l2_buffer\s*\{[^}]+\}'
+      description: "V4L2 缓冲区结构"
+
+    # struct v4l2_plane
+    - pattern: 'struct v4l2_plane\s*\{[^}]+\}'
+      description: "V4L2 平面结构"
+
+
+# ============================================================
+# V4L2 FORMAT
+# ============================================================
+
+v4l2_format:
+  description: "V4L2 Format - 视频格式"
+  header: "linux/videodev2.h"
+
+  bind_patterns:
+    # struct v4l2_format
+    - pattern: 'struct v4l2_format\s*\{[^}]+\}'
+      description: "V4L2 格式结构"
+
+    # struct v4l2_pix_format
+    - pattern: 'struct v4l2_pix_format\s*\{[^}]+\}'
+      description: "像素格式结构"
+
+    # V4L2_PIX_FMT_*
+    - pattern: 'V4L2_PIX_FMT_(?P<fmt>\w+)'
+      description: "像素格式定义"
+
+
+# ============================================================
+# V4L2 EXAMPLES
+# ============================================================
+
+examples:
+  - description: "V4L2 设备驱动"
+    code: |
+      static int my_querycap(struct file *file, void *priv,
+                             struct v4l2_capability *cap) {
+          strlcpy(cap->driver, "my-video", sizeof(cap->driver));
+          strlcpy(cap->card, "My Video Device", sizeof(cap->card));
+          cap->capabilities = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+          return 0;
+      }
+
+      static int my_enum_fmt(struct file *file, void *priv,
+                             struct v4l2_fmtdesc *f) {
+          if (f->index >= NUM_FORMATS)
+              return -EINVAL;
+          f->pixelformat = my_formats[f->index];
+          return 0;
+      }
+
+      static int my_s_fmt(struct file *file, void *priv,
+                          struct v4l2_format *f) {
+          my_dev->width = f->fmt.pix.width;
+          my_dev->height = f->fmt.pix.height;
+          my_dev->format = f->fmt.pix.pixelformat;
+          return 0;
+      }
+
+      static const struct v4l2_ioctl_ops my_ioctl_ops = {
+          .vidioc_querycap = my_querycap,
+          .vidioc_enum_fmt_vid_cap = my_enum_fmt,
+          .vidioc_s_fmt_vid_cap = my_s_fmt,
+          .vidioc_g_fmt_vid_cap = my_g_fmt,
+          .vidioc_reqbufs = my_reqbufs,
+          .vidioc_qbuf = my_qbuf,
+          .vidioc_dqbuf = my_dqbuf,
+          .vidioc_streamon = my_streamon,
+          .vidioc_streamoff = my_streamoff,
+      };
+
+      static const struct v4l2_file_operations my_fops = {
+          .owner = THIS_MODULE,
+          .open = my_open,
+          .release = my_release,
+          .read = my_read,
+          .poll = my_poll,
+          .ioctl = video_ioctl2,
+          .mmap = my_mmap,
+      };
+
+      static struct video_device my_vdev = {
+          .name = "my-video",
+          .fops = &my_fops,
+          .ioctl_ops = &my_ioctl_ops,
+          .release = video_device_release,
+      };
+
+      static int __init my_init(void) {
+          struct video_device *vdev;
+
+          vdev = video_device_alloc();
+          if (!vdev)
+              return -ENOMEM;
+          *vdev = my_vdev;
+
+          return video_register_device(vdev, VFL_TYPE_VIDEO, -1);
+      }

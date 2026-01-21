@@ -1,0 +1,288 @@
+# Linux Kernel PHY Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/phy.html
+
+# ============================================================
+# PHY CORE
+# ============================================================
+
+phy_core:
+  description: "PHY Core - PHY 芯片核心"
+  header: "linux/phy.h"
+  icon: "🌐"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # phy_create - 创建 PHY
+    - pattern: 'phy_create\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<node>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "创建 PHY 设备"
+
+    # phy_destroy - 销毁 PHY
+    - pattern: 'phy_destroy\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      variable_capture: "phy"
+      description: "销毁 PHY 设备"
+
+    # devm_phy_create - 资源管理创建
+    - pattern: 'devm_phy_create\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<node>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理方式创建 PHY"
+
+
+# ============================================================
+# PHY CONSUMER
+# ============================================================
+
+phy_consumer:
+  description: "PHY Consumer - PHY 消费者"
+  header: "linux/phy.h"
+
+  bind_patterns:
+    # phy_get - 获取 PHY
+    - pattern: 'phy_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "获取 PHY 设备"
+
+    # phy_optional_get - 可选获取 PHY
+    - pattern: 'phy_optional_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "可选获取 PHY 设备"
+
+    # phy_put - 释放 PHY
+    - pattern: 'phy_put\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      variable_capture: "phy"
+      description: "释放 PHY 设备"
+
+
+# ============================================================
+# PHY POWER
+# ============================================================
+
+phy_power:
+  description: "PHY Power - PHY 电源管理"
+  header: "linux/phy.h"
+
+  bind_patterns:
+    # phy_power_on - 开启 PHY 电源
+    - pattern: 'phy_power_on\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      variable_capture: "phy"
+      description: "开启 PHY 电源"
+
+    # phy_power_off - 关闭 PHY 电源
+    - pattern: 'phy_power_off\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      variable_capture: "phy"
+      description: "关闭 PHY 电源"
+
+    # phy_start - 启动 PHY
+    - pattern: 'phy_start\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      variable_capture: "phy"
+      description: "启动 PHY"
+
+    # phy_stop - 停止 PHY
+    - pattern: 'phy_stop\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      variable_capture: "phy"
+      description: "停止 PHY"
+
+
+# ============================================================
+# PHY READ/WRITE
+# ============================================================
+
+phy_access:
+  description: "PHY Access - PHY 读写"
+  header: "linux/phy.h"
+
+  bind_patterns:
+    # phy_read - 读取 PHY 寄存器
+    - pattern: 'phy_read\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<regnum>\w+)\s*\)'
+      variable_capture: "phy"
+      description: "读取 PHY 寄存器"
+
+    # phy_write - 写入 PHY 寄存器
+    - pattern: 'phy_write\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<regnum>\w+)\s*,\s*(?P<val>\w+)\s*\)'
+      variable_capture: "phy"
+      description: "写入 PHY 寄存器"
+
+    # phy_read_mmd - 读取 MMD 寄存器
+    - pattern: 'phy_read_mmd\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<devad>\w+)\s*,\s*(?P<regnum>\w+)\s*\)'
+      variable_capture: "phy"
+      description: "读取 MMD 寄存器"
+
+    # phy_write_mmd - 写入 MMD 寄存器
+    - pattern: 'phy_write_mmd\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<devad>\w+)\s*,\s*(?P<regnum>\w+)\s*,\s*(?P<val>\w+)\s*\)'
+      variable_capture: "phy"
+      description: "写入 MMD 寄存器"
+
+
+# ============================================================
+# PHY CONFIG
+# ============================================================
+
+phy_config:
+  description: "PHY Config - PHY 配置"
+  header: "linux/phy.h"
+
+  bind_patterns:
+    # phy_validate - 验证 PHY
+    - pattern: 'phy_validate\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<mode>\w+)\s*,\s*(?P<dev_flags>\w+)\s*\)'
+      variable_capture: "phy"
+      description: "验证 PHY 配置"
+
+    # phy_config_aneg - 配置自动协商
+    - pattern: 'phy_config_aneg\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      variable_capture: "phy"
+      description: "配置自动协商"
+
+    # phy_start_aneg - 启动自动协商
+    - pattern: 'phy_start_aneg\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      variable_capture: "phy"
+      description: "启动自动协商"
+
+    # phy_read_status - 读取状态
+    - pattern: 'phy_read_status\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      variable_capture: "phy"
+      description: "读取 PHY 状态"
+
+
+# ============================================================
+# PHY CALLBACKS
+# ============================================================
+
+phy_callbacks:
+  description: "PHY Callbacks - PHY 回调"
+  header: "linux/phy.h"
+
+  bind_patterns:
+    # struct phy_ops
+    - pattern: 'struct phy_ops\s*\{[^}]+\}'
+      description: "PHY 操作结构"
+
+  callbacks:
+    init:
+      pattern: '\.init\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "初始化回调"
+
+    exit:
+      pattern: '\.exit\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "退出回调"
+
+    reset:
+      pattern: '\.reset\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "复位回调"
+
+    start:
+      pattern: '\.start\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "启动回调"
+
+    stop:
+      pattern: '\.stop\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "停止回调"
+
+    get_rate:
+      pattern: '\.get_rate\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取速率"
+
+    set_rate:
+      pattern: '\.set_rate\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置速率"
+
+    set_mode:
+      pattern: '\.set_mode\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置模式"
+
+    get_mode:
+      pattern: '\.get_mode\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取模式"
+
+
+# ============================================================
+# PHY STATES
+# ============================================================
+
+phy_state:
+  description: "PHY State - PHY 状态"
+  header: "linux/phy.h"
+
+  bind_patterns:
+    # phy_state_machine - PHY 状态机
+    - pattern: 'phy_state\s*\{[^}]+\}'
+      description: "PHY 状态结构"
+
+    # PHY_*_AN - 自动协商状态
+    - pattern: 'PHY_(?P<state>\w+)_AN'
+      description: "自动协商状态"
+
+    # PHY_FORCING - 强制状态
+    - pattern: 'PHY_FORCING'
+      description: "强制状态"
+
+
+# ============================================================
+# PHY EXAMPLES
+# ============================================================
+
+examples:
+  - description: "PHY 驱动"
+    code: |
+      static int my_phy_init(struct phy *phy) {
+          struct my_phy_data *priv;
+
+          priv = phy_get_drvdata(phy);
+          /* 初始化 PHY */
+          phy_write(phy, MII_BMCR, BMCR_RESET);
+          return 0;
+      }
+
+      static int my_phy_reset(struct phy *phy) {
+          /* 复位 PHY */
+          gpio_set_value(phy_reset_gpio, 0);
+          udelay(10);
+          gpio_set_value(phy_reset_gpio, 1);
+          return 0;
+      }
+
+      static int my_phy_config_aneg(struct phy *phy) {
+          u16 adv = ADVERTISE_ALL | ADVERTISE_CSMA;
+          phy_write(phy, MII_ADVERTISE, adv);
+          return 0;
+      }
+
+      static int my_phy_read_status(struct phy *phy) {
+          struct phy_device *phydev = to_phy_device(phy->dev);
+
+          phydev->speed = SPEED_100;
+          phydev->duplex = DUPLEX_FULL;
+          return 0;
+      }
+
+      static struct phy_ops my_phy_ops = {
+          .init = my_phy_init,
+          .reset = my_phy_reset,
+          .config_aneg = my_phy_config_aneg,
+          .read_status = my_phy_read_status,
+          .owner = THIS_MODULE,
+      };
+
+      static int __init my_phy_probe(struct platform_device *pdev) {
+          struct phy *phy;
+
+          phy = devm_phy_create(&pdev->dev, NULL, &my_phy_ops);
+          if (IS_ERR(phy))
+              return PTR_ERR(phy);
+
+          return 0;
+      }

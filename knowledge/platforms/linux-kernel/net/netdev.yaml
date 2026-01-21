@@ -1,0 +1,445 @@
+# Linux Kernel Network Device Driver Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/networking/index.html
+
+# ============================================================
+# NET DEVICE OPERATIONS
+# ============================================================
+
+netdev_ops:
+  description: "Network Device Operations - 网络设备操作"
+  header: "linux/netdevice.h"
+  icon: "🌐"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+    special_contexts:
+      - name: "ndo_start_xmit"
+        type: "softirq"
+        can_sleep: false
+      - name: "ndo_rx"
+        type: "softirq"
+        can_sleep: false
+
+  bind_patterns:
+    # 分配网络设备
+    - pattern: 'alloc_etherdev\s*\(\s*(?P<size>\d+)\s*\)'
+      description: "分配以太网设备"
+
+    - pattern: 'alloc_netdev\s*\(\s*(?P<size>\d+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<setup>\w+)\s*\)'
+      description: "分配通用网络设备"
+
+    - pattern: 'alloc_etherdev(sizeof.*\)'
+      description: "分配以太网设备 (带私有数据)"
+
+    # 注册/注销网络设备
+    - pattern: 'register_netdev\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "注册网络设备"
+
+    - pattern: 'unregister_netdev\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "注销网络设备"
+
+    - pattern: 'free_netdev\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "释放网络设备"
+
+  driver_structure:
+    - pattern: 'static const struct net_device_ops\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "Net device ops 结构体"
+
+  callbacks:
+    # 打开/关闭
+    ndo_open:
+      pattern: '\.ndo_open\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "打开网络接口"
+      context: "process"
+
+    ndo_stop:
+      pattern: '\.ndo_stop\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "关闭网络接口"
+      context: "process"
+
+    # 传输
+    ndo_start_xmit:
+      pattern: '\.ndo_start_xmit\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "开始数据包传输"
+      context: "softirq"
+      return_type: "netdev_tx_t"
+
+    ndo_validate_addr:
+      pattern: '\.ndo_validate_addr\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "验证地址"
+
+    # 统计
+    ndo_get_stats:
+      pattern: '\.ndo_get_stats\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取统计信息"
+
+    # I/O 控制
+    ndo_do_ioctl:
+      pattern: '\.ndo_do_ioctl\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设备 I/O 控制"
+
+    ndo_set_mac_address:
+      pattern: '\.ndo_set_mac_address\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置 MAC 地址"
+
+    # 特性
+    ndo_set_features:
+      pattern: '\.ndo_set_features\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置设备特性"
+
+    # 事件
+    ndo_tx_timeout:
+      pattern: '\.ndo_tx_timeout\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "传输超时处理"
+      context: "softirq"
+
+    ndo_change_rx_flags:
+      pattern: '\.ndo_change_rx_flags\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "修改接收标志"
+
+    # VLAN
+    ndo_vlan_rx_add_vid:
+      pattern: '\.ndo_vlan_rx_add_vid\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "添加 VLAN ID"
+
+    ndo_vlan_rx_kill_vid:
+      pattern: '\.ndo_vlan_rx_kill_vid\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "移除 VLAN ID"
+
+  ndo_open_signature:
+    return_type: "int"
+    parameters:
+      - name: "dev"
+        type: "struct net_device *"
+
+  ndo_stop_signature:
+    return_type: "int"
+    parameters:
+      - name: "dev"
+        type: "struct net_device *"
+
+  ndo_start_xmit_signature:
+    return_type: "netdev_tx_t"
+    parameters:
+      - name: "skb"
+        type: "struct sk_buff *"
+      - name: "dev"
+        type: "struct net_device *"
+
+  ndo_tx_timeout_signature:
+    return_type: "void"
+    parameters:
+      - name: "dev"
+        type: "struct net_device *"
+
+  kernel_call_chain:
+    trigger: "用户空间打开接口 (ifconfig/ip)"
+    chain:
+      - function: "ifconfig/ip"
+        description: "用户空间命令"
+      - function: "dev_open"
+        file: "net/core/dev.c"
+      - function: "my_ndo_open(dev)"
+        file: "用户代码"
+        description: "用户 open 函数"
+        is_user_entry: true
+
+    tx_chain:
+      trigger: "用户空间发送数据 (send/socket)"
+      chain:
+        - function: "sendmsg()"
+          description: "用户空间发送"
+        - function: "sock_sendmsg"
+        - function: "inet_sendmsg"
+        - function: "dev_queue_xmit"
+          file: "net/core/dev.c"
+        - function: "my_ndo_start_xmit(skb, dev)"
+          file: "用户代码"
+          description: "用户传输函数 (软中断上下文)"
+          is_user_entry: true
+          context: "softirq"
+
+    timeout_chain:
+      trigger: "传输超时"
+      chain:
+        - function: "netdev_watchdog"
+          file: "net/core/dev.c"
+        - function: "my_ndo_tx_timeout(dev)"
+          file: "用户代码"
+          description: "用户超时处理"
+          is_user_entry: true
+
+  notes:
+    - "ndo_start_xmit 在软中断上下文执行，不能 sleep"
+    - "超时处理也在软中断上下文"
+    - "NAPI 用于高效中断处理"
+
+
+# ============================================================
+# NAPI (New API)
+# ============================================================
+
+napi:
+  description: "NAPI - 高效中断处理"
+  header: "linux/netdevice.h"
+  icon: "📡"
+
+  bind_patterns:
+    # netif_napi_add - 添加 NAPI
+    - pattern: 'netif_napi_add\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<napi>[^)]+)\s*,\s*(?P<poll>\w+)\s*,\s*(?P<weight>\d+)\s*\)'
+      variable_capture: "dev"
+      extra_captures:
+        - name: "napi"
+          description: "NAPI 结构体"
+        - name: "poll"
+          description: "轮询函数"
+        - name: "weight"
+          description: "权重"
+
+    # netif_napi_del - 删除 NAPI
+    - pattern: 'netif_napi_del\s*\(\s*(?P<napi>[^)]+)\s*\)'
+      variable_capture: "napi"
+      description: "删除 NAPI"
+
+    # napi_schedule - 调度 NAPI
+    - pattern: 'napi_schedule\s*\(\s*(?P<napi>[^)]+)\s*\)'
+      variable_capture: "napi"
+      description: "调度 NAPI 处理"
+
+    # napi_schedule_prep - 准备调度
+    - pattern: 'napi_schedule_prep\s*\(\s*(?P<napi>[^)]+)\s*\)'
+      variable_capture: "napi"
+      description: "检查是否可以调度"
+
+    # napi_disable - 禁用 NAPI
+    - pattern: 'napi_disable\s*\(\s*(?P<napi>[^)]+)\s*\)'
+      variable_capture: "napi"
+      description: "禁用 NAPI"
+
+    # napi_enable - 启用 NAPI
+    - pattern: 'napi_enable\s*\(\s*(?P<napi>[^)]+)\s*\)'
+      variable_capture: "napi"
+      description: "启用 NAPI"
+
+    # napi_complete - 完成处理
+    - pattern: 'napi_complete\s*\(\s*(?P<napi>[^)]+)\s*\)'
+      variable_capture: "napi"
+      description: "完成 NAPI 处理"
+
+  poll_signature:
+    return_type: "int"
+    parameters:
+      - name: "napi"
+        type: "struct napi_struct *"
+      - name: "budget"
+        type: "int"
+    return_values:
+      - value: ">= 0"
+        description: "已处理的包数"
+
+
+# ============================================================
+# NET DEVICE INTERRUPT
+# ============================================================
+
+netdev_interrupt:
+  description: "Network Device Interrupt Handling"
+  header: "linux/netdevice.h"
+
+  bind_patterns:
+    # request_irq for netdev
+    - pattern: 'request_irq\s*\([^,]+,\s*(?P<handler>\w+)\s*,\s*[^)]+,\s*(?P<name>[^)]+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+      handler_capture: "handler"
+      description: "请求网络中断"
+
+    # devm_request_irq
+    - pattern: 'devm_request_irq\s*\([^,]+,\s*(?P<handler>\w+)\s*,\s*[^)]+,\s*(?P<name>[^)]+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+      handler_capture: "handler"
+      description: "请求网络中断 (资源管理)"
+
+
+# ============================================================
+# NET DEVICE HELPER FUNCTIONS
+# ============================================================
+
+netdev_helpers:
+  description: "Network Device Helper Functions"
+  header: "linux/netdevice.h"
+
+  functions:
+    # 设备状态
+    netif_running:
+      pattern: 'netif_running\s*\([^)]+\)'
+      description: "检查接口是否运行"
+
+    netif_carrier_ok:
+      pattern: 'netif_carrier_ok\s*\([^)]+\)'
+      description: "检查载波"
+
+    netif_dormant:
+      pattern: 'netif_dormant\s*\([^)]+\)'
+      description: "检查休眠状态"
+
+    # 队列控制
+    netif_start_queue:
+      pattern: 'netif_start_queue\s*\([^)]+\)'
+      description: "启动传输队列"
+
+    netif_stop_queue:
+      pattern: 'netif_stop_queue\s*\([^)]+\)'
+      description: "停止传输队列"
+
+    netif_wake_queue:
+      pattern: 'netif_wake_queue\s*\([^)]+\)'
+      description: "唤醒传输队列"
+
+    netif_tx_stopped:
+      pattern: 'netif_tx_stopped\s*\([^)]+\)'
+      description: "检查传输队列是否停止"
+
+    # 统计
+    netdev_get_stats:
+      pattern: 'netdev_get_stats\s*\([^)]+\)'
+      description: "获取设备统计"
+
+    # 私有数据
+    netdev_priv:
+      pattern: 'netdev_priv\s*\([^)]+\)'
+      description: "获取设备私有数据"
+
+    # 传输
+    dev_kfree_skb:
+      pattern: 'dev_kfree_skb\s*\([^)]+\)'
+      description: "释放 skb"
+
+    dev_kfree_skb_any:
+      pattern: 'dev_kfree_skb_any\s*\([^)]+\)'
+      description: "无条件释放 skb"
+
+    netif_receive_skb:
+      pattern: 'netif_receive_skb\s*\([^)]+\)'
+      description: "接收 skb"
+
+
+# ============================================================
+# NET DEVICE EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单网络驱动"
+    code: |
+      static int my_open(struct net_device *dev) {
+          int ret;
+
+          /* 启用 NAPI */
+          napi_enable(&dev->napi);
+
+          /* 请求中断 */
+          ret = request_irq(dev->irq, my_irq_handler,
+                           IRQF_SHARED, dev->name, dev);
+          if (ret)
+              return ret;
+
+          /* 启动队列 */
+          netif_start_queue(dev);
+
+          return 0;
+      }
+
+      static int my_stop(struct net_device *dev) {
+          /* 停止队列 */
+          netif_stop_queue(dev);
+
+          /* 释放中断 */
+          free_irq(dev->irq, dev);
+
+          /* 禁用 NAPI */
+          napi_disable(&dev->napi);
+
+          return 0;
+      }
+
+      static netdev_tx_t my_start_xmit(struct sk_buff *skb,
+                                       struct net_device *dev) {
+          struct my_priv *priv = netdev_priv(dev);
+          unsigned long flags;
+
+          /* 更新统计 */
+          dev->stats.tx_packets++;
+          dev->stats.tx_bytes += skb->len;
+
+          /* 硬件传输... */
+          ret = my_hw_send(priv, skb->data, skb->len);
+          if (ret != NETDEV_TX_OK) {
+              dev->stats.tx_errors++;
+              dev_kfree_skb(skb);
+              return ret;
+          }
+
+          dev_kfree_skb(skb);
+          return NETDEV_TX_OK;
+      }
+
+      static int my_poll(struct napi_struct *napi, int budget) {
+          struct net_device *dev = napi->dev;
+          struct my_priv *priv = netdev_priv(dev);
+          int work_done = 0;
+
+          /* 接收数据包 */
+          while (work_done < budget) {
+              struct sk_buff *skb = my_rx(priv);
+              if (!skb)
+                  break;
+
+              work_done++;
+              napi_gro_receive(napi, skb);
+          }
+
+          /* 完成轮询 */
+          if (work_done < budget)
+              napi_complete(napi);
+
+          return work_done;
+      }
+
+      static const struct net_device_ops my_netdev_ops = {
+          .ndo_open = my_open,
+          .ndo_stop = my_stop,
+          .ndo_start_xmit = my_start_xmit,
+          .ndo_get_stats = my_get_stats,
+          .ndo_tx_timeout = my_tx_timeout,
+      };
+
+      static int __init my_init(void) {
+          struct net_device *dev;
+
+          dev = alloc_etherdev(sizeof(struct my_priv));
+          dev->netdev_ops = &my_netdev_ops;
+          dev->irq = MY_IRQ;
+          dev->watchdog_timeo = MY_TIMEOUT;
+
+          netif_napi_add(dev, &dev->napi, my_poll, 64);
+
+          register_netdev(dev);
+          return 0;
+      }

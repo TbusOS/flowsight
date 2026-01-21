@@ -1,0 +1,392 @@
+# Linux Kernel I2C Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/i2c/index.html
+
+# ============================================================
+# I2C DRIVER
+# ============================================================
+
+i2c_driver:
+  description: "I2C Driver - I2C 设备驱动"
+  header: "linux/i2c.h"
+  icon: "🔗"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # i2c_add_driver - 注册驱动
+    - pattern: 'i2c_add_driver\s*\(\s*(?P<driver>[^)]+)\s*\)'
+      variable_capture: "driver"
+      description: "注册 I2C 驱动"
+
+    # i2c_register_driver - 详细注册
+    - pattern: 'i2c_register_driver\s*\(\s*(?P<owner>\w+)\s*,\s*(?P<driver>[^)]+)\s*\)'
+      variable_capture: "driver"
+      extra_captures:
+        - name: "owner"
+          description: "模块所有者"
+
+    # module_i2c_driver - 模块宏
+    - pattern: 'module_i2c_driver\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "模块化的 I2C 驱动注册"
+
+  driver_structure:
+    - pattern: 'static struct i2c_driver\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "I2C driver 结构体定义"
+
+  callbacks:
+    probe:
+      pattern: '\.probe\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Probe 回调"
+
+    remove:
+      pattern: '\.remove\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Remove 回调"
+
+    shutdown:
+      pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Shutdown 回调"
+
+    suspend:
+      pattern: '\.suspend\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Suspend 回调"
+
+    resume:
+      pattern: '\.resume\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Resume 回调"
+
+    id_table:
+      pattern: '\.id_table\s*='
+      description: "设备 ID 表"
+
+    class:
+      pattern: '\.class\s*='
+      description: "I2C 设备类"
+
+    detect:
+      pattern: '\.detect\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "自动检测回调"
+
+    address_list:
+      pattern: '\.address_list\s*='
+      description: "I2C 地址列表"
+
+  probe_signature:
+    return_type: "int"
+    parameters:
+      - name: "client"
+        type: "struct i2c_client *"
+        description: "I2C 客户端"
+      - name: "id"
+        type: "const struct i2c_device_id *"
+        description: "匹配的设备 ID"
+
+  remove_signature:
+    return_type: "int"
+    parameters:
+      - name: "client"
+        type: "struct i2c_client *"
+        description: "I2C 客户端"
+
+  kernel_call_chain:
+    trigger: "I2C 设备与驱动匹配"
+    chain:
+      - function: "i2c_register_adapter"
+        file: "drivers/i2c/i2c-core.c"
+        description: "注册 I2C 适配器"
+      - function: "i2c_device_match"
+        file: "drivers/i2c/i2c-core.c"
+        description: "匹配设备与驱动"
+      - function: "i2c_device_probe"
+        file: "drivers/i2c/i2c-core.c"
+        description: "探测设备"
+      - function: "my_probe(client, id)"
+        file: "用户代码"
+        description: "用户 probe 函数"
+        is_user_entry: true
+
+      # Remove 路径
+      - function: "i2c_device_remove"
+        file: "drivers/i2c/i2c-core.c"
+      - function: "my_remove(client)"
+        file: "用户代码"
+        description: "用户 remove 函数"
+        is_user_entry: true
+
+  notes:
+    - "I2C 设备通过总线枚举或设备树发现"
+    - "probe 中获取 i2c_client 访问设备"
+    - "使用 i2c_transfer 进行数据传输"
+
+
+# ============================================================
+# I2C CLIENT
+# ============================================================
+
+i2c_client:
+  description: "I2C Client - I2C 客户端设备"
+  header: "linux/i2c.h"
+
+  bind_patterns:
+    # i2c_new_device - 创建设备
+    - pattern: 'i2c_new_device\s*\(\s*(?P<adapter>[^)]+)\s*,\s*(?P<info>[^)]+)\s*\)'
+      variable_capture: "adapter"
+      description: "创建新的 I2C 设备"
+
+    # i2c_new_dummy_device - 创建虚拟设备
+    - pattern: 'i2c_new_dummy_device\s*\(\s*(?P<adapter>[^)]+)\s*,\s*(?P<addr>\w+)\s*\)'
+      variable_capture: "adapter"
+      description: "创建虚拟 I2C 设备"
+
+    # i2c_unregister_device - 注销设备
+    - pattern: 'i2c_unregister_device\s*\(\s*(?P<client>[^)]+)\s*\)'
+      variable_capture: "client"
+      description: "注销 I2C 设备"
+
+  client_fields:
+    - name: "adapter"
+      type: "struct i2c_adapter *"
+      description: "I2C 适配器"
+    - name: "addr"
+      type: "u16"
+      description: "I2C 地址"
+    - name: "name"
+      type: "const char *"
+      description: "设备名称"
+    - name: "dev"
+      type: "struct device"
+      description: "设备结构"
+
+
+# ============================================================
+# I2C DEVICE ID
+# ============================================================
+
+i2c_device_id:
+  description: "I2C Device ID Table"
+  header: "linux/mod_devicetable.h"
+
+  bind_patterns:
+    # I2C ID 表格定义
+    - pattern: 'static struct i2c_device_id\s+(?P<name>\w+)\s*\[\]\s*=\s*\{'
+      variable_capture: "name"
+      description: "I2C 设备 ID 表"
+
+    # 单个 ID 条目
+    - pattern: '\{\s*(?P<name>["\']?[\w\-]+["\']?)\s*,\s*(?P<driver_data>\w+)\s*\}'
+      extra_captures:
+        - name: "name"
+          description: "设备名称"
+        - name: "driver_data"
+          description: "驱动私有数据"
+
+    # 终止符
+    - pattern: '\{\s*\}'
+      description: "ID 表终止符"
+
+    # MODULE_DEVICE_TABLE
+    - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*i2c\s*,\s*(?P<table>\w+)\s*\)'
+      variable_capture: "table"
+      description: "模块导出 I2C ID 表"
+
+
+# ============================================================
+# I2C TRANSFER
+# ============================================================
+
+i2c_transfer:
+  description: "I2C Data Transfer - I2C 数据传输"
+  header: "linux/i2c.h"
+
+  bind_patterns:
+    # i2c_transfer - 传输消息
+    - pattern: 'i2c_transfer\s*\(\s*(?P<client>[^)]+)\s*,\s*(?P<msgs>[^)]+)\s*,\s*(?P<num>\d+)\s*\)'
+      variable_capture: "client"
+      description: "I2C 消息传输"
+
+    # i2c_master_send - 发送数据
+    - pattern: 'i2c_master_send\s*\(\s*(?P<client>[^)]+)\s*,\s*(?P<buf>[^)]+)\s*,\s*(?P<count>\d+)\s*\)'
+      variable_capture: "client"
+      description: "主设备发送"
+
+    # i2c_master_recv - 接收数据
+    - pattern: 'i2c_master_recv\s*\(\s*(?P<client>[^)]+)\s*,\s*(?P<buf>[^)]+)\s*,\s*(?P<count>\d+)\s*\)'
+      variable_capture: "client"
+      description: "主设备接收"
+
+  i2c_msg:
+    pattern: 'struct i2c_msg\s*\{[^}]+\}'
+    description: "I2C 消息结构"
+
+  msg_fields:
+    - name: "addr"
+      type: "u16"
+      description: "从设备地址"
+    - name: "flags"
+      type: "u16"
+      description: "消息标志 (I2C_M_RD, etc.)"
+    - name: "len"
+      type: "u16"
+      description: "数据长度"
+    - name: "buf"
+      type: "u8 *"
+      description: "数据缓冲区"
+
+
+# ============================================================
+# I2C ALGORITHM
+# ============================================================
+
+i2c_algorithm:
+  description: "I2C Algorithm - I2C 传输算法"
+  header: "linux/i2c.h"
+
+  bind_patterns:
+    # i2c_set_adapdata - 设置适配器数据
+    - pattern: 'i2c_set_adapdata\s*\(\s*(?P<adapter>[^)]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "adapter"
+      description: "设置适配器私有数据"
+
+    # i2c_get_adapdata - 获取适配器数据
+    - pattern: 'i2c_get_adapdata\s*\(\s*(?P<adapter>[^)]+)\s*\)'
+      variable_capture: "adapter"
+      description: "获取适配器私有数据"
+
+
+# ============================================================
+# I2C DEVICE TREE
+# ============================================================
+
+i2c_device_tree:
+  description: "I2C Device Tree Binding"
+  header: "linux/of.h"
+
+  bind_patterns:
+    # of_match_table
+    - pattern: '\.of_match_table\s*=\s*(?P<table>\w+)'
+      description: "设备树匹配表"
+
+    # I2C 设备树节点
+    - pattern: '&(?P<bus>\w+)\s*\{[^}]*reg\s*=\s*<(?P<addr>0x[\da-fA-F]+)>/'
+      extra_captures:
+        - name: "bus"
+          description: "I2C 总线节点"
+        - name: "addr"
+          description: "I2C 设备地址"
+
+    # MODULE_DEVICE_TABLE(of, ...)
+    - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*of\s*,\s*(?P<table>\w+)\s*\)'
+      variable_capture: "table"
+      description: "模块导出设备树匹配"
+
+
+# ============================================================
+# I2C DRIVER EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 I2C 驱动"
+    code: |
+      static int my_probe(struct i2c_client *client,
+                         const struct i2c_device_id *id) {
+          struct my_i2c_dev *dev;
+          int ret;
+
+          dev = devm_kzalloc(&client->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+
+          dev->client = client;
+          i2c_set_clientdata(client, dev);
+
+          /* 读取寄存器 */
+          ret = i2c_smbus_read_byte_data(client, REG_CHIP_ID);
+          if (ret < 0) {
+              dev_err(&client->dev, "Failed to read chip id\n");
+              return ret;
+          }
+          dev->chip_id = ret;
+
+          /* 初始化设备 */
+          ret = my_init_device(dev);
+          if (ret)
+              return ret;
+
+          /* 设置中断 */
+          if (client->irq) {
+              ret = devm_request_threaded_irq(&client->dev,
+                                              client->irq,
+                                              my_irq_handler,
+                                              my_irq_thread,
+                                              IRQF_ONESHOT,
+                                              "my_i2c", dev);
+              if (ret)
+                  return ret;
+          }
+
+          return 0;
+      }
+
+      static int my_remove(struct i2c_client *client) {
+          struct my_i2c_dev *dev = i2c_get_clientdata(client);
+          my_cleanup_device(dev);
+          return 0;
+      }
+
+      static struct i2c_device_id my_id_table[] = {
+          { "my-i2c-device", 0 },
+          { }
+      };
+
+      static const struct of_device_id my_of_match[] = {
+          { .compatible = "vendor,my-i2c-device" },
+          { }
+      };
+
+      static struct i2c_driver my_driver = {
+          .driver = {
+              .name = "my-i2c-driver",
+              .of_match_table = my_of_match,
+          },
+          .probe = my_probe,
+          .remove = my_remove,
+          .id_table = my_id_table,
+      };
+      module_i2c_driver(my_driver);
+
+  - description: "I2C 设备创建"
+    code: |
+      static struct i2c_board_info my_i2c_devices[] = {
+          {
+              I2C_BOARD_INFO("eeprom", 0x50),
+              .platform_data = &eeprom_data,
+          },
+          {
+              I2C_BOARD_INFO("rtc", 0x68),
+              .irq = gpio_to_irq(rtc_irq_pin),
+          },
+      };
+
+      static int __init my_board_init(void) {
+          struct i2c_adapter *adapter;
+
+          adapter = i2c_get_adapter(I2C_BUS);
+          if (adapter) {
+              i2c_new_client_device(adapter, my_i2c_devices,
+                                    ARRAY_SIZE(my_i2c_devices));
+              i2c_put_adapter(adapter);
+          }
+          return 0;
+      }

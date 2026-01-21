@@ -1,0 +1,123 @@
+# Completion Primitive Knowledge Base
+# Synchronization primitive for one-time signaling
+
+completion:
+  description: "Completion - 一次性信号同步机制"
+  header: "linux/completion.h"
+  icon: "✅"
+
+  context:
+    type: "process"
+    can_sleep: true
+    notes:
+      - "wait_for_completion 在 process context 执行，会睡眠"
+      - "complete/complete_all 在任何上下文都可调用"
+
+  bind_patterns:
+    # 静态初始化
+    - pattern: 'DECLARE_COMPLETION\s*\(\s*(?P<var>\w+)\s*\)'
+      variable_capture: "var"
+      description: "静态声明 completion"
+
+    - pattern: 'DECLARE_COMPLETION_ONSTACK\s*\(\s*(?P<var>\w+)\s*\)'
+      variable_capture: "var"
+      description: "栈上声明 completion"
+
+    # 动态初始化
+    - pattern: 'init_completion\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "动态初始化 completion"
+
+    # 等待
+    - pattern: 'wait_for_completion\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "等待 completion (可中断)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'wait_for_completion_interruptible\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "可中断等待 completion"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'wait_for_completion_timeout\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,'
+      variable_capture: "var"
+      description: "限时等待 completion"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'wait_for_completion_killable\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "可 kill 等待 completion"
+      context: "process"
+      can_sleep: true
+
+    # 唤醒
+    - pattern: 'complete\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "唤醒一个等待者"
+      context: "any"
+
+    - pattern: 'complete_all\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "唤醒所有等待者"
+      context: "any"
+
+  kernel_call_chain:
+    trigger: "线程等待 I/O 完成"
+    chain:
+      - function: "wait_for_completion(&done)"
+        description: "线程进入睡眠"
+        context: "process"
+        is_user_entry: true
+      - function: "schedule()"
+        description: "调度其他进程运行"
+      - function: "其他代码调用 complete()"
+        description: "中断或工作队列完成操作"
+        context: "any"
+      - function: "wake_up()"
+        description: "唤醒等待线程"
+      - function: "schedule()"
+        description: "调度回原线程"
+      - function: "wait_for_completion() 返回"
+        description: "继续执行"
+        is_user_entry: true
+
+  use_cases:
+    - description: "模块卸载时等待所有操作完成"
+      pattern: |
+        void module_cleanup(void) {
+            complete_all(&cleanup_done);
+        }
+
+        void module_worker(struct work_struct *work) {
+            /* 执行清理工作 */
+            complete(&cleanup_done);
+        }
+
+    - description: "异步操作完成通知"
+      pattern: |
+        int async_operation(struct completion *done) {
+            /* 提交异步工作 */
+            queue_work(wq, &async_work);
+
+            /* 等待完成 */
+            wait_for_completion(done);
+
+            /* 处理结果 */
+        }
+
+    - description: "线程池同步"
+      pattern: |
+        for (i = 0; i < num_workers; i++)
+            wake_up_process(worker_threads[i]);
+
+        wait_for_completion(&all_workers_ready);
+
+  notes:
+    - "completion 是轻量级的一次性信号机制"
+    - "适合用于一个等待者对应一个或多个完成者的场景"
+    - "与 semaphore 的区别: completion 只唤醒一次(除非用 complete_all)"
+    - "reinit_completion() 可重新初始化已使用的 completion"
+

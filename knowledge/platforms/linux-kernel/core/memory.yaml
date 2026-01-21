@@ -1,0 +1,361 @@
+# Linux Kernel Memory Management Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/mm/index.html
+
+# ============================================================
+# MEMORY MANAGEMENT CORE
+# ============================================================
+
+mm_core:
+  description: "Memory Management Core - 内存管理核心"
+  header: "linux/mm.h"
+  icon: "🧠"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # kmalloc - 内核堆分配
+    - pattern: 'kmalloc\s*\(\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "size"
+      description: "内核堆分配"
+
+    # kzalloc - 零初始化分配
+    - pattern: 'kzalloc\s*\(\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "size"
+      description: "零初始化内存分配"
+
+    # kmalloc_array - 数组分配
+    - pattern: 'kmalloc_array\s*\(\s*(?P<n>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "n"
+      description: "数组内存分配"
+
+    # kcalloc - 零初始化数组
+    - pattern: 'kcalloc\s*\(\s*(?P<n>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "n"
+      description: "零初始化数组分配"
+
+    # krealloc - 重新分配
+    - pattern: 'krealloc\s*\(\s*(?P<ptr>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "ptr"
+      description: "重新分配内存"
+
+    # kfree - 释放内存
+    - pattern: 'kfree\s*\(\s*(?P<ptr>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "释放内核内存"
+
+    # vmalloc - 虚拟内存分配
+    - pattern: 'vmalloc\s*\(\s*(?P<size>\w+)\s*\)'
+      variable_capture: "size"
+      description: "虚拟内存分配"
+
+    # vfree - 释放虚拟内存
+    - pattern: 'vfree\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "释放虚拟内存"
+
+    # __get_free_pages - 获取页
+    - pattern: '__get_free_pages\s*\(\s*(?P<flags>\w+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "flags"
+      description: "分配连续物理页"
+
+    # __get_free_page - 获取单页
+    - pattern: '__get_free_page\s*\(\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "flags"
+      description: "分配单个物理页"
+
+    # free_pages - 释放页
+    - pattern: 'free_pages\s*\(\s*(?P<addr>\w+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "addr"
+      description: "释放物理页"
+
+    # alloc_pages - 分配页
+    - pattern: 'alloc_pages\s*\(\s*(?P<flags>\w+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "flags"
+      description: "分配页框"
+
+    # __free_pages - 释放页框
+    - pattern: '__free_pages\s*\(\s*(?P<page>[^)]+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "page"
+      description: "释放页框"
+
+
+# ============================================================
+# SLAB ALLOCATOR
+# ============================================================
+
+slab_allocator:
+  description: "Slab Allocator - SLAB 分配器"
+  header: "linux/slab.h"
+
+  bind_patterns:
+    # kmem_cache_create - 创建缓存
+    - pattern: 'kmem_cache_create\s*\(\s*(?P<name>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<align>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<ctor>[^)]*)\s*\)'
+      variable_capture: "name"
+      description: "创建 SLAB 缓存"
+
+    # kmem_cache_destroy - 销毁缓存
+    - pattern: 'kmem_cache_destroy\s*\(\s*(?P<cache>[^)]+)\s*\)'
+      variable_capture: "cache"
+      description: "销毁 SLAB 缓存"
+
+    # kmem_cache_alloc - 从缓存分配
+    - pattern: 'kmem_cache_alloc\s*\(\s*(?P<cache>[^)]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "cache"
+      description: "从 SLAB 缓存分配"
+
+    # kmem_cache_zalloc - 零初始化分配
+    - pattern: 'kmem_cache_zalloc\s*\(\s*(?P<cache>[^)]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "cache"
+      description: "零初始化 SLAB 分配"
+
+    # kmem_cache_free - 释放回缓存
+    - pattern: 'kmem_cache_free\s*\(\s*(?P<cache>[^)]+)\s*,\s*(?P<obj>[^)]+)\s*\)'
+      variable_capture: "cache"
+      description: "释放对象回缓存"
+
+    # kmem_cache_alloc_node - 节点分配
+    - pattern: 'kmem_cache_alloc_node\s*\(\s*(?P<cache>[^)]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
+      variable_capture: "cache"
+      description: "从指定节点分配"
+
+
+# ============================================================
+# SLUB ALLOCATOR
+# ============================================================
+
+slub_allocator:
+  description: "SLUB Allocator - SLUB 分配器"
+  header: "linux/slub_def.h"
+
+  bind_patterns:
+    # kmem_cache_create - SLUB 缓存创建
+    - pattern: 'kmem_cache_create\s*\(\s*(?P<name>[^)]+)\s*,\s*(?P<size>\w+)'
+      variable_capture: "name"
+      description: "创建 SLUB 缓存"
+
+    # kmalloc_node - 节点分配
+    - pattern: 'kmalloc_node\s*\(\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
+      variable_capture: "size"
+      description: "从指定节点分配"
+
+
+# ============================================================
+# MEMORY FLAGS (GFP)
+# ============================================================
+
+gfp_flags:
+  description: "GFP Flags - 内存分配标志"
+  header: "linux/gfp.h"
+
+  bind_patterns:
+    # GFP_KERNEL - 普通内核分配
+    - pattern: 'GFP_KERNEL'
+      description: "普通内核分配 (可能睡眠)"
+
+    # GFP_ATOMIC - 原子分配
+    - pattern: 'GFP_ATOMIC'
+      description: "原子上下文分配 (不能睡眠)"
+
+    # GFP_NOFS - 不触发文件系统操作
+    - pattern: 'GFP_NOFS'
+      description: "不调用文件系统"
+
+    # GFP_NOIO - 不触发 IO 操作
+    - pattern: 'GFP_NOIO'
+      description: "不进行磁盘 IO"
+
+    # GFP_HIGHUSER - 高用户内存
+    - pattern: 'GFP_HIGHUSER'
+      description: "从高端内存分配"
+
+    # GFP_USER - 用户内存
+    - pattern: 'GFP_USER'
+      description: "用户空间分配"
+
+    # GFP_DMA - DMA 内存
+    - pattern: 'GFP_DMA'
+      description: "DMA 可达内存"
+
+    # GFP_DMA32 - 32位 DMA 内存
+    - pattern: 'GFP_DMA32'
+      description: "32位 DMA 内存"
+
+    # __GFP_HIGH - 高优先级
+    - pattern: '__GFP_HIGH'
+      description: "高优先级分配"
+
+    # __GFP_IO - 允许 IO
+    - pattern: '__GFP_IO'
+      description: "允许磁盘 IO"
+
+    # __GFP_FS - 允许文件系统
+    - pattern: '__GFP_FS'
+      description: "允许文件系统调用"
+
+
+# ============================================================
+# PAGE FLAGS
+# ============================================================
+
+page_flags:
+  description: "Page Flags - 页标志"
+  header: "linux/page-flags.h"
+
+  bind_patterns:
+    # PageReserved - 保留页
+    - pattern: 'PageReserved\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查保留页"
+
+    # PageDirty - 脏页
+    - pattern: 'PageDirty\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查脏页"
+
+    # PageWriteback - 写回中
+    - pattern: 'PageWriteback\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查写回页"
+
+    # PageMappedToDisk - 映射到磁盘
+    - pattern: 'PageMappedToDisk\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查映射页"
+
+    # SetPageDirty - 标记脏页
+    - pattern: 'SetPageDirty\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "标记脏页"
+
+    # ClearPageDirty - 清除脏页
+    - pattern: 'ClearPageDirty\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "清除脏页"
+
+
+# ============================================================
+# PAGE OPERATIONS
+# ============================================================
+
+page_ops:
+  description: "Page Operations - 页操作"
+  header: "linux/mm.h"
+
+  bind_patterns:
+    # virt_to_page - 虚拟地址转页
+    - pattern: 'virt_to_page\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "虚拟地址转页结构"
+
+    # page_to_virt - 页转虚拟地址
+    - pattern: 'page_to_virt\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "页结构转虚拟地址"
+
+    # virt_to_phys - 虚拟转物理
+    - pattern: 'virt_to_phys\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "虚拟地址转物理地址"
+
+    # phys_to_virt - 物理转虚拟
+    - pattern: 'phys_to_virt\s*\(\s*(?P<addr>\w+)\s*\)'
+      variable_capture: "addr"
+      description: "物理地址转虚拟地址"
+
+    # __va - 物理转虚拟
+    - pattern: '__va\s*\(\s*(?P<addr>\w+)\s*\)'
+      variable_capture: "addr"
+      description: "物理地址转虚拟地址"
+
+    # __pa - 虚拟转物理
+    - pattern: '__pa\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "虚拟地址转物理地址"
+
+
+# ============================================================
+# MAPPING OPERATIONS
+# ============================================================
+
+mapping_ops:
+  description: "Mapping Operations - 映射操作"
+  header: "linux/mm.h"
+
+  bind_patterns:
+    # vmalloc - 分配虚拟连续内存
+    - pattern: 'vmalloc\s*\(\s*(?P<size>\w+)\s*\)'
+      variable_capture: "size"
+      description: "虚拟内存分配"
+
+    # vfree - 释放虚拟内存
+    - pattern: 'vfree\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "释放虚拟内存"
+
+    # vmalloc_to_pfn - 虚拟地址转 PFN
+    - pattern: 'vmalloc_to_pfn\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "虚拟地址转页帧号"
+
+
+# ============================================================
+# MEMORY MANAGEMENT EXAMPLES
+# ============================================================
+
+examples:
+  - description: "内存分配示例"
+    code: |
+      static int my_init(void) {
+          struct my_data *data;
+          void *buffer;
+          struct page *page;
+
+          /* kmalloc 分配 */
+          data = kmalloc(sizeof(*data), GFP_KERNEL);
+          if (!data)
+              return -ENOMEM;
+
+          /* kzalloc 零初始化分配 */
+          buffer = kzalloc(1024, GFP_KERNEL);
+          if (!buffer) {
+              kfree(data);
+              return -ENOMEM;
+          }
+
+          /* 分配单个页 */
+          page = alloc_pages(GFP_KERNEL, 0);
+          if (!page) {
+              kfree(buffer);
+              kfree(data);
+              return -ENOMEM;
+          }
+
+          __free_pages(page, 0);
+          vfree(buffer);
+          kfree(data);
+          return 0;
+      }
+
+  - description: "SLAB 缓存示例"
+    code: |
+      static struct kmem_cache *my_cache;
+
+      static int __init my_cache_init(void) {
+          my_cache = kmem_cache_create("my_cache",
+                                       sizeof(struct my_obj),
+                                       0,
+                                       SLAB_HWCACHE_ALIGN,
+                                       NULL);
+          if (!my_cache)
+              return -ENOMEM;
+          return 0;
+      }
+
+      static void __exit my_cache_exit(void) {
+          kmem_cache_destroy(my_cache);
+      }
