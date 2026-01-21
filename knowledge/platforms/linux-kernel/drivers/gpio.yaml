@@ -1,0 +1,415 @@
+# Linux Kernel GPIO Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/gpio/index.html
+
+# ============================================================
+# GPIO LIBRARY
+# ============================================================
+
+gpio_lib:
+  description: "GPIO Library - 通用输入输出库"
+  header: "linux/gpio.h"
+  icon: "🔌"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # gpio_request - 请求 GPIO
+    - pattern: 'gpio_request\s*\(\s*(?P<gpio>\w+)\s*,\s*(?P<label>[^)]*)\s*\)'
+      variable_capture: "gpio"
+      extra_captures:
+        - name: "label"
+          description: "GPIO 标签"
+
+    # gpio_free - 释放 GPIO
+    - pattern: 'gpio_free\s*\(\s*(?P<gpio>\w+)\s*\)'
+      variable_capture: "gpio"
+      description: "释放 GPIO"
+
+    # gpio_direction_input - 设置输入方向
+    - pattern: 'gpio_direction_input\s*\(\s*(?P<gpio>\w+)\s*\)'
+      variable_capture: "gpio"
+      description: "设置 GPIO 为输入"
+
+    # gpio_direction_output - 设置输出方向
+    - pattern: 'gpio_direction_output\s*\(\s*(?P<gpio>\w+)\s*,\s*(?P<value>\w+)\s*\)'
+      variable_capture: "gpio"
+      extra_captures:
+        - name: "value"
+          description: "初始输出值"
+
+    # gpio_get_value - 读取 GPIO 值
+    - pattern: 'gpio_get_value\s*\(\s*(?P<gpio>\w+)\s*\)'
+      variable_capture: "gpio"
+      description: "读取 GPIO 值"
+
+    # gpio_set_value - 设置 GPIO 值
+    - pattern: 'gpio_set_value\s*\(\s*(?P<gpio>\w+)\s*,\s*(?P<value>\w+)\s*\)'
+      variable_capture: "gpio"
+      description: "设置 GPIO 值"
+
+    # gpio_to_irq - 映射到 IRQ
+    - pattern: 'gpio_to_irq\s*\(\s*(?P<gpio>\w+)\s*\)'
+      variable_capture: "gpio"
+      description: "GPIO 转换为中断号"
+
+    # gpio_request_array - 批量请求
+    - pattern: 'gpio_request_array\s*\(\s*(?P<array>[^)]+)\s*,\s*(?P<label>[^)]*)\s*\)'
+      variable_capture: "array"
+      description: "批量请求 GPIO"
+
+    # gpio_free_array - 批量释放
+    - pattern: 'gpio_free_array\s*\(\s*(?P<array>[^)]+)\s*\)'
+      variable_capture: "array"
+      description: "批量释放 GPIO"
+
+  notes:
+    - "旧的 GPIO API 已在 Linux 5.10+ 中标记为废弃"
+    - "新代码应使用 GPIO 子系统 API (gpiod_* 函数)"
+    - "gpiod_get() 和 gpiod_put() 优先于 gpio_request() 和 gpio_free()"
+
+
+# ============================================================
+# GPIO DESCRIPTOR
+# ============================================================
+
+gpio_descriptor:
+  description: "GPIO Descriptor API - GPIO 描述符接口"
+  header: "linux/gpio/consumer.h"
+  icon: "📋"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # gpiod_get - 获取 GPIO 描述符
+    - pattern: 'gpiod_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<conid>[^)]*)\s*,\s*(?P<flags>[^)]*)\s*\)'
+      variable_capture: "dev"
+      description: "获取 GPIO 描述符"
+
+    # gpiod_get_optional - 可选获取
+    - pattern: 'gpiod_get_optional\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<conid>[^)]*)\s*,\s*(?P<flags>[^)]*)\s*\)'
+      variable_capture: "dev"
+      description: "可选获取 GPIO 描述符"
+
+    # gpiod_get_index - 带索引获取
+    - pattern: 'gpiod_get_index\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<conid>[^)]*)\s*,\s*(?P<index>\w+)\s*,\s*(?P<flags>[^)]*)\s*\)'
+      variable_capture: "dev"
+      description: "获取指定索引的 GPIO"
+
+    # gpiod_put - 释放描述符
+    - pattern: 'gpiod_put\s*\(\s*(?P<desc>[^)]+)\s*\)'
+      variable_capture: "desc"
+      description: "释放 GPIO 描述符"
+
+    # gpiod_put_array - 批量释放
+    - pattern: 'gpiod_put_array\s*\(\s*(?P<array>[^)]+)\s*\)'
+      variable_capture: "array"
+      description: "批量释放 GPIO"
+
+    # gpiod_direction_input - 设置方向
+    - pattern: 'gpiod_direction_input\s*\(\s*(?P<desc>[^)]+)\s*\)'
+      variable_capture: "desc"
+      description: "设置输入方向"
+
+    # gpiod_direction_output - 设置输出
+    - pattern: 'gpiod_direction_output\s*\(\s*(?P<desc>[^)]+)\s*,\s*(?P<value>\w+)\s*\)'
+      variable_capture: "desc"
+      description: "设置输出方向"
+
+    # gpiod_get_value - 读取值
+    - pattern: 'gpiod_get_value\s*\(\s*(?P<desc>[^)]+)\s*\)'
+      variable_capture: "desc"
+      description: "读取 GPIO 值"
+
+    # gpiod_set_value - 设置值
+    - pattern: 'gpiod_set_value\s*\(\s*(?P<desc>[^)]+)\s*,\s*(?P<value>\w+)\s*\)'
+      variable_capture: "desc"
+      description: "设置 GPIO 值"
+
+    # gpiod_to_irq - 转换为 IRQ
+    - pattern: 'gpiod_to_irq\s*\(\s*(?P<desc>[^)]+)\s*\)'
+      variable_capture: "desc"
+      description: "GPIO 转换为中断"
+
+    # gpiod_set_debounce - 去抖动
+    - pattern: 'gpiod_set_debounce\s*\(\s*(?P<desc>[^)]+)\s*,\s*(?P<debounce>\w+)\s*\)'
+      variable_capture: "desc"
+      description: "设置去抖动时间"
+
+    # gpiod_export - 导出到用户空间
+    - pattern: 'gpiod_export\s*\(\s*(?P<desc>[^)]+)\s*\)'
+      variable_capture: "desc"
+      description: "导出 GPIO"
+
+    # gpiod_unexport - 取消导出
+    - pattern: 'gpiod_unexport\s*\(\s*(?P<desc>[^)]+)\s*\)'
+      variable_capture: "desc"
+      description: "取消导出 GPIO"
+
+
+# ============================================================
+# GPIO CHIP
+# ============================================================
+
+gpio_chip:
+  description: "GPIO Chip Driver - GPIO 芯片驱动"
+  header: "linux/gpio/driver.h"
+  icon: "💾"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # gpiochip_add - 添加 GPIO chip
+    - pattern: 'gpiochip_add\s*\(\s*(?P<chip>[^)]+)\s*\)'
+      variable_capture: "chip"
+      description: "添加 GPIO chip"
+
+    # gpiochip_remove - 移除 GPIO chip
+    - pattern: 'gpiochip_remove\s*\(\s*(?P<chip>[^)]+)\s*\)'
+      variable_capture: "chip"
+      description: "移除 GPIO chip"
+
+    # gpiochip_add_data_with_key - 带数据添加
+    - pattern: 'gpiochip_add_data_with_key\s*\(\s*(?P<data>[^)]+)\s*,\s*(?P<key>[^)]*)\s*\)'
+      variable_capture: "data"
+      description: "添加带数据的 GPIO chip"
+
+  chip_structure:
+    - pattern: 'struct gpio_chip\s*\{[^}]+\}'
+      description: "GPIO chip 结构体"
+
+  chip_callbacks:
+    # 获取方向
+    get_direction:
+      pattern: '\.get_direction\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取引脚方向"
+
+    # 设置方向
+    direction_input:
+      pattern: '\.direction_input\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置输入方向"
+
+    direction_output:
+      pattern: '\.direction_output\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置输出方向"
+
+    # 获取/设置值
+    get:
+      pattern: '\.get\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取引脚值"
+
+    set:
+      pattern: '\.set\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置引脚值"
+
+    # 批量操作
+    get_multiple:
+      pattern: '\.get_multiple\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "批量获取"
+
+    set_multiple:
+      pattern: '\.set_multiple\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "批量设置"
+
+    # 中断相关
+    to_irq:
+      pattern: '\.to_irq\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "转换为中断号"
+
+    set_debounce:
+      pattern: '\.set_debounce\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置去抖动"
+
+  chip_fields:
+    - name: "parent"
+      type: "struct device *"
+      description: "父设备"
+    - name: "label"
+      type: "const char *"
+      description: "标签"
+    - name: "ngpio"
+      type: "unsigned int"
+      description: "GPIO 数量"
+    - name: "base"
+      type: "int"
+      description: "起始 GPIO 编号"
+    - name: "can_sleep"
+      type: "bool"
+      description: "是否可能睡眠"
+
+
+# ============================================================
+# GPIO IRQ
+# ============================================================
+
+gpio_irq:
+  description: "GPIO IRQ Handling - GPIO 中断处理"
+  header: "linux/gpio/consumer.h"
+  icon: "⚡"
+
+  bind_patterns:
+    # gpiod_set_debounce - 设置去抖动
+    - pattern: 'gpiod_set_debounce\s*\(\s*(?P<desc>[^)]+)\s*,\s*(?P<debounce>\d+)\s*\)'
+      variable_capture: "desc"
+      description: "设置去抖动"
+
+    # irq_domain 映射
+    - pattern: 'gpio_to_irq\s*\(\s*(?P<gpio>\w+)\s*\)'
+      variable_capture: "gpio"
+      description: "GPIO 转中断号"
+
+    # request_irq with gpio
+    - pattern: 'request_irq\s*\(\s*(?P<irq>[^)]+)\s*,\s*(?P<handler>\w+)\s*,\s*[^)]*,\s*(?P<name>[^)]*)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+      handler_capture: "handler"
+      description: "请求中断处理"
+
+
+# ============================================================
+# GPIO HELPER FUNCTIONS
+# ============================================================
+
+gpio_helpers:
+  description: "GPIO Helper Functions"
+  header: "linux/gpio.h"
+
+  functions:
+    # 数值转换
+    gpio_valid:
+      pattern: 'gpio_valid\s*\([^)]+\)'
+      description: "检查 GPIO 是否有效"
+
+    gpio_cansleep:
+      pattern: 'gpio_cansleep\s*\([^)]+\)'
+      description: "检查是否可以睡眠"
+
+    gpio_is_valid:
+      pattern: 'gpio_is_valid\s*\([^)]+\)'
+      description: "检查 GPIO 有效性"
+
+    # 批量操作
+    gpiod_get_array:
+      pattern: 'gpiod_get_array\s*\([^)]+\)'
+      description: "获取 GPIO 数组"
+
+    gpiod_get_array_optional:
+      pattern: 'gpiod_get_array_optional\s*\([^)]+\)'
+      description: "可选获取数组"
+
+
+# ============================================================
+# GPIO EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 GPIO 使用"
+    code: |
+      static int led_gpio = 17;
+      static int button_gpio = 18;
+
+      static int __init my_init(void) {
+          int ret;
+
+          /* 请求 LED GPIO */
+          ret = gpio_request(led_gpio, "led-gpio");
+          if (ret)
+              return ret;
+
+          /* 设置为输出，初始为低 */
+          ret = gpio_direction_output(led_gpio, 0);
+          if (ret) {
+              gpio_free(led_gpio);
+              return ret;
+          }
+
+          /* 请求按钮 GPIO */
+          ret = gpio_request(button_gpio, "button-gpio");
+          if (ret) {
+              gpio_free(led_gpio);
+              return ret;
+          }
+
+          ret = gpio_direction_input(button_gpio);
+          if (ret) {
+              gpio_free(button_gpio);
+              gpio_free(led_gpio);
+              return ret;
+          }
+
+          /* 映射按钮到中断 */
+          my_irq = gpio_to_irq(button_gpio);
+          ret = request_irq(my_irq, button_irq_handler,
+                          IRQF_TRIGGER_FALLING, "button", NULL);
+
+          return 0;
+      }
+
+      static void __exit my_exit(void) {
+          free_irq(gpio_to_irq(button_gpio), NULL);
+          gpio_free(button_gpio);
+          gpio_free(led_gpio);
+      }
+
+  - description: "使用 gpiod API (推荐)"
+    code: |
+      static struct gpio_desc *led;
+      static struct gpio_desc *button;
+
+      static irqreturn_t button_irq_handler(int irq, void *dev_id) {
+          int val;
+
+          /* 读取按钮状态 */
+          val = gpiod_get_value(led);
+          gpiod_set_value(led, !val);
+
+          return IRQ_HANDLED;
+        }
+
+      static int __init my_init(void) {
+          int ret;
+
+          /* 获取 GPIO 描述符 */
+          led = gpiod_get(&my_pdev->dev, "led", GPIOD_OUT_LOW);
+          if (IS_ERR(led))
+              return PTR_ERR(led);
+
+          button = gpiod_get(&my_pdev->dev, "button", GPIOD_IN);
+          if (IS_ERR(button)) {
+              gpiod_put(led);
+              return PTR_ERR(button);
+          }
+
+          /* 设置去抖动 */
+          gpiod_set_debounce(button, 200);
+
+          /* 映射到中断 */
+          ret = gpiod_to_irq(button);
+          if (ret < 0)
+              return ret;
+
+          ret = request_threaded_irq(ret, NULL, button_irq_handler,
+                                   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+                                   "button", NULL);
+
+          return ret;
+      }

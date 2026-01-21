@@ -1,0 +1,309 @@
+# Linux Kernel Timer Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/core-api/timer.html
+
+# ============================================================
+# TIMER LIST (Legacy timer API)
+# ============================================================
+
+timer_list:
+  description: "Kernel Timer (timer_list) - 定时器机制"
+  header: "linux/timer.h"
+  icon: "⏲️"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # DEFINE_TIMER - 静态初始化 (旧式宏)
+    - pattern: 'DEFINE_TIMER\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "global"
+      description: "静态定义和初始化 timer"
+
+    # timer_setup - 动态初始化 (新式 API)
+    - pattern: 'timer_setup\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "struct_field"
+      description: "动态初始化 timer (推荐方式)"
+      extra_captures:
+        - name: "flags"
+          description: "Timer flags (如 0, TIMER_IRQSAFE)"
+
+    # timer_setup 简化形式
+    - pattern: 'timer_setup\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "struct_field"
+      description: "动态初始化 timer (无 flags)"
+
+  trigger_patterns:
+    # mod_timer - 修改/启动 timer
+    - pattern: 'mod_timer\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<expires>[\w\+\*\/\(\)]+)\s*\)'
+      variable_capture: "var"
+      extra_captures:
+        - name: "expires"
+          description: "超时时间 (jiffies)"
+      condition:
+        timing: "deferred"
+        requires_bind: true
+
+    # add_timer - 启动一次性 timer
+    - pattern: 'add_timer\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      condition:
+        timing: "deferred"
+        requires_bind: true
+
+    # del_timer / del_timer_sync - 删除 timer
+    - pattern: 'del_timer\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "async"
+      description: "异步删除 timer"
+
+    - pattern: 'del_timer_sync\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "sync"
+      description: "同步删除 timer，等待回调完成"
+
+  cancel_patterns:
+    - pattern: 'del_timer\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "async"
+
+    - pattern: 'del_timer_sync\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "sync"
+
+  handler_signature:
+    return_type: "void"
+    parameters:
+      - name: "timer"
+        type: "struct timer_list *"
+        description: "Timer 结构体指针"
+
+  kernel_call_chain:
+    trigger: "Timer 超时 (软中断上下文)"
+    chain:
+      - function: "run_timer_softirq"
+        file: "kernel/time/timer.c"
+        description: "Timer 软中断处理函数"
+      - function: "timer_forward"
+        file: "kernel/time/timer.c"
+        description: "Timer 向前推进"
+      - function: "timer->function"
+        file: "用户代码"
+        description: "用户 timer 回调函数"
+        is_user_entry: true
+
+  notes:
+    - "Timer 在软中断 (TIMER_SOFTIRQ) 上下文执行"
+    - "不能 sleep，不能被调度"
+    - "使用 container_of 从 timer_list 获取父结构体"
+    - "del_timer_sync 只能在进程上下文调用"
+
+
+# ============================================================
+# HIGH RESOLUTION TIMER (hrtimer)
+# ============================================================
+
+hrtimer:
+  description: "High Resolution Timer - 高精度定时器"
+  header: "linux/hrtimer.h"
+  icon: "⏱️"
+
+  context:
+    type: "hardirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # 直接初始化函数指针
+    - pattern: '(?P<var>[\w\.\->]+)\.function\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      description: "直接设置 hrtimer.function"
+
+    # hrtimer_init
+    - pattern: 'hrtimer_init\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<clockid>\w+)\s*,\s*(?P<mode>\w+)\s*\)'
+      variable_capture: "var"
+      extra_captures:
+        - name: "clockid"
+          description: "时钟类型 (CLOCK_REALTIME, CLOCK_MONOTONIC, etc.)"
+        - name: "mode"
+          description: "模式 (HRTIMER_MODE_ABS, HRTIMER_MODE_REL, etc.)"
+
+    # DEFINE_HRTIMER (如果存在)
+    - pattern: 'DEFINE_HRTIMER\s*\(\s*(?P<var>\w+)\s*(?:,\s*(?P<handler>\w+))?\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      description: "静态定义 hrtimer"
+
+  trigger_patterns:
+    # hrtimer_start
+    - pattern: 'hrtimer_start\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<expires>[\w\+\*\/\(\)]+)\s*,\s*(?P<mode>\w+)\s*\)'
+      variable_capture: "var"
+      extra_captures:
+        - name: "expires"
+          description: "超时时间 (ktime_t)"
+        - name: "mode"
+          description: "启动模式"
+      condition:
+        timing: "deferred"
+        requires_bind: true
+
+    # hrtimer_start_expires (简化)
+    - pattern: 'hrtimer_start_expires\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<expires>\w+)\s*\)'
+      variable_capture: "var"
+      description: "使用 ktime_t 启动"
+
+    # hrtimer_cancel
+    - pattern: 'hrtimer_cancel\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "sync"
+      description: "取消 hrtimer"
+
+    # hrtimer_try_to_cancel
+    - pattern: 'hrtimer_try_to_cancel\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "trycancel"
+      description: "尝试取消 hrtimer"
+
+  cancel_patterns:
+    - pattern: 'hrtimer_cancel\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "sync"
+
+    - pattern: 'hrtimer_try_to_cancel\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "trycancel"
+
+  handler_signature:
+    return_type: "enum hrtimer_restart"
+    parameters:
+      - name: "timer"
+        type: "struct hrtimer *"
+        description: "Hrtimer 结构体指针"
+
+  return_values:
+    - value: "HRTIMER_NORESTART"
+      description: "不重新启动 timer"
+    - value: "HRTIMER_RESTART"
+      description: "重新启动 timer"
+
+  kernel_call_chain:
+    trigger: "Hrtimer 超时 (硬中断上下文)"
+    chain:
+      - function: "hrtimer_interrupt"
+        file: "kernel/time/hrtimer.c"
+        description: "Hrtimer 中断处理"
+      - function: "__hrtimer_run_queues"
+        file: "kernel/time/hrtimer.c"
+        description: "执行所有到期的 hrtimer"
+      - function: "timer->function"
+        file: "用户代码"
+        description: "用户 hrtimer 回调"
+        is_user_entry: true
+
+  notes:
+    - "Hrtimer 在硬中断上下文执行"
+    - "精度可达纳秒级"
+    - "需要时钟源支持"
+    - "回调返回值决定是否重启"
+
+
+# ============================================================
+# TIMER HELPERS
+# ============================================================
+
+timer_helpers:
+  description: "Timer Helper Functions"
+  header: "linux/timer.h"
+
+  helpers:
+    # 时间转换
+    jiffies_to_msecs:
+      pattern: 'jiffies_to_msecs\s*\([^)]+\)'
+      description: "Jiffies 转换为毫秒"
+
+    msecs_to_jiffies:
+      pattern: 'msecs_to_jiffies\s*\([^)]+\)'
+      description: "毫秒转换为 jiffies"
+
+    jiffies_to_usecs:
+      pattern: 'jiffies_to_usecs\s*\([^)]+\)'
+      description: "Jiffies 转换为微秒"
+
+    usecs_to_jiffies:
+      pattern: 'usecs_to_jiffies\s*\([^)]+\)'
+      description: "微秒转换为 jiffies"
+
+    # Timer 状态
+    timer_pending:
+      pattern: 'timer_pending\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "检查 timer 是否在等待队列中"
+
+    # Hz 转换
+    msleep:
+      pattern: 'msleep\s*\(\s*(?P<ms>\d+)\s*\)'
+      description: "睡眠指定毫秒"
+
+    msleep_interruptible:
+      pattern: 'msleep_interruptible\s*\(\s*(?P<ms>\d+)\s*\)'
+      description: "可中断的毫秒睡眠"
+
+    ssleep:
+      pattern: 'ssleep\s*\(\s*(?P<s>\d+)\s*\)'
+      description: "睡眠指定秒数"
+
+
+# ============================================================
+# TIMER EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单 timer 使用"
+    code: |
+      struct my_device {
+          struct timer_list timer;
+          int counter;
+      };
+
+      static void my_timer_fn(struct timer_list *t) {
+          struct my_device *dev = from_timer(dev, t, timer);
+          dev->counter++;
+          mod_timer(&dev->timer, jiffies + HZ);  // 1秒后再次触发
+      }
+
+      static int my_probe(struct platform_device *pdev) {
+          struct my_device *dev = ...;
+          timer_setup(&dev->timer, my_timer_fn, 0);
+          mod_timer(&dev->timer, jiffies + HZ * 5);  // 5秒后首次触发
+      }
+
+  - description: "Hrtimer 使用"
+    code: |
+      struct my_hrtimer_data {
+          struct hrtimer timer;
+          ktime_t period;
+      };
+
+      static enum hrtimer_restart my_hrtimer_fn(struct hrtimer *t) {
+          struct my_hrtimer_data *data = container_of(t, struct my_hrtimer_data, timer);
+          hrtimer_forward(t, t->base->get_time(), data->period);
+          return HRTIMER_RESTART;
+      }
+
+      static void init_hrtimer(struct my_hrtimer_data *data) {
+          hrtimer_init(&data->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+          data->timer.function = my_hrtimer_fn;
+          data->period = ktime_set(1, 0);  // 1秒
+          hrtimer_start(&data->timer, data->period, HRTIMER_MODE_REL);
+      }

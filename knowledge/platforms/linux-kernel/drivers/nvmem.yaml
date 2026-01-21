@@ -1,0 +1,195 @@
+# Linux Kernel NVMEM (Non-Volatile Memory) Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/nvmem.html
+
+# ============================================================
+# NVMEM CORE
+# ============================================================
+
+nvmem_core:
+  description: "NVMEM Core - 非易失性存储核心"
+  header: "linux/nvmem.h"
+  icon: "💾"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # nvmem_register - 注册 NVMEM
+    - pattern: 'nvmem_register\s*\(\s*(?P<config>[^)]+)\s*\)'
+      variable_capture: "config"
+      description: "注册 NVMEM 设备"
+
+    # nvmem_unregister - 注销 NVMEM
+    - pattern: 'nvmem_unregister\s*\(\s*(?P<nvmem>[^)]+)\s*\)'
+      variable_capture: "nvmem"
+      description: "注销 NVMEM 设备"
+
+    # devm_nvmem_register - 资源管理注册
+    - pattern: 'devm_nvmem_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<config>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理方式注册 NVMEM"
+
+
+# ============================================================
+# NVMEM CELL
+# ============================================================
+
+nvmem_cell:
+  description: "NVMEM Cell - NVMEM 单元"
+  header: "linux/nvmem.h"
+
+  bind_patterns:
+    # nvmem_cell_get - 获取 NVMEM 单元
+    - pattern: 'nvmem_cell_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "获取 NVMEM 单元"
+
+    # nvmem_cell_put - 释放 NVMEM 单元
+    - pattern: 'nvmem_cell_put\s*\(\s*(?P<cell>[^)]+)\s*\)'
+      variable_capture: "cell"
+      description: "释放 NVMEM 单元"
+
+    # nvmem_cell_read - 读取 NVMEM 单元
+    - pattern: 'nvmem_cell_read\s*\(\s*(?P<cell>[^)]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      variable_capture: "cell"
+      description: "读取 NVMEM 单元数据"
+
+    # nvmem_cell_write - 写入 NVMEM 单元
+    - pattern: 'nvmem_cell_write\s*\(\s*(?P<cell>[^)]+)\s*,\s*(?P<buf>[^)]+)\s*,\s*(?P<len>\w+)\s*\)'
+      variable_capture: "cell"
+      description: "写入 NVMEM 单元数据"
+
+
+# ============================================================
+# NVMEM DEVICE
+# ============================================================
+
+nvmem_device:
+  description: "NVMEM Device - NVMEM 设备"
+  header: "linux/nvmem.h"
+
+  bind_patterns:
+    # nvmem_device_find - 查找 NVMEM 设备
+    - pattern: 'nvmem_device_find\s*\(\s*(?P<data>[^)]+)\s*,\s*(?P<match>\w+)\s*\)'
+      variable_capture: "data"
+      description: "查找 NVMEM 设备"
+
+    # nvmem_device_get - 获取 NVMEM 设备
+    - pattern: 'nvmem_device_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "获取 NVMEM 设备"
+
+    # nvmem_device_put - 释放 NVMEM 设备
+    - pattern: 'nvmem_device_put\s*\(\s*(?P<nvmem>[^)]+)\s*\)'
+      variable_capture: "nvmem"
+      description: "释放 NVMEM 设备"
+
+
+# ============================================================
+# NVMEM LAYOUT
+# ============================================================
+
+nvmem_layout:
+  description: "NVMEM Layout - NVMEM 布局"
+  header: "linux/nvmem-provider.h"
+
+  bind_patterns:
+    # struct nvmem_layout
+    - pattern: 'struct nvmem_layout\s*\{[^}]+\}'
+      description: "NVMEM 布局结构"
+
+  callbacks:
+    probe:
+      pattern: '\.probe\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Probe 回调"
+
+    remove:
+      pattern: '\.remove\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Remove 回调"
+
+
+# ============================================================
+# NVMEM CELL INFO
+# ============================================================
+
+nvmem_cell_info:
+  description: "NVMEM Cell Info - NVMEM 单元信息"
+  header: "linux/nvmem-provider.h"
+
+  bind_patterns:
+    # struct nvmem_cell_info
+    - pattern: 'struct nvmem_cell_info\s*\{[^}]+\}'
+      description: "NVMEM 单元信息结构"
+
+    # nvmem_add_cell_otp - 添加 OTP 单元
+    - pattern: 'nvmem_add_cell_otp\s*\(\s*(?P<nvmem>[^)]+)\s*,\s*(?P<info>[^)]+)\s*\)'
+      variable_capture: "nvmem"
+      description: "添加 OTP 单元"
+
+
+# ============================================================
+# NVMEM DEVICE TABLE
+# ============================================================
+
+nvmem_device_id:
+  description: "NVMEM Device ID Table"
+  header: "linux/mod_devicetable.h"
+
+  bind_patterns:
+    # NVMEM ID 表格定义
+    - pattern: 'static struct nvmem_device_id\s+(?P<name>\w+)\s*\[\]\s*=\s*\{'
+      variable_capture: "name"
+      description: "NVMEM 设备 ID 表"
+
+
+# ============================================================
+# NVMEM EXAMPLES
+# ============================================================
+
+examples:
+  - description: "NVMEM 设备驱动"
+    code: |
+      static int my_nvmem_probe(struct nvmem_device *dev,
+                                const struct nvmem_device_id *id) {
+          struct device *nvmem_dev = &dev->dev;
+          void *buf;
+          size_t size;
+
+          size = nvmem_dev.size;
+          buf = kzalloc(size, GFP_KERNEL);
+          if (!buf)
+              return -ENOMEM;
+
+          /* 读取数据 */
+          nvmem_device_read(dev, 0, size, buf);
+
+          /* 解析数据 */
+          ...
+
+          nvmem_device_put(dev);
+          return 0;
+      }
+
+      static void my_nvmem_remove(struct nvmem_device *dev) {
+      }
+
+      static struct nvmem_device_id my_nvmem_id[] = {
+          { "my-nvmem", 0 },
+          { },
+      };
+
+      static struct nvmem_driver my_nvmem = {
+          .driver = {
+              .name = "my-nvmem",
+          },
+          .probe = my_nvmem_probe,
+          .remove = my_nvmem_remove,
+          .id_table = my_nvmem_id,
+      };
+      nvmem_register(&my_nvmem);

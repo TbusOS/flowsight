@@ -1,0 +1,265 @@
+# Linux Kernel Thermal Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/thermal.html
+
+# ============================================================
+# THERMAL CORE
+# ============================================================
+
+thermal_core:
+  description: "Thermal Core - 散热管理核心"
+  header: "linux/thermal.h"
+  icon: "🌡️"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # thermal_zone_device_register - 注册热区
+    - pattern: 'thermal_zone_device_register\s*\(\s*(?P<type>[^)]+)\s*,\s*(?P<trips>\w+)\s*,\s*(?P<devdata>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "注册热区设备"
+
+    # thermal_zone_device_unregister - 注销热区
+    - pattern: 'thermal_zone_device_unregister\s*\(\s*(?P<tz>[^)]+)\s*\)'
+      variable_capture: "tz"
+      description: "注销热区设备"
+
+    # devm_thermal_zone_device_register - 资源管理注册
+    - pattern: 'devm_thermal_zone_device_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<type>[^)]+)\s*,\s*(?P<trips>\w+)\s*,\s*(?P<devdata>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*,\s*(?P<crit_trip_pri>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理方式注册热区设备"
+
+
+# ============================================================
+# THERMAL ZONE
+# ============================================================
+
+thermal_zone:
+  description: "Thermal Zone - 热区"
+  header: "linux/thermal.h"
+
+  bind_patterns:
+    # thermal_zone_get_zone - 获取热区
+    - pattern: 'thermal_zone_get_zone\s*\(\s*(?P<name>[^)]+)\s*\)'
+      description: "获取热区设备"
+
+    # thermal_zone_bind_cooling_device - 绑定冷却设备
+    - pattern: 'thermal_zone_bind_cooling_device\s*\(\s*(?P<tz>[^)]+)\s*,\s*(?P<trip>\w+)\s*,\s*(?P<cdev>[^)]+)\s*,\s*(?P<upper>\w+)\s*,\s*(?P<lower>\w+)\s*,\s*(?P<weight>\w+)\s*\)'
+      variable_capture: "tz"
+      description: "绑定冷却设备到热区"
+
+    # thermal_zone_unbind_cooling_device - 解绑冷却设备
+    - pattern: 'thermal_zone_unbind_cooling_device\s*\(\s*(?P<tz>[^)]+)\s*,\s*(?P<trip>\w+)\s*,\s*(?P<cdev>[^)]+)\s*\)'
+      variable_capture: "tz"
+      description: "解绑冷却设备"
+
+    # thermal_zone_update - 更新热区
+    - pattern: 'thermal_zone_update\s*\(\s*(?P<tz>[^)]+)\s*\)'
+      variable_capture: "tz"
+      description: "更新热区温度"
+
+
+# ============================================================
+# THERMAL COOLING DEVICE
+# ============================================================
+
+thermal_cooling_device:
+  description: "Thermal Cooling Device - 散热设备"
+  header: "linux/thermal.h"
+
+  bind_patterns:
+    # thermal_cooling_device_register - 注册散热设备
+    - pattern: 'thermal_cooling_device_register\s*\(\s*(?P<type>[^)]+)\s*,\s*(?P<devdata>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "注册散热设备"
+
+    # thermal_cooling_device_unregister - 注销散热设备
+    - pattern: 'thermal_cooling_device_unregister\s*\(\s*(?P<cdev>[^)]+)\s*\)'
+      variable_capture: "cdev"
+      description: "注销散热设备"
+
+    # devm_thermal_cooling_device_register - 资源管理注册
+    - pattern: 'devm_thermal_cooling_device_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<type>[^)]+)\s*,\s*(?P<devdata>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理方式注册散热设备"
+
+
+# ============================================================
+# THERMAL COOLING DEVICE OPS
+# ============================================================
+
+thermal_cooling_ops:
+  description: "Thermal Cooling Operations - 散热操作"
+  header: "linux/thermal.h"
+
+  bind_patterns:
+    # struct thermal_cooling_device_ops
+    - pattern: 'struct thermal_cooling_device_ops\s*\{[^}]+\}'
+      description: "散热设备操作结构"
+
+  callbacks:
+    get_max_state:
+      pattern: '\.get_max_state\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取最大状态"
+
+    get_cur_state:
+      pattern: '\.get_cur_state\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取当前状态"
+
+    set_cur_state:
+      pattern: '\.set_cur_state\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置当前状态"
+
+    get_requested_power:
+      pattern: '\.get_requested_power\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取请求功率"
+
+    power_off:
+      pattern: '\.power_off\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "关闭电源"
+
+
+# ============================================================
+# THERMAL ZONE OPS
+# ============================================================
+
+thermal_zone_ops:
+  description: "Thermal Zone Operations - 热区操作"
+  header: "linux/thermal.h"
+
+  bind_patterns:
+    # struct thermal_zone_device_ops
+    - pattern: 'struct thermal_zone_device_ops\s*\{[^}]+\}'
+      description: "热区操作结构"
+
+  callbacks:
+    bind:
+      pattern: '\.bind\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "绑定回调"
+
+    unbind:
+      pattern: '\.unbind\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "解绑回调"
+
+    get_temp:
+      pattern: '\.get_temp\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取温度"
+
+    get_trip_temp:
+      pattern: '\.get_trip_temp\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取触发温度"
+
+    get_trip_type:
+      pattern: '\.get_trip_type\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取触发类型"
+
+    get_trip_hyst:
+      pattern: '\.get_trip_hyst\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取触发滞后"
+
+    set_trip_temp:
+      pattern: '\.set_trip_temp\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置触发温度"
+
+    get_crit_temp:
+      pattern: '\.get_crit_temp\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取临界温度"
+
+    notify:
+      pattern: '\.notify\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "通知回调"
+
+
+# ============================================================
+# THERMAL TRIP
+# ============================================================
+
+thermal_trip:
+  description: "Thermal Trip - 热触发点"
+  header: "linux/thermal.h"
+
+  bind_patterns:
+    # THERMAL_TRIP_*
+    - pattern: 'THERMAL_TRIP_(?P<type>\w+)'
+      description: "热触发类型"
+
+    # THERMAL_CRITICAL
+    - pattern: 'THERMAL_CRITICAL'
+      description: "临界温度触发"
+
+    # THERMAL_HOT
+    - pattern: 'THERMAL_HOT'
+      description: "高温触发"
+
+    # THERMAL_PASSIVE
+    - pattern: 'THERMAL_PASSIVE'
+      description: "被动散热触发"
+
+
+# ============================================================
+# THERMAL EXAMPLES
+# ============================================================
+
+examples:
+  - description: "热区驱动"
+    code: |
+      static int my_get_temp(void *data, int *temp) {
+          *temp = read_cpu_temperature();
+          return 0;
+      }
+
+      static int my_get_trip_temp(struct thermal_zone_device *tz,
+                                  int trip, int *temp) {
+          *temp = trip_temps[trip];
+          return 0;
+      }
+
+      static int my_get_trip_type(struct thermal_zone_device *tz,
+                                  int trip, enum thermal_trip_type *type) {
+          *type = trip_types[trip];
+          return 0;
+      }
+
+      static struct thermal_zone_device_ops my_tz_ops = {
+          .get_temp = my_get_temp,
+          .get_trip_temp = my_get_trip_temp,
+          .get_trip_type = my_get_trip_type,
+      };
+
+      static struct thermal_zone_params my_tz_params = {
+          .passive_delay = 5000,
+          .hwmon = true,
+      };
+
+      static int __init my_init(void) {
+          struct thermal_zone_device *tz;
+
+          tz = thermal_zone_device_register("my-thermal",
+                                            3, 0, NULL,
+                                            &my_tz_ops, NULL, 0, 0);
+          if (IS_ERR(tz))
+              return PTR_ERR(tz);
+
+          /* 绑定风扇 */
+          thermal_zone_bind_cooling_device(tz, 0, my_cdev,
+                                           THERMAL_NO_LIMIT,
+                                           THERMAL_NO_LIMIT,
+                                           THERMAL_WEIGHT_DEFAULT);
+          return 0;
+      }

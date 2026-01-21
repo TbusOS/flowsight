@@ -1,0 +1,255 @@
+# Linux Kernel IIO (Industrial I/O) Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/iio/index.html
+
+# ============================================================
+# IIO CORE
+# ============================================================
+
+iio_core:
+  description: "IIO Core - 工业 I/O 核心"
+  header: "linux/iio/iio.h"
+  icon: "📊"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # iio_device_register - 注册 IIO 设备
+    - pattern: 'iio_device_register\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      variable_capture: "indio_dev"
+      description: "注册 IIO 设备"
+
+    # iio_device_unregister - 注销 IIO 设备
+    - pattern: 'iio_device_unregister\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      variable_capture: "indio_dev"
+      description: "注销 IIO 设备"
+
+    # devm_iio_device_register - 资源管理注册
+    - pattern: 'devm_iio_device_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<indio_dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理方式注册 IIO 设备"
+
+
+# ============================================================
+# IIO DEVICE
+# ============================================================
+
+iio_device:
+  description: "IIO Device - IIO 设备"
+  header: "linux/iio/iio.h"
+
+  bind_patterns:
+    # iio_allocate_device - 分配 IIO 设备
+    - pattern: 'iio_allocate_device\s*\(\s*(?P<sizeof_priv>\w+)\s*\)'
+      description: "分配 IIO 设备"
+
+    # iio_free_device - 释放 IIO 设备
+    - pattern: 'iio_free_device\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      variable_capture: "indio_dev"
+      description: "释放 IIO 设备"
+
+
+# ============================================================
+# IIO CHANNEL
+# ============================================================
+
+iio_channel:
+  description: "IIO Channel - IIO 通道"
+  header: "linux/iio/iio.h"
+
+  bind_patterns:
+    # iio_channel_get - 获取 IIO 通道
+    - pattern: 'iio_channel_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "获取 IIO 通道"
+
+    # iio_channel_release - 释放 IIO 通道
+    - pattern: 'iio_channel_release\s*\(\s*(?P<chan>[^)]+)\s*\)'
+      variable_capture: "chan"
+      description: "释放 IIO 通道"
+
+    # iio_channel_get_all - 获取所有通道
+    - pattern: 'iio_channel_get_all\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "获取所有 IIO 通道"
+
+
+# ============================================================
+# IIO BUFFER
+# ============================================================
+
+iio_buffer:
+  description: "IIO Buffer - IIO 缓冲区"
+  header: "linux/iio/buffer.h"
+
+  bind_patterns:
+    # iio_allocate_buffer - 分配缓冲区
+    - pattern: 'iio_allocate_buffer\s*\(\s*(?P<length>\w+)\s*\)'
+      description: "分配 IIO 缓冲区"
+
+    # iio_free_buffer - 释放缓冲区
+    - pattern: 'iio_free_buffer\s*\(\s*(?P<buffer>[^)]+)\s*\)'
+      variable_capture: "buffer"
+      description: "释放 IIO 缓冲区"
+
+    # iio_buffer_register - 注册缓冲区
+    - pattern: 'iio_buffer_register\s*\(\s*(?P<indio_dev>[^)]+)\s*,\s*(?P<channels>[^)]+)\s*,\s*(?P<num_channels>\w+)\s*\)'
+      variable_capture: "indio_dev"
+      description: "注册 IIO 缓冲区"
+
+    # iio_buffer_unregister - 注销缓冲区
+    - pattern: 'iio_buffer_unregister\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      variable_capture: "indio_dev"
+      description: "注销 IIO 缓冲区"
+
+
+# ============================================================
+# IIO TRIGGER
+# ============================================================
+
+iio_trigger:
+  description: "IIO Trigger - IIO 触发器"
+  header: "linux/iio/trigger.h"
+
+  bind_patterns:
+    # iio_trigger_register - 注册触发器
+    - pattern: 'iio_trigger_register\s*\(\s*(?P<trig>[^)]+)\s*\)'
+      variable_capture: "trig"
+      description: "注册 IIO 触发器"
+
+    # iio_trigger_unregister - 注销触发器
+    - pattern: 'iio_trigger_unregister\s*\(\s*(?P<trig>[^)]+)\s*\)'
+      variable_capture: "trig"
+      description: "注销 IIO 触发器"
+
+    # iio_trigger_set_ops - 设置触发器操作
+    - pattern: 'iio_trigger_set_ops\s*\(\s*(?P<trig>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      variable_capture: "trig"
+      description: "设置触发器操作"
+
+  callbacks:
+    validate_device:
+      pattern: '\.validate_device\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "验证设备回调"
+
+
+# ============================================================
+# IIO TRIGGERED BUFFER
+# ============================================================
+
+iio_triggered_buffer:
+  description: "IIO Triggered Buffer - 触发缓冲区"
+  header: "linux/iio/triggered_buffer.h"
+
+  bind_patterns:
+    # iio_triggered_buffer_setup - 设置触发缓冲区
+    - pattern: 'iio_triggered_buffer_setup\s*\(\s*(?P<indio_dev>[^)]+)\s*,\s*(?P<preenable>\w+)\s*,\s*(?P<postenable>\w+)\s*,\s*(?P<buffer_setup_ops>\w+)\s*\)'
+      variable_capture: "indio_dev"
+      description: "设置触发缓冲区"
+
+    # iio_triggered_buffer_cleanup - 清理触发缓冲区
+    - pattern: 'iio_triggered_buffer_cleanup\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      variable_capture: "indio_dev"
+      description: "清理触发缓冲区"
+
+
+# ============================================================
+# IIO EVENT
+# ============================================================
+
+iio_event:
+  description: "IIO Event - IIO 事件"
+  header: "linux/iio/events.h"
+
+  bind_patterns:
+    # iio_push_event - 推送事件
+    - pattern: 'iio_push_event\s*\(\s*(?P<indio_dev>[^)]+)\s*,\s*(?P<event_code>\w+)\s*,\s*(?P<timestamp>\w+)\s*\)'
+      variable_capture: "indio_dev"
+      description: "推送 IIO 事件"
+
+
+# ============================================================
+# IIO SENSORHUB
+# ============================================================
+
+iio_sensorhub:
+  description: "IIO Sensor Hub - IIO 传感器中枢"
+  header: "linux/iio/sensorhub.h"
+
+  bind_patterns:
+    # iio_read_channel_raw - 读取通道原始值
+    - pattern: 'iio_read_channel_raw\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "chan"
+      description: "读取通道原始值"
+
+    # iio_read_channel_attribute - 读取通道属性
+    - pattern: 'iio_read_channel_attribute\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<attr>[^)]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "chan"
+      description: "读取通道属性"
+
+    # iio_write_channel_attribute - 写入通道属性
+    - pattern: 'iio_write_channel_attribute\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<attr>[^)]+)\s*,\s*(?P<val>\w+)\s*\)'
+      variable_capture: "chan"
+      description: "写入通道属性"
+
+
+# ============================================================
+# IIO EXAMPLES
+# ============================================================
+
+examples:
+  - description: "IIO 设备驱动"
+    code: |
+      static int my_sensor_read_raw(struct iio_dev *indio_dev,
+                                    struct iio_chan_spec const *chan,
+                                    int *val, int *val2, long mask) {
+          switch (mask) {
+          case IIO_CHAN_INFO_RAW:
+              *val = read_sensor_data();
+              return IIO_VAL_INT;
+          case IIO_CHAN_INFO_SCALE:
+              *val = 1;
+              *val2 = 1000;
+              return IIO_VAL_INT_PLUS_MICRO;
+          }
+          return -EINVAL;
+      }
+
+      static const struct iio_chan_spec my_channels[] = {
+          {
+              .type = IIO_ACCEL,
+              .modified = 1,
+              .channel2 = IIO_MOD_X,
+              .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+              .info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
+          },
+      };
+
+      static const struct iio_info my_info = {
+          .read_raw = my_sensor_read_raw,
+      };
+
+      static int my_probe(struct iio_dev *indio_dev,
+                          const struct iio_device_id *id) {
+          struct my_data *data;
+
+          data = devm_kzalloc(&indio_dev->dev, sizeof(*data), GFP_KERNEL);
+          if (!data)
+              return -ENOMEM;
+
+          indio_dev->info = &my_info;
+          indio_dev->channels = my_channels;
+          indio_dev->num_channels = ARRAY_SIZE(my_channels);
+          indio_dev->modes = INDIO_DIRECT_MODE;
+
+          return iio_device_register(indio_dev);
+      }
+
+      static void my_remove(struct iio_dev *indio_dev) {
+          iio_device_unregister(indio_dev);
+      }

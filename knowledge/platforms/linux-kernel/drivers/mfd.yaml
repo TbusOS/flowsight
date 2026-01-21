@@ -1,0 +1,146 @@
+# Linux Kernel MFD (Multi-Function Device) Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/mfd/index.html
+
+# ============================================================
+# MFD CORE
+# ============================================================
+
+mfd_core:
+  description: "MFD Core - 多功能设备核心"
+  header: "linux/mfd/core.h"
+  icon: "🔌"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # mfd_add_devices - 添加 MFD 子设备
+    - pattern: 'mfd_add_devices\s*\(\s*(?P<parent>[^)]+)\s*,\s*(?P<id>\w+)\s*,\s*(?P<cells>[^)]+)\s*,\s*(?P<num_cells>\w+)\s*,\s*(?P<lookup>[^)]+)\s*\)'
+      variable_capture: "parent"
+      description: "添加 MFD 子设备"
+
+    # mfd_remove_devices - 移除 MFD 子设备
+    - pattern: 'mfd_remove_devices\s*\(\s*(?P<parent>[^)]+)\s*\)'
+      variable_capture: "parent"
+      description: "移除 MFD 子设备"
+
+
+# ============================================================
+# MFD CELL
+# ============================================================
+
+mfd_cell:
+  description: "MFD Cell - MFD 子设备"
+  header: "linux/mfd/core.h"
+
+  bind_patterns:
+    # struct mfd_cell
+    - pattern: 'struct mfd_cell\s*\{[^}]+\}'
+      description: "MFD 子设备结构"
+
+    # MFD_CELL_*
+    - pattern: 'MFD_CELL\s*\(\s*(?P<name>\w+)'
+      description: "MFD 子设备定义"
+
+
+# ============================================================
+# MFD RESOURCES
+# ============================================================
+
+mfd_resources:
+  description: "MFD Resources - MFD 资源"
+  header: "linux/mfd/core.h"
+
+  bind_patterns:
+    # struct resource
+    - pattern: 'struct resource\s*\{[^}]+\}'
+      description: "资源结构"
+
+
+# ============================================================
+# MFD PLATFORM DEVICE
+# ============================================================
+
+mfd_platform:
+  description: "MFD Platform Device - MFD 平台设备"
+  header: "linux/mfd/core.h"
+
+  bind_patterns:
+    # platform_device_register_data - 注册平台设备
+    - pattern: 'platform_device_register_data\s*\(\s*(?P<parent>[^)]+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<id>\w+)\s*,\s*(?P<res>[^)]+)\s*,\s*(?P<num_res>\w+)\s*\)'
+      variable_capture: "parent"
+      description: "注册平台设备"
+
+
+# ============================================================
+# MFD REGISTERS
+# ============================================================
+
+mfd_registers:
+  description: "MFD Registers - MFD 寄存器"
+  header: "linux/mfd/core.h"
+
+  bind_patterns:
+    # regmap_*
+    - pattern: 'regmap_(?P<op>\w+)\s*\([^)]+\)'
+      description: "寄存器映射操作"
+
+
+# ============================================================
+# MFD EXAMPLES
+# ============================================================
+
+examples:
+  - description: "MFD 驱动"
+    code: |
+      static int my_mfd_probe(struct platform_device *pdev) {
+          struct resource *res;
+          struct mfd_cell cells[] = {
+              {
+                  .name = "my-gpio",
+                  .of_compatible = "my,gpio",
+                  .resources = &res[0],
+                  .num_resources = 1,
+              },
+              {
+                  .name = "my-wdt",
+                  .of_compatible = "my,wdt",
+                  .resources = &res[1],
+                  .num_resources = 1,
+              },
+              {
+                  .name = "my-regulator",
+                  .of_compatible = "my,regulator",
+                  .resources = &res[2],
+                  .num_resources = 1,
+              },
+          };
+
+          /* 获取资源 */
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+
+          /* 初始化硬件 */
+
+          /* 添加子设备 */
+          return mfd_add_devices(&pdev->dev, 0, cells,
+                                 ARRAY_SIZE(cells), NULL, 0, NULL);
+      }
+
+      static int my_mfd_remove(struct platform_device *pdev) {
+          mfd_remove_devices(&pdev->dev);
+          return 0;
+      }
+
+      static struct platform_driver my_mfd_driver = {
+          .probe = my_mfd_probe,
+          .remove = my_mfd_remove,
+          .driver = {
+              .name = "my-mfd",
+              .of_match_table = my_of_match,
+          },
+      };
+      platform_driver_probe(&my_mfd_driver, my_mfd_probe);

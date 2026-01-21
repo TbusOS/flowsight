@@ -1,0 +1,512 @@
+# Linux Kernel Regulator Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/regulator.html
+
+# ============================================================
+# REGULATOR CONSUMER
+# ============================================================
+
+regulator_consumer:
+  description: "Regulator Consumer - 稳压器消费者"
+  header: "linux/regulator/consumer.h"
+  icon: "🔋"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # regulator_get - 获取稳压器
+    - pattern: 'regulator_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]*)\s*\)'
+      variable_capture: "dev"
+      description: "获取稳压器"
+
+    # regulator_get_optional - 可选获取
+    - pattern: 'regulator_get_optional\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]*)\s*\)'
+      variable_capture: "dev"
+      description: "可选获取稳压器"
+
+    # regulator_put - 释放稳压器
+    - pattern: 'regulator_put\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "释放稳压器"
+
+    # regulator_enable - 使能稳压器
+    - pattern: 'regulator_enable\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "使能稳压器"
+
+    # regulator_disable - 禁用稳压器
+    - pattern: 'regulator_disable\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "禁用稳压器"
+
+    # regulator_is_enabled - 检查是否使能
+    - pattern: 'regulator_is_enabled\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "检查使能状态"
+
+    # regulator_set_voltage - 设置电压
+    - pattern: 'regulator_set_voltage\s*\(\s*(?P<reg>[^)]+)\s*,\s*(?P<min>\w+)\s*,\s*(?P<max>\w+)\s*\)'
+      variable_capture: "reg"
+      description: "设置输出电压"
+
+    # regulator_get_voltage - 获取电压
+    - pattern: 'regulator_get_voltage\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "获取输出电压"
+
+    # regulator_set_current_limit - 设置电流限制
+    - pattern: 'regulator_set_current_limit\s*\(\s*(?P<reg>[^)]+)\s*,\s*(?P<min>\w+)\s*,\s*(?P<max>\w+)\s*\)'
+      variable_capture: "reg"
+      description: "设置电流限制"
+
+    # regulator_get_current_limit - 获取电流限制
+    - pattern: 'regulator_get_current_limit\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "获取电流限制"
+
+    # regulator_set_mode - 设置模式
+    - pattern: 'regulator_set_mode\s*\(\s*(?P<reg>[^)]+)\s*,\s*(?P<mode>\w+)\s*\)'
+      variable_capture: "reg"
+      description: "设置工作模式"
+
+    # regulator_get_mode - 获取模式
+    - pattern: 'regulator_get_mode\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "获取工作模式"
+
+    # regulator_set_load - 设置负载
+    - pattern: 'regulator_set_load\s*\(\s*(?P<reg>[^)]+)\s*,\s*(?P<load>\w+)\s*\)'
+      variable_capture: "reg"
+      description: "设置负载电流"
+
+    # regulator_get_error_flags - 获取错误标志
+    - pattern: 'regulator_get_error_flags\s*\(\s*(?P<reg>[^)]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "获取错误标志"
+
+    # regulator_suspend_enable - 暂停使能
+    - pattern: 'regulator_suspend_enable\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "暂停时使能"
+
+    # regulator_suspend_disable - 暂停禁用
+    - pattern: 'regulator_suspend_disable\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "暂停时禁用"
+
+    # regulator_set_suspend_voltage - 暂停时设置电压
+    - pattern: 'regulator_set_suspend_voltage\s*\(\s*(?P<reg>[^)]+)\s*,\s*(?P<uv>\w+)\s*\)'
+      variable_capture: "reg"
+      description: "暂停时设置电压"
+
+
+# ============================================================
+# REGULATOR MODE
+# ============================================================
+
+regulator_mode:
+  description: "Regulator Operating Modes - 稳压器工作模式"
+  header: "linux/regulator/consumer.h"
+
+  bind_patterns:
+    REGULATOR_MODE_FAST:
+      pattern: 'REGULATOR_MODE_FAST'
+      description: "快速模式"
+
+    REGULATOR_MODE_NORMAL:
+      pattern: 'REGULATOR_MODE_NORMAL'
+      description: "正常模式"
+
+    REGULATOR_MODE_IDLE:
+      pattern: 'REGULATOR_MODE_IDLE'
+      description: "空闲模式"
+
+    REGULATOR_MODE_STANDBY:
+      pattern: 'REGULATOR_MODE_STANDBY'
+      description: "待机模式"
+
+
+# ============================================================
+# REGULATOR DEVICETREE
+# ============================================================
+
+regulator_devicetree:
+  description: "Regulator Device Tree - 设备树绑定"
+  header: "linux/of.h"
+
+  bind_patterns:
+    # of_get_regulator - 获取稳压器
+    - pattern: 'of_get_regulator\s*\(\s*(?P<np>[^)]+)\s*,\s*(?P<id>[^)]*)\s*\)'
+      variable_capture: "np"
+      description: "从设备树获取稳压器"
+
+    # regulator_get_of_match
+    - pattern: 'regulator_get_of_match\s*\(\s*(?P<name>[^)]*)\s*\)'
+      description: "设备树匹配"
+
+    # 设备树节点
+    - pattern: 'regulator-[0-9a-z]+\s*\{[^}]*\}'
+      description: "稳压器设备树节点"
+
+
+# ============================================================
+# REGULATOR CONSTRAINTS
+# ============================================================
+
+regulator_constraints:
+  description: "Regulator Constraints - 稳压器约束"
+  header: "linux/regulator/driver.h"
+
+  bind_patterns:
+    # struct regulator_init_data
+    - pattern: 'struct regulator_init_data\s*\{[^}]+\}'
+      description: "稳压器初始化数据"
+
+    # constraints 配置
+    - pattern: '\.constraints\s*=\s*\{[^}]+\}'
+      description: "稳压器约束配置"
+
+    # input_uV
+    - pattern: '\.input_uV\s*=\s*(?P<uv>\d+)'
+      description: "输入电压"
+
+    # min_uV / max_uV
+    - pattern: '\.min_uV\s*=\s*(?P<min>\d+)'
+      description: "最小输出电压"
+
+    - pattern: '\.max_uV\s*=\s*(?P<max>\d+)'
+      description: "最大输出电压"
+
+    # min_uA / max_uA
+    - pattern: '\.min_uA\s*=\s*(?P<min>\d+)'
+      description: "最小输出电流"
+
+    - pattern: '\.max_uA\s*=\s*(?P<max>\d+)'
+      description: "最大输出电流"
+
+
+# ============================================================
+# REGULATOR PROVIDER
+# ============================================================
+
+regulator_provider:
+  description: "Regulator Provider - 稳压器提供者"
+  header: "linux/regulator/driver.h"
+  icon: "🏭"
+
+  bind_patterns:
+    # regulator_register - 注册稳压器
+    - pattern: 'regulator_register\s*\(\s*(?P<config>[^)]+)\s*,\s*(?P<init_data>[^)]*)\s*\)'
+      variable_capture: "config"
+      description: "注册稳压器"
+
+    # regulator_unregister - 注销稳压器
+    - pattern: 'regulator_unregister\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      variable_capture: "reg"
+      description: "注销稳压器"
+
+    # devm_regulator_register - 资源管理注册
+    - pattern: 'devm_regulator_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<desc>[^)]+)\s*,\s*(?P<init_data>[^)]*)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理注册稳压器"
+
+
+# ============================================================
+# REGULATOR DRIVER
+# ============================================================
+
+regulator_driver:
+  description: "Regulator Driver - 稳压器驱动"
+  header: "linux/regulator/driver.h"
+
+  driver_structure:
+    - pattern: 'static struct regulator_driver\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "稳压器驱动结构体"
+
+  callbacks:
+    # 使能/禁用
+    enable:
+      pattern: '\.enable\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "使能回调"
+
+    disable:
+      pattern: '\.disable\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "禁用回调"
+
+    is_enabled:
+      pattern: '\.is_enabled\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "检查使能状态"
+
+    # 电压控制
+    set_voltage:
+      pattern: '\.set_voltage\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置电压"
+
+    get_voltage:
+      pattern: '\.get_voltage\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取电压"
+
+    set_voltage_sel:
+      pattern: '\.set_voltage_sel\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "选择电压"
+
+    get_voltage_sel:
+      pattern: '\.get_voltage_sel\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取选择的电压"
+
+    # 电流控制
+    set_current_limit:
+      pattern: '\.set_current_limit\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置电流限制"
+
+    get_current_limit:
+      pattern: '\.get_current_limit\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取电流限制"
+
+    # 模式控制
+    set_mode:
+      pattern: '\.set_mode\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置模式"
+
+    get_mode:
+      pattern: '\.get_mode\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取模式"
+
+    get_status:
+      pattern: '\.get_status\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取状态"
+
+    # 电压选择
+    list_voltage:
+      pattern: '\.list_voltage\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "列出可用电压"
+
+    # 使能时间
+    enable_time:
+      pattern: '\.enable_time\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "使能时间"
+
+
+# ============================================================
+# REGULATOR DESC
+# ============================================================
+
+regulator_desc:
+  description: "Regulator Descriptor - 稳压器描述符"
+  header: "linux/regulator/driver.h"
+
+  bind_patterns:
+    # struct regulator_desc
+    - pattern: 'struct regulator_desc\s*\{[^}]+\}'
+      description: "稳压器描述符结构"
+
+  fields:
+    - name: "name"
+      type: "const char *"
+      description: "稳压器名称"
+    - name: "id"
+      type: "unsigned int"
+      description: "稳压器 ID"
+    - name: "ops"
+      type: "struct regulator_ops *"
+      description: "操作函数"
+    - name: "regulators_node"
+      type: "struct device_node *"
+      description: " regulators 节点"
+
+
+# ============================================================
+# REGULATOR OF MATCH
+# ============================================================
+
+regulator_of_match:
+  description: "Regulator Device Tree Match - 设备树匹配"
+  header: "linux/regulator/machine.h"
+
+  bind_patterns:
+    # of_regulator_match
+    - pattern: 'of_regulator_match\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<np>[^)]+)\s*,\s*(?P<match_data>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "匹配设备树稳压器"
+
+    # 结构体
+    - pattern: 'struct of_regulator_match\s*\{[^}]+\}'
+      description: "设备树匹配结构"
+
+
+# ============================================================
+# REGULATOR HELPER FUNCTIONS
+# ============================================================
+
+regulator_helpers:
+  description: "Regulator Helper Functions"
+  header: "linux/regulator/consumer.h"
+
+  functions:
+    # 批量操作
+    regulator_bulk_get:
+      pattern: 'regulator_bulk_get\s*\([^)]+\)'
+      description: "批量获取稳压器"
+
+    regulator_bulk_put:
+      pattern: 'regulator_bulk_put\s*\([^)]+\)'
+      description: "批量释放稳压器"
+
+    regulator_bulk_enable:
+      pattern: 'regulator_bulk_enable\s*\([^)]+\)'
+      description: "批量使能"
+
+    regulator_bulk_disable:
+      pattern: 'regulator_bulk_disable\s*\([^)]+\)'
+      description: "批量禁用"
+
+    # devm 操作
+    devm_regulator_get:
+      pattern: 'devm_regulator_get\s*\([^)]+\)'
+      description: "资源管理获取"
+
+    devm_regulator_put:
+      pattern: 'devm_regulator_put\s*\([^)]+\)'
+      description: "资源管理释放"
+
+    # 电压转换
+    regulator_count_voltages:
+      pattern: 'regulator_count_voltages\s*\([^)]+\)'
+      description: "统计可用电压数"
+
+    regulator_list_voltage:
+      pattern: 'regulator_list_voltage\s*\([^)]+\)'
+      description: "列出特定电压"
+
+
+# ============================================================
+# REGULATOR EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本稳压器使用"
+    code: |
+      static struct regulator *vdd;
+      static struct regulator *vdd_arm;
+
+      static int __init my_driver_probe(struct platform_device *pdev) {
+          int ret;
+
+          /* 获取稳压器 */
+          vdd = regulator_get(&pdev->dev, "vdd");
+          if (IS_ERR(vdd))
+              return PTR_ERR(vdd);
+
+          vdd_arm = regulator_get(&pdev->dev, "vdd_arm");
+          if (IS_ERR(vdd_arm)) {
+              regulator_put(vdd);
+              return PTR_ERR(vdd_arm);
+          }
+
+          /* 设置电压 (1.2V - 1.3V) */
+          ret = regulator_set_voltage(vdd, 1200000, 1300000);
+          if (ret < 0) {
+              regulator_put(vdd_arm);
+              regulator_put(vdd);
+              return ret;
+          }
+
+          /* 使能稳压器 */
+          ret = regulator_enable(vdd);
+          if (ret < 0) {
+              regulator_put(vdd_arm);
+              regulator_put(vdd);
+              return ret;
+          }
+
+          /* 检查是否使能 */
+          if (regulator_is_enabled(vdd_arm)) {
+              ret = regulator_disable(vdd_arm);
+              if (ret < 0)
+                  return ret;
+          }
+
+          return 0;
+      }
+
+      static int __exit my_driver_remove(struct platform_device *pdev) {
+          regulator_disable(vdd_arm);
+          regulator_disable(vdd);
+          regulator_put(vdd_arm);
+          regulator_put(vdd);
+          return 0;
+      }
+
+  - description: "稳压器驱动"
+    code: |
+      static int my_regulator_enable(struct regulator_dev *rdev) {
+          struct my_regulator *priv = rdev_get_drvdata(rdev);
+
+          /* 使能硬件 */
+          gpio_set_value(priv->enable_gpio, 1);
+
+          return 0;
+      }
+
+      static int my_regulator_disable(struct regulator_dev *rdev) {
+          struct my_regulator *priv = rdev_get_drvdata(rdev);
+
+          /* 禁用硬件 */
+          gpio_set_value(priv->enable_gpio, 0);
+
+          return 0;
+      }
+
+      static int my_regulator_get_voltage(struct regulator_dev *rdev) {
+          /* 返回当前电压 */
+          return priv->voltage;
+      }
+
+      static const struct regulator_ops my_regulator_ops = {
+          .enable = my_regulator_enable,
+          .disable = my_regulator_disable,
+          .get_voltage = my_regulator_get_voltage,
+          .list_voltage = regulator_list_voltage_linear,
+      };
+
+      static struct regulator_desc my_regulator_desc = {
+          .name = "my-regulator",
+          .ops = &my_regulator_ops,
+          .n_voltages = 10,
+          .min_uV = 800000,
+          .uV_step = 100000,
+      };
+
+      static int __init my_regulator_probe(struct platform_device *pdev) {
+          struct regulator_config config = {};
+          struct regulator_dev *rdev;
+
+          config.dev = &pdev->dev;
+          config.init_data = dev_get_platdata(&pdev->dev);
+
+          rdev = regulator_register(&my_regulator_desc, &config);
+          if (IS_ERR(rdev))
+              return PTR_ERR(rdev);
+
+          platform_set_drvdata(pdev, rdev);
+          return 0;
+      }

@@ -1,0 +1,599 @@
+# Linux Kernel ASoC (ALSA SoC) Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/sound/soc/index.html
+
+# ============================================================
+# ASoC CORE
+# ============================================================
+
+asoc_core:
+  description: "ASoC Core - ALSA SoC 核心"
+  header: "sound/soc.h"
+  icon: "🔊"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # snd_soc_register_component - 注册组件
+    - pattern: 'snd_soc_register_component\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*,\s*(?P<dai>[^)]+)\s*,\s*(?P<num_dai>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "注册 ASoC 组件"
+
+    # snd_soc_unregister_component - 注销组件
+    - pattern: 'snd_soc_unregister_component\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "注销 ASoC 组件"
+
+    # snd_soc_register_dais - 注册 DAI
+    - pattern: 'snd_soc_register_dais\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<dai>[^)]+)\s*,\s*(?P<num_dai>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "注册 DAI"
+
+    # snd_soc_unregister_dais - 注销 DAI
+    - pattern: 'snd_soc_unregister_dais\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<num_dai>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "注销 DAI"
+
+    # snd_soc_add_pcm_runtime - 添加 PCM 运行时
+    - pattern: 'snd_soc_add_pcm_runtime\s*\(\s*(?P<card>[^)]+)\s*,\s*(?P<rtd>[^)]+)\s*\)'
+      variable_capture: "card"
+      description: "添加 PCM 运行时"
+
+
+# ============================================================
+# ASoC DAI
+# ============================================================
+
+asoc_dai:
+  description: "DAI - Digital Audio Interface"
+  header: "sound/soc-dai.h"
+  icon: "🎛️"
+
+  bind_patterns:
+    # struct snd_soc_dai_driver
+    - pattern: 'struct snd_soc_dai_driver\s*\{[^}]+\}'
+      description: "DAI 驱动结构"
+
+    # struct snd_soc_dai
+    - pattern: 'struct snd_soc_dai\s*\{[^}]+\}'
+      description: "DAI 实例结构"
+
+    # probe/remove
+    - pattern: '\.probe\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "DAI probe"
+
+    - pattern: '\.remove\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "DAI remove"
+
+  dai_ops:
+    # 设置系统时钟
+    set_sysclk:
+      pattern: '\.set_sysclk\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置系统时钟"
+
+    # 设置 PLL
+    set_pll:
+      pattern: '\.set_pll\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置 PLL"
+
+    # 设置 FLL
+    set_fll:
+      pattern: '\.set_fll\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置 FLL"
+
+    # 启动/停止
+    startup:
+      pattern: '\.startup\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "启动 DAI"
+
+    shutdown:
+      pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "关闭 DAI"
+
+    # 设置格式
+    set_fmt:
+      pattern: '\.set_fmt\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置格式"
+
+    set_tdm_slot:
+      pattern: '\.set_tdm_slot\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置 TDM 槽位"
+
+    set_channel_map:
+      pattern: '\.set_channel_map\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置通道映射"
+
+    get_channel_map:
+      pattern: '\.get_channel_map\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取通道映射"
+
+  playback_ops:
+    # 播放操作
+    prepare:
+      pattern: '\.prepare\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "准备播放"
+
+    hw_params:
+      pattern: '\.hw_params\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置硬件参数"
+
+    hw_free:
+      pattern: '\.hw_free\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "释放硬件资源"
+
+    trigger:
+      pattern: '\.trigger\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "触发播放"
+
+
+# ============================================================
+# ASoC PLATFORM
+# ============================================================
+
+asoc_platform:
+  description: "ASoC Platform - 平台驱动"
+  header: "sound/soc.h"
+
+  bind_patterns:
+    # snd_soc_register_platform - 注册平台
+    - pattern: 'snd_soc_register_platform\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<platform>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "注册平台驱动"
+
+    # snd_soc_unregister_platform - 注销平台
+    - pattern: 'snd_soc_unregister_platform\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "注销平台驱动"
+
+
+# ============================================================
+# ASoC DAI LINK
+# ============================================================
+
+asoc_dai_link:
+  description: "DAI Link - DAI 连接"
+  header: "sound/soc.h"
+
+  bind_patterns:
+    # struct snd_soc_dai_link
+    - pattern: 'struct snd_soc_dai_link\s*\{[^}]+\}'
+      description: "DAI Link 结构"
+
+    # 字段
+    - pattern: '\.name\s*=\s*"[^"]*"'
+      description: "Link 名称"
+    - pattern: '\.stream_name\s*=\s*"[^"]*"'
+      description: "流名称"
+    - pattern: '\.cpus\s*=\s*'
+      description: "CPU DAI"
+    - pattern: '\.codecs\s*='
+      description: "CODEC"
+    - pattern: '\.platform\s*=\s*'
+      description: "平台"
+    - pattern: '\.dai_fmt\s*='
+      description: "DAI 格式"
+
+
+# ============================================================
+# ASoC CARD
+# ============================================================
+
+asoc_card:
+  description: "ASoC Card - 声卡"
+  header: "sound/soc-card.h"
+  icon: "📇"
+
+  bind_patterns:
+    # snd_soc_register_card - 注册声卡
+    - pattern: 'snd_soc_register_card\s*\(\s*(?P<card>[^)]+)\s*\)'
+      variable_capture: "card"
+      description: "注册声卡"
+
+    # snd_soc_unregister_card - 注销声卡
+    - pattern: 'snd_soc_unregister_card\s*\(\s*(?P<card>[^)]+)\s*\)'
+      variable_capture: "card"
+      description: "注销声卡"
+
+    # devm_snd_soc_register_card - 资源管理注册
+    - pattern: 'devm_snd_soc_register_card\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<card>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "资源管理注册声卡"
+
+    # struct snd_soc_card
+    - pattern: 'struct snd_soc_card\s*\{[^}]+\}'
+      description: "声卡结构"
+
+  card_callbacks:
+    # late_probe
+    late_probe:
+      pattern: '\.late_probe\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "延迟探测"
+
+    # suspend
+    suspend:
+      pattern: '\.suspend\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "挂起"
+
+    # resume
+    resume:
+      pattern: '\.resume\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "恢复"
+
+    # set_bias_level
+    set_bias_level:
+      pattern: '\.set_bias_level\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置偏置电平"
+
+
+# ============================================================
+# ASoC COMPONENT
+# ============================================================
+
+asoc_component:
+  description: "ASoC Component - 组件"
+  header: "sound/soc-component.h"
+
+  bind_patterns:
+    # struct snd_soc_component_driver
+    - pattern: 'struct snd_soc_component_driver\s*\{[^}]+\}'
+      description: "组件驱动结构"
+
+    # probe
+    probe:
+      pattern: '\.probe\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "组件 probe"
+
+    # remove
+    remove:
+      pattern: '\.remove\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "组件 remove"
+
+    # 控件
+    controls:
+      pattern: '\.controls\s*='
+      description: "控件数组"
+
+    # DAPM 部件
+    dapm_widgets:
+      pattern: '\.dapm_widgets\s*='
+      description: "DAPM 部件"
+
+    # 路由
+    dapm_routes:
+      pattern: '\.dapm_routes\s*='
+      description: "DAPM 路由"
+
+
+# ============================================================
+# ASoC PCM
+# ============================================================
+
+asoc_pcm:
+  description: "ASoC PCM - 脉冲编码调制"
+  header: "sound/soc-pcm.h"
+
+  bind_patterns:
+    # struct snd_soc_pcm_runtime
+    - pattern: 'struct snd_soc_pcm_runtime\s*\{[^}]+\}'
+      description: "PCM 运行时结构"
+
+    # struct snd_soc_pcm_ops
+    - pattern: 'struct snd_soc_pcm_ops\s*\{[^}]+\}'
+      description: "PCM 操作结构"
+
+
+# ============================================================
+# ASoC DAPM
+# ============================================================
+
+asoc_dapm:
+  description: "DAPM - Dynamic Audio Power Management"
+  header: "sound/soc-dapm.h"
+  icon: "⚡"
+
+  bind_patterns:
+    # snd_soc_dapm_new_controls - 新建控件
+    - pattern: 'snd_soc_dapm_new_controls\s*\(\s*(?P<dapm>[^)]+)\s*,\s*(?P<widget>[^)]+)\s*,\s*(?P<num>[^)]+)\s*\)'
+      variable_capture: "dapm"
+      description: "新建 DAPM 控件"
+
+    # snd_soc_dapm_add_routes - 添加路由
+    - pattern: 'snd_soc_dapm_add_routes\s*\(\s*(?P<dapm>[^)]+)\s*,\s*(?P<route>[^)]+)\s*,\s*(?P<num>[^)]+)\s*\)'
+      variable_capture: "dapm"
+      description: "添加 DAPM 路由"
+
+    # snd_soc_dapm_enable_pin - 使能引脚
+    - pattern: 'snd_soc_dapm_enable_pin\s*\(\s*(?P<dapm>[^)]+)\s*,\s*(?P<pin>[^)]+)\s*\)'
+      variable_capture: "dapm"
+      description: "使能 DAPM 引脚"
+
+    # snd_soc_dapm_disable_pin - 禁用引脚
+    - pattern: 'snd_soc_dapm_disable_pin\s*\(\s*(?P<dapm>[^)]+)\s*,\s*(?P<pin>[^)]+)\s*\)'
+      variable_capture: "dapm"
+      description: "禁用 DAPM 引脚"
+
+    # snd_soc_dapm_sync - 同步 DAPM
+    - pattern: 'snd_soc_dapm_sync\s*\(\s*(?P<dapm>[^)]+)\s*\)'
+      variable_capture: "dapm"
+      description: "同步 DAPM"
+
+    # snd_soc_dapm_force_enable_pin - 强制使能引脚
+    - pattern: 'snd_soc_dapm_force_enable_pin\s*\(\s*(?P<dapm>[^)]+)\s*,\s*(?P<pin>[^)]+)\s*\)'
+      variable_capture: "dapm"
+      description: "强制使能 DAPM 引脚"
+
+    # snd_soc_dapm_nc_pin - 断开引脚
+    - pattern: 'snd_soc_dapm_nc_pin\s*\(\s*(?P<dapm>[^)]+)\s*,\s*(?P<pin>[^)]+)\s*\)'
+      variable_capture: "dapm"
+      description: "断开 DAPM 引脚"
+
+
+# ============================================================
+# ASoC DAPM WIDGETS
+# ============================================================
+
+asoc_dapm_widget:
+  description: "DAPM Widget - DAPM 部件"
+  header: "sound/soc-dapm.h"
+
+  bind_patterns:
+    # struct snd_soc_dapm_widget
+    - pattern: 'struct snd_soc_dapm_widget\s*\{[^}]+\}'
+      description: "DAPM 部件结构"
+
+    # 注册控件
+    - pattern: 'SND_SOC_DAPM_\w+\(\s*(?P<name>[^,]+)\s*,\s*(?P<sname>[^)]*)\s*\)'
+      description: "DAPM 控件类型"
+
+  widget_types:
+    SND_SOC_DAPM_INPUT:
+      pattern: 'SND_SOC_DAPM_INPUT'
+      description: "输入"
+    SND_SOC_DAPM_OUTPUT:
+      pattern: 'SND_SOC_DAPM_OUTPUT'
+      description: "输出"
+    SND_SOC_DAPM_MIXER:
+      pattern: 'SND_SOC_DAPM_MIXER'
+      description: "混音器"
+    SND_SOC_DAPM_MUX:
+      pattern: 'SND_SOC_DAPM_MUX'
+      description: "多路复用器"
+    SND_SOC_DAPM_DAC:
+      pattern: 'SND_SOC_DAPM_DAC'
+      description: "DAC"
+    SND_SOC_DAPM_ADC:
+      pattern: 'SND_SOC_DAPM_ADC'
+      description: "ADC"
+    SND_SOC_DAPM_PGA:
+      pattern: 'SND_SOC_DAPM_PGA'
+      description: "PGA"
+    SND_SOC_DAPM_OUT_DRV:
+      pattern: 'SND_SOC_DAPM_OUT_DRV'
+      description: "输出驱动"
+    SND_SOC_DAPM_SUPPLY:
+      pattern: 'SND_SOC_DAPM_SUPPLY'
+      description: "电源"
+    SND_SOC_DAPM_REGULATOR_SUPPLY:
+      pattern: 'SND_SOC_DAPM_REGULATOR_SUPPLY'
+      description: "稳压器电源"
+    SND_SOC_DAPM_CLOCK_SUPPLY:
+      pattern: 'SND_SOC_DAPM_CLOCK_SUPPLY'
+      description: "时钟电源"
+
+
+# ============================================================
+# ASoC KCONTROLS
+# ============================================================
+
+asoc_kcontrol:
+  description: "ASoC Controls - 控件"
+  header: "sound/soc.h"
+
+  bind_patterns:
+    # struct snd_kcontrol_new
+    - pattern: 'struct snd_kcontrol_new\s*\{[^}]+\}'
+      description: "控件结构"
+
+    # SOC_DOUBLE
+    - pattern: 'SOC_DOUBLE\s*\([^)]+\)'
+      description: "双通道控件"
+
+    # SOC_SINGLE
+    - pattern: 'SOC_SINGLE\s*\([^)]+\)'
+      description: "单通道控件"
+
+    # SOC_ENUM
+    - pattern: 'SOC_ENUM\s*\([^)]+\)'
+      description: "枚举控件"
+
+    # snd_soc_add_codec_controls
+    - pattern: 'snd_soc_add_codec_controls\s*\(\s*(?P<codec>[^)]+)\s*,\s*(?P<controls>[^)]+)\s*,\s*(?P<num>\w+)\s*\)'
+      variable_capture: "codec"
+      description: "添加 CODEC 控件"
+
+    # snd_soc_add_platform_controls
+    - pattern: 'snd_soc_add_platform_controls\s*\(\s*(?P<platform>[^)]+)\s*,\s*(?P<controls>[^)]+)\s*,\s*(?P<num>\w+)\s*\)'
+      variable_capture: "platform"
+      description: "添加平台控件"
+
+
+# ============================================================
+# ASoC MACHINE DRIVER
+# ============================================================
+
+asoc_machine:
+  description: "ASoC Machine Driver - 机器驱动"
+  header: "sound/soc.h"
+
+  bind_patterns:
+    # struct snd_soc_card
+    - pattern: 'static struct snd_soc_card\s+(?P<name>\w+)\s*='
+      variable_capture: "name"
+      description: "声卡结构"
+
+    # dai_link
+    - pattern: '\.dai_link\s*='
+      description: "DAI 链接"
+
+
+# ============================================================
+# ASoC CODEC
+# ============================================================
+
+asoc_codec:
+  description: "ASoC CODEC - 编解码器"
+  header: "sound/soc.h"
+
+  bind_patterns:
+    # snd_soc_register_codec - 注册 CODEC
+    - pattern: 'snd_soc_register_codec\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<driver>[^)]+)\s*,\s*(?P<data>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "注册 CODEC"
+
+    # snd_soc_unregister_codec - 注销 CODEC
+    - pattern: 'snd_soc_unregister_codec\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "注销 CODEC"
+
+
+# ============================================================
+# ASoC EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单 ASoC 驱动"
+    code: |
+      /* CODEC 驱动 */
+      static const struct snd_soc_dapm_widget my_dapm_widgets[] = {
+          SND_SOC_DAPM_OUTPUT("HiFi Playback"),
+          SND_SOC_DAPM_INPUT("HiFi Capture"),
+      };
+
+      static const struct snd_soc_dapm_route my_dapm_routes[] = {
+          {"HiFi Playback", NULL, "DAC"},
+          {"ADC", NULL, "HiFi Capture"},
+      };
+
+      static const struct snd_soc_component_driver my_codec = {
+          .dapm_widgets = my_dapm_widgets,
+          .num_dapm_widgets = ARRAY_SIZE(my_dapm_widgets),
+          .dapm_routes = my_dapm_routes,
+          .num_dapm_routes = ARRAY_SIZE(my_dapm_routes),
+      };
+
+      static struct snd_soc_dai_driver my_dai = {
+          .name = "my-codec-dai",
+          .playback = {
+              .stream_name = "Playback",
+              .channels_min = 1,
+              .channels_max = 2,
+              .rates = SNDRV_PCM_RATE_8000_48000,
+              .formats = SNDRV_PCM_FMTBIT_S16_LE,
+          },
+          .capture = {
+              .stream_name = "Capture",
+              .channels_min = 1,
+              .channels_max = 2,
+              .rates = SNDRV_PCM_RATE_8000_48000,
+              .formats = SNDRV_PCM_FMTBIT_S16_LE,
+          },
+      };
+
+      static int my_codec_probe(struct snd_soc_component *component) {
+          /* 初始化硬件 */
+          my_codec_set_bias_level(component, SND_SOC_BIAS_STANDBY);
+          return 0;
+      }
+
+      static const struct snd_soc_codec_driver soc_codec_dev_my = {
+          .probe = my_codec_probe,
+      };
+
+      /* 机器驱动 */
+      static struct snd_soc_dai_link my_dai_link = {
+          .name = "my-codec",
+          .stream_name = "my-codec HiFi",
+          .codec_dai_name = "my-codec-dai",
+          .dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF,
+      };
+
+      static struct snd_soc_card my_card = {
+          .name = "my-board",
+          .dai_link = &my_dai_link,
+          .num_links = 1,
+      };
+
+      static int my_probe(struct platform_device *pdev) {
+          struct snd_soc_card *card = &my_card;
+          int ret;
+
+          /* 设置 card 私有数据 */
+          platform_set_drvdata(pdev, card);
+
+          /* 注册声卡 */
+          ret = devm_snd_soc_register_card(&pdev->dev, card);
+          if (ret)
+              dev_err(&pdev->dev, "Failed to register card\n");
+
+          return ret;
+      }
+
+  - description: "带有 DAPM 电源管理的驱动"
+    code: |
+      static int my_set_bias_level(struct snd_soc_component *component,
+                                   enum snd_soc_bias_level level) {
+          struct my_priv *priv = snd_soc_component_get_drvdata(component);
+
+          switch (level) {
+          case SND_SOC_BIAS_PREPARE:
+              /* 准备偏置 */
+              regulator_enable(priv->vdd);
+              break;
+          case SND_SOC_BIAS_STANDBY:
+              /* 待机偏置 */
+              if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_PREPARE)
+                  regulator_disable(priv->vdd);
+              break;
+          case SND_SOC_BIAS_OFF:
+              regulator_disable(priv->vdd);
+              break;
+          default:
+              break;
+          }
+          return 0;
+      }
+
+      static const struct snd_soc_component_driver my_codec = {
+          .set_bias_level = my_set_bias_level,
+          .controls = my_controls,
+          .num_controls = ARRAY_SIZE(my_controls),
+          .dapm_widgets = my_widgets,
+          .num_dapm_widgets = ARRAY_SIZE(my_widgets),
+          .dapm_routes = my_routes,
+          .num_dapm_routes = ARRAY_SIZE(my_routes),
+      };

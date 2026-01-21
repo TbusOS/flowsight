@@ -1,0 +1,309 @@
+# Linux Kernel Thread (kthread) Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/core-api/kthread.html
+
+# ============================================================
+# KTHREAD CREATE
+# ============================================================
+
+kthread:
+  description: "Kernel Thread - 内核线程"
+  header: "linux/kthread.h"
+  icon: "🧵"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # kthread_run - 创建并启动线程
+    - pattern: 'kthread_run\s*\(\s*(?P<handler>\w+)\s*,\s*(?P<data>[^,)]+)\s*,\s*(?P<name_format>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+      handler_capture: "handler"
+      extra_captures:
+        - name: "data"
+          description: "传递给线程函数的数据"
+        - name: "name_format"
+          description: "线程名称格式字符串"
+        - name: "args"
+          description: "格式化参数"
+
+    # kthread_create - 创建线程 (不启动)
+    - pattern: 'kthread_create\s*\(\s*(?P<handler>\w+)\s*,\s*(?P<data>[^,)]+)\s*,\s*(?P<name_format>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+      handler_capture: "handler"
+      extra_captures:
+        - name: "data"
+          description: "传递给线程函数的数据"
+        - name: "name_format"
+          description: "线程名称格式字符串"
+
+    # kthread_create_on_node - 在指定节点创建
+    - pattern: 'kthread_create_on_node\s*\(\s*(?P<handler>\w+)\s*,\s*(?P<data>[^,)]+)\s*,\s*(?P<node>\d+)\s*,\s*(?P<name_format>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+      handler_capture: "handler"
+      extra_captures:
+        - name: "node"
+          description: "NUMA 节点 ID"
+
+    # kthread_stop - 停止线程
+    - pattern: 'kthread_stop\s*\(\s*(?P<task>[^)]+)\s*\)'
+      variable_capture: "task"
+      description: "停止 kthread"
+
+    # kthread_should_stop - 检查是否应该停止
+    - pattern: 'kthread_should_stop\s*\(\s*\)'
+      description: "检查线程是否应该停止"
+
+  trigger_patterns:
+    # wake_up_process - 唤醒线程
+    - pattern: 'wake_up_process\s*\(\s*(?P<task>[^)]+)\s*\)'
+      variable_capture: "task"
+      description: "唤醒休眠的 kthread"
+
+    # wake_up_kthread - 唤醒 kthread
+    - pattern: 'wake_up_kthread\s*\(\s*(?P<thread>[^)]+)\s*\)'
+      variable_capture: "thread"
+      description: "唤醒 kthread"
+
+    # kthread_park / kthread_unpark - 暂停/恢复
+    - pattern: 'kthread_park\s*\(\s*(?P<task>[^)]+)\s*\)'
+      variable_capture: "task"
+      description: "暂停 kthread"
+
+    - pattern: 'kthread_unpark\s*\(\s*(?P<task>[^)]+)\s*\)'
+      variable_capture: "task"
+      description: "恢复 kthread"
+
+  cancel_patterns:
+    - pattern: 'kthread_stop\s*\(\s*(?P<task>[^)]+)\s*\)'
+      variable_capture: "task"
+      behavior: "sync"
+      description: "同步停止线程，等待退出"
+
+    - pattern: 'kthread_park\s*\(\s*(?P<task>[^)]+)\s*\)'
+      variable_capture: "task"
+      behavior: "sync"
+      description: "暂停线程"
+
+  handler_signature:
+    return_type: "int"
+    parameters:
+      - name: "data"
+        type: "void *"
+        description: "传递给线程的数据"
+
+  return_values:
+    - value: "0"
+      description: "正常退出"
+    - value: "negative"
+      description: "错误退出"
+
+  kernel_call_chain:
+    trigger: "kthread_create 或 kthread_run"
+    chain:
+      - function: "kthread_create"
+        file: "kernel/kthread.c"
+        description: "创建 kthread"
+        # 内核调用链继续...
+        - function: "__kthread_create_on_node"
+          file: "kernel/kthread.c"
+        - function: "kthreadd"
+          file: "kernel/kthread.c"
+          description: "kthreadd 进程创建新线程"
+
+      - function: "wake_up_process"
+        file: "kernel/sched/core.c"
+        description: "唤醒线程"
+
+      - function: "my_thread_fn(data)"
+        file: "用户代码"
+        description: "用户线程函数"
+        is_user_entry: true
+
+      - function: "kthread_should_stop()"
+        file: "内核"
+        description: "检查停止信号"
+
+      - function: "do_exit / kthread_exit"
+        file: "kernel/exit.c / kernel/kthread.c"
+        description: "线程退出"
+
+  notes:
+    - "线程函数在进程上下文执行，可以 sleep"
+    - "应该定期检查 kthread_should_stop()"
+    - "kthread_stop() 会等待线程完全退出"
+    - "线程名称可通过 ps/kthreads 查看"
+
+
+# ============================================================
+# KTHREAD WORK QUEUE (kthread_pool)
+# ============================================================
+
+kthread_work:
+  description: "Kthread Work Queue - 基于 kthread 的工作队列"
+  header: "linux/kthread.h"
+  icon: "⚙️"
+
+  bind_patterns:
+    # kthread_init_work
+    - pattern: 'kthread_init_work\s*\(\s*&?(?P<work>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "work"
+      description: "初始化 kthread work"
+
+    # kthread_queue_work
+    - pattern: 'kthread_queue_work\s*\(\s*&?(?P<worker>[\w\.\->]+)\s*,\s*&?(?P<work>[\w\.\->]+)\s*\)'
+      variable_capture: "work"
+      extra_captures:
+        - name: "worker"
+          description: "kthread worker"
+
+    # kthread_destroy_worker
+    - pattern: 'kthread_destroy_worker\s*\(\s*&?(?P<worker>[\w\.\->]+)\s*\)'
+      variable_capture: "worker"
+      description: "销毁 kthread worker"
+
+  handler_signature:
+    return_type: "void"
+    parameters:
+      - name: "work"
+        type: "struct kthread_work *"
+        description: "kthread work 结构体"
+
+  kernel_call_chain:
+    trigger: "kthread_queue_work"
+    chain:
+      - function: "kthread_insert_work_sibling"
+        file: "kernel/kthread.c"
+      - function: "worker_thread"
+        file: "kernel/kthread.c"
+      - function: "process_one_work"
+        file: "kernel/kthread.c"
+      - function: "my_work_handler()"
+        file: "用户代码"
+        is_user_entry: true
+
+
+# ============================================================
+# KTHREAD HELPER FUNCTIONS
+# ============================================================
+
+kthread_helpers:
+  description: "Kthread Helper Functions"
+  header: "linux/kthread.h"
+
+  functions:
+    kthread_should_stop:
+      pattern: 'kthread_should_stop\s*\(\s*\)'
+      description: "检查是否应该停止线程"
+
+    kthread_park:
+      pattern: 'kthread_park\s*\([^)]+\)'
+      description: "暂停线程"
+
+    kthread_park_me:
+      pattern: 'kthread_park_me\s*\(\s*\)'
+      description: "暂停当前线程"
+
+    kthread_unpark:
+      pattern: 'kthread_unpark\s*\([^)]+\)'
+      description: "恢复线程"
+
+    kthread_mod_delayed_work:
+      pattern: 'kthread_mod_delayed_work\s*\([^)]+\)'
+      description: "修改延迟工作"
+
+    set_kthread_struct:
+      pattern: 'set_kthread_struct\s*\(\s*(?P<task>\w+)\s*\)'
+      description: "设置 kthread 结构体"
+
+
+# ============================================================
+# KTHREAD EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 kthread 使用"
+    code: |
+      static struct task_struct *my_thread;
+
+      static int my_thread_fn(void *data) {
+          struct my_device *dev = data;
+
+          while (!kthread_should_stop()) {
+              /* 处理工作 */
+              if (has_work(dev)) {
+                  process_work(dev);
+              }
+
+              /* 休眠等待工作 */
+              wait_event_interruptible(dev->wait,
+                                       has_work(dev) ||
+                                       kthread_should_stop());
+          }
+
+          return 0;
+      }
+
+      static int my_probe(struct platform_device *pdev) {
+          struct my_device *dev = ...;
+
+          init_waitqueue_head(&dev->wait);
+
+          my_thread = kthread_run(my_thread_fn, dev,
+                                  "my_device_thread");
+          if (IS_ERR(my_thread))
+              return PTR_ERR(my_thread);
+
+          return 0;
+      }
+
+      static int my_remove(struct platform_device *pdev) {
+          if (my_thread) {
+              kthread_stop(my_thread);
+              my_thread = NULL;
+          }
+          return 0;
+      }
+
+  - description: "Kthread Work Queue"
+    code: |
+      struct my_kthread_data {
+          struct kthread_worker worker;
+          struct kthread_work work1;
+          struct kthread_work work2;
+      };
+
+      static void work1_handler(struct kthread_work *work) {
+          struct my_kthread_data *data = container_of(work,
+              struct my_kthread_data, work1);
+          printk("Work 1 handler\n");
+      }
+
+      static void work2_handler(struct kthread_work *work) {
+          struct my_kthread_data *data = container_of(work,
+              struct my_kthread_data, work2);
+          printk("Work 2 handler\n");
+      }
+
+      static int my_probe(struct platform_device *pdev) {
+          struct my_kthread_data *data = ...;
+
+          kthread_init_worker(&data->worker);
+          kthread_init_work(&data->work1, work1_handler);
+          kthread_init_work(&data->work2, work2_handler);
+
+          /* 创建 worker 线程 */
+          data->worker = kthread_create_worker(0, "my-worker");
+
+          /* 调度工作 */
+          kthread_queue_work(&data->worker, &data->work1);
+          kthread_queue_work(&data->worker, &data->work2);
+
+          return 0;
+      }
+
+      static int my_remove(struct platform_device *pdev) {
+          kthread_destroy_worker(&data->worker);
+          return 0;
+      }

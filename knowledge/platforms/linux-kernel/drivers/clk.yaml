@@ -1,0 +1,423 @@
+# Linux Kernel Clock Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/clocksource.html
+
+# ============================================================
+# CLOCK FRAMEWORK
+# ============================================================
+
+clk_framework:
+  description: "Clock Framework - 时钟框架"
+  header: "linux/clk.h"
+  icon: "⏱️"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # clk_get - 获取时钟
+    - pattern: 'clk_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<conid>[^)]*)\s*\)'
+      variable_capture: "dev"
+      description: "获取时钟"
+
+    # clk_get_optional - 可选获取
+    - pattern: 'clk_get_optional\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<conid>[^)]*)\s*\)'
+      variable_capture: "dev"
+      description: "可选获取时钟"
+
+    # clk_put - 释放时钟
+    - pattern: 'clk_put\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "释放时钟"
+
+    # clk_enable - 使能时钟
+    - pattern: 'clk_enable\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "使能时钟"
+
+    # clk_disable - 禁用时钟
+    - pattern: 'clk_disable\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "禁用时钟"
+
+    # clk_prepare - 准备时钟
+    - pattern: 'clk_prepare\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "准备时钟"
+
+    # clk_unprepare - 取消准备
+    - pattern: 'clk_unprepare\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "取消准备时钟"
+
+    # clk_prepare_enable - 准备并使能
+    - pattern: 'clk_prepare_enable\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "准备并使能时钟"
+
+    # clk_disable_unprepare - 禁用并取消准备
+    - pattern: 'clk_disable_unprepare\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "禁用并取消准备时钟"
+
+    # clk_set_rate - 设置频率
+    - pattern: 'clk_set_rate\s*\(\s*(?P<clk>[^)]+)\s*,\s*(?P<rate>\d+)\s*\)'
+      variable_capture: "clk"
+      description: "设置时钟频率"
+
+    # clk_get_rate - 获取频率
+    - pattern: 'clk_get_rate\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "获取时钟频率"
+
+    # clk_round_rate - 舍入频率
+    - pattern: 'clk_round_rate\s*\(\s*(?P<clk>[^)]+)\s*,\s*(?P<rate>\d+)\s*\)'
+      variable_capture: "clk"
+      description: "舍入到可能频率"
+
+    # clk_set_parent - 设置父时钟
+    - pattern: 'clk_set_parent\s*\(\s*(?P<clk>[^)]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "设置父时钟"
+
+    # clk_get_parent - 获取父时钟
+    - pattern: 'clk_get_parent\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "获取父时钟"
+
+    # clk_get_rate - 获取速率
+    - pattern: 'clk_get_rate\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "获取时钟速率"
+
+    # clk_is_enabled - 检查是否使能
+    - pattern: 'clk_is_enabled\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "检查时钟使能状态"
+
+    # of_clk_get - 从设备树获取时钟
+    - pattern: 'of_clk_get\s*\(\s*(?P<np>[^)]+)\s*,\s*(?P<index>\d+)\s*\)'
+      variable_capture: "np"
+      description: "从设备树获取时钟"
+
+    # of_clk_get_by_name - 按名称获取
+    - pattern: 'of_clk_get_by_name\s*\(\s*(?P<np>[^)]+)\s*,\s*(?P<name>[^)]*)\s*\)'
+      variable_capture: "np"
+      description: "按名称获取时钟"
+
+
+# ============================================================
+# CLK PROVIDER
+# ============================================================
+
+clk_provider:
+  description: "Clock Provider - 时钟提供者"
+  header: "linux/clk-provider.h"
+  icon: "🏭"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # clk_register - 注册时钟
+    - pattern: 'clk_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<hw>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "注册时钟"
+
+    # clk_unregister - 注销时钟
+    - pattern: 'clk_unregister\s*\(\s*(?P<clk>[^)]+)\s*\)'
+      variable_capture: "clk"
+      description: "注销时钟"
+
+    # clk_register_fixed_rate - 固定频率时钟
+    - pattern: 'clk_register_fixed_rate\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<parent>[^)]*)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<rate>\d+)\s*\)'
+      variable_capture: "dev"
+      description: "注册固定频率时钟"
+
+    # clk_register_fixed_factor - 固定因子时钟
+    - pattern: 'clk_register_fixed_factor\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<parent>[^)]+)\s*,\s*(?P<mult>\d+)\s*,\s*(?P<div>\d+)\s*\)'
+      variable_capture: "dev"
+      description: "注册固定因子时钟"
+
+    # clk_register_gate - 门控时钟
+    - pattern: 'clk_register_gate\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<parent>[^)]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<reg>[^)]+)\s*,\s*(?P<bit>\w+)\s*,\s*(?P<clk_flags>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "注册门控时钟"
+
+    # clk_register_divider - 分频器时钟
+    - pattern: 'clk_register_divider\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<parent>[^)]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<reg>[^)]+)\s*,\s*(?P<shift>\w+)\s*,\s*(?P<width>\w+)\s*,\s*(?P<clk_flags>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "注册分频器时钟"
+
+    # clk_register_mux - 多路复用时钟
+    - pattern: 'clk_register_mux\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<parents>[^)]+)\s*,\s*(?P<num_parents>\d+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<reg>[^)]+)\s*,\s*(?P<shift>\w+)\s*,\s*(?P<width>\w+)\s*,\s*(?P<clk_flags>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "注册多路复用时钟"
+
+    # of_clk_add_provider - 添加时钟提供者
+    - pattern: 'of_clk_add_provider\s*\(\s*(?P<np>[^)]+)\s*,\s*(?P<clk_src>[^)]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "np"
+      description: "添加时钟提供者"
+
+    # of_clk_del_provider - 删除时钟提供者
+    - pattern: 'of_clk_del_provider\s*\(\s*(?P<np>[^)]+)\s*\)'
+      variable_capture: "np"
+      description: "删除时钟提供者"
+
+
+# ============================================================
+# CLK OPS
+# ============================================================
+
+clk_ops:
+  description: "Clock Operations - 时钟操作"
+  header: "linux/clk-provider.h"
+
+  bind_patterns:
+    # struct clk_ops 定义
+    - pattern: 'struct clk_ops\s*\{[^}]+\}'
+      description: "时钟操作结构体"
+
+  callbacks:
+    # 准备/使能
+    prepare:
+      pattern: '\.prepare\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "准备时钟"
+
+    unprepare:
+      pattern: '\.unprepare\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "取消准备"
+
+    enable:
+      pattern: '\.enable\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "使能时钟"
+
+    disable:
+      pattern: '\.disable\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "禁用时钟"
+
+    # 速率操作
+    recalc_rate:
+      pattern: '\.recalc_rate\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "重新计算频率"
+
+    determine_rate:
+      pattern: '\.determine_rate\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "确定频率"
+
+    set_rate:
+      pattern: '\.set_rate\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置频率"
+
+    # 父时钟操作
+    set_parent:
+      pattern: '\.set_parent\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "设置父时钟"
+
+    get_parent:
+      pattern: '\.get_parent\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取父时钟"
+
+
+# ============================================================
+# CLK FIXED RATE
+# ============================================================
+
+clk_fixed_rate:
+  description: "Fixed Rate Clock - 固定频率时钟"
+  header: "linux/clk-provider.h"
+
+  bind_patterns:
+    # DEFINE_RATE - 定义固定频率时钟
+    - pattern: 'DEFINE_RATE\s*\(\s*(?P<name>\w+)\s*,\s*(?P<parent>\w*)\s*,\s*(?P<rate>\d+)\s*,\s*(?P<flags>\w*)\s*\)'
+      variable_capture: "name"
+      description: "定义固定频率时钟"
+
+    # clk_fixed - 简单固定时钟
+    - pattern: 'clk_fixed\s*\(\s*(?P<name>[^)]+)\s*,\s*(?P<rate>\d+)\s*\)'
+      variable_capture: "name"
+      description: "创建固定频率时钟"
+
+
+# ============================================================
+# CLK HELPERS
+# ============================================================
+
+clk_helpers:
+  description: "Clock Helper Functions"
+  header: "linux/clk.h"
+
+  functions:
+    # 批量操作
+    clk_bulk_get:
+      pattern: 'clk_bulk_get\s*\([^)]+\)'
+      description: "批量获取时钟"
+
+    clk_bulk_put:
+      pattern: 'clk_bulk_put\s*\([^)]+\)'
+      description: "批量释放时钟"
+
+    clk_bulk_prepare_enable:
+      pattern: 'clk_bulk_prepare_enable\s*\([^)]+\)'
+      description: "批量准备并使能"
+
+    clk_bulk_disable_unprepare:
+      pattern: 'clk_bulk_disable_unprepare\s*\([^)]+\)'
+      description: "批量禁用并取消准备"
+
+    # devm 操作
+    devm_clk_get:
+      pattern: 'devm_clk_get\s*\([^)]+\)'
+      description: "资源管理获取时钟"
+
+    devm_clk_put:
+      pattern: 'devm_clk_put\s*\([^)]+\)'
+      description: "资源管理释放时钟"
+
+    # 速率转换
+    clk_rate_exclusive_get:
+      pattern: 'clk_rate_exclusive_get\s*\([^)]+\)'
+      description: "获取独占速率"
+
+    clk_rate_exclusive_put:
+      pattern: 'clk_rate_exclusive_put\s*\([^)]+\)'
+      description: "释放独占速率"
+
+
+# ============================================================
+# CLK FLAGS
+# ============================================================
+
+clk_flags:
+  description: "Clock Flags - 时钟标志"
+  header: "linux/clk-provider.h"
+
+  bind_patterns:
+    CLK_SET_RATE_GATE:
+      pattern: 'CLK_SET_RATE_GATE'
+      description: "设置速率时需要门控"
+
+    CLK_SET_PARENT_GATE:
+      pattern: 'CLK_SET_PARENT_GATE'
+      description: "设置父时钟时需要门控"
+
+    CLK_SET_RATE_PARENT:
+      pattern: 'CLK_SET_RATE_PARENT'
+      description: "传播速率到子时钟"
+
+    CLK_IGNORE_UNUSED:
+      pattern: 'CLK_IGNORE_UNUSED'
+      description: "忽略未使用的时钟"
+
+    CLK_IS_CRITICAL:
+      pattern: 'CLK_IS_CRITICAL'
+      description: "关键时钟，不能禁用"
+
+    CLK_ROOT_ONLY:
+      pattern: 'CLK_ROOT_ONLY'
+      description: "只能是根时钟"
+
+    CLK_OPS_PARENT_ENABLE:
+      pattern: 'CLK_OPS_PARENT_ENABLE'
+      description: "使能父时钟"
+
+
+# ============================================================
+# CLK EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本时钟使用"
+    code: |
+      static struct clk *clk;
+      static struct clk *clk_i2c;
+
+      static int __init my_driver_probe(struct platform_device *pdev) {
+          int ret;
+
+          /* 从设备树获取时钟 */
+          clk = of_clk_get_by_name(pdev->dev.of_node, "aclk");
+          if (IS_ERR(clk))
+              return PTR_ERR(clk);
+
+          clk_i2c = of_clk_get_by_name(pdev->dev.of_node, "i2c");
+          if (IS_ERR(clk_i2c)) {
+              clk_put(clk);
+              return PTR_ERR(clk_i2c);
+          }
+
+          /* 设置频率 */
+          ret = clk_set_rate(clk, 200000000);
+          if (ret < 0) {
+              clk_put(clk_i2c);
+              clk_put(clk);
+              return ret;
+          }
+
+          /* 使能时钟 */
+          ret = clk_prepare_enable(clk);
+          if (ret) {
+              clk_put(clk_i2c);
+              clk_put(clk);
+              return ret;
+          }
+
+          ret = clk_prepare_enable(clk_i2c);
+          if (ret) {
+              clk_disable_unprepare(clk);
+              clk_put(clk_i2c);
+              clk_put(clk);
+              return ret;
+          }
+
+          return 0;
+      }
+
+      static int __exit my_driver_remove(struct platform_device *pdev) {
+          clk_disable_unprepare(clk_i2c);
+          clk_disable_unprepare(clk);
+          clk_put(clk_i2c);
+          clk_put(clk);
+          return 0;
+      }
+
+  - description: "时钟提供者驱动"
+    code: |
+      static struct clk_fixed_rate my_osc = {
+          .fixed_rate = 24000000,
+      };
+
+      static int __init my_clk_init(void) {
+          struct clk *clk;
+
+          /* 注册固定频率时钟 */
+          clk = clk_register_fixed_rate(NULL, "osc24M",
+                                        NULL, 0, 24000000);
+          if (IS_ERR(clk))
+              return PTR_ERR(clk);
+
+          /* 添加到设备树 */
+          of_clk_add_provider(np, of_clk_src_simple_get, clk);
+
+          return 0;
+      }
+
+      static void __exit my_clk_exit(void) {
+          of_clk_del_provider(np);
+          clk_unregister_fixed_rate(clk);
+      }

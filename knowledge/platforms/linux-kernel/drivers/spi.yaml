@@ -1,0 +1,473 @@
+# Linux Kernel SPI Driver Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/spi/index.html
+
+# ============================================================
+# SPI DRIVER
+# ============================================================
+
+spi_driver:
+  description: "SPI Driver - SPI 设备驱动"
+  header: "linux/spi/spi.h"
+  icon: "⚡"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # spi_register_driver - 注册驱动
+    - pattern: 'spi_register_driver\s*\(\s*(?P<driver>[^)]+)\s*\)'
+      variable_capture: "driver"
+      description: "注册 SPI 驱动"
+
+    # module_spi_driver - 模块宏
+    - pattern: 'module_spi_driver\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "模块化的 SPI 驱动注册"
+
+  driver_structure:
+    - pattern: 'static struct spi_driver\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "SPI driver 结构体定义"
+
+  callbacks:
+    probe:
+      pattern: '\.probe\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Probe 回调"
+
+    remove:
+      pattern: '\.remove\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Remove 回调"
+
+    shutdown:
+      pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Shutdown 回调"
+
+    suspend:
+      pattern: '\.suspend\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Suspend 回调"
+
+    resume:
+      pattern: '\.resume\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Resume 回调"
+
+    suspend_late:
+      pattern: '\.suspend_late\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Late suspend 回调"
+
+    resume_early:
+      pattern: '\.resume_early\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "Early resume 回调"
+
+    id_table:
+      pattern: '\.id_table\s*='
+      description: "设备 ID 表"
+
+  probe_signature:
+    return_type: "int"
+    parameters:
+      - name: "spi"
+        type: "struct spi_device *"
+        description: "SPI 设备"
+      - name: "id"
+        type: "const struct spi_device_id *"
+        description: "匹配的设备 ID"
+
+  remove_signature:
+    return_type: "int"
+    parameters:
+      - name: "spi"
+        type: "struct spi_device *"
+        description: "SPI 设备"
+
+  kernel_call_chain:
+    trigger: "SPI 设备与驱动匹配"
+    chain:
+      - function: "spi_register_controller"
+        file: "drivers/spi/spi.c"
+        description: "注册 SPI 控制器"
+      - function: "spi_match_device"
+        file: "drivers/spi/spi.c"
+        description: "匹配设备与驱动"
+      - function: "spi_probe_device"
+        file: "drivers/spi/spi.c"
+        description: "探测设备"
+      - function: "my_probe(spi, id)"
+        file: "用户代码"
+        description: "用户 probe 函数"
+        is_user_entry: true
+
+      # Remove 路径
+      - function: "spi_remove_device"
+        file: "drivers/spi/spi.c"
+      - function: "my_remove(spi)"
+        file: "用户代码"
+        description: "用户 remove 函数"
+        is_user_entry: true
+
+
+# ============================================================
+# SPI DEVICE
+# ============================================================
+
+spi_device:
+  description: "SPI Device - SPI 设备"
+  header: "linux/spi/spi.h"
+
+  bind_patterns:
+    # spi_new_device - 创建设备
+    - pattern: 'spi_new_device\s*\(\s*(?P<controller>[^)]+)\s*,\s*(?P<chip_info>[^)]+)\s*\)'
+      variable_capture: "controller"
+      description: "创建新的 SPI 设备"
+
+    # spi_add_device - 添加设备
+    - pattern: 'spi_add_device\s*\(\s*(?P<spi>[^)]+)\s*\)'
+      variable_capture: "spi"
+      description: "添加 SPI 设备"
+
+    # spi_unregister_device - 注销设备
+    - pattern: 'spi_unregister_device\s*\(\s*(?P<spi>[^)]+)\s*\)'
+      variable_capture: "spi"
+      description: "注销 SPI 设备"
+
+  device_fields:
+    - name: "master"
+      type: "struct spi_master *"
+      description: "SPI 主控制器"
+    - name: "chip_select"
+      type: "u16"
+      description: "片选编号"
+    - name: "mode"
+      type: "u16"
+      description: "SPI 模式 (CPOL, CPHA)"
+    - name: "bits_per_word"
+      type: "u8"
+      description: "每字位数"
+    - name: "max_speed_hz"
+      type: "u32"
+      description: "最大时钟频率"
+    - name: "controller_state"
+      type: "void *"
+      description: "控制器私有状态"
+    - name: "controller_data"
+      type: "void *"
+      description: "设备特定数据"
+
+
+# ============================================================
+# SPI TRANSFER
+# ============================================================
+
+spi_transfer:
+  description: "SPI Data Transfer - SPI 数据传输"
+  header: "linux/spi/spi.h"
+
+  bind_patterns:
+    # spi_sync - 同步传输
+    - pattern: 'spi_sync\s*\(\s*(?P<spi>[^)]+)\s*,\s*(?P<msg>[^)]+)\s*\)'
+      variable_capture: "spi"
+      description: "同步 SPI 传输"
+
+    # spi_async - 异步传输
+    - pattern: 'spi_async\s*\(\s*(?P<spi>[^)]+)\s*,\s*(?P<msg>[^)]+)\s*\)'
+      variable_capture: "spi"
+      description: "异步 SPI 传输"
+
+    # spi_read / spi_write - 简单传输
+    - pattern: 'spi_read\s*\(\s*(?P<spi>[^)]+)\s*,\s*(?P<buf>[^)]+)\s*,\s*(?P<len>\d+)\s*\)'
+      variable_capture: "spi"
+      description: "SPI 读取"
+
+    - pattern: 'spi_write\s*\(\s*(?P<spi>[^)]+)\s*,\s*(?P<buf>[^)]+)\s*,\s*(?P<len>\d+)\s*\)'
+      variable_capture: "spi"
+      description: "SPI 写入"
+
+    # spi_w8 / spi_w8r8 - 8位传输
+    - pattern: 'spi_w8r8\s*\(\s*(?P<spi>[^)]+)\s*,\s*(?P<cmd>\w+)\s*\)'
+      variable_capture: "spi"
+      description: "发送8位命令，接收8位响应"
+
+  transfer_structure:
+    - pattern: 'struct spi_transfer\s*\{[^}]+\}'
+    description: "SPI 传输结构"
+
+  transfer_fields:
+    - name: "tx_buf"
+      type: "const void *"
+      description: "发送缓冲区"
+    - name: "rx_buf"
+      type: "void *"
+      description: "接收缓冲区"
+    - name: "len"
+      type: "unsigned int"
+      description: "传输长度"
+    - name: "speed_hz"
+      type: "u32"
+      description: "传输速度 (覆盖设备设置)"
+    - name: "bits_per_word"
+      type: "u8"
+      description: "每字位数 (覆盖设备设置)"
+    - name: "delay_usecs"
+      type: "u16"
+      description: "传输后延迟 (微秒)"
+    - name: "cs_change"
+      type: "bool"
+      description: "是否在传输间改变片选"
+    - name: "tx_nbits"
+      type: "u8"
+      description: "发送位数"
+    - name: "rx_nbits"
+      type: "u8"
+      description: "接收位数"
+
+  message_structure:
+    - pattern: 'struct spi_message\s*\{[^}]+\}'
+    description: "SPI 消息结构"
+
+  message_operations:
+    - pattern: 'spi_message_init\s*\(\s*(?P<msg>[^)]+)\s*\)'
+      variable_capture: "msg"
+      description: "初始化消息"
+
+    - pattern: 'spi_message_add_tail\s*\(\s*(?P<transfer>[^)]+)\s*,\s*(?P<msg>[^)]+)\s*\)'
+      variable_capture: "msg"
+      description: "添加传输到消息"
+
+
+# ============================================================
+# SPI MESSAGE
+# ============================================================
+
+spi_message:
+  description: "SPI Message Queue"
+  header: "linux/spi/spi.h"
+
+  patterns:
+    # spi_queued_transfer
+    - pattern: 'spi_queued_transfer\s*\(\s*(?P<spi>[^)]+)\s*,\s*(?P<msg>[^)]+)\s*\)'
+      variable_capture: "spi"
+      description: "队列传输"
+
+
+# ============================================================
+# SPI DEVICE ID
+# ============================================================
+
+spi_device_id:
+  description: "SPI Device ID Table"
+  header: "linux/mod_devicetable.h"
+
+  bind_patterns:
+    # SPI ID 表格定义
+    - pattern: 'static struct spi_device_id\s+(?P<name>\w+)\s*\[\]\s*=\s*\{'
+      variable_capture: "name"
+      description: "SPI 设备 ID 表"
+
+    # 单个 ID 条目
+    - pattern: '\{\s*(?P<name>["\']?[\w\-]+["\']?)\s*,\s*(?P<driver_data>\w+)\s*\}'
+      extra_captures:
+        - name: "name"
+          description: "设备名称"
+        - name: "driver_data"
+          description: "驱动私有数据"
+
+    # 终止符
+    - pattern: '\{\s*\}'
+      description: "ID 表终止符"
+
+    # MODULE_DEVICE_TABLE
+    - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*spi\s*,\s*(?P<table>\w+)\s*\)'
+      variable_capture: "table"
+      description: "模块导出 SPI ID 表"
+
+
+# ============================================================
+# SPI MODE
+# ============================================================
+
+spi_mode:
+  description: "SPI Mode (CPOL/CPHA)"
+  header: "linux/spi/spi.h"
+
+  flags:
+    SPI_MODE_0:
+      pattern: 'SPI_MODE_0'
+      description: "CPOL=0, CPHA=0"
+    SPI_MODE_1:
+      pattern: 'SPI_MODE_1'
+      description: "CPOL=0, CPHA=1"
+    SPI_MODE_2:
+      pattern: 'SPI_MODE_2'
+      description: "CPOL=1, CPHA=0"
+    SPI_MODE_3:
+      pattern: 'SPI_MODE_3'
+      description: "CPOL=1, CPHA=1"
+    SPI_CPHA:
+      pattern: 'SPI_CPHA'
+      description: "时钟相位"
+    SPI_CPOL:
+      pattern: 'SPI_CPOL'
+      description: "时钟极性"
+    SPI_CS_HIGH:
+      pattern: 'SPI_CS_HIGH'
+      description: "高电平片选"
+    SPI_LSB_FIRST:
+      pattern: 'SPI_LSB_FIRST'
+      description: "低位在前"
+    SPI_3WIRE:
+      pattern: 'SPI_3WIRE'
+      description: "3线模式 (MOSI/MISO 复用)"
+    SPI_LOOP:
+      pattern: 'SPI_LOOP'
+      description: "回环模式"
+    SPI_NO_CS:
+      pattern: 'SPI_NO_CS'
+      description: "无片选"
+    SPI_READY:
+      pattern: 'SPI_READY'
+      description: "从设备 Ready 信号"
+
+
+# ============================================================
+# SPI DEVICE TREE
+# ============================================================
+
+spi_device_tree:
+  description: "SPI Device Tree Binding"
+  header: "linux/of.h"
+
+  bind_patterns:
+    # of_match_table
+    - pattern: '\.of_match_table\s*=\s*(?P<table>\w+)'
+      description: "设备树匹配表"
+
+    # SPI 设备树节点
+    - pattern: 'spi@[\w-]+\s*\{[^}]*reg\s*=\s*<(?P<cs>\d+)>/'
+      extra_captures:
+        - name: "cs"
+          description: "片选编号"
+
+    # MODULE_DEVICE_TABLE(of, ...)
+    - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*of\s*,\s*(?P<table>\w+)\s*\)'
+      variable_capture: "table"
+      description: "模块导出设备树匹配"
+
+
+# ============================================================
+# SPI DRIVER EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 SPI 驱动"
+    code: |
+      static int my_probe(struct spi_device *spi) {
+          struct my_spi_dev *dev;
+          int ret;
+
+          /* 分配设备结构 */
+          dev = devm_kzalloc(&spi->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+
+          dev->spi = spi;
+
+          /* 设置 SPI 参数 */
+          spi->mode = SPI_MODE_0;
+          spi->bits_per_word = 8;
+          ret = spi_setup(spi);
+          if (ret < 0)
+              return ret;
+
+          /* 初始化设备 */
+          ret = my_spi_init(dev);
+          if (ret)
+              return ret;
+
+          /* 设置驱动数据 */
+          spi_set_drvdata(spi, dev);
+
+          /* 请求中断 */
+          if (spi->irq > 0) {
+              ret = devm_request_irq(&spi->dev, spi->irq,
+                                     my_irq_handler, 0,
+                                     "my_spi", dev);
+              if (ret)
+                  return ret;
+          }
+
+          return 0;
+      }
+
+      static int my_remove(struct spi_device *spi) {
+          struct my_spi_dev *dev = spi_get_drvdata(spi);
+          my_spi_cleanup(dev);
+          return 0;
+      }
+
+      static struct spi_device_id my_id_table[] = {
+          { "my-spi-device", 0 },
+          { }
+      };
+
+      static const struct of_device_id my_of_match[] = {
+          { .compatible = "vendor,my-spi-device" },
+          { }
+      };
+
+      static struct spi_driver my_driver = {
+          .driver = {
+              .name = "my-spi-driver",
+              .of_match_table = my_of_match,
+          },
+          .probe = my_probe,
+          .remove = my_remove,
+          .id_table = my_id_table,
+      };
+      module_spi_driver(my_driver);
+
+  - description: "SPI 传输示例"
+    code: |
+      static int spi_read_reg(struct spi_device *spi,
+                             u8 addr, u8 *val) {
+          u8 tx_buf[2], rx_buf[1];
+          struct spi_transfer t[] = {
+              {
+                  .tx_buf = tx_buf,
+                  .rx_buf = rx_buf,
+                  .len = 2,
+              },
+          };
+          int ret;
+
+          tx_buf[0] = addr | 0x80;  // 读命令
+          tx_buf[1] = 0;
+
+          ret = spi_sync_transfer(spi, t, ARRAY_SIZE(t));
+          if (ret < 0)
+              return ret;
+
+          *val = rx_buf[0];
+          return 0;
+      }
+
+      static int spi_write_reg(struct spi_device *spi,
+                              u8 addr, u8 val) {
+          u8 tx_buf[2];
+          int ret;
+
+          tx_buf[0] = addr & 0x7F;  // 写命令
+          tx_buf[1] = val;
+
+          ret = spi_write(spi, tx_buf, sizeof(tx_buf));
+          return ret;
+      }
