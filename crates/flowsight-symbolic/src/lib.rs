@@ -26,7 +26,9 @@
 pub mod executor;
 pub mod path;
 pub mod constraint;
+pub mod stubs;
 
 pub use executor::{KleeExecutor, SymbolicConfig};
 pub use path::{ExecutionPath, ExecutionStep, PathConstraint};
 pub use constraint::{SymbolicConstraint, ConstraintType};
+pub use stubs::KernelStubManager;
