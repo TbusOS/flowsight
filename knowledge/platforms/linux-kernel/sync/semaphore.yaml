@@ -1,0 +1,260 @@
+# Linux Kernel Semaphore Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/scheduler/semaphores.html
+
+# ============================================================
+# SEMAPHORE
+# ============================================================
+
+semaphore:
+  description: "Semaphore - 信号量"
+  header: "linux/semaphore.h"
+  icon: "🚦"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # DEFINE_SEMAPHORE - 定义信号量
+    - pattern: 'DEFINE_SEMAPHORE\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "定义信号量"
+
+    # sema_init - 初始化信号量
+    - pattern: 'sema_init\s*\(\s*(?P<sem>\w+)\s*,\s*(?P<count>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "初始化信号量"
+
+    # down - 获取信号量（可能睡眠）
+    - pattern: 'down\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "获取信号量（可能睡眠）"
+
+    # down_interruptible - 可中断获取
+    - pattern: 'down_interruptible\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "可中断获取信号量"
+
+    # down_killable - 可被杀获取
+    - pattern: 'down_killable\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "可被杀获取信号量"
+
+    # down_trylock - 非阻塞尝试获取
+    - pattern: 'down_trylock\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "尝试获取信号量"
+
+    # down_timeout - 超时获取
+    - pattern: 'down_timeout\s*\(\s*(?P<sem>\w+)\s*,\s*(?P<timeout>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "超时获取信号量"
+
+    # up - 释放信号量
+    - pattern: 'up\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "释放信号量"
+
+  kernel_call_chain:
+    trigger: "down() 被调用"
+    chain:
+      - function: "__down"
+        description: "获取信号量（阻塞）"
+      - function: "__down_interruptible"
+        description: "可中断获取信号量"
+      - function: "__down_killable"
+        description: "可被杀获取信号量"
+      - function: "__down_timeout"
+        description: "超时获取信号量"
+      - function: "__up"
+        description: "释放信号量"
+
+
+# ============================================================
+# RW SEMAPHORE
+# ============================================================
+
+rw_semaphore:
+  description: "RW Semaphore - 读写信号量"
+  header: "linux/rwsem.h"
+  icon: "📚"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # DECLARE_RWSEM - 声明读写信号量
+    - pattern: 'DECLARE_RWSEM\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "声明读写信号量"
+
+    # init_rwsem - 初始化读写信号量
+    - pattern: 'init_rwsem\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "初始化读写信号量"
+
+    # down_read - 获取读锁
+    - pattern: 'down_read\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "获取读信号量"
+
+    # down_read_trylock - 尝试获取读锁
+    - pattern: 'down_read_trylock\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "尝试获取读信号量"
+
+    # up_read - 释放读锁
+    - pattern: 'up_read\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "释放读信号量"
+
+    # down_write - 获取写锁
+    - pattern: 'down_write\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "获取写信号量"
+
+    # down_write_trylock - 尝试获取写锁
+    - pattern: 'down_write_trylock\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "尝试获取写信号量"
+
+    # up_write - 释放写锁
+    - pattern: 'up_write\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "释放写信号量"
+
+    # downgrade_write - 降级写锁为读锁
+    - pattern: 'downgrade_write\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "将写锁降级为读锁"
+
+
+# ============================================================
+# COMPLETION
+# ============================================================
+
+completion:
+  description: "Completion - 完成机制"
+  header: "linux/completion.h"
+  icon: "✅"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # DECLARE_COMPLETION - 声明完成变量
+    - pattern: 'DECLARE_COMPLETION\s*\(\s*(?P<comp>\w+)\s*\)'
+      variable_capture: "comp"
+      description: "声明完成变量"
+
+    # init_completion - 初始化完成变量
+    - pattern: 'init_completion\s*\(\s*(?P<comp>\w+)\s*\)'
+      variable_capture: "comp"
+      description: "初始化完成变量"
+
+    # wait_for_completion - 等待完成
+    - pattern: 'wait_for_completion\s*\(\s*(?P<comp>\w+)\s*\)'
+      variable_capture: "comp"
+      description: "等待完成事件"
+
+    # wait_for_completion_interruptible - 可中断等待
+    - pattern: 'wait_for_completion_interruptible\s*\(\s*(?P<comp>\w+)\s*\)'
+      variable_capture: "comp"
+      description: "可中断等待完成"
+
+    # wait_for_completion_timeout - 超时等待
+    - pattern: 'wait_for_completion_timeout\s*\(\s*(?P<comp>\w+)\s*,\s*(?P<timeout>\w+)\s*\)'
+      variable_capture: "comp"
+      description: "超时等待完成"
+
+    # wait_for_completion_killable - 可被杀等待
+    - pattern: 'wait_for_completion_killable\s*\(\s*(?P<comp>\w+)\s*\)'
+      variable_capture: "comp"
+      description: "可被杀等待完成"
+
+    # complete - 通知单个等待者
+    - pattern: 'complete\s*\(\s*(?P<comp>\w+)\s*\)'
+      variable_capture: "comp"
+      description: "完成单个等待者"
+
+    # complete_all - 通知所有等待者
+    - pattern: 'complete_all\s*\(\s*(?P<comp>\w+)\s*\)'
+      variable_capture: "comp"
+      description: "完成所有等待者"
+
+    # reinit_completion - 重新初始化
+    - pattern: 'reinit_completion\s*\(\s*(?P<comp>\w+)\s*\)'
+      variable_capture: "comp"
+      description: "重新初始化完成变量"
+
+
+# ============================================================
+# SEMAPHORE EXAMPLES
+# ============================================================
+
+examples:
+  - description: "Semaphore 使用示例"
+    code: |
+      static DECLARE_SEMAPHORE(my_sem, 1);
+
+      static void critical_section(void) {
+          down(&my_sem);
+          /* 临界区 */
+          up(&my_sem);
+      }
+
+  - description: "读写信号量示例"
+    code: |
+      static DECLARE_RWSEM(my_rwsem);
+      static int shared_data = 0;
+
+      static int read_data(void) {
+          int ret;
+          down_read(&my_rwsem);
+          ret = shared_data;
+          up_read(&my_rwsem);
+          return ret;
+      }
+
+      static void write_data(int data) {
+          down_write(&my_rwsem);
+          shared_data = data;
+          up_write(&my_rwsem);
+      }
+
+  - description: "Completion 使用示例"
+    code: |
+      static DECLARE_COMPLETION(done);
+
+      static int wait_for_event(void) {
+          return wait_for_completion_interruptible(&done);
+      }
+
+      static void event_occurred(void) {
+          complete(&done);
+      }
+
+  - description: "工作队列与 Completion"
+    code: |
+      static DECLARE_COMPLETION(worker_done);
+      static struct work_struct my_work;
+
+      static void work_handler(struct work_struct *work) {
+          /* 模拟工作 */
+          msleep(100);
+          complete(&worker_done);
+      }
+
+      static void wait_for_work(void) {
+          schedule_work(&my_work);
+          wait_for_completion(&worker_done);
+      }

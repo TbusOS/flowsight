@@ -1,0 +1,321 @@
+# Linux Kernel Read-Write Lock Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/locking/rwlock.html
+
+# ============================================================
+# RWLOCK (Legacy)
+# ============================================================
+
+rwlock_legacy:
+  description: "RWLock - 读写锁（旧版接口）"
+  header: "linux/rwlock.h"
+  icon: "🔐"
+
+  context:
+    type: "process"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # DEFINE_RWLOCK - 定义读写锁
+    - pattern: 'DEFINE_RWLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "定义读写锁"
+
+    # rwlock_init - 初始化读写锁
+    - pattern: 'rwlock_init\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "初始化读写锁"
+
+    # read_lock - 获取读锁
+    - pattern: 'read_lock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取读锁"
+
+    # read_lock_irqsave - 保存中断获取读锁
+    - pattern: 'read_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "保存中断状态获取读锁"
+
+    # read_lock_irq - 关闭中断获取读锁
+    - pattern: 'read_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭中断获取读锁"
+
+    # read_lock_bh - 关闭软中断获取读锁
+    - pattern: 'read_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭软中断获取读锁"
+
+    # read_trylock - 尝试获取读锁
+    - pattern: 'read_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取读锁"
+
+    # read_unlock - 释放读锁
+    - pattern: 'read_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放读锁"
+
+    # write_lock - 获取写锁
+    - pattern: 'write_lock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取写锁"
+
+    # write_lock_irqsave - 保存中断获取写锁
+    - pattern: 'write_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "保存中断状态获取写锁"
+
+    # write_lock_irq - 关闭中断获取写锁
+    - pattern: 'write_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭中断获取写锁"
+
+    # write_lock_bh - 关闭软中断获取写锁
+    - pattern: 'write_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭软中断获取写锁"
+
+    # write_trylock - 尝试获取写锁
+    - pattern: 'write_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取写锁"
+
+    # write_unlock - 释放写锁
+    - pattern: 'write_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁"
+
+    # read_unlock_irqrestore - 恢复中断释放读锁
+    - pattern: 'read_unlock_irqrestore\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "恢复中断状态释放读锁"
+
+    # write_unlock_irqrestore - 恢复中断释放写锁
+    - pattern: 'write_unlock_irqrestore\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "恢复中断状态释放写锁"
+
+
+# ============================================================
+# RWLOCK_T (utex-based)
+# ============================================================
+
+rwlock_utex:
+  description: "RWLock (utex-based) - 基于utex的读写锁"
+  header: "linux/rwlock_types.h"
+
+  context:
+    type: "process"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # rwlock_t - 读写锁类型
+    - pattern: 'rwlock_t\s+(?P<lock>\w+)\s*='
+      variable_capture: "lock"
+      description: "读写锁变量"
+
+    # __RW_LOCK_UNLOCKED - 静态初始化
+    - pattern: '__RW_LOCK_UNLOCKED\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "静态读写锁初始化"
+
+    # RW_LOCK_UNLOCKED - 静态初始化（旧版）
+    - pattern: 'RW_LOCK_UNLOCKED\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "静态读写锁初始化（旧版）"
+
+
+# ============================================================
+# SEQLOCK
+# ============================================================
+
+seqlock:
+  description: "Sequential Lock - 顺序锁"
+  header: "linux/seqlock.h"
+  icon: "🔄"
+
+  context:
+    type: "process"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # DEFINE_SEQLOCK - 定义顺序锁
+    - pattern: 'DEFINE_SEQLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "定义顺序锁"
+
+    # seqlock_init - 初始化顺序锁
+    - pattern: 'seqlock_init\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "初始化顺序锁"
+
+    # read_seqbegin - 开始读序列
+    - pattern: 'read_seqbegin\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "开始读取序列号"
+
+    # read_seqretry - 验证读序列
+    - pattern: 'read_seqretry\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<seq>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "验证读取序列号"
+
+    # write_seqlock - 获取写锁
+    - pattern: 'write_seqlock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取顺序锁"
+
+    # write_sequnlock - 释放写锁
+    - pattern: 'write_sequnlock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放顺序锁"
+
+    # write_seqlock_irq - 关闭中断获取写锁
+    - pattern: 'write_seqlock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭中断获取顺序锁"
+
+    # write_sequnlock_irq - 打开中断释放写锁
+    - pattern: 'write_sequnlock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "打开中断释放顺序锁"
+
+    # write_seqlock_irqsave - 保存中断获取写锁
+    - pattern: 'write_seqlock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "保存中断状态获取顺序锁"
+
+    # write_sequnlock_irqrestore - 恢复中断释放写锁
+    - pattern: 'write_sequnlock_irqrestore\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "恢复中断状态释放顺序锁"
+
+  notes:
+    - "顺序锁适合读多写少的场景"
+    - "读者不需要获取锁，只需要检查序列号"
+    - "写者需要获取排他锁"
+    - "读者可能读到不一致的数据，需要重试"
+
+
+# ============================================================
+# LOCK_TYPICAL USAGE
+# ============================================================
+
+locking_strategies:
+  description: "Locking Strategies - 锁使用策略"
+  header: "linux/locking.h"
+
+  context_rules:
+    - pattern: 'rwlock'
+      description: "读写锁适用于读多写少场景"
+      strategy: "read_many_write_few"
+
+    - pattern: 'seqlock'
+      description: "顺序锁适用于读极多写极少场景"
+      strategy: "read_mostly_write_rarely"
+
+    - pattern: 'mutex'
+      description: "互斥锁适用于需要睡眠的场景"
+      strategy: "sleep_allowed"
+
+    - pattern: 'spinlock'
+      description: "自旋锁适用于不能睡眠的场景"
+      strategy: "no_sleep"
+
+  notes:
+    - "优先使用粒度最小的锁"
+    - "减少持有锁的时间"
+    - "避免在锁内调用可能睡眠的函数"
+    - "考虑使用读写锁替代互斥锁提升并发"
+
+
+# ============================================================
+# RWLOCK EXAMPLES
+# ============================================================
+
+examples:
+  - description: "读写锁基本使用"
+    code: |
+      static DEFINE_RWLOCK(my_rwlock);
+      static int shared_counter = 0;
+
+      static int read_counter(void) {
+          int ret;
+          read_lock(&my_rwlock);
+          ret = shared_counter;
+          read_unlock(&my_rwlock);
+          return ret;
+      }
+
+      static void increment_counter(void) {
+          write_lock(&my_rwlock);
+          shared_counter++;
+          write_unlock(&my_rwlock);
+      }
+
+  - description: "中断中读写锁使用"
+    code: |
+      static DEFINE_RWLOCK(my_rwlock);
+      static unsigned long flags;
+
+      static irqreturn_t my_isr(int irq, void *dev_id) {
+          /* 写者：在中断上下文中 */
+          write_lock_irqsave(&my_rwlock, flags);
+          /* 更新共享数据 */
+          write_unlock_irqrestore(&my_rwlock, flags);
+          return IRQ_HANDLED;
+      }
+
+      static int read_from_process_context(void) {
+          int ret;
+          /* 读者：在进程上下文中 */
+          read_lock(&my_rwlock);
+          ret = shared_data;
+          read_unlock(&my_rwlock);
+          return ret;
+      }
+
+  - description: "顺序锁使用示例"
+    code: |
+      static DEFINE_SEQLOCK(my_seqlock);
+      static unsigned long jiffies_at_update;
+
+      static unsigned long get_jiffies(void) {
+          unsigned long seq;
+          do {
+              seq = read_seqbegin(&my_seqlock);
+          } while (read_seqretry(&my_seqlock, seq));
+          return jiffies_at_update;
+      }
+
+      static void update_jiffies(void) {
+          write_seqlock(&my_seqlock);
+          jiffies_at_update = jiffies;
+          write_sequnlock(&my_seqlock);
+      }
+
+  - description: "读多写少场景优化"
+    code: |
+      /* 使用顺序锁优化读多写少场景 */
+      static DEFINE_SEQLOCK(time_seqlock);
+      static struct timespec64 last_update;
+
+      static void get_time(struct timespec64 *ts) {
+          unsigned int seq;
+          do {
+              seq = read_seqbegin(&time_seqlock);
+              *ts = last_update;
+          } while (read_seqretry(&time_seqlock, seq));
+      }
+
+      static void update_time(struct timespec64 *new_time) {
+          write_seqlock(&time_seqlock);
+          last_update = *new_time;
+          write_sequnlock(&time_seqlock);
+      }

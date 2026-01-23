@@ -1,0 +1,291 @@
+# Linux Kernel SoftIRQ Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/kernel-softirq.html
+
+# ============================================================
+# SOFTIRQ CORE
+# ============================================================
+
+softirq_core:
+  description: "SoftIRQ - 软中断机制"
+  header: "linux/interrupt.h"
+  icon: "⚡"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # open_softirq - 注册软中断
+    - pattern: 'open_softirq\s*\(\s*(?P<name>\w+)\s*,\s*(?P<action>\w+)\s*\)'
+      variable_capture: "name"
+      description: "注册软中断处理程序"
+
+    # raise_softirq - 触发软中断
+    - pattern: 'raise_softirq\s*\(\s*(?P<nr>\w+)\s*\)'
+      variable_capture: "nr"
+      description: "触发软中断"
+
+    # raise_softirq_irqoff - 关闭中断触发软中断
+    - pattern: 'raise_softirq_irqoff\s*\(\s*(?P<nr>\w+)\s*\)'
+      variable_capture: "nr"
+      description: "在中断关闭状态下触发软中断"
+
+    # softirq_pending - 检查挂起的软中断
+    - pattern: 'softirq_pending\s*\(\s*(?P<cpu>\w+)\s*\)'
+      variable_capture: "cpu"
+      description: "检查挂起的软中断"
+
+    # local_softirq_pending - 本地挂起软中断
+    - pattern: 'local_softirq_pending\s*\(\s*\)'
+      description: "获取本地挂起的软中断"
+
+
+# ============================================================
+# SOFTIRQ TYPES
+# ============================================================
+
+softirq_types:
+  description: "SoftIRQ Types - 软中断类型定义"
+  header: "linux/interrupt.h"
+
+  bind_patterns:
+    # HI_SOFTIRQ - 高优先级软中断
+    - pattern: 'HI_SOFTIRQ'
+      description: "高优先级软中断 (tasklet)"
+
+    # TIMER_SOFTIRQ - 定时器软中断
+    - pattern: 'TIMER_SOFTIRQ'
+      description: "定时器软中断"
+
+    # NET_TX_SOFTIRQ - 网络发送软中断
+    - pattern: 'NET_TX_SOFTIRQ'
+      description: "网络发送软中断"
+
+    # NET_RX_SOFTIRQ - 网络接收软中断
+    - pattern: 'NET_RX_SOFTIRQ'
+      description: "网络接收软中断"
+
+    # BLOCK_SOFTIRQ - 块设备软中断
+    - pattern: 'BLOCK_SOFTIRQ'
+      description: "块设备软中断"
+
+    # IRQ_POLL_SOFTIRQ - IRQ 轮询软中断
+    - pattern: 'IRQ_POLL_SOFTIRQ'
+      description: "IRQ 轮询软中断"
+
+    # TASKLET_SOFTIRQ - tasklet 软中断
+    - pattern: 'TASKLET_SOFTIRQ'
+      description: "tasklet 软中断"
+
+    # SCHED_SOFTIRQ - 调度软中断
+    - pattern: 'SCHED_SOFTIRQ'
+      description: "调度软中断"
+
+    # HRTIMER_SOFTIRQ - 高精度定时器软中断
+    - pattern: 'HRTIMER_SOFTIRQ'
+      description: "高精度定时器软中断"
+
+    # RCU_SOFTIRQ - RCU 软中断
+    - pattern: 'RCU_SOFTIRQ'
+      description: "RCU 软中断"
+
+
+# ============================================================
+# TASKLET (基于软中断)
+# ============================================================
+
+tasklet:
+  description: "Tasklet - 基于软中断的任务"
+  header: "linux/interrupt.h"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # DECLARE_TASKLET - 声明 tasklet
+    - pattern: 'DECLARE_TASKLET\s*\(\s*(?P<tasklet>\w+)\s*,\s*(?P<func>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+      variable_capture: "tasklet"
+      description: "声明 tasklet"
+
+    # DECLARE_TASKLET_DISABLED - 声明禁用的 tasklet
+    - pattern: 'DECLARE_TASKLET_DISABLED\s*\(\s*(?P<tasklet>\w+)\s*,\s*(?P<func>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+      variable_capture: "tasklet"
+      description: "声明禁用的 tasklet"
+
+    # tasklet_init - 初始化 tasklet
+    - pattern: 'tasklet_init\s*\(\s*(?P<tasklet>\w+)\s*,\s*(?P<func>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+      variable_capture: "tasklet"
+      description: "初始化 tasklet"
+
+    # tasklet_schedule - 调度 tasklet
+    - pattern: 'tasklet_schedule\s*\(\s*(?P<tasklet>\w+)\s*\)'
+      variable_capture: "tasklet"
+      description: "调度 tasklet"
+
+    # tasklet_hi_schedule - 高优先级调度 tasklet
+    - pattern: 'tasklet_hi_schedule\s*\(\s*(?P<tasklet>\w+)\s*\)'
+      variable_capture: "tasklet"
+      description: "高优先级调度 tasklet"
+
+    # tasklet_disable - 禁用 tasklet
+    - pattern: 'tasklet_disable\s*\(\s*(?P<tasklet>\w+)\s*\)'
+      variable_capture: "tasklet"
+      description: "禁用 tasklet"
+
+    # tasklet_enable - 启用 tasklet
+    - pattern: 'tasklet_enable\s*\(\s*(?P<tasklet>\w+)\s*\)'
+      variable_capture: "tasklet"
+      description: "启用 tasklet"
+
+    # tasklet_kill - 终止 tasklet
+    - pattern: 'tasklet_kill\s*\(\s*(?P<tasklet>\w+)\s*\)'
+      variable_capture: "tasklet"
+      description: "终止 tasklet"
+
+  kernel_call_chain:
+    trigger: "tasklet_schedule() 被调用"
+    chain:
+      - function: "tasklet_action"
+        description: "tasklet 软中断处理"
+      - function: "tasklet->func"
+        is_user_entry: true
+        description: "用户 tasklet 处理函数"
+
+
+# ============================================================
+# TASKLET_STRUCT
+# ============================================================
+
+tasklet_struct:
+  description: "Tasklet Structure - tasklet 结构体"
+  header: "linux/interrupt.h"
+
+  bind_patterns:
+    # struct tasklet_struct
+    - pattern: 'struct tasklet_struct\s+\{(?P<fields>[^}]+)\}'
+      variable_capture: "fields"
+      description: "tasklet 结构体定义"
+
+    # tasklet 结构体字段
+    - pattern: 'next\s*,\s*state\s*,\s*count\s*,\s*func\s*,\s*data'
+      description: "tasklet 结构体字段"
+
+
+# ============================================================
+# SOFTIRQ VECTOR TABLE
+# ============================================================
+
+softirq_vector:
+  description: "SoftIRQ Vector - 软中断向量表"
+  header: "kernel/softirq.c"
+
+  kernel_call_chain:
+    trigger: "软中断触发 (raise_softirq)"
+    chain:
+      - function: "irq_exit"
+        description: "退出硬中断"
+      - function: "__do_softirq"
+        description: "执行软中断"
+      - function: "hrtimer_interrupt"
+        description: "高精度定时器中断"
+      - function: "net_tx_action"
+        description: "网络发送操作"
+      - function: "net_rx_action"
+        description: "网络接收操作"
+      - function: "blk_mq_run_softirq"
+        description: "块设备软中断"
+      - function: "tasklet_action"
+        description: "tasklet 软中断"
+
+
+# ============================================================
+# SOFTIRQ EXECUTION CONTEXT
+# ============================================================
+
+execution_context:
+  description: "SoftIRQ Execution Context - 软中断执行上下文"
+  header: "linux/preempt.h"
+
+  context_rules:
+    - pattern: 'in_softirq'
+      description: "检查是否在软中断上下文"
+      context: "softirq"
+
+    - pattern: 'in_interrupt'
+      description: "检查是否在中断上下文"
+      context: "any_interrupt"
+
+    - pattern: 'in_atomic'
+      description: "检查是否在原子上下文"
+      context: "atomic"
+
+  notes:
+    - "软中断在中断上下文中执行，不能睡眠"
+    - "软中断可能被中断嵌套执行"
+    - "高优先级软中断 (HI) 在普通软中断之前执行"
+
+
+# ============================================================
+# SOFTIRQ EXAMPLES
+# ============================================================
+
+examples:
+  - description: "Tasklet 使用示例"
+    code: |
+      #include <linux/interrupt.h>
+
+      static struct tasklet_struct my_tasklet;
+
+      static void my_tasklet_func(unsigned long data) {
+          printk("Tasklet executed with data: %lu\n", data);
+      }
+
+      static int __init my_init(void) {
+          tasklet_init(&my_tasklet, my_tasklet_func, 123);
+          tasklet_schedule(&my_tasklet);
+          return 0;
+      }
+
+      static void __exit my_exit(void) {
+          tasklet_kill(&my_tasklet);
+      }
+
+  - description: "自定义软中断示例"
+    code: |
+      #include <linux/interrupt.h>
+      #include <linux/module.h>
+
+      static void my_softirq_handler(struct softirq_action *h) {
+          printk("My softirq handler executed\n");
+      }
+
+      static int __init my_init(void) {
+          open_softirq(MY_SOFTIRQ, my_softirq_handler);
+          raise_softirq(MY_SOFTIRQ);
+          return 0;
+      }
+
+  - description: "软中断与工作队列对比"
+    code: |
+      /* 软中断 - 高性能但不能睡眠 */
+      static struct tasklet_struct my_tasklet;
+
+      void my_tasklet_handler(unsigned long data) {
+          /* 不能睡眠，不能长时间运行 */
+          my_device_isr();
+      }
+
+      /* 工作队列 - 可以睡眠 */
+      static struct work_struct my_work;
+
+      void my_work_handler(struct work_struct *work) {
+          /* 可以睡眠，可以进行阻塞操作 */
+          my_device_isr();
+          msleep(100);
+      }
