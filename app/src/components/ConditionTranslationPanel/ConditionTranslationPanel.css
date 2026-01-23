@@ -1,0 +1,411 @@
+/**
+ * ConditionTranslationPanel CSS - AI-assisted condition translation styling
+ */
+
+.condition-translation-panel {
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #30363d;
+}
+
+/* Header */
+.condition-translation-panel .panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+}
+
+.condition-translation-panel .panel-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.condition-translation-panel .function-context {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: #8b949e;
+  background: #21262d;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.condition-translation-panel .translation-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #6e7681;
+}
+
+/* Loading state */
+.condition-translation-panel .panel-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 16px;
+  color: #8b949e;
+}
+
+.condition-translation-panel .loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error state */
+.condition-translation-panel .panel-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+  color: #f85149;
+}
+
+.condition-translation-panel .error-icon {
+  font-size: 32px;
+}
+
+.condition-translation-panel .retry-btn {
+  margin-top: 12px;
+  background: #238636;
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.condition-translation-panel .retry-btn:hover {
+  background: #2ea043;
+}
+
+/* Empty state */
+.condition-translation-panel .panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+  color: #8b949e;
+}
+
+.condition-translation-panel .empty-icon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+.condition-translation-panel .panel-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Translations list */
+.condition-translation-panel .translations-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* Translation item */
+.condition-translation-panel .translation-item {
+  background: #161b22;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border: 1px solid #30363d;
+  transition: border-color 0.2s;
+}
+
+.condition-translation-panel .translation-item:hover {
+  border-color: #484f58;
+}
+
+.condition-translation-panel .translation-item.expanded {
+  border-color: #388bfd;
+}
+
+/* Translation header */
+.condition-translation-panel .translation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.condition-translation-panel .translation-header:hover {
+  background: #1c2128;
+}
+
+.condition-translation-panel .translation-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.condition-translation-panel .original-condition {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: #d4d4d4;
+  background: #21262d;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.condition-translation-panel .arrow {
+  color: #6e7681;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.condition-translation-panel .translation-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Confidence badge */
+.condition-translation-panel .confidence-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.condition-translation-panel .confidence-badge.confidence-high {
+  background: #23863633;
+  color: #3fb950;
+}
+
+.condition-translation-panel .confidence-badge.confidence-medium {
+  background: #9e6a0333;
+  color: #d29922;
+}
+
+.condition-translation-panel .confidence-badge.confidence-low {
+  background: #da363333;
+  color: #f85149;
+}
+
+/* Expanded content */
+.condition-translation-panel .translation-content {
+  padding: 12px 16px;
+  border-top: 1px solid #30363d;
+  background: #0d1117;
+}
+
+.condition-translation-panel .content-section {
+  margin-bottom: 12px;
+}
+
+.condition-translation-panel .content-section:last-child {
+  margin-bottom: 0;
+}
+
+.condition-translation-panel .content-section h4 {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8b949e;
+  text-transform: uppercase;
+}
+
+.condition-translation-panel .business-meaning {
+  margin: 0;
+  font-size: 14px;
+  color: #c9d1d9;
+  line-height: 1.5;
+}
+
+.condition-translation-panel .trigger-scenario {
+  margin: 0;
+  font-size: 13px;
+  color: #8b949e;
+  line-height: 1.5;
+  font-style: italic;
+}
+
+/* Feedback section */
+.condition-translation-panel .feedback-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #30363d;
+}
+
+.condition-translation-panel .feedback-buttons {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.condition-translation-panel .feedback-label {
+  font-size: 12px;
+  color: #6e7681;
+}
+
+.condition-translation-panel .thumbs-up-btn,
+.condition-translation-panel .thumbs-down-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.condition-translation-panel .thumbs-up-btn:hover {
+  background: #238636;
+  border-color: #238636;
+}
+
+.condition-translation-panel .thumbs-down-btn:hover {
+  background: #da3633;
+  border-color: #da3633;
+}
+
+/* Feedback form */
+.condition-translation-panel .feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.condition-translation-panel .correction-input {
+  width: 100%;
+  min-height: 80px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #c9d1d9;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.condition-translation-panel .correction-input:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.condition-translation-panel .correction-input::placeholder {
+  color: #6e7681;
+}
+
+.condition-translation-panel .feedback-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.condition-translation-panel .submit-btn {
+  background: #238636;
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.condition-translation-panel .submit-btn:hover:not(:disabled) {
+  background: #2ea043;
+}
+
+.condition-translation-panel .submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.condition-translation-panel .cancel-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.condition-translation-panel .cancel-btn:hover {
+  background: #21262d;
+  border-color: #484f58;
+  color: #c9d1d9;
+}
+
+/* Footer */
+.condition-translation-panel .panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+}
+
+.condition-translation-panel .ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #8b949e;
+  background: #21262d;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.condition-translation-panel .ai-icon {
+  font-size: 12px;
+}
+
+.condition-translation-panel .footer-hint {
+  font-size: 11px;
+  color: #6e7681;
+}
+
+/* Scrollbar */
+.condition-translation-panel .translations-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.condition-translation-panel .translations-list::-webkit-scrollbar-track {
+  background: #0d1117;
+}
+
+.condition-translation-panel .translations-list::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+.condition-translation-panel .translations-list::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}

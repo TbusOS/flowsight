@@ -1,0 +1,47 @@
+[package]
+name = "flowsight-learning"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Internal crates
+flowsight-core = { path = "../flowsight-core" }
+flowsight-ai = { path = "../flowsight-ai" }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Path handling
+dirs = "5.0"
+path-slash = "0.1"
+
+# HTTP client for knowledge upload
+reqwest = { version = "0.11", features = ["blocking", "json", "default-tls"] }
+
+# Date/time handling
+chrono = { version = "0.4", features = ["std", "serde"] }
+
+# UUID for feedback tracking
+uuid = { version = "1.6", features = ["v4"] }
+
+# Regex for pattern matching
+regex = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[features]
+# Placeholder for future local training support
+# Currently uses Python subprocess for training
+training = []

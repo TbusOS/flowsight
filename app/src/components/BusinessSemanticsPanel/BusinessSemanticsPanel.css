@@ -1,0 +1,434 @@
+/**
+ * BusinessSemanticsPanel CSS - Business semantics explanation styling
+ */
+
+.business-semantics-panel {
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #30363d;
+}
+
+/* Header */
+.business-semantics-panel .panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+}
+
+.business-semantics-panel .panel-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.business-semantics-panel .function-badge {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: #79c0ff;
+  background: #1c2128;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid #30363d;
+}
+
+.business-semantics-panel .toggle-btn {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 4px 8px;
+  transition: color 0.2s;
+}
+
+.business-semantics-panel .toggle-btn:hover {
+  color: #c9d1d9;
+}
+
+/* Loading state */
+.business-semantics-panel .panel-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 16px;
+}
+
+.business-semantics-panel .loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.business-semantics-panel .loading-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.business-semantics-panel .loading-text span {
+  color: #8b949e;
+  font-size: 14px;
+}
+
+.business-semantics-panel .loading-hint {
+  font-size: 12px !important;
+  color: #6e7681 !important;
+}
+
+/* Error state */
+.business-semantics-panel .panel-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 16px;
+}
+
+.business-semantics-panel .error-icon {
+  font-size: 36px;
+}
+
+.business-semantics-panel .error-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.business-semantics-panel .error-message {
+  color: #f85149;
+  font-size: 14px;
+  text-align: center;
+}
+
+.business-semantics-panel .retry-btn {
+  background: #238636;
+  border: none;
+  color: white;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.business-semantics-panel .retry-btn:hover {
+  background: #2ea043;
+}
+
+/* Empty state */
+.business-semantics-panel .panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 8px;
+}
+
+.business-semantics-panel .empty-icon {
+  font-size: 36px;
+  opacity: 0.5;
+}
+
+.business-semantics-panel .panel-empty p {
+  margin: 0;
+  font-size: 14px;
+  color: #c9d1d9;
+}
+
+.business-semantics-panel .empty-hint {
+  font-size: 12px;
+  color: #6e7681;
+}
+
+/* Content */
+.business-semantics-panel .panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+/* Semantics sections */
+.business-semantics-panel .semantics-section {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #21262d;
+}
+
+.business-semantics-panel .semantics-section:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.business-semantics-panel .trigger-section .section-icon { color: #f59e0b; }
+.business-semantics-panel .meaning-section .section-icon { color: #58a6ff; }
+.business-semantics-panel .result-section .section-icon { color: #3fb950; }
+.business-semantics-panel .related-section .section-icon { color: #a371f7; }
+.business-semantics-panel .errors-section .section-icon { color: #f85149; }
+
+.business-semantics-panel .section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.business-semantics-panel .section-icon {
+  font-size: 14px;
+}
+
+.business-semantics-panel .section-header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.business-semantics-panel .edit-btn {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #6e7681;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.business-semantics-panel .edit-btn:hover {
+  background: #21262d;
+  color: #8b949e;
+}
+
+.business-semantics-panel .section-content {
+  margin: 0;
+  font-size: 13px;
+  color: #8b949e;
+  line-height: 1.6;
+  padding-left: 22px;
+}
+
+/* Edit form */
+.business-semantics-panel .edit-form {
+  padding-left: 22px;
+}
+
+.business-semantics-panel .edit-input {
+  width: 100%;
+  min-height: 60px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #c9d1d9;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.business-semantics-panel .edit-input:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.business-semantics-panel .edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.business-semantics-panel .save-btn {
+  background: #238636;
+  border: none;
+  color: white;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.business-semantics-panel .save-btn:hover {
+  background: #2ea043;
+}
+
+.business-semantics-panel .cancel-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.business-semantics-panel .cancel-btn:hover {
+  background: #21262d;
+  border-color: #484f58;
+  color: #c9d1d9;
+}
+
+/* Related functions list */
+.business-semantics-panel .related-list {
+  margin: 0;
+  padding-left: 22px;
+  list-style: none;
+}
+
+.business-semantics-panel .related-item {
+  margin-bottom: 4px;
+}
+
+.business-semantics-panel .related-item code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: #79c0ff;
+  background: #21262d;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Common errors list */
+.business-semantics-panel .errors-list {
+  margin: 0;
+  padding-left: 22px;
+  list-style: none;
+}
+
+.business-semantics-panel .error-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #8b949e;
+  line-height: 1.5;
+}
+
+.business-semantics-panel .error-bullet {
+  color: #f85149;
+  font-size: 8px;
+  margin-top: 4px;
+}
+
+/* Empty list */
+.business-semantics-panel .empty-list {
+  color: #6e7681;
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Code preview */
+.business-semantics-panel .code-preview {
+  margin-top: 16px;
+  background: #0d1117;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+  overflow: hidden;
+}
+
+.business-semantics-panel .code-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+}
+
+.business-semantics-panel .code-preview-header span {
+  font-size: 12px;
+  color: #8b949e;
+}
+
+.business-semantics-panel .code-preview-content {
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: #8b949e;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* Footer */
+.business-semantics-panel .panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+}
+
+.business-semantics-panel .ai-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #8b949e;
+  background: #21262d;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.business-semantics-panel .ai-icon {
+  font-size: 12px;
+}
+
+.business-semantics-panel .feedback-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.business-semantics-panel .feedback-btn:hover {
+  background: #30363d;
+  border-color: #484f58;
+  color: #c9d1d9;
+}
+
+/* Scrollbar */
+.business-semantics-panel .panel-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.business-semantics-panel .panel-content::-webkit-scrollbar-track {
+  background: #0d1117;
+}
+
+.business-semantics-panel .panel-content::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+.business-semantics-panel .panel-content::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}

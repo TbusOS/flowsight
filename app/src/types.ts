@@ -110,3 +110,13 @@ export interface FileNode {
   extension?: string
 }
 
+// 异步回调信息
+export interface AsyncCallback {
+  id: string
+  mechanism: string
+  trigger_code: string
+  handler: string
+  execution_context: string
+  trigger_explanation: string
+}
+
