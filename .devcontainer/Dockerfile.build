@@ -1,0 +1,147 @@
+#=====================================================================#
+# FlowSight CI 构建镜像                                               #
+#=====================================================================#
+# 用于 GitHub Actions CI/CD 流水线的标准化构建环境
+#=====================================================================#
+
+FROM ubuntu:22.04 AS builder
+
+#=====================================================================#
+# 基础配置                                                           #
+#=====================================================================#
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC \
+    LANG=en_US.UTF-8 \
+    CARGO_NET_GIT_FETCH_WITH_CLI=true \
+    CARGO_INCREMENTAL=0
+
+#=====================================================================#
+# 系统依赖安装                                                       #
+#=====================================================================#
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # 基础工具
+    curl \
+    wget \
+    git \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    \
+    # 构建工具
+    build-essential \
+    cmake \
+    ninja-build \
+    pkg-config \
+    \
+    # Tauri 桌面依赖 (Linux)
+    libgtk-3-dev \
+    libwebkit2gtk-4.1-dev \
+    libappindicator3-dev \
+    librsvg2-dev \
+    patchelf \
+    \
+    # LLVM 依赖
+    llvm-17 \
+    llvm-17-dev \
+    clang-17 \
+    lld-17 \
+    libllvm17-dev \
+    \
+    # 清理
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+#=====================================================================#
+# Rust 环境                                                          #
+#=====================================================================#
+ENV RUSTUP_HOME=/opt/rust/rustup \
+    CARGO_HOME=/opt/rust/cargo \
+    PATH=/opt/rust/cargo/bin:$PATH
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
+    -y \
+    --default-toolchain stable \
+    --profile minimal \
+    --component rustfmt,clippy,rust-src
+
+#=====================================================================#
+# Node.js 环境                                                        #
+#=====================================================================#
+ENV NVM_DIR=/opt/nvm \
+    NODE_VERSION=20
+
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash \
+    && . $NVM_DIR/nvm.sh \
+    && nvm install $NODE_VERSION \
+    && nvm use $NODE_VERSION \
+    && nvm alias default $NODE_VERSION
+
+#=====================================================================#
+# pnpm 安装                                                          #
+#=====================================================================#
+RUN . $NVM_DIR/nvm.sh && npm install -g pnpm@8
+
+#=====================================================================#
+# 配置 LLVM                                                          #
+#=====================================================================#
+ENV LLVM_SYS_170_PREFIX=/usr/lib/llvm-17
+
+#=====================================================================#
+# 工作目录设置                                                       #
+#=====================================================================#
+WORKDIR /workspace
+
+# 复制依赖文件以利用 Docker 缓存层
+COPY Cargo.lock .
+COPY Cargo.toml .
+COPY crates/ ./crates/
+COPY app/src-tauri/ ./app/src-tauri/
+
+# 预编译依赖
+RUN cargo fetch && cargo build --workspace --lib --release
+
+# 复制完整项目代码
+COPY . .
+
+#=====================================================================#
+# 构建应用                                                           #
+#=====================================================================#
+RUN cargo build --workspace --release
+
+#=====================================================================#
+# 前端构建                                                           #
+#=====================================================================#
+WORKDIR /workspace/app
+RUN . $NVM_DIR/nvm.sh && pnpm install --frozen-lockfile && pnpm build
+
+#=====================================================================#
+# 最终镜像                                                           #
+#=====================================================================#
+FROM ubuntu:22.04 AS final
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC
+
+# 安装运行时依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libwebkit2gtk-4.1 \
+    libgtk-3-0 \
+    libappindicator3-1 \
+    librsvg2-2 \
+    \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 从构建阶段复制产物
+WORKDIR /opt/flowsight
+
+COPY --from=builder /workspace/target/release/bundle/ ./bundle/
+COPY --from=builder /workspace/target/release/flowsight-* ./bin/
+
+# 验证产物
+RUN ls -la bundle/
+
+# 标签
+LABEL maintainer="FlowSight Team" \
+      version="1.0.0" \
+      description="FlowSight CI Build Image"

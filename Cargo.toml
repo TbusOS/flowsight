@@ -8,6 +8,7 @@ members = [
     "crates/flowsight-knowledge",
     "crates/flowsight-query",
     "crates/flowsight-symbolic",
+    "crates/flowsight-llvm",
     "crates/flowsight-ai",
     "crates/flowsight-learning",
     "crates/flowsight-cli",

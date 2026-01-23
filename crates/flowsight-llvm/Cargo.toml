@@ -1,0 +1,37 @@
+[package]
+name = "flowsight-llvm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "LLVM IR parsing and analysis for FlowSight"
+
+[dependencies]
+# Internal crates
+flowsight-core = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Regex for pattern matching
+regex = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Path handling
+walkdir = { workspace = true }
+
+# LLVM binding - use inkwell for safer API (optional, requires LLVM development files)
+# inkwell = { version = "0.1", features = ["llvm17-0"], optional = true }
+
+[features]
+default = []
+llvm15 = []
+llvm16 = []
+llvm17 = []

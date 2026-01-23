@@ -1,0 +1,60 @@
+{
+  "name": "FlowSight Development",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "flowsight-dev",
+  "workspaceFolder": "/workspaces/flowsight",
+  "remoteUser": "developer",
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "stable",
+      "profile": "minimal"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20",
+      "pnpm": "latest"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "davidanson.vscode-markdownlint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "streetsidesoftware.code-spell-checker",
+        "ms-vscode.vscode-typescript-next",
+        "dbaeumer.vscode-eslint"
+      ],
+      "settings": {
+        "rust-analyzer.checkOnSave.command": "clippy",
+        "editor.formatOnSave": true,
+        "files.watcherExclude": {
+          "**/target/**": true,
+          "**/node_modules/**": true
+        },
+        "rust-analyzer.cargo.features": ["default"],
+        "rust-analyzer.cargo.buildScripts.overrideCommand": [
+          "cargo",
+          "check",
+          "--message-format=json"
+        ]
+      }
+    }
+  },
+  "postCreateCommand": {
+    "Rust": "cargo fetch",
+    "Frontend": "cd app && pnpm install",
+    "Verify": "cargo build --workspace --lib && cd app && pnpm build"
+  },
+  "remoteEnv": {
+    "CARGO_INCREMENTAL": "1",
+    "RUSTFLAGS": "-C target-cpu=native"
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "20gb"
+  }
+}
