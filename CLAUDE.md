@@ -1,5 +1,9 @@
 # FlowSight - Claude Code 配置
 
+> **自动加载**: 启动时自动加载完整 SuperClaude Framework skills
+>
+> 运行 `/sc:help` 验证所有 skills 已加载
+
 ## 项目概述
 跨平台代码执行流可视化 IDE，帮助理解 Linux 内核等大型代码库的执行流程。
 
@@ -51,29 +55,60 @@ flowsight/
 
 ## SuperClaude Framework 集成
 
-FlowSight 项目集成了 SuperClaude Framework，提供丰富的 Skills 来辅助开发。
+> **重要**: 本项目配置了完整的 SuperClaude Framework skills
+>
+> - 自动加载: 是（通过 CLAUDE.md）
+> - 框架模式: development
+> - 可用 skills: 20+ 个
 
-### 加载框架
+### 快速开始
 
-在会话开始时运行：
 ```
-/sc:load-core
+/sc:load-core    # 加载完整框架（如果未自动加载）
+/sc:help         # 验证 skills 是否可用
 ```
 
 ### 推荐 Skills
 
-| 场景 | 推荐 Skill | 命令 |
-|------|-----------|------|
-| 设计新模块架构 | 架构设计 | `/sc:design "设计内容"` |
-| 实现知识库/代码 | 功能实现 | `/sc:implement "实现内容"` |
-| 编译项目 | 项目构建 | `/sc:build --debug` |
-| 运行测试 | 测试执行 | `/sc:test -p <包名>` |
-| 调试问题 | 问题诊断 | `/sc:troubleshoot "问题"` |
-| 代码质量分析 | 代码分析 | `/sc:analyze` |
-| 生成 API 文档 | 文档生成 | `/sc:document "内容"` |
-| 查阅 LLVM/KLEE 文档 | 网络研究 | `/sc:research "主题"` |
-| 项目规划 | 工作流生成 | `/sc:workflow` |
-| Git 操作 | 智能 Git | `/sc:git "提交信息"` |
+#### 核心开发 Skills
+
+| Skill | 用途 | 示例 |
+|-------|------|------|
+| `/sc:design` | 系统架构设计 | `/sc:design "设计 LLVM 模块"` |
+| `/sc:implement` | 功能代码实现 | `/sc:implement "实现 memory.yaml"` |
+| `/sc:build` | 项目构建 | `/sc:build --release` |
+| `/sc:test` | 测试执行 | `/sc:test -p flowsight-analysis` |
+| `/sc:analyze` | 代码分析 | `/sc:analyze --security` |
+
+#### 诊断与调试 Skills
+
+| Skill | 用途 | 示例 |
+|-------|------|------|
+| `/sc:troubleshoot` | 问题诊断 | `/sc:troubleshoot "编译错误"` |
+| `/sc:cleanup` | 代码清理 | `/sc:cleanup "移除死代码"` |
+| `/sc:improve` | 代码改进 | `/sc:improve "性能优化"` |
+
+#### 文档与研究 Skills
+
+| Skill | 用途 | 示例 |
+|-------|------|------|
+| `/sc:document` | 文档生成 | `/sc:document "API 文档"` |
+| `/sc:research` | 网络研究 | `/sc:research "LLVM IR 规范"` |
+| `/sc:explain` | 代码解释 | `/sc:explain "解释这个函数"` |
+
+#### 项目管理 Skills
+
+| Skill | 用途 | 示例 |
+|-------|------|------|
+| `/sc:workflow` | 工作流生成 | `/sc:workflow "从计划生成"` |
+| `/sc:estimate` | 任务估算 | `/sc:estimate "Phase 1 估算"` |
+| `/sc:spawn` | 任务编排 | `/sc:spawn "分解任务"` |
+
+#### 版本控制 Skills
+
+| Skill | 用途 | 示例 |
+|-------|------|------|
+| `/sc:git` | Git 智能操作 | `/sc:git "提交更改"` |
 
 ### 详细指南
 
@@ -116,9 +151,18 @@ FlowSight 项目集成了 SuperClaude Framework，提供丰富的 Skills 来辅�
 
 ### 常用命令速查
 
+#### 框架加载
+
 | 命令 | 用途 |
 |------|------|
 | `/sc:load-core` | 加载完整框架 |
+| `/sc:load-flags` | 加载配置模式 |
+| `/sc:load-rules` | 加载开发规则 |
+
+#### 核心 Skills
+
+| 命令 | 用途 |
+|------|------|
 | `/sc:design` | 架构设计 |
 | `/sc:implement` | 功能实现 |
 | `/sc:build` | 项目构建 |
@@ -129,11 +173,23 @@ FlowSight 项目集成了 SuperClaude Framework，提供丰富的 Skills 来辅�
 | `/sc:research` | 网络研究 |
 | `/sc:workflow` | 工作流生成 |
 | `/sc:git` | Git 智能操作 |
+
+#### 辅助 Skills
+
+| 命令 | 用途 |
+|------|------|
 | `/sc:help` | 查看所有 Skills |
+| `/sc:cleanup` | 代码清理 |
+| `/sc:improve` | 代码改进 |
+| `/sc:explain` | 代码解释 |
+| `/sc:estimate` | 任务估算 |
+| `/sc:spawn` | 任务编排 |
 
 ### 文档位置
 
-- **Skills 指南**: [.claude/SKILLS-GUIDE.md](.claude/SKILLS-GUIDE.md)
+- **Skills 完整指南**: [.claude/SKILLS-GUIDE.md](.claude/SKILLS-GUIDE.md)
+- **Skills 快速参考**: [.claude/SKILLS-QUICKREF.md](.claude/SKILLS-QUICKREF.md)
+- **自动加载配置**: [.claude/AUTOLOAD.md](.claude/AUTOLOAD.md)
 - **Agent 配置**: [.claude/agents/](.claude/agents/)
 - **开发规则**: [.claude/DEV-RULES.md](.claude/DEV-RULES.md)
 
