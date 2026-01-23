@@ -2,6 +2,8 @@
 
 > **自动加载**: 启动时自动加载完整 SuperClaude Framework skills
 >
+> **任务感知**: 根据当前工作上下文自动激活相关 skills
+>
 > 运行 `/sc:help` 验证所有 skills 已加载
 
 ## 项目概述
@@ -60,6 +62,42 @@ flowsight/
 > - 自动加载: 是（通过 CLAUDE.md）
 > - 框架模式: development
 > - 可用 skills: 20+ 个
+> - 任务感知: 启用（根据文件路径自动激活相关 skills）
+
+### 任务感知自动加载
+
+本项目支持根据当前工作上下文自动加载相关 skills。当您开始处理特定类型的任务时，对应的 skills 会自动激活：
+
+#### 文件路径 → Skills 映射
+
+| 文件路径模式 | 工作任务类型 | 自动激活的 Skills |
+|-------------|-------------|------------------|
+| `app/src/components/**` 或 `*.tsx` | 前端 React 开发 | `/sc:ui-design`, `/sc:implement` |
+| `app/src-tauri/` 或 `crates/` | Rust 后端开发 | `/sc:implement`, `/sc:build`, `/sc:test` |
+| `knowledge/` | 知识库开发 | `/sc:document`, `/sc:implement`, `/sc:test` |
+| `docs/` | 文档编写 | `/sc:document`, `/sc:explain` |
+| `.claude/` | 框架配置 | `/sc:load-core`, `/sc:load-flags` |
+| 检测到编译错误 | 问题调试 | `/sc:troubleshoot`, `/sc:analyze` |
+| 检测到 UI 样式问题 | UI 美化 | `/sc:ui-design` |
+
+#### 任务关键词 → Skills 映射
+
+| 任务关键词 | 自动激活的 Skills |
+|-----------|------------------|
+| "设计", "架构", "design" | `/sc:design` |
+| "实现", "实现功能", "implement" | `/sc:implement` |
+| "构建", "编译", "build" | `/sc:build` |
+| "测试", "test" | `/sc:test` |
+| "分析", "analyze" | `/sc:analyze` |
+| "调试", "问题", "troubleshoot" | `/sc:troubleshoot` |
+| "美化", "UI", "界面" | `/sc:ui-design` |
+| "协作", "多个", "一起", "并行", "三智能体" | `/sc:collaborative-dev` |
+| "文档", "document" | `/sc:document` |
+| "研究", "research" | `/sc:research` |
+| "解释", "explain" | `/sc:explain` |
+| "Git", "提交", "git" | `/sc:git` |
+| "清理", "cleanup" | `/sc:cleanup` |
+| "改进", "优化", "improve" | `/sc:improve` |
 
 ### 快速开始
 
@@ -110,6 +148,19 @@ flowsight/
 |-------|------|------|
 | `/sc:git` | Git 智能操作 | `/sc:git "提交更改"` |
 
+#### UI 开发 Skills
+
+| Skill | 用途 | 示例 |
+|-------|------|------|
+| `/sc:ui-design` | UI 组件设计 | `/sc:ui-design "美化执行流程图"` |
+| `/sc:implement` | 功能代码实现 | `/sc:implement "实现节点详情面板"` |
+
+#### 多智能体协作 Skills
+
+| Skill | 用途 | 示例 |
+|-------|------|------|
+| `/sc:collaborative-dev` | 三智能体协作开发 | `/sc:collaborative-dev "实现详情面板"` |
+
 ### 详细指南
 
 完整的使用指南请查看 [.claude/SKILLS-GUIDE.md](.claude/SKILLS-GUIDE.md)
@@ -149,6 +200,39 @@ flowsight/
 /sc:implement "应用到项目"
 ```
 
+#### 5. UI 美化开发
+```
+/sc:ui-design "设计新组件样式"
+/sc:implement "实现 UI 组件"
+/sc:build "构建验证"
+/sc:git "提交 UI 更改"
+```
+
+#### 6. 多智能体协作开发
+```
+/sc:collaborative-dev "实现节点详情面板"
+/sc:build "构建验证"
+/sc:git "提交完整功能"
+```
+
+#### 7. 大型功能并行开发
+```
+/sc:collaborative-dev "添加场景对比功能"
+  --backend: "实现 Rust API"
+  --frontend: "创建 UI 组件"
+  --tests: "编写测试"
+/sc:build "完整构建"
+/sc:git "提交完整功能"
+```
+
+#### 6. 执行流可视化开发
+```
+/sc:ui-design "设计交互式流程图"
+/sc:implement "实现节点详情面板"
+/sc:build "验证可视化效果"
+/sc:test "测试交互功能"
+```
+
 ### 常用命令速查
 
 #### 框架加载
@@ -169,6 +253,8 @@ flowsight/
 | `/sc:test` | 运行测试 |
 | `/sc:troubleshoot` | 问题诊断 |
 | `/sc:analyze` | 代码分析 |
+| `/sc:ui-design` | UI 组件设计 |
+| `/sc:collaborative-dev` | 三智能体协作 |
 | `/sc:document` | 文档生成 |
 | `/sc:research` | 网络研究 |
 | `/sc:workflow` | 工作流生成 |

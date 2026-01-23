@@ -244,6 +244,7 @@ fn split_into_functions(content: &str) -> Vec<String> {
         if trimmed.starts_with("define") {
             in_function = true;
             brace_count = 0;
+            current_func.clear();
         }
 
         if in_function {
@@ -253,8 +254,8 @@ fn split_into_functions(content: &str) -> Vec<String> {
             brace_count += line.matches('{').count();
             brace_count = brace_count.saturating_sub(line.matches('}').count());
 
-            if brace_count == 0 && !current_func.trim_end().ends_with('{') {
-                // End of function
+            // End of function: when brace count is 0 and we have a closing brace
+            if brace_count == 0 && trimmed.ends_with('}') {
                 functions.push(current_func.clone());
                 current_func.clear();
                 in_function = false;
@@ -276,7 +277,17 @@ fn parse_function_section(section: &str, kb: &KnowledgeBase) -> Option<IrFunctio
     let header_cap = header_re.captures(section)?;
 
     let name = header_cap.name("name")?.as_str().to_string();
-    let return_type = header_cap.name("ret")?.as_str().trim().to_string();
+    let mut return_type = header_cap.name("ret")?.as_str().trim().to_string();
+
+    // Clean up return type - remove function attributes and keywords
+    // Common attributes: noinline, inline, always_inline, uwtable, ssp, sspreg,
+    // noreturn, nounwind, nonnull, readnone, readonly, argmemonly, protected, dso_local, etc.
+    let cleanup_re = regex::Regex::new(r"\b(noinline|inline|always_inline|uwtable|ssp|sspreg|noreturn|nounwind|nonnull|readnone|readonly|argmemonly|memtag_safety|shadowcallstack|protected|visibility|dso_local|#\d+)\b").unwrap();
+    return_type = cleanup_re.replace_all(&return_type, "").trim().to_string();
+
+    // Also remove any extra whitespace
+    return_type = return_type.split_whitespace().collect::<Vec<_>>().join(" ");
+
     let params_str = header_cap.name("params")?.as_str();
 
     // Parse parameters
@@ -371,7 +382,8 @@ fn extract_basic_blocks(func_body: &str) -> Vec<IrBasicBlock> {
     let mut blocks: Vec<IrBasicBlock> = Vec::new();
 
     // Split by labels (lines ending with :)
-    let block_re = regex::Regex::new(r"(?m)^(\w+):\s*(?:;.*)?$").unwrap();
+    // Note: [\w.]+ matches word characters AND dots (for labels like 'for.body')
+    let block_re = regex::Regex::new(r"(?m)^([\w.]+):\s*(?:;.*)?$").unwrap();
 
     let labels: Vec<(String, usize)> = block_re
         .captures_iter(func_body)
@@ -521,7 +533,7 @@ fn find_predecessors(func_body: &str, target: &str) -> Vec<String> {
         // Find which block this branch is in
         let match_pos = cap.get(0).unwrap().start();
         let before = &func_body[..match_pos];
-        let block_re = regex::Regex::new(r"(?m)^(\w+):").unwrap();
+        let block_re = regex::Regex::new(r"(?m)^([\w.]+):").unwrap();
 
         if let Some(cap) = block_re.captures_iter(before).last() {
             let pred_name = cap.get(1).unwrap().as_str().to_string();
@@ -540,13 +552,28 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
 
     // Match call and invoke instructions - handles both:
     //   %result = call i32 @func(args)    (with destination)
+    //   %result = tail call i32 @func(args)  (with tail prefix)
+    //   %result = cold call i32 @func(args) (with cold prefix)
     //   call void @func(args)              (without destination)
+    // Simpler pattern that matches return type more reliably
     let call_re_with_dest = regex::Regex::new(
-        r"(?m)^\s+(?:%)?(\w+)\s*=\s*(call|invoke)\s+(?:cold\s+)?(?:<[^>]*>\s*)?([^@]*?)@([\w\.]+)\s*\(([^)]*)\)",
+        r"(?m)^\s+%(\w+)\s*=\s*(?:tail\s+|cold\s+)?call\s+.*?@([\w\.]+)\s*\(([^)]*)\)",
+    ).unwrap();
+
+    // Also match tail/call without destination
+    let call_re_tail_no_dest = regex::Regex::new(
+        r"(?m)^\s*(?:tail\s+)?call\s+.*?@([\w\.]+)\s*\(([^)]*)\)",
     ).unwrap();
 
     let call_re_no_dest = regex::Regex::new(
         r"(?m)^\s+(call|invoke)\s+(?:cold\s+)?(?:<[^>]*>\s*)?([^@]*?)@([\w\.]+)\s*\(([^)]*)\)",
+    ).unwrap();
+
+    // Handle indirect calls (function pointer calls): call void %8(i32 noundef %9)
+    // Pattern: call [return_type] %register(args)
+    // Captures: 1 = register, 2 = args
+    let call_re_indirect_no_dest = regex::Regex::new(
+        r"(?m)^\s*(?:tail\s+)?call\s+\S+\s+%(\w+)\s*\(([^)]*)\)",
     ).unwrap();
 
     // Build function-to-block mapping
@@ -561,10 +588,13 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
         if let Some(cap) = define_re.captures(line) {
             current_func = Some(cap.get(1).unwrap().as_str().to_string());
         }
-        // Check for blocks
-        if line.trim_start().ends_with(':') && !line.trim_start().starts_with(';') {
-            if let Some(cap) = block_re.captures(line) {
-                let block_name = cap.get(1).unwrap().as_str().to_string();
+        // Check for basic blocks - lines starting with a label like "7:"
+        // The label may be followed by comments like "7: ; preds = %2"
+        if let Some(cap) = block_re.captures(line) {
+            let block_name = cap.get(1).unwrap().as_str().to_string();
+            // Only consider blocks that are at the start of a line (after optional whitespace)
+            let line_stripped = line.trim_start();
+            if line_stripped.starts_with(&format!("{}:", block_name)) {
                 if let Some(ref func) = current_func {
                     func_of_block.insert(block_name.clone(), func.clone());
                 }
@@ -578,8 +608,8 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
 
     // Process calls with destination
     for cap in call_re_with_dest.captures_iter(content) {
-        let callee = cap.get(4).unwrap().as_str().to_string();
-        let args_str = cap.get(5).unwrap().as_str();
+        let callee = cap.get(2).unwrap().as_str().to_string();
+        let args_str = cap.get(3).unwrap().as_str();
 
         // Skip intrinsics and standard library
         if callee.starts_with("llvm.") || callee.starts_with("@llvm") {
@@ -652,6 +682,85 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
             is_indirect,
             arguments,
         });
+    }
+
+    // Process calls with tail/call prefix (no destination)
+    for cap in call_re_tail_no_dest.captures_iter(content) {
+        let callee = cap.get(1).unwrap().as_str().to_string();
+        let args_str = cap.get(2).unwrap().as_str();
+
+        // Skip intrinsics and standard library
+        if callee.starts_with("llvm.") || callee.starts_with("@llvm") {
+            continue;
+        }
+
+        // Determine caller block
+        let call_pos = cap.get(0).unwrap().start();
+        let caller_block = find_caller_block(content, &block_re, call_pos);
+
+        // Determine caller function from block
+        let caller_function = func_of_block
+            .get(&caller_block)
+            .cloned()
+            .unwrap_or_else(|| String::from("unknown"));
+
+        // Parse arguments
+        let arguments: Vec<String> = args_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // Check if indirect call
+        let is_indirect = callee.contains('$') || callee.contains("ptr");
+
+        // Avoid duplicates
+        if !calls.iter().any(|c| c.caller_function == caller_function && c.callee == callee) {
+            calls.push(IrCall {
+                caller_block,
+                caller_function,
+                callee,
+                is_indirect,
+                arguments,
+            });
+        }
+    }
+
+    // Process indirect calls (function pointer calls)
+    // These are calls without destination: call void %8(i32)
+    for cap in call_re_indirect_no_dest.captures_iter(content) {
+        let callee = cap.get(1).unwrap().as_str().to_string(); // Function pointer register
+        let args_str = cap.get(2).unwrap().as_str();
+
+        // Determine caller block
+        let call_pos = cap.get(0).unwrap().start();
+        let caller_block = find_caller_block(content, &block_re, call_pos);
+
+        // Determine caller function from block
+        let caller_function = func_of_block
+            .get(&caller_block)
+            .cloned()
+            .unwrap_or_else(|| String::from("unknown"));
+
+        // Parse arguments
+        let arguments: Vec<String> = args_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let indirect_callee = format!("[function_ptr:{}]", callee);
+
+        // Avoid duplicates
+        if !calls.iter().any(|c| c.caller_function == caller_function && c.callee == indirect_callee) {
+            calls.push(IrCall {
+                caller_block,
+                caller_function,
+                callee: indirect_callee,
+                is_indirect: true,
+                arguments,
+            });
+        }
     }
 
     calls
@@ -878,5 +987,93 @@ entry:
         let func = result.functions.get("my_callback").unwrap();
         assert_eq!(func.return_type, "void");
         assert_eq!(func.parameters.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_kernel_style_ir() {
+        // Test parsing a file that mimics Linux kernel LLVM IR
+        let ir = r#"; Test LLVM IR file mimicking Linux kernel structure
+source_filename = "drivers/net/dummy.c"
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-linux-gnu"
+
+; Type definitions
+%struct.net_device = type { i32, i8*, %struct.net_device_ops, %struct.ethtool_ops, i64 }
+%struct.net_device_ops = type { i64 (i8*)*, i64 (i8*)* }
+
+; Function: dummy_xmit - netdev ndo_start_xmit handler
+define i32 @dummy_xmit(i8* nocapture readonly %skb, i8* nocapture %dev) local_unnamed_addr #0 {
+entry:
+  %call = tail call i32 @netif_rx(i8* %skb)
+  ret i32 %call
+}
+
+; Function: dummy_get_stats64
+define void @dummy_get_stats64(i8* nocapture %dev, i8* nocapture %storage) local_unnamed_addr #0 {
+entry:
+  ret void
+}
+
+; Function: dummy_loop_test with control flow
+define i32 @dummy_loop_test(i32 %n) {
+entry:
+  %cmp = icmp sgt i32 %n, 0
+  br i1 %cmp, label %for.body, label %for.end
+
+for.body:
+  %i.0 = phi i32 [ %add, %for.body ], [ 0, %entry ]
+  %add = add nuw nsw i32 %i.0, 1
+  %cmp2 = icmp slt i32 %add, %n
+  br i1 %cmp2, label %for.body, label %for.end
+
+for.end:
+  ret i32 0
+}
+
+; Function: dummy_switch_test
+define i32 @dummy_switch_test(i32 %x) {
+entry:
+  switch i32 %x, label %default [
+    i32 0, label %case0
+    i32 1, label %case1
+  ]
+
+case0:
+  ret i32 1
+
+case1:
+  ret i32 2
+
+default:
+  ret i32 0
+}
+
+declare i32 @netif_rx(i8*)
+"#;
+
+        let result = parse_ll_text(ir, &KnowledgeBase::default()).unwrap();
+
+        // Should have module name from source_filename
+        assert_eq!(result.module_name, "dummy.c");
+
+        // Should parse kernel driver functions
+        assert!(result.functions.contains_key("dummy_xmit"));
+        assert!(result.functions.contains_key("dummy_get_stats64"));
+        assert!(result.functions.contains_key("dummy_loop_test"));
+        assert!(result.functions.contains_key("dummy_switch_test"));
+
+        // Should extract netif_rx call
+        assert!(result.calls.iter().any(|c| c.callee == "netif_rx"));
+
+        // Should parse struct type
+        assert!(result.types.contains_key("struct.net_device"));
+
+        // Loop test should have multiple basic blocks
+        let loop_func = result.functions.get("dummy_loop_test").unwrap();
+        assert!(loop_func.blocks.len() >= 2, "Loop should have entry and body blocks");
+
+        // Switch test should have multiple basic blocks
+        let switch_func = result.functions.get("dummy_switch_test").unwrap();
+        assert!(switch_func.blocks.len() >= 2, "Switch should have multiple case blocks");
     }
 }

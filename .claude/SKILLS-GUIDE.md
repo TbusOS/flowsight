@@ -1,10 +1,12 @@
 # FlowSight Skills 配置指南
 
 > FlowSight 项目专用的 SuperClaude Framework Skills 配置
+>
+> **自动加载**: 支持任务感知的自动 skill 激活
 
 ## 加载框架
 
-在每个 Claude Code 会话开始时，运行以下命令加载完整的 SuperClaude Framework：
+在每个 Claude Code 会话开始时，框架会自动加载。也可以手动加载：
 
 ```
 /sc:load-core
@@ -15,6 +17,36 @@
 ```
 /sc:load-flags --mode development
 ```
+
+## 任务感知自动加载
+
+FlowSight 项目支持任务感知的自动 skill 加载，无需手动选择：
+
+### 文件路径触发
+
+当您开始编辑以下路径的文件时，对应的 skills 会自动激活：
+
+| 文件路径模式 | 工作任务类型 | 自动激活的 Skills |
+|-------------|-------------|------------------|
+| `app/src/components/**` 或 `*.tsx` | 前端 React 开发 | `/sc:ui-design`, `/sc:implement` |
+| `app/src-tauri/` 或 `crates/` | Rust 后端开发 | `/sc:implement`, `/sc:build`, `/sc:test` |
+| `knowledge/` | 知识库开发 | `/sc:document`, `/sc:implement` |
+| `docs/` | 文档编写 | `/sc:document`, `/sc:explain` |
+
+### 任务关键词触发
+
+当您的任务描述包含以下关键词时，自动激活对应 skills：
+
+| 任务关键词 | 自动激活的 Skills |
+|-----------|------------------|
+| "美化", "UI", "界面" | `/sc:ui-design` |
+| "交互", "UX", "用户体验", "流程", "布局" | `/sc:interaction-design` |
+| "协作", "多个", "一起", "并行", "三智能体" | `/sc:collaborative-dev` |
+| "设计", "架构", "design" | `/sc:design` |
+| "实现", "implement" | `/sc:implement` |
+| "构建", "编译", "build" | `/sc:build` |
+| "测试", "test" | `/sc:test` |
+| "调试", "问题" | `/sc:troubleshoot` |
 
 ---
 
@@ -283,6 +315,142 @@ cd app && pnpm test
 
 ---
 
+### 11. `/sc:ui-design` - UI 组件设计（FlowSight 专用）
+
+**适用场景**：
+- 为 FlowSight 创建美观的前端组件
+- 美化现有 UI 界面
+- 设计新的交互面板
+- 统一项目视觉风格
+
+**使用示例**：
+
+```
+/sc:ui-design "创建节点详情面板组件"
+/sc:ui-design "美化工具栏样式"
+/sc:ui-design "设计场景对比视图"
+/sc:ui-design "改进执行流图节点样式"
+```
+
+**设计规范**：
+- 遵循 FlowSight 深色主题配色（主色 #3b82f6）
+- 使用玻璃态效果 (backdrop-blur)
+- 添加微光和渐变效果
+- 统一的动画曲线和过渡时长
+
+**输出内容**：
+- 完整的 React 组件代码
+- TypeScript 类型定义
+- CSS/Tailwind 样式
+- Framer Motion 动画
+- 使用示例
+
+**示例：创建节点详情面板**
+
+```
+/sc:ui-design "创建节点详情面板，支持函数/分支/语句三种视图切换"
+```
+
+这将生成一个包含：
+- 标签页切换（函数/分支/语句）
+- 玻璃态背景
+- 平滑动画过渡
+- 符合 FlowSight 主题的组件
+
+---
+
+### 12. `/sc:interaction-design` - 交互设计（FlowSight 专用）
+
+**适用场景**：
+- 设计用户操作流程和信息架构
+- 设计交互面板和导航系统
+- 优化用户体验和操作效率
+- 制定交互规范和模式库
+
+**使用示例**：
+
+```
+/sc:interaction-design "设计符号执行配置流程"
+/sc:interaction-design "设计知识库编辑交互"
+/sc:interaction-design "优化结果分析面板交互"
+/sc:interaction-design "设计错误恢复流程"
+```
+
+**交互规范**：
+- 用户流程设计（3 步以内完成核心操作）
+- 信息架构设计（清晰的层级结构）
+- 交互模式库（拖放、搜索、展开、面板等）
+- 键盘交互规范（全键盘可操作）
+- 反馈系统（成功/错误/警告/加载状态）
+
+**输出内容**：
+- 交互规范文档
+- 用户流程图
+- 线框图/低保真原型
+- 交互说明文档
+- 验收标准
+
+**示例：符号执行配置流程设计**
+
+```
+/sc:interaction-design "设计符号执行配置的交互流程"
+```
+
+这将输出：
+- 任务流程（选择目标 → 配置参数 → 确认执行 → 开始执行）
+- 信息架构（全局导航 → 功能模块 → 详细面板）
+- 交互模式（拖放选择、实时验证、分步展开）
+- 反馈设计（参数验证、执行进度、完成后通知）
+
+---
+
+### 13. `/sc:collaborative-dev` - 三智能体协作开发（FlowSight 专用）
+
+**适用场景**：
+- 大型功能开发（需要前后端同步）
+- UI 美化与功能开发并行
+- 需要测试保障的复杂任务
+- 追求开发效率的最大化
+
+**使用示例**：
+
+```
+/sc:collaborative-dev "实现节点详情面板"
+/sc:collaborative-dev "添加场景对比功能"
+/sc:collaborative-dev "美化执行流图节点样式"
+```
+
+**三个智能体**：
+
+| 智能体 | 角色 | 专注领域 |
+|--------|------|----------|
+| 🤖 Core-Agent | 核心开发 | Rust 后端、API、核心逻辑 |
+| 🎨 UI-Agent | 前端美化 | React 组件、交互设计、视觉效果 |
+| 🧪 Test-Agent | 测试保障 | 单元测试、集成测试、问题诊断 |
+
+**协作机制**：
+- 共享上下文，实时同步
+- 消息通信，任务委派
+- 并行开发，顺序合并
+
+**高级用法**：
+
+```
+# 只用特定 Agent
+/sc:collaborative-dev "优化性能" --only: "core"
+
+# 强制顺序执行
+/sc:collaborative-dev "添加功能" --sequential: true
+
+# 指定任务描述
+/sc:collaborative-dev "实现详情面板"
+  --backend: "添加 Rust API"
+  --frontend: "创建 UI 组件"
+  --tests: "编写测试"
+```
+
+---
+
 ## FlowSight 专用场景
 
 ### 场景 1: 实现新的知识库文件
@@ -322,6 +490,16 @@ cd app && pnpm test
 /sc:git "增强执行流展示组件"
 ```
 
+### 场景 5: UI 美化与设计
+
+```
+/sc:ui-design "创建节点详情面板组件"
+/sc:ui-design "美化工具栏样式"
+/sc:ui-design "设计场景对比视图"
+/sc:build "--debug" "验证 UI 构建"
+/sc:git "添加 UI 组件"
+```
+
 ---
 
 ## 命令速查表
@@ -347,6 +525,8 @@ cd app && pnpm test
 | `/sc:document` | 文档生成 | `"文档内容"` |
 | `/sc:research` | 网络研究 | `"研究主题"`, `--depth` |
 | `/sc:workflow` | 工作流生成 | `"输入文件"` |
+| `/sc:ui-design` | UI 组件设计 | `"创建组件描述"` |
+| `/sc:collaborative-dev` | 三智能体协作 | `"任务描述"`, `--parallel` |
 | `/sc:git` | Git 操作 | `"提交信息"`, `--push` |
 
 ### 辅助 Skills

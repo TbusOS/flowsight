@@ -27,6 +27,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+/// Path to the crate's manifest directory (for finding data files)
+static CARGO_MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
+
 /// 调用链中的一个节点
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallChainNode {
@@ -202,7 +205,46 @@ impl KnowledgeBase {
         let mut kb = Self::new();
         kb.load_builtin_frameworks();
         kb.load_builtin_apis();
+        kb.load_yaml_from_data_dir();
         kb
+    }
+
+    /// Load all YAML files from the data directory
+    fn load_yaml_from_data_dir(&mut self) {
+        // Try to load netdev.yaml from the data directory
+        // First, try relative path from the crate
+        let data_paths: Vec<std::path::PathBuf> = vec![
+            std::path::PathBuf::from("data/netdev.yaml"),
+            std::path::PathBuf::from("../data/netdev.yaml"),
+            std::path::PathBuf::from(CARGO_MANIFEST_DIR).join("data/netdev.yaml"),
+        ];
+
+        for path in data_paths {
+            if path.exists() {
+                if let Ok(netdev_kb) = Self::load_yaml(&path) {
+                    // Merge frameworks
+                    for (name, framework) in netdev_kb.frameworks {
+                        if !self.frameworks.contains_key(&name) {
+                            self.frameworks.insert(name, framework);
+                        }
+                    }
+                    // Merge async patterns
+                    for (name, pattern) in netdev_kb.async_patterns {
+                        if !self.async_patterns.contains_key(&name) {
+                            self.async_patterns.insert(name, pattern);
+                        }
+                    }
+                    // Merge kernel APIs
+                    for (name, api) in netdev_kb.kernel_apis {
+                        if !self.kernel_apis.contains_key(&name) {
+                            self.kernel_apis.insert(name, api);
+                        }
+                    }
+                    // Merge callback patterns (if we had them in YAML)
+                    return;
+                }
+            }
+        }
     }
 
     fn load_builtin_frameworks(&mut self) {

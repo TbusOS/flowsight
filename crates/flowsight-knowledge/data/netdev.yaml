@@ -1,0 +1,554 @@
+# FlowSight Knowledge Base - Network Device Driver Framework
+#
+# Linux 网络设备驱动框架 (netdev)
+#
+# 核心理念：完整的内核调用链追踪
+#
+
+frameworks:
+  netdev:
+    description: "Linux 网络设备驱动框架 (netdev)"
+    header: "linux/netdevice.h"
+    callbacks:
+      # ========== 发送相关回调 ==========
+      ndo_start_xmit:
+        description: "网络数据包发送函数"
+        trigger: "上层协议栈调用 dev_queue_xmit() 发送数据包"
+        context: "SoftIrq"
+        signature: "netdev_tx_t (*ndo_start_xmit)(struct sk_buff *skb, struct net_device *dev)"
+        call_chain:
+          name: "数据包发送调用链"
+          trigger_source: "上层协议栈发送数据包"
+          nodes:
+            - function: "dev_queue_xmit"
+              file: "net/core/dev.c"
+              context: "SoftIrq"
+              description: "将数据包放入发送队列"
+              is_user_entry: false
+            - function: "__dev_queue_xmit"
+              file: "net/core/dev.c"
+              context: "SoftIrq"
+              description: "发送队列处理"
+              is_user_entry: false
+            - function: "netif_skb_dev_features"
+              file: "net/core/dev.c"
+              context: "SoftIrq"
+              description: "检查设备特性"
+              is_user_entry: false
+            - function: "sch_handle_class"
+              file: "net/sched/sch_generic.c"
+              context: "SoftIrq"
+              description: "处理流量分类"
+              is_user_entry: false
+            - function: "dev_hard_start_xmit"
+              file: "net/core/dev.c"
+              context: "SoftIrq"
+              description: "开始硬件发送"
+              is_user_entry: false
+            - function: "drv->ndo_start_xmit"
+              file: "用户驱动代码"
+              context: "SoftIrq"
+              description: "用户驱动的发送函数 (用户代码入口)"
+              is_user_entry: true
+
+      # ========== 打开/关闭相关回调 ==========
+      ndo_open:
+        description: "打开网络设备"
+        trigger: "用户空间调用 ifconfig/ip link set up 命令"
+        context: "Process"
+        signature: "int (*ndo_open)(struct net_device *dev)"
+        call_chain:
+          name: "网络设备打开调用链"
+          trigger_source: "用户执行: ip link set eth0 up"
+          nodes:
+            - function: "dev_open"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "打开网络设备"
+              is_user_entry: false
+            - function: "__dev_open"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "实际打开设备"
+              is_user_entry: false
+            - function: "netif_device_present"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "检查设备是否存在"
+              is_user_entry: false
+            - function: "dev_change_flags"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "修改设备标志"
+              is_user_entry: false
+            - function: "rtmsg_ifinfo"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "发送状态变更通知"
+              is_user_entry: false
+            - function: "drv->ndo_open"
+              file: "用户驱动代码"
+              context: "Process"
+              description: "用户驱动的打开函数 (用户代码入口)"
+              is_user_entry: true
+
+      ndo_stop:
+        description: "关闭网络设备"
+        trigger: "用户空间调用 ifconfig/ip link set down 命令"
+        context: "Process"
+        signature: "int (*ndo_stop)(struct net_device *dev)"
+        call_chain:
+          name: "网络设备关闭调用链"
+          trigger_source: "用户执行: ip link set eth0 down"
+          nodes:
+            - function: "dev_close"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "关闭网络设备"
+              is_user_entry: false
+            - function: "netif_device_present"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "检查设备是否存在"
+              is_user_entry: false
+            - function: "netif_tx_disable"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "禁用发送队列"
+              is_user_entry: false
+            - function: "drv->ndo_stop"
+              file: "用户驱动代码"
+              context: "Process"
+              description: "用户驱动的关闭函数 (用户代码入口)"
+              is_user_entry: true
+
+      # ========== 接收相关回调 (NAPI) ==========
+      napi_poll:
+        description: "NAPI 轮询函数 - 网络设备中断处理"
+        trigger: "网络设备接收中断触发软中断 NET_RX_SOFTIRQ"
+        context: "SoftIrq"
+        signature: "int (*napi_poll)(struct napi_struct *napi, int budget)"
+        call_chain:
+          name: "NAPI 接收调用链"
+          trigger_source: "网络设备接收中断 (IRQ)"
+          nodes:
+            - function: "irq_handler"
+              file: "用户驱动代码 (中断注册)"
+              context: "HardIrq"
+              description: "硬件中断处理函数 (用户代码)"
+              is_user_entry: true
+            - function: "__irq_enter"
+              file: "kernel/irq/handle.c"
+              context: "HardIrq"
+              description: "进入硬中断上下文"
+              is_user_entry: false
+            - function: "netif_napi_add"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "NAPI 结构初始化 (通常在 probe 时)"
+              is_user_entry: false
+            - function: "napi_schedule"
+              file: "net/core/dev.c"
+              context: "HardIrq"
+              description: "调度 NAPI 轮询"
+              is_user_entry: false
+            - function: "net_rx_action"
+              file: "net/core/dev.c"
+              context: "SoftIrq"
+              description: "NET_RX 软中断处理"
+              is_user_entry: false
+            - function: "napi_poll"
+              file: "用户驱动代码"
+              context: "SoftIrq"
+              description: "用户驱动的 NAPI 轮询函数 (用户代码入口)"
+              is_user_entry: true
+
+      # ========== 配置相关回调 ==========
+      ndo_config:
+        description: "设备配置 (已废弃，使用 ethtool)"
+        trigger: "SIOCSIFMAP ioctl 调用"
+        context: "Process"
+        signature: "int (*ndo_config)(struct net_device *dev, struct ifmap *map)"
+        call_chain:
+          name: "设备配置调用链"
+          trigger_source: "ioctl(SIOCSIFMAP)"
+          nodes:
+            - function: "sock_ioctl"
+              file: "net/socket.c"
+              context: "Process"
+              description: "Socket ioctl 处理"
+              is_user_entry: false
+            - function: "dev_ioctl"
+              file: "net/core/dev_ioctl.c"
+              context: "Process"
+              description: "设备 ioctl 处理"
+              is_user_entry: false
+            - function: "dev_ifsioc"
+              file: "net/core/dev_ioctl.c"
+              context: "Process"
+              description: "设备特定 ioctl"
+              is_user_entry: false
+            - function: "drv->ndo_config"
+              file: "用户驱动代码"
+              context: "Process"
+              description: "用户驱动的配置函数 (用户代码入口)"
+              is_user_entry: true
+
+      # ========== 统计信息相关 ==========
+      ndo_get_stats:
+        description: "获取设备统计信息"
+        trigger: "用户空间读取 /proc/net/dev 或执行 ip link show"
+        context: "Process"
+        signature: "struct rtnl_link_stats64* (*ndo_get_stats)(struct net_device *dev)"
+        call_chain:
+          name: "获取统计信息调用链"
+          trigger_source: "用户执行: ip link show 或 cat /proc/net/dev"
+          nodes:
+            - function: "rtnl_link_stats64"
+              file: "net/core/rtnetlink.c"
+              context: "Process"
+              description: "RTNL 获取统计"
+              is_user_entry: false
+            - function: "dev_get_stats"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "获取设备统计"
+              is_user_entry: false
+            - function: "drv->ndo_get_stats"
+              file: "用户驱动代码"
+              context: "Process"
+              description: "用户驱动的统计函数 (用户代码入口)"
+              is_user_entry: true
+
+      # ========== MAC 地址配置 ==========
+      ndo_set_mac_address:
+        description: "设置网络设备 MAC 地址"
+        trigger: "用户执行: ip link set dev eth0 address xx:xx:xx:xx:xx:xx"
+        context: "Process"
+        signature: "int (*ndo_set_mac_address)(struct net_device *dev, void *addr)"
+        call_chain:
+          name: "设置 MAC 地址调用链"
+          trigger_source: "用户执行: ip link set address"
+          nodes:
+            - function: "sock_ioctl"
+              file: "net/socket.c"
+              context: "Process"
+              description: "Socket ioctl"
+              is_user_entry: false
+            - function: "dev_ioctl"
+              file: "net/core/dev_ioctl.c"
+              context: "Process"
+              description: "设备 ioctl"
+              is_user_entry: false
+            - function: "eth_mac_addr"
+              file: "net/ethernet/eth.c"
+              context: "Process"
+              description: "以太网 MAC 地址设置"
+              is_user_entry: false
+            - function: "drv->ndo_set_mac_address"
+              file: "用户驱动代码"
+              context: "Process"
+              description: "用户驱动的 MAC 设置函数 (用户代码入口)"
+              is_user_entry: true
+
+      # ========== 多播相关 ==========
+      ndo_set_rx_mode:
+        description: "设置接收模式 (多播过滤)"
+        trigger: "多播地址列表变更或 IFF_ALLMULTI 标志变化"
+        context: "Process"
+        signature: "void (*ndo_set_rx_mode)(struct net_device *dev)"
+        call_chain:
+          name: "设置接收模式调用链"
+          trigger_source: "多播地址变更"
+          nodes:
+            - function: "__dev_mc_sync"
+              file: "net/core/dev.c"
+              context: "Process"
+              description: "同步多播地址"
+              is_user_entry: false
+            - function: "drv->ndo_set_rx_mode"
+              file: "用户驱动代码"
+              context: "Process"
+              description: "用户驱动的多播设置函数 (用户代码入口)"
+              is_user_entry: true
+
+# 异步模式定义
+async_patterns:
+  # NAPI 模式 - 中断 + 轮询
+  napi:
+    description: "NAPI (New API) - 中断合并和轮询机制"
+    context: "SoftIrq"
+    bind_patterns:
+      - "netif_napi_add.*poll.*="
+      - "napi_schedule"
+      - "napi_enable"
+      - "napi_disable"
+    trigger_patterns:
+      - "irq_handler.*NAPI"
+      - "NET_RX_SOFTIRQ"
+    handler_signature: "int \\(.*napi_poll\\)\\(struct napi_struct.*int budget\\)"
+    timeline:
+      name: "中断 + NAPI 轮询 异步关系"
+      phase1:
+        name: "中断上半部 (HardIrq)"
+        context: "HardIrq"
+        call_chain:
+          name: "中断处理"
+          trigger_source: "网络设备接收中断"
+          nodes:
+            - function: "硬件中断"
+              file: "用户驱动代码"
+              context: "HardIrq"
+              description: "设备 IRQ 处理"
+              is_user_entry: true
+            - function: "disable_irq"
+              file: "kernel/irqmanage.c"
+              context: "HardIrq"
+              description: "禁用中断，防止嵌套"
+              is_user_entry: false
+            - function: "napi_schedule"
+              file: "net/core/dev.c"
+              context: "HardIrq"
+              description: "调度 NAPI 轮询"
+              is_user_entry: false
+      separation: "中断返回后，NET_RX_SOFTIRQ 被触发，由软中断线程执行"
+      phase2:
+        name: "软中断轮询 (SoftIrq)"
+        context: "SoftIrq"
+        call_chain:
+          name: "NAPI 轮询"
+          trigger_source: "NET_RX_SOFTIRQ"
+          nodes:
+            - function: "net_rx_action"
+              file: "net/core/dev.c"
+              context: "SoftIrq"
+              description: "NET_RX 软中断处理"
+              is_user_entry: false
+            - function: "napi_poll"
+              file: "用户驱动代码"
+              context: "SoftIrq"
+              description: "用户驱动的轮询函数，处理收到的数据包"
+              is_user_entry: true
+    handler_call_chain:
+      name: "NAPI 轮询函数调用链"
+      trigger_source: "NET_RX_SOFTIRQ 软中断"
+      nodes:
+        - function: "net_rx_action"
+          file: "net/core/dev.c"
+          context: "SoftIrq"
+          description: "软中断处理主循环"
+          is_user_entry: false
+        - function: "napi->poll"
+          file: "用户驱动代码"
+          context: "SoftIrq"
+          description: "用户轮询函数 (用户代码入口)"
+          is_user_entry: true
+        - function: "netif_receive_skb"
+          file: "net/core/dev.c"
+          context: "SoftIrq"
+          description: "将数据包交给协议栈"
+          is_user_entry: false
+        - function: "ip_rcv"
+          file: "net/ipv4/ip_input.c"
+          context: "SoftIrq"
+          description: "IP 层输入"
+          is_user_entry: false
+
+  # TX completion 模式
+  tx_completion:
+    description: "发送完成 - 中断通知或轮询"
+    context: "HardIrq"
+    bind_patterns:
+      - "napi_complete"
+      - "netif_tx_complete"
+    trigger_patterns:
+      - "tx.*interrupt"
+      - "TX.*completion"
+    handler_signature: "void.*tx.*completion"
+
+# 内核 API 信息
+kernel_apis:
+  # 网络设备操作
+  netif_receive_skb:
+    description: "将接收的数据包交给网络协议栈"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "skb: 要处理的数据包"
+      - "返回值: NET_RX_SUCCESS 或 NET_RX_DROP"
+
+  dev_queue_xmit:
+    description: "发送数据包到网络设备"
+    can_sleep: true
+    can_fail: true
+    params:
+      - "skb: 要发送的数据包"
+      - "返回值: NET_XMIT_SUCCESS, NET_XMIT_DROP 或负值错误码"
+
+  netif_napi_add:
+    description: "将 NAPI 结构添加到网络设备"
+    can_sleep: true
+    can_fail: false
+    params:
+      - "dev: 网络设备"
+      - "napi: NAPI 结构"
+      - "poll: 轮询回调函数"
+      - "weight: 每次轮询最大处理包数"
+
+  napi_schedule:
+    description: "调度 NAPI 轮询"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "napi: NAPI 结构"
+
+  napi_enable:
+    description: "启用 NAPI 轮询"
+    can_sleep: true
+    can_fail: false
+    params:
+      - "napi: NAPI 结构"
+
+  napi_disable:
+    description: "禁用 NAPI 轮询"
+    can_sleep: true
+    can_fail: false
+    params:
+      - "napi: NAPI 结构"
+
+  napi_complete:
+    description: "完成一次 NAPI 轮询"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "napi: NAPI 结构"
+
+  # 缓冲区操作
+  netdev_alloc_skb:
+    description: "为网络设备分配 SKB 缓冲区"
+    can_sleep: true
+    can_fail: true
+    params:
+      - "dev: 网络设备"
+      - "length: 缓冲区大小"
+      - "返回值: 分配的 SKB 指针，失败返回 NULL"
+
+  dev_kfree_skb:
+    description: "释放 SKB 缓冲区"
+    can_sleep: true
+    can_fail: false
+    params:
+      - "skb: 要释放的 SKB"
+
+  consume_skb:
+    description: "消费 SKB (类似 kfree_skb，但用于发送完成)"
+    can_sleep: true
+    can_fail: false
+    params:
+      - "skb: 要消费的 SKB"
+
+  # 设备状态
+  netif_device_present:
+    description: "检查设备是否还存在"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "dev: 网络设备"
+      - "返回值: 存在返回 true，不存在返回 false"
+
+  netif_carrier_ok:
+    description: "检查载波信号是否正常"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "dev: 网络设备"
+      - "返回值: 载波正常返回 true"
+
+  netif_carrier_on:
+    description: "载波信号变为有效"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "dev: 网络设备"
+
+  netif_carrier_off:
+    description: "载波信号变为无效"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "dev: 网络设备"
+
+  # 队列控制
+  netif_tx_start_queue:
+    description: "启动发送队列"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "q: 发送队列"
+
+  netif_tx_stop_queue:
+    description: "停止发送队列"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "q: 发送队列"
+
+  netif_wake_queue:
+    description: "唤醒已停止的发送队列"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "dev: 网络设备"
+
+  # 中断相关
+  enable_irq:
+    description: "使能中断"
+    can_sleep: true
+    can_fail: false
+    params:
+      - "irq: 中断号"
+
+  disable_irq:
+    description: "禁用中断"
+    can_sleep: true
+    can_fail: false
+    params:
+      - "irq: 中断号"
+
+  disable_irq_nosync:
+    description: "异步禁用中断 (不等等待)"
+    can_sleep: false
+    can_fail: false
+    params:
+      - "irq: 中断号"
+
+# 回调函数模式匹配规则
+callback_patterns:
+  # Probe 时注册的回调
+  - pattern: "ndo_open"
+    callback_type: "netdev_open"
+    description: "打开设备回调，在 probe 时注册"
+
+  - pattern: "ndo_stop"
+    callback_type: "netdev_close"
+    description: "关闭设备回调"
+
+  - pattern: "ndo_start_xmit"
+    callback_type: "netdev_tx"
+    description: "发送数据包回调"
+
+  - pattern: "ndo_poll"
+    callback_type: "netdev_napi"
+    description: "NAPI 轮询回调"
+
+  - pattern: "ndo_get_stats"
+    callback_type: "netdev_stats"
+    description: "获取统计信息回调"
+
+  - pattern: "ndo_set_mac_address"
+    callback_type: "netdev_mac"
+    description: "设置 MAC 地址回调"
+
+  - pattern: "ndo_set_rx_mode"
+    callback_type: "netdev_mc"
+    description: "设置接收模式回调"
