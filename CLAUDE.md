@@ -51,33 +51,67 @@ flowsight/
 
 ## SuperClaude Framework 集成
 
+FlowSight 项目集成了 SuperClaude Framework，提供丰富的 Skills 来辅助开发。
+
 ### 加载框架
+
 在会话开始时运行：
 ```
 /sc:load-core
 ```
 
+### 推荐 Skills
+
+| 场景 | 推荐 Skill | 命令 |
+|------|-----------|------|
+| 设计新模块架构 | 架构设计 | `/sc:design "设计内容"` |
+| 实现知识库/代码 | 功能实现 | `/sc:implement "实现内容"` |
+| 编译项目 | 项目构建 | `/sc:build --debug` |
+| 运行测试 | 测试执行 | `/sc:test -p <包名>` |
+| 调试问题 | 问题诊断 | `/sc:troubleshoot "问题"` |
+| 代码质量分析 | 代码分析 | `/sc:analyze` |
+| 生成 API 文档 | 文档生成 | `/sc:document "内容"` |
+| 查阅 LLVM/KLEE 文档 | 网络研究 | `/sc:research "主题"` |
+| 项目规划 | 工作流生成 | `/sc:workflow` |
+| Git 操作 | 智能 Git | `/sc:git "提交信息"` |
+
+### 详细指南
+
+完整的使用指南请查看 [.claude/SKILLS-GUIDE.md](.claude/SKILLS-GUIDE.md)
+
 ### 推荐工作流
 
 #### 1. 实现新功能
 ```
-/sc:design "设计新功能"      # 设计架构
-/sc:workflow                # 生成工作流
-/sc:implement               # 实现代码
-/sc:test                    # 运行测试
-/sc:analyze                 # 分析质量
+/sc:workflow "查看任务分解"  # 可选，从计划生成工作流
+/sc:design "设计架构"        # 可选，需要设计时
+/sc:implement "实现功能"
+/sc:test "运行测试"
+/sc:build "构建验证"
+/sc:git "提交代码"
 ```
 
-#### 2. 代码改进
+#### 2. 开发知识库
 ```
-/sc:improve                 # 改进代码质量
-/sc:cleanup                 # 清理代码
+/sc:document "设计 knowledge.yaml 结构"
+/sc:implement "实现知识库文件"
+/sc:test "-p flowsight-knowledge"
+/sc:git "添加知识库"
 ```
 
 #### 3. 调试问题
 ```
-/sc:troubleshoot            # 诊断问题
-/sc:git                     # 智能 Git 操作
+/sc:troubleshoot "诊断问题"
+/sc:analyze "分析根因"
+/sc:implement "修复问题"
+/sc:test "验证修复"
+```
+
+#### 4. 学习研究
+```
+/sc:research "查阅 LLVM/KLEE 文档"
+/sc:document "记录学习笔记"
+/sc:implement "应用到项目"
 ```
 
 ### 常用命令速查
@@ -85,12 +119,23 @@ flowsight/
 | 命令 | 用途 |
 |------|------|
 | `/sc:load-core` | 加载完整框架 |
-| `/sc:implement` | 实现功能代码 |
+| `/sc:design` | 架构设计 |
+| `/sc:implement` | 功能实现 |
+| `/sc:build` | 项目构建 |
 | `/sc:test` | 运行测试 |
+| `/sc:troubleshoot` | 问题诊断 |
 | `/sc:analyze` | 代码分析 |
-| `/sc:workflow` | 生成工作流 |
-| `/sc:document` | 生成文档 |
+| `/sc:document` | 文档生成 |
+| `/sc:research` | 网络研究 |
+| `/sc:workflow` | 工作流生成 |
 | `/sc:git` | Git 智能操作 |
+| `/sc:help` | 查看所有 Skills |
+
+### 文档位置
+
+- **Skills 指南**: [.claude/SKILLS-GUIDE.md](.claude/SKILLS-GUIDE.md)
+- **Agent 配置**: [.claude/agents/](.claude/agents/)
+- **开发规则**: [.claude/DEV-RULES.md](.claude/DEV-RULES.md)
 
 ## 当前开发重点
 
