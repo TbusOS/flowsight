@@ -250,17 +250,6 @@ export function CommandPalette({
     }
   }
 
-  // 获取类型图标
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'file': return '📄'
-      case 'symbol': return '📦'
-      case 'command': return '⚡'
-      case 'agent': return '🤖'
-      default: return '•'
-    }
-  }
-
   return (
     <div className="command-palette-overlay" onClick={onClose}>
       <div className="command-palette" onClick={e => e.stopPropagation()}>

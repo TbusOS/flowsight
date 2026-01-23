@@ -7,6 +7,9 @@ members = [
     "crates/flowsight-analysis",
     "crates/flowsight-knowledge",
     "crates/flowsight-query",
+    "crates/flowsight-symbolic",
+    "crates/flowsight-ai",
+    "crates/flowsight-learning",
     "crates/flowsight-cli",
     "app/src-tauri",
 ]
@@ -27,6 +30,9 @@ flowsight-index = { path = "crates/flowsight-index" }
 flowsight-analysis = { path = "crates/flowsight-analysis" }
 flowsight-knowledge = { path = "crates/flowsight-knowledge" }
 flowsight-query = { path = "crates/flowsight-query" }
+flowsight-symbolic = { path = "crates/flowsight-symbolic" }
+flowsight-ai = { path = "crates/flowsight-ai" }
+flowsight-learning = { path = "crates/flowsight-learning" }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }

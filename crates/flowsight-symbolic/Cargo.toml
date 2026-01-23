@@ -1,0 +1,38 @@
+[package]
+name = "flowsight-symbolic"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Internal crates
+flowsight-core = { path = "../flowsight-core" }
+flowsight-parser = { path = "../flowsight-parser" }
+flowsight-knowledge = { path = "../flowsight-knowledge" }
+
+# Async runtime
+tokio = { workspace = true, features = ["process", "io-util"] }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+regex = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Path handling
+path-clean = "0.1"
+tempfile = "3.8"
+
+# Find executables
+which = "6.0"
+
+[features]
+default = ["simulated"]
+simulated = []  # Use simulated execution when KLEE is not available
+klee = []       # Enable KLEE integration (requires KLEE to be installed)
+
+[build-dependencies]
+# Build-time dependencies for KLEE (optional)
+# cc = "1.0"

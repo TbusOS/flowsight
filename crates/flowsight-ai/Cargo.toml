@@ -1,0 +1,46 @@
+[package]
+name = "flowsight-ai"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Internal crates
+flowsight-core = { path = "../flowsight-core" }
+flowsight-knowledge = { path = "../flowsight-knowledge" }
+flowsight-symbolic = { path = "../flowsight-symbolic" }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Regex
+regex = { workspace = true }
+
+# HTTP client for model downloads
+reqwest = { version = "0.11", features = ["blocking", "default-tls"] }
+futures = "0.3"
+
+# Logging
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# llama.cpp bindings for macOS (via system framework)
+# objc = "0.2"
+
+[target.'cfg(unix)'.dependencies]
+# Unix-specific dependencies
+libc = "0.2"
+
+[features]
+default = []  # No default feature for now
+onnx = []  # Use ONNX runtime for inference
+cpu = []  # CPU-only inference (default)
+cuda = []  # CUDA GPU acceleration
+metal = []  # Apple Metal GPU acceleration
