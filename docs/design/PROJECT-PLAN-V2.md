@@ -209,9 +209,9 @@
 | IRQ/异常处理 | core/irq.yaml | P0 | ✅ 已完成 |
 | Kernel Thread | core/kthread.yaml | P0 | ✅ 已完成 |
 | RCU | core/rcu.yaml | P0 | ✅ 已完成 |
-| Memory (slab/kmalloc) | core/memory.yaml | P1 | ❌ 待创建 |
-| VFS | core/vfs.yaml | P1 | ❌ 待创建 |
-| SoftIRQ | core/softirq.yaml | P1 | ❌ 待创建 |
+| Memory (slab/kmalloc) | core/memory.yaml | P1 | ✅ 已完成 |
+| VFS | core/vfs.yaml | P1 | ✅ 已完成 |
+| SoftIRQ | core/softirq.yaml | P1 | ✅ 已完成 |
 
 ### 3.2 驱动框架 (必须覆盖)
 
@@ -246,9 +246,9 @@
 | 原语 | 知识库文件 | 优先级 | 状态 |
 |------|-----------|--------|------|
 | Completion | sync/completion.yaml | P1 | ✅ 已完成 |
-| Mutex/Spinlock | sync/locking.yaml | P1 | ❌ 待创建 |
-| Semaphore | sync/semaphore.yaml | P2 | ❌ 待创建 |
-| RWLock | sync/rwlock.yaml | P2 | ❌ 待创建 |
+| Mutex/Spinlock | sync/locking.yaml | P1 | ✅ 已完成 |
+| Semaphore | sync/semaphore.yaml | P2 | ✅ 已完成 |
+| RWLock | sync/rwlock.yaml | P2 | ✅ 已完成 |
 
 ### 3.4 知识库结构示例
 
@@ -629,9 +629,9 @@ Week 2: 优化与文档
 
 | 里程碑 | 日期 | 交付物 | 状态 |
 |-------|------|-------|------|
-| M0: 项目启动 | 2026-01-23 | 项目计划文档 v2.1 | 进行中 |
-| M1: Phase 1 完成 | 2026-02-06 | LLVM IR 解析器 | 待开始 |
-| M2: Phase 2 完成 | 2026-03-06 | 知识库扩展 | 待开始 |
+| M0: 项目启动 | 2026-01-23 | 项目计划文档 v2.1 | ✅ 已完成 |
+| M1: Phase 1 完成 | 2026-01-24 | LLVM IR 解析器 (flowsight-llvm) | ✅ 已完成 |
+| M2: Phase 2 完成 | 2026-01-24 | 知识库扩展 (softirq/locking/semaphore/rwlock) | 🔄 进行中 |
 | M3: Phase 3 完成 | 2026-03-27 | KLEE 按需分析 | 待开始 |
 | M4: Phase 4 完成 | 2026-04-10 | v1.0 Beta | 待开始 |
 
@@ -662,5 +662,6 @@ Week 2: 优化与文档
 
 | 日期 | 版本 | 变更 |
 |-----|------|-----|
+| 2026-01-24 | v2.1.1 | 添加 LLVM IR 解析器测试和完善解析功能；添加 softirq/locking/semaphore/rwlock 知识库文件 |
 | 2026-01-23 | v2.1 | 重写技术方案：LLVM IR + 知识库 + KLEE 按需 |
 | 2025-01-21 | v2.0 | 初始规划（已过期） |
