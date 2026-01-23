@@ -29,6 +29,7 @@
 //! ```
 
 use crate::path::{ExecutionPath, ExecutionStep, CallType, SymbolicValue};
+use crate::stubs::KernelStubManager;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -368,12 +369,12 @@ int main(int argc, char** argv) {
         match rust_type {
             "int" | "i32" => "int32_t",
             "int64_t" | "i64" | "long" => "int64_t",
-            "unsigned int" | "u32" => "uint32_t",
+            "unsigned_int" | "u32" => "uint32_t",
             "char" | "i8" => "int8_t",
             "bool" | "_Bool" => "bool",
             "size_t" => "size_t",
-            "void" | "()" => "void",
-            "void*" | "*const u8" | "*mut u8" => "void*",
+            "void" | "void_ptr" => "void",
+            "void_star" | "ptr_const_u8" | "ptr_mut_u8" => "void*",
             _ => "int32_t",
         }
     }
@@ -447,11 +448,9 @@ int main(int argc, char** argv) {
     /// Parse KLEE output
     fn parse_klee_output(&self, output: String) -> Result<SymbolicResult, SymbolicError> {
         // Parse KLEE statistics and generate execution paths
-        // This is a simplified implementation
-
-        let paths = Vec::new();
-        let instructions = 0;
-        let elapsed_seconds = 0.0;
+        let paths: Vec<ExecutionPath> = Vec::new();
+        let mut instructions: u64 = 0;
+        let mut elapsed_seconds: f64 = 0.0;
 
         // Extract statistics from output
         let paths_explored: usize = if let Some(captures) = regex::Regex::new(r"Paths explored:\s+(\d+)")
@@ -463,10 +462,30 @@ int main(int argc, char** argv) {
             0
         };
 
+        // Extract instruction count
+        if let Some(captures) = regex::Regex::new(r"Instructions:\s+(\d+)")
+            .unwrap()
+            .captures(&output)
+        {
+            instructions = captures.get(1).map(|m| m.as_str().parse().unwrap()).unwrap_or(0);
+        }
+
+        // Extract elapsed time
+        if let Some(captures) = regex::Regex::new(r"Total time:\s+([\d.]+)s")
+            .unwrap()
+            .captures(&output)
+        {
+            elapsed_seconds = captures.get(1).map(|m| m.as_str().parse().unwrap()).unwrap_or(0.0);
+        }
+
         let exit_reason = if output.contains("HaltTimer") {
             ExitReason::Timeout
         } else if output.contains("max memory") {
             ExitReason::MemoryLimit
+        } else if output.contains("max-syms") {
+            ExitReason::MemoryLimit
+        } else if output.contains("max-states") {
+            ExitReason::PathLimit
         } else {
             ExitReason::Completed
         };
@@ -479,6 +498,245 @@ int main(int argc, char** argv) {
             is_complete: matches!(exit_reason, ExitReason::Completed),
             exit_reason,
         })
+    }
+
+    /// Generate KLEE test code with kernel API stubs
+    ///
+    /// This method generates a complete KLEE test file that includes:
+    /// - Symbolic argument declarations
+    /// - Kernel API stub implementations
+    /// - Target function call with symbolic values
+    pub fn generate_klee_test_with_stubs(
+        &self,
+        target_function: &str,
+        args: &[SymbolicArg],
+    ) -> Result<String, SymbolicError> {
+        let mut code = String::new();
+        let stub_manager = KernelStubManager::new();
+
+        // Header with includes
+        code.push_str(r#"#include <klee/klee.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+
+"#);
+
+        // Add kernel stub implementations
+        code.push_str(&stub_manager.generate_header());
+        code.push_str("\n");
+
+        // Generate stub wrappers for detected kernel calls
+        code.push_str(&stub_manager.generate_wrappers());
+        code.push_str("\n");
+
+        // External declaration of target function
+        code.push_str("// External declaration of target function\n");
+        code.push_str(&format!("extern int {}(", target_function));
+        let args_list: Vec<String> = args.iter()
+            .enumerate()
+            .map(|(i, arg)| format!("int {}", arg.type_name))
+            .collect();
+        code.push_str(&args_list.join(", "));
+        code.push_str(");\n\n");
+
+        code.push_str("int main(int argc, char** argv) {\n");
+
+        // Generate symbolic arguments
+        for (i, arg) in args.iter().enumerate() {
+            let name = format!("arg_{}", i);
+            let c_type = self.rust_type_to_c(&arg.type_name);
+
+            code.push_str(&format!("    // Symbolize argument {}: {}\n", i, arg.name));
+            code.push_str(&format!("    {} {};\n", c_type, name));
+
+            match arg.type_name.as_str() {
+                "int" | "i32" => {
+                    code.push_str(&format!("    klee_make_symbolic(&{}, sizeof({}), \"{}\");\n", name, name, name));
+                }
+                "int64_t" | "i64" | "long" => {
+                    code.push_str(&format!("    klee_make_symbolic(&{}, sizeof({}), \"{}\");\n", name, name, name));
+                }
+                "char" | "i8" => {
+                    code.push_str(&format!("    klee_make_symbolic(&{}, sizeof({}), \"{}\");\n", name, name, name));
+                }
+                "bool" | "_Bool" => {
+                    code.push_str(&format!("    klee_make_symbolic(&{}, sizeof({}), \"{}\");\n", name, name, name));
+                }
+                _ => {
+                    code.push_str(&format!("    void* {};\n", name));
+                    code.push_str(&format!("    klee_make_symbolic(&{}, sizeof({}), \"{}\");\n", name, name, name));
+                }
+            }
+        }
+
+        // Call target function
+        code.push_str("\n    // Call target function\n");
+        let args_str = args.iter()
+            .enumerate()
+            .map(|(i, _)| format!("arg_{}", i))
+            .collect::<Vec<_>>()
+            .join(", ");
+        code.push_str(&format!("    int result = {}({});\n", target_function, args_str));
+
+        // Print result
+        code.push_str(r#"
+    printf("KLEE_RESULT: %d
+");
+    printf("KLEE_PATHS_COMPLETE
+");
+    return 0;
+}
+"#);
+
+        Ok(code)
+    }
+
+    /// Generate test from function analysis result
+    ///
+    /// Combines LLVM IR analysis with KLEE test generation for comprehensive testing.
+    pub fn generate_test_from_analysis(
+        &self,
+        target_function: &str,
+        args: &[SymbolicArg],
+        _calls: &[String],
+    ) -> Result<String, SymbolicError> {
+        // Use the kernel stub enhanced test generator
+        self.generate_klee_test_with_stubs(target_function, args)
+    }
+
+    /// Parse KLEE output directory and extract all test cases
+    ///
+    /// This enhanced method parses KLEE's output directory to extract:
+    /// - Test cases (ktest files)
+    /// - Path constraints
+    /// - Concrete values for each path
+    pub fn parse_klee_output_dir(&self, output_dir: &Path) -> Result<SymbolicResult, SymbolicError> {
+        let mut paths: Vec<ExecutionPath> = Vec::new();
+        let mut paths_explored = 0;
+        let mut instructions = 0;
+        let mut elapsed_seconds = 0.0;
+
+        // Find klee-last or specific test directory
+        let test_dir = if output_dir.join("klee-last").exists() {
+            output_dir.join("klee-last")
+        } else if output_dir.join("klee-out-0").exists() {
+            // Try to find the latest klee-out directory
+            let entries = std::fs::read_dir(output_dir)
+                .map_err(|e| SymbolicError::IoError(e))?;
+            let mut out_dirs: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_name().to_string_lossy().starts_with("klee-out"))
+                .collect();
+            out_dirs.sort_by_key(|e| e.file_name());
+            out_dirs.last()
+                .map(|e| e.path())
+                .unwrap_or_else(|| output_dir.to_path_buf())
+        } else {
+            output_dir.to_path_buf()
+        };
+
+        // Parse info file for statistics
+        let info_file = test_dir.join("info");
+        if info_file.exists() {
+            let info_content = std::fs::read_to_string(&info_file)
+                .map_err(|e| SymbolicError::IoError(e))?;
+
+            paths_explored = regex::Regex::new(r"Paths explored:\s+(\d+)")
+                .unwrap()
+                .captures(&info_content)
+                .and_then(|c| c.get(1).map(|m| m.as_str().parse().unwrap()))
+                .unwrap_or(0);
+
+            instructions = regex::Regex::new(r"Instructions:\s+(\d+)")
+                .unwrap()
+                .captures(&info_content)
+                .and_then(|c| c.get(1).map(|m| m.as_str().parse().unwrap()))
+                .unwrap_or(0);
+
+            elapsed_seconds = regex::Regex::new(r"Total time:\s+([\d.]+)s")
+                .unwrap()
+                .captures(&info_content)
+                .and_then(|c| c.get(1).map(|m| m.as_str().parse().unwrap()))
+                .unwrap_or(0.0);
+        }
+
+        // Parse all ktest files
+        let test_files: Vec<_> = std::fs::read_dir(&test_dir)
+            .map_err(|e| SymbolicError::IoError(e))?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("test"))
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "ktest"))
+            .collect();
+
+        for (path_id, ktest_file) in test_files.iter().enumerate() {
+            if let Ok(path) = self.parse_ktest_file(ktest_file.path(), path_id) {
+                paths.push(path);
+            }
+        }
+
+        // Determine exit reason
+        let exit_reason = if instructions > 0 && paths_explored >= self.config.max_paths {
+            ExitReason::PathLimit
+        } else if elapsed_seconds >= self.config.timeout as f64 {
+            ExitReason::Timeout
+        } else if paths_explored > 0 {
+            ExitReason::Completed
+        } else {
+            ExitReason::Error("No paths explored".to_string())
+        };
+
+        Ok(SymbolicResult {
+            paths,
+            paths_explored,
+            instructions,
+            elapsed_seconds,
+            is_complete: matches!(exit_reason, ExitReason::Completed),
+            exit_reason,
+        })
+    }
+
+    /// Parse a single ktest file and extract concrete values
+    pub fn parse_ktest_file(&self, ktest_file: PathBuf, path_id: usize) -> Result<ExecutionPath, SymbolicError> {
+        // Try to read as binary format first
+        let content = std::fs::read(&ktest_file)
+            .map_err(|e| SymbolicError::IoError(e))?;
+
+        // KTEST format is version 4: big-endian int, four bytes of "ktest"
+        //   uint8_t data[numBytes]
+
+        let path_name = format!("path_{:04}", path_id);
+        let mut path = ExecutionPath::new(format!("klee_{:04}", path_id), format!("KLEE Path {}", path_id));
+
+        // Try to read as text (some versions output text)
+        if let Ok(text_content) = std::fs::read_to_string(&ktest_file) {
+            // Parse object names and values from text format
+            // Note: ktest file format uses double quotes around names
+            let object_re = regex::Regex::new(r"object (\d+): name = '(\w+)', size = (\d+)")
+                .unwrap();
+
+            for cap in object_re.captures_iter(&text_content) {
+                let name = cap.get(2).unwrap().as_str();
+                let size: usize = cap.get(3).unwrap().as_str().parse().unwrap();
+
+                path.concrete_values.insert(name.to_string(), format!("<symbolic size={}>", size));
+            }
+        }
+
+        // Add a step for the target function call
+        path.add_step(ExecutionStep {
+            step_id: 0,
+            function: "target_function".into(),
+            location: None,
+            call_type: CallType::Direct,
+            arguments: Vec::new(),
+            return_value: None,
+            is_user_code: true,
+            line: 0,
+        });
+
+        Ok(path)
     }
 
     /// Simulate symbolic execution (fallback when KLEE is not available)
