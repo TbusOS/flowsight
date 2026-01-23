@@ -1,0 +1,67 @@
+# File: /home/parallels/github/flowsight/config/cargo-build.toml
+
+# Cargo 构建配置优化
+
+[build]
+# 并行构建
+jobs = 4
+
+# 增量编译
+incremental = true
+
+# 依赖锁文件
+dependency-lockfile = "Cargo.lock"
+
+# 退出代码
+rustc-error-limit = 0
+
+#=====================================================================#
+# 发布配置                                                           #
+#=====================================================================#
+
+[profile.release]
+# 优化级别
+opt-level = 3
+
+# 链接时优化
+lto = "thin"
+
+# 代码生成单元
+codegen-units = 1
+
+# 符号去除
+strip = true
+
+# 增量发布构建
+incremental = false
+
+[profile.release.package."*"]
+# 优化所有依赖
+opt-level = 2
+
+#=====================================================================#
+# 开发配置                                                           #
+#=====================================================================#
+
+[profile.dev]
+# 调试信息级别
+debug = "line-tables-only"
+
+# 优化级别
+opt-level = 0
+
+[profile.dev.package."*"]
+# 依赖优化
+opt-level = 0
+
+#=====================================================================#
+# 测试配置                                                           #
+#=====================================================================#
+
+[profile.test]
+debug = true
+opt-level = 2
+
+[profile.bench]
+opt-level = 3
+lto = true

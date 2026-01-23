@@ -1,0 +1,273 @@
+#=====================================================================#
+# FlowSight 开发环境镜像                                             #
+#=====================================================================#
+# 构建方式: docker build -t flowsight-dev -f .devcontainer/Dockerfile.dev .
+# 使用方式: docker run -it -v $(pwd):/workspaces/flowsight flowsight-dev
+#=====================================================================#
+
+# ---------------------------------------------------------------------
+# 基础镜像选择
+# ---------------------------------------------------------------------
+# 选择理由:
+# - Ubuntu 22.04 LTS 提供 5 年支持
+# - 包含完整的开发工具链
+# - 与 CI 环境保持一致
+# ---------------------------------------------------------------------
+FROM ubuntu:22.04 AS base
+
+# ---------------------------------------------------------------------
+# 基础配置
+# ---------------------------------------------------------------------
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
+
+# ---------------------------------------------------------------------
+# 系统依赖安装
+# ---------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # 基础工具
+    curl \
+    wget \
+    git \
+    vim \
+    nano \
+    unzip \
+    zip \
+    tar \
+    gzip \
+    bzip2 \
+    xz-utils \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    apt-transport-https \
+    ca-certificates \
+    \
+    # 构建工具
+    build-essential \
+    cmake \
+    ninja-build \
+    pkg-config \
+    \
+    # 版本控制
+    git \
+    \
+    # Shell
+    bash \
+    zsh \
+    fish \
+    \
+    # 文档工具
+    pandoc \
+    texlive-latex-base \
+    \
+    # 清理
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------
+# Rust 开发环境
+# ---------------------------------------------------------------------
+FROM base AS rust
+
+ENV RUSTUP_HOME=/opt/rust/rustup \
+    CARGO_HOME=/opt/rust/cargo \
+    PATH=/opt/rust/cargo/bin:$PATH
+
+# 安装 Rust 工具链
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
+    -y \
+    --default-toolchain stable \
+    --profile minimal \
+    --component rustfmt,clippy,rust-analyzer,rust-src
+
+# 配置 Rust
+RUN echo '[profile.release]\nopt-level = 3\nlto = true' >> ~/.cargo/config.toml
+
+# ---------------------------------------------------------------------
+# LLVM/Clang 开发环境
+# ---------------------------------------------------------------------
+FROM rust AS llvm
+
+ENV LLVM_VERSION=17 \
+    LLVM_INSTALL_PREFIX=/opt/llvm
+
+# 添加 LLVM APT 仓库
+RUN wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor > /etc/apt/keyrings/llvm.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/llvm.gpg] http://apt.llvm.org/ubuntu/ jllvm-toolchain main" > /etc/apt/sources.list.d/llvm.list \
+    && apt-get update
+
+# 安装 LLVM 和 Clang
+RUN apt-get install -y --no-install-recommends \
+    llvm-${LLVM_VERSION} \
+    llvm-${LLVM_VERSION}-dev \
+    llvm-${LLVM_VERSION}-tools \
+    clang-${LLVM_VERSION} \
+    clang-tools-${LLVM_VERSION} \
+    lld-${LLVM_VERSION} \
+    \
+    # 通用 LLVM 开发文件
+    libllvm${LLVM_VERSION}-dev \
+    libllvm${LLVM_VERSION}-runtime \
+    \
+    # Python bindings (用于 LLVM 工具)
+    python3-lit \
+    python3-ply \
+    \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建 LLVM 版本符号链接
+RUN ln -sf /usr/lib/llvm-${LLVM_VERSION}/bin/* /usr/local/bin/ \
+    && ln -sf /usr/lib/llvm-${LLVM_VERSION}/lib/* /usr/local/lib/ \
+    && ln -sf /usr/include/llvm-${LLVM_VERSION} /usr/local/include/llvm
+
+# 验证 LLVM 安装
+RUN llvm-config-${LLVM_VERSION} --version
+
+# ---------------------------------------------------------------------
+# Node.js 前端开发环境
+# ---------------------------------------------------------------------
+FROM llvm AS node
+
+ENV NVM_DIR=/opt/nvm \
+    NODE_VERSION=20 \
+    NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+
+# 安装 nvm 和 Node.js
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash \
+    && . $NVM_DIR/nvm.sh \
+    && nvm install $NODE_VERSION \
+    && nvm use $NODE_VERSION \
+    && nvm alias default $NODE_VERSION
+
+# 安装 pnpm
+RUN . $NVM_DIR/nvm.sh && npm install -g pnpm@8
+
+# 验证安装
+RUN . $NVM_DIR/nvm.sh && node --version && npm --version && pnpm --version
+
+# ---------------------------------------------------------------------
+# KLEE 符号执行环境 (可选)
+# ---------------------------------------------------------------------
+FROM node AS klee
+
+ENV KLEE_SRC=/opt/klee \
+    KLEE_BUILD=/opt/klee/build \
+    KLEE_VERSION=v3.0
+
+# 安装 KLEE 依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-setuptools \
+    bc \
+    binutils-dev \
+    libboost-all-dev \
+    libncurses5-dev \
+    libfl-dev \
+    libgmp-dev \
+    libsqlite3-dev \
+    libssl-dev \
+    libtinfo5 \
+    libz3-dev \
+    z3 \
+    uclibc \
+    libc6-dev-i386 \
+    \
+    # STP 依赖
+    cmake \
+    flex \
+    bison \
+    libboost-program-options-dev \
+    libboost-test-dev \
+    \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 克隆并构建 KLEE (仅基础框架，不含 uclibc)
+# 注意: 完整构建需要更多时间和资源
+WORKDIR $KLEE_SRC
+RUN git clone --depth 1 --branch $KLEE_VERSION https://github.com/klee/klee.git . \
+    && mkdir -p $KLEE_BUILD \
+    && cd $KLEE_BUILD \
+    && cmake .. \
+        -DENABLE_POSIX_RUNTIME=OFF \
+        -DENABLE_SOLVER_Z3=ON \
+        -DKLEE_UCLibc=OFF \
+        -DLLVM_DIR=/usr/lib/llvm-${LLVM_VERSION}/lib/cmake/llvm \
+    && ninja -j$(nproc) \
+    && cp -r bin $KLEE_INSTALL/ \
+    && cp -r lib $KLEE_INSTALL/
+
+ENV PATH=$KLEE_INSTALL/bin:$PATH
+
+# 验证 KLEE
+RUN klee --version
+
+# ---------------------------------------------------------------------
+# 最终开发环境
+# ---------------------------------------------------------------------
+FROM klee AS dev
+
+ENV PROJECT_DIR=/workspaces/flowsight \
+    CARGO_REGISTRY_INDEX=https://mirrors.ustc.edu.cn/crates.io-index \
+    CARGO_REGISTRY_SERVER=https://mirrors.ustc.edu.cn
+
+# 创建工作目录
+WORKDIR $PROJECT_DIR
+
+# 预设用户 (避免 root 权限问题)
+ENV USER=developer
+ENV HOME=/home/$USER
+
+RUN useradd -m -s /bin/bash $USER \
+    && chown -R $USER:$USER $PROJECT_DIR
+
+# 安装常用开发工具
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    htop \
+    vim \
+    tmux \
+    ripgrep \
+    fd-find \
+    bat \
+    exa \
+    the_silver_searcher \
+    \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 Rust 插件
+RUN cargo install --locked \
+    cargo-watch \
+    cargo-expand \
+    cargo-tree \
+    cargo-audit \
+    cargo-outdated \
+    \
+    # 清理
+    && rm -rf ~/.cargo/registry/index/*
+
+# 配置开发工具
+RUN echo "alias ll='exa -l'" >> ~/.bashrc \
+    && echo "alias rg='ripgrep'" >> ~/.bashrc \
+    && echo "export PATH=/usr/local/bin:\$PATH" >> ~/.bashrc
+
+# 设置工作目录
+WORKDIR $PROJECT_DIR
+
+# 暴露端口
+EXPOSE 5173 3000
+
+# 默认命令
+CMD ["/bin/bash"]
+
+# 元数据
+LABEL maintainer="FlowSight Team" \
+      version="1.0.0" \
+      description="FlowSight Development Environment"

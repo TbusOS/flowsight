@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  flowsight-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: dev
+    container_name: flowsight-dev
+    environment:
+      - RUST_LOG=info
+      - CARGO_INCREMENTAL=1
+      - CARGO_NET_GIT_FETCH_WITH_CLI=true
+    volumes:
+      # 挂载项目代码
+      - ..:/workspaces/flowsight:cached
+      # Rust 编译缓存
+      - cargo-cache:/root/.cargo
+      # Node.js 缓存
+      - node-cache:/root/.npm
+      # pnpm 缓存
+      - pnpm-cache:/root/.pnpm-store
+    ports:
+      - "5173:5173"  # Vite 开发服务器
+      - "9229:9229"  # Node.js 调试端口
+      - "3000:3000"  # 其他开发服务
+    working_dir: /workspaces/flowsight
+    command: sleep infinity
+    tty: true
+    init: true
+
+  flowsight-klee:
+    image: klee/klee:latest
+    container_name: flowsight-klee
+    volumes:
+      - ..:/workspace:cached
+    working_dir: /workspace
+    command: bash
+    tty: true
+
+volumes:
+  cargo-cache:
+  node-cache:
+  pnpm-cache:
