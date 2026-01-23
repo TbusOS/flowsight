@@ -1,0 +1,345 @@
+# Linux Kernel Locking Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/locking/index.html
+
+# ============================================================
+# MUTEX
+# ============================================================
+
+mutex:
+  description: "Mutex - 互斥锁"
+  header: "linux/mutex.h"
+  icon: "🔒"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # DEFINE_MUTEX - 定义互斥锁
+    - pattern: 'DEFINE_MUTEX\s*\(\s*(?P<mutex>\w+)\s*\)'
+      variable_capture: "mutex"
+      description: "定义互斥锁"
+
+    # mutex_init - 初始化互斥锁
+    - pattern: 'mutex_init\s*\(\s*(?P<mutex>\w+)\s*\)'
+      variable_capture: "mutex"
+      description: "初始化互斥锁"
+
+    # mutex_lock - 获取互斥锁
+    - pattern: 'mutex_lock\s*\(\s*(?P<mutex>\w+)\s*\)'
+      variable_capture: "mutex"
+      description: "获取互斥锁（可能睡眠）"
+
+    # mutex_lock_interruptible - 可中断获取
+    - pattern: 'mutex_lock_interruptible\s*\(\s*(?P<mutex>\w+)\s*\)'
+      variable_capture: "mutex"
+      description: "可中断获取互斥锁"
+
+    # mutex_lock_killable - 可被杀获取
+    - pattern: 'mutex_lock_killable\s*\(\s*(?P<mutex>\w+)\s*\)'
+      variable_capture: "mutex"
+      description: "可被杀获取互斥锁"
+
+    # mutex_trylock - 非阻塞尝试获取
+    - pattern: 'mutex_trylock\s*\(\s*(?P<mutex>\w+)\s*\)'
+      variable_capture: "mutex"
+      description: "尝试获取互斥锁"
+
+    # mutex_unlock - 释放互斥锁
+    - pattern: 'mutex_unlock\s*\(\s*(?P<mutex>\w+)\s*\)'
+      variable_capture: "mutex"
+      description: "释放互斥锁"
+
+    # mutex_is_locked - 检查是否已锁定
+    - pattern: 'mutex_is_locked\s*\(\s*(?P<mutex>\w+)\s*\)'
+      variable_capture: "mutex"
+      description: "检查互斥锁状态"
+
+  kernel_call_chain:
+    trigger: "mutex_lock() 被调用"
+    chain:
+      - function: "__mutex_lock_slowpath"
+        description: "互斥锁慢速路径"
+      - function: "mutex_lock"
+        description: "获取互斥锁"
+      - function: "mutex_unlock"
+        description: "释放互斥锁"
+
+
+# ============================================================
+# SPINLOCK
+# ============================================================
+
+spinlock:
+  description: "Spinlock - 自旋锁"
+  header: "linux/spinlock.h"
+  icon: "🔄"
+
+  context:
+    type: "process"  # 但不能在睡眠上下文中使用
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # DEFINE_SPINLOCK - 定义自旋锁
+    - pattern: 'DEFINE_SPINLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "定义自旋锁"
+
+    # spin_lock_init - 初始化自旋锁
+    - pattern: 'spin_lock_init\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "初始化自旋锁"
+
+    # spin_lock - 获取自旋锁
+    - pattern: 'spin_lock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取自旋锁"
+
+    # spin_lock_irqsave - 关闭中断获取自旋锁
+    - pattern: 'spin_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "保存中断状态并获取自旋锁"
+
+    # spin_lock_irq - 关闭中断获取自旋锁
+    - pattern: 'spin_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭中断获取自旋锁"
+
+    # spin_lock_bh - 关闭软中断获取自旋锁
+    - pattern: 'spin_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭软中断获取自旋锁"
+
+    # spin_trylock - 非阻塞尝试获取
+    - pattern: 'spin_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取自旋锁"
+
+    # spin_unlock - 释放自旋锁
+    - pattern: 'spin_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放自旋锁"
+
+    # spin_unlock_irqrestore - 恢复中断状态释放自旋锁
+    - pattern: 'spin_unlock_irqrestore\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "恢复中断状态并释放自旋锁"
+
+    # spin_unlock_irq - 打开中断释放自旋锁
+    - pattern: 'spin_unlock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "打开中断并释放自旋锁"
+
+    # spin_unlock_bh - 打开软中断释放自旋锁
+    - pattern: 'spin_unlock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "打开软中断并释放自旋锁"
+
+  notes:
+    - "自旋锁不能在中断上下文中调用可能导致睡眠的函数"
+    - "spin_lock_irqsave/spin_unlock_irqrestore 是最安全的配对使用"
+    - "持锁时间应该尽可能短"
+
+
+# ============================================================
+# RW SPINLOCK
+# ============================================================
+
+rw_spinlock:
+  description: "Read-Write Spinlock - 读写自旋锁"
+  header: "linux/rwlock.h"
+  icon: "🔐"
+
+  context:
+    type: "process"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # DEFINE_RWLOCK - 定义读写自旋锁
+    - pattern: 'DEFINE_RWLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "定义读写自旋锁"
+
+    # rwlock_init - 初始化读写自旋锁
+    - pattern: 'rwlock_init\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "初始化读写自旋锁"
+
+    # read_lock - 获取读锁
+    - pattern: 'read_lock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取读锁"
+
+    # read_lock_irqsave - 保存中断获取读锁
+    - pattern: 'read_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "保存中断状态获取读锁"
+
+    # read_lock_irq - 关闭中断获取读锁
+    - pattern: 'read_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭中断获取读锁"
+
+    # read_lock_bh - 关闭软中断获取读锁
+    - pattern: 'read_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭软中断获取读锁"
+
+    # read_trylock - 非阻塞尝试获取读锁
+    - pattern: 'read_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取读锁"
+
+    # read_unlock - 释放读锁
+    - pattern: 'read_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放读锁"
+
+    # write_lock - 获取写锁
+    - pattern: 'write_lock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取写锁"
+
+    # write_lock_irqsave - 保存中断获取写锁
+    - pattern: 'write_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "保存中断状态获取写锁"
+
+    # write_lock_irq - 关闭中断获取写锁
+    - pattern: 'write_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭中断获取写锁"
+
+    # write_lock_bh - 关闭软中断获取写锁
+    - pattern: 'write_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "关闭软中断获取写锁"
+
+    # write_trylock - 非阻塞尝试获取写锁
+    - pattern: 'write_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取写锁"
+
+    # write_unlock - 释放写锁
+    - pattern: 'write_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁"
+
+
+# ============================================================
+# SPINLOCK VARIANTS
+# ============================================================
+
+spinlock_variants:
+  description: "Spinlock Variants - 自旋锁变体"
+  header: "linux/spinlock_types.h"
+
+  bind_patterns:
+    # DEFINE_SPINLOCK - 普通自旋锁
+    - pattern: 'DEFINE_SPINLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "定义自旋锁"
+
+    # spinlock_t - 自旋锁类型
+    - pattern: 'spinlock_t\s+(?P<lock>\w+)\s*='
+      variable_capture: "lock"
+      description: "自旋锁变量"
+
+    # __SPIN_LOCK_UNLOCKED - 静态初始化
+    - pattern: '__SPIN_LOCK_UNLOCKED\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "静态自旋锁初始化"
+
+    # SPIN_LOCK_UNLOCKED - 静态初始化（旧版）
+    - pattern: 'SPIN_LOCK_UNLOCKED\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "静态自旋锁初始化（旧版）"
+
+
+# ============================================================
+# LOCK STATISTICS
+# ============================================================
+
+lock_stats:
+  description: "Lock Statistics - 锁统计"
+  header: "linux/lockdep.h"
+
+  bind_patterns:
+    # lockstat - 锁统计
+    - pattern: 'lockstat\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<op>\w+)\s*,\s*(?P<val>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "锁统计操作"
+
+    # lockdep - 锁依赖检查
+    - pattern: 'lockdep_init_map\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<key>[^)]+)\s*,\s*(?P< subclass>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "初始化锁依赖映射"
+
+
+# ============================================================
+# LOCKING EXAMPLES
+# ============================================================
+
+examples:
+  - description: "Mutex 使用示例"
+    code: |
+      static DEFINE_MUTEX(my_mutex);
+      static int counter = 0;
+
+      static int increment_counter(void) {
+          mutex_lock(&my_mutex);
+          counter++;
+          mutex_unlock(&my_mutex);
+          return counter;
+      }
+
+  - description: "Spinlock 使用示例"
+    code: |
+      static DEFINE_SPINLOCK(my_spinlock);
+      static unsigned long flags;
+
+      static void safe_operation(void) {
+          spin_lock_irqsave(&my_spinlock, flags);
+          /* 临界区 */
+          spin_unlock_irqrestore(&my_spinlock, flags);
+      }
+
+  - description: "读写自旋锁示例"
+    code: |
+      static DEFINE_RWLOCK(my_rwlock);
+      static int data = 0;
+
+      /* 读者 */
+      static int read_data(void) {
+          int ret;
+          read_lock(&my_rwlock);
+          ret = data;
+          read_unlock(&my_rwlock);
+          return ret;
+      }
+
+      /* 写者 */
+      static void write_data(int value) {
+          write_lock(&my_rwlock);
+          data = value;
+          write_unlock(&my_rwlock);
+      }
+
+  - description: "中断中自旋锁使用"
+    code: |
+      static DEFINE_SPINLOCK(irq_lock);
+      static unsigned long flags;
+
+      static irqreturn_t my_isr(int irq, void *dev_id) {
+          spin_lock_irqsave(&irq_lock, flags);
+          /* 安全访问共享数据 */
+          spin_unlock_irqrestore(&irq_lock, flags);
+          return IRQ_HANDLED;
+      }
