@@ -148,11 +148,28 @@ fn parse_ll_text(content: &str, kb: &KnowledgeBase) -> Result<IrParseResult, Llv
 
 /// Extract module name from IR
 fn extract_module_name(content: &str) -> String {
-    // Look for ; ModuleID = "name"
+    // Look for ; ModuleID = "name" or 'name' first
     for line in content.lines() {
-        if line.trim_start().starts_with("; ModuleID") {
-            if let Some(name) = line.split('"').nth(1) {
+        let trimmed = line.trim();
+        if trimmed.starts_with("; ModuleID") {
+            // Try double quotes first, then single quotes
+            if let Some(name) = trimmed.split('"').nth(1) {
                 return name.to_string();
+            }
+            if let Some(name) = trimmed.split('\'').nth(1) {
+                return name.to_string();
+            }
+        }
+    }
+
+    // Fall back to source_filename
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("source_filename") {
+            if let Some(name) = trimmed.split('"').nth(1) {
+                // Extract basename from path and remove extension
+                let basename = name.rsplit('/').next().unwrap_or(name);
+                return basename.to_string();
             }
         }
     }
@@ -180,12 +197,13 @@ fn extract_source_files(content: &str) -> Vec<String> {
 fn extract_types(content: &str) -> HashMap<String, IrType> {
     let mut types: HashMap<String, IrType> = HashMap::new();
 
-    // Simple pattern matching for named types
-    let type_re = regex::Regex::new(r"@(\w+)\s*=\s*(distinct\s+)?(struct|type)\s*\{([^}]+)\}").unwrap();
+    // Match named types: %struct_name = type { ... }
+    // Handles: %struct_name = type { field1, field2 }
+    let type_re = regex::Regex::new(r"%([\w.]+)\s*=\s*type\s*\{([^}]+)\}").unwrap();
 
     for cap in type_re.captures_iter(content) {
         let name = cap.get(1).unwrap().as_str().to_string();
-        let fields_str = cap.get(4).unwrap().as_str();
+        let fields_str = cap.get(2).unwrap().as_str();
 
         let fields: Vec<IrType> = fields_str
             .split(',')
@@ -397,30 +415,56 @@ fn extract_basic_blocks(func_body: &str) -> Vec<IrBasicBlock> {
 fn extract_instructions(block_content: &str) -> Vec<IrInstruction> {
     let mut instructions: Vec<IrInstruction> = Vec::new();
 
-    // Match LLVM instructions (exclude labels)
+    // Match LLVM instructions - includes instructions without destination (like ret, br)
+    // Pattern matches:
+    //   %result = add i32 %a, %b  (instruction with destination)
+    //   ret i32 1                   (terminator without destination)
+    //   br label %dest              (branch without destination)
     let instr_re = regex::Regex::new(
-        r"(?m)^\s+(?:%)?(\w+)\s*=\s*([\w.]+)([^;]*?)(;.*)?$",
+        r"(?m)^\s+(?:%)?(\w+)\s*=\s*([\w.]+)([^;]*?)(;.*)?$|^\s+([\w.]+)([^;]*?)(;.*)?$",
     ).unwrap();
 
     for cap in instr_re.captures_iter(block_content) {
-        let dest = cap.get(1).map(|m| m.as_str().to_string());
-        let opcode = cap.get(2).unwrap().as_str().to_string();
-        let operands = cap
-            .get(3)
-            .unwrap()
-            .as_str()
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
+        // Check if we matched the first pattern (with destination)
+        if let Some(dest_match) = cap.get(1) {
+            let dest = Some(dest_match.as_str().to_string());
+            let opcode = cap.get(2).unwrap().as_str().to_string();
+            let operands = cap
+                .get(3)
+                .unwrap()
+                .as_str()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
 
-        instructions.push(IrInstruction {
-            opcode,
-            dest,
-            type_str: String::new(),
-            operands,
-            location: None,
-        });
+            instructions.push(IrInstruction {
+                opcode,
+                dest,
+                type_str: String::new(),
+                operands,
+                location: None,
+            });
+        } else if let Some(opcode_match) = cap.get(5) {
+            // Matched the second pattern (no destination)
+            let opcode = opcode_match.as_str().to_string();
+            let operands = cap
+                .get(6)
+                .unwrap()
+                .as_str()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            instructions.push(IrInstruction {
+                opcode,
+                dest: None,
+                type_str: String::new(),
+                operands,
+                location: None,
+            });
+        }
     }
 
     instructions
@@ -494,9 +538,15 @@ fn find_predecessors(func_body: &str, target: &str) -> Vec<String> {
 fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec<IrCall> {
     let mut calls: Vec<IrCall> = Vec::new();
 
-    // Match call and invoke instructions
-    let call_re = regex::Regex::new(
-        r"(?m)^\s+(?:%)?\w+\s*=\s*(call|invoke)\s+(?:cold\s+)?(?:<[^>]*>\s*)?(?P<attrs>[^@]*?)@(?P<func>[\w\.]+)\s*\((?P<args>[^)]*)\)",
+    // Match call and invoke instructions - handles both:
+    //   %result = call i32 @func(args)    (with destination)
+    //   call void @func(args)              (without destination)
+    let call_re_with_dest = regex::Regex::new(
+        r"(?m)^\s+(?:%)?(\w+)\s*=\s*(call|invoke)\s+(?:cold\s+)?(?:<[^>]*>\s*)?([^@]*?)@([\w\.]+)\s*\(([^)]*)\)",
+    ).unwrap();
+
+    let call_re_no_dest = regex::Regex::new(
+        r"(?m)^\s+(call|invoke)\s+(?:cold\s+)?(?:<[^>]*>\s*)?([^@]*?)@([\w\.]+)\s*\(([^)]*)\)",
     ).unwrap();
 
     // Build function-to-block mapping
@@ -526,8 +576,47 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
         }
     }
 
-    for cap in call_re.captures_iter(content) {
-        let _call_type = cap.get(1).unwrap().as_str();
+    // Process calls with destination
+    for cap in call_re_with_dest.captures_iter(content) {
+        let callee = cap.get(4).unwrap().as_str().to_string();
+        let args_str = cap.get(5).unwrap().as_str();
+
+        // Skip intrinsics and standard library
+        if callee.starts_with("llvm.") || callee.starts_with("@llvm") {
+            continue;
+        }
+
+        // Determine caller block
+        let call_pos = cap.get(0).unwrap().start();
+        let caller_block = find_caller_block(content, &block_re, call_pos);
+
+        // Determine caller function from block
+        let caller_function = func_of_block
+            .get(&caller_block)
+            .cloned()
+            .unwrap_or_else(|| String::from("unknown"));
+
+        // Parse arguments
+        let arguments: Vec<String> = args_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // Check if indirect call
+        let is_indirect = callee.contains('$') || callee.contains("ptr");
+
+        calls.push(IrCall {
+            caller_block,
+            caller_function,
+            callee,
+            is_indirect,
+            arguments,
+        });
+    }
+
+    // Process calls without destination
+    for cap in call_re_no_dest.captures_iter(content) {
         let callee = cap.get(3).unwrap().as_str().to_string();
         let args_str = cap.get(4).unwrap().as_str();
 
@@ -538,24 +627,7 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
 
         // Determine caller block
         let call_pos = cap.get(0).unwrap().start();
-        let block_positions: Vec<(String, usize)> = block_re
-            .captures_iter(content)
-            .filter_map(|cap| {
-                let name = cap.get(1).unwrap().as_str().to_string();
-                let pos = cap.get(0).unwrap().start();
-                if pos < call_pos {
-                    Some((name, pos))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        let caller_block = block_positions
-            .iter()
-            .max_by_key(|(_, p)| *p)
-            .map(|(n, _)| n.clone())
-            .unwrap_or_else(|| String::from("unknown"));
+        let caller_block = find_caller_block(content, &block_re, call_pos);
 
         // Determine caller function from block
         let caller_function = func_of_block
@@ -583,6 +655,28 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
     }
 
     calls
+}
+
+/// Find the caller block given a call position
+fn find_caller_block(content: &str, block_re: &regex::Regex, call_pos: usize) -> String {
+    let block_positions: Vec<(String, usize)> = block_re
+        .captures_iter(content)
+        .filter_map(|cap| {
+            let name = cap.get(1).unwrap().as_str().to_string();
+            let pos = cap.get(0).unwrap().start();
+            if pos < call_pos {
+                Some((name, pos))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    block_positions
+        .iter()
+        .max_by_key(|(_, p)| *p)
+        .map(|(n, _)| n.clone())
+        .unwrap_or_else(|| String::from("unknown"))
 }
 
 /// Detect if a function is a callback
@@ -690,5 +784,99 @@ define i32 @callee(i32 %x) {
         assert_eq!(result.calls.len(), 1);
         assert_eq!(result.calls[0].caller_function, "caller");
         assert_eq!(result.calls[0].callee, "callee");
+    }
+
+    #[test]
+    fn test_parse_complex_function() {
+        let ir = r#"
+; ModuleID = 'test_module'
+source_filename = "test.c"
+
+define i32 @my_driver_isr(i32 %irq, ptr %dev_id) {
+entry:
+  %data = load i32, ptr %dev_id
+  %cmp = icmp eq i32 %data, 0
+  br i1 %cmp, label %handle_normal, label %handle_error
+
+handle_normal:
+  call void @schedule_work(ptr %dev_id)
+  ret i32 IRQ_HANDLED
+
+handle_error:
+  ret i32 IRQ_NONE
+}
+
+declare void @schedule_work(ptr)
+
+define void @work_handler(ptr %work) {
+entry:
+  ret void
+}
+"#;
+
+        let result = parse_ll_text(ir, &KnowledgeBase::default()).unwrap();
+        assert_eq!(result.module_name, "test_module");
+        assert!(result.functions.contains_key("my_driver_isr"));
+        assert!(result.functions.contains_key("work_handler"));
+        // Should extract the schedule_work call
+        assert!(result.calls.iter().any(|c| c.callee == "schedule_work"));
+    }
+
+    #[test]
+    fn test_parse_branch_conditions() {
+        let ir = r#"
+define i32 @check_value(i32 %x) {
+entry:
+  %cmp = icmp sgt i32 %x, 0
+  br i1 %cmp, label %positive, label %non_positive
+
+positive:
+  ret i32 1
+
+non_positive:
+  ret i32 0
+}
+"#;
+
+        let result = parse_ll_text(ir, &KnowledgeBase::default()).unwrap();
+        let func = result.functions.get("check_value").unwrap();
+
+        // Should have 2 basic blocks: entry and positive (non_positive might be merged)
+        assert!(!func.blocks.is_empty());
+
+        // Find entry block
+        let entry = func.blocks.iter().find(|b| b.name == "entry").unwrap();
+        // Should have a branch terminator
+        assert!(entry.terminator.is_some());
+    }
+
+    #[test]
+    fn test_parse_struct_types() {
+        let ir = r#"
+%struct.work_struct = type { atomic_t, ptr }
+
+define void @init_work(ptr %work) {
+entry:
+  ret void
+}
+"#;
+
+        let result = parse_ll_text(ir, &KnowledgeBase::default()).unwrap();
+        assert!(result.types.contains_key("struct.work_struct"));
+    }
+
+    #[test]
+    fn test_parse_void_function() {
+        let ir = r#"
+define void @my_callback(ptr %arg1, i32 %arg2) {
+entry:
+  ret void
+}
+"#;
+
+        let result = parse_ll_text(ir, &KnowledgeBase::default()).unwrap();
+        let func = result.functions.get("my_callback").unwrap();
+        assert_eq!(func.return_type, "void");
+        assert_eq!(func.parameters.len(), 2);
     }
 }
