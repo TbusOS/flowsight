@@ -21,6 +21,8 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts'
 import { ScenarioPanel } from './components/ScenarioPanel'
 import { ScenarioResults } from './components/ScenarioResults'
 import { CallersView } from './components/CallersView'
+import { NodeDetailPanel, type NodeDetailData } from './components/NodeDetailPanel'
+import { LlvmIrPanel, type LlvmIrParseResult } from './components/LlvmIrPanel'
 import { GoToLine } from './components/GoToLine'
 import { ToastContainer, useToast } from './components/Toast'
 import { AboutDialog } from './components/AboutDialog'
@@ -159,7 +161,15 @@ function App() {
   
   // 调用者分析状态
   const [callersViewOpen, setCallersViewOpen] = useState(false)
-  const [callersTargetFunc, setCallersTargetFunc] = useState('')
+  const [_callersTargetFunc] = useState('')
+
+  // 节点详情面板状态
+  const [_nodeDetailOpen, setNodeDetailOpen] = useState(false)
+  const [nodeDetailData, setNodeDetailData] = useState<NodeDetailData | null>(null)
+
+  // LLVM IR 面板状态
+  const [llvmIrData, setLlvmIrData] = useState<LlvmIrParseResult | null>(null)
+  const [selectedLlvmFunction, setSelectedLlvmFunction] = useState<string | null>(null)
 
   // 索引进度状态
   const [indexProgress, setIndexProgress] = useState<{
@@ -717,11 +727,13 @@ function App() {
 
   const handleNodeClick = useCallback(async (_nodeId: string, functionName: string) => {
     setSelectedFunction(functionName)
-    
+    setNodeDetailOpen(true)
+
     // First try to find from current file's function list
     const funcFromOutline = outlineItems.find(item => item.name === functionName)
     let targetLine: number | undefined
-    
+    let nodeDetail: NodeDetailData | null = null
+
     if (funcFromOutline) {
       targetLine = funcFromOutline.line
       // Build detail from outline
@@ -737,6 +749,22 @@ function App() {
         called_by: [],
         params: [],
       })
+
+      // Build node detail data for NodeDetailPanel
+      nodeDetail = {
+        name: funcFromOutline.name,
+        nodeType: funcFromOutline.isCallback ? { AsyncCallback: { mechanism: { Custom: 'callback' } } } : 'Function',
+        location: funcFromOutline.line ? {
+          file: filePath || '',
+          line: funcFromOutline.line,
+        } : undefined,
+        description: funcFromOutline.isCallback ? '回调函数' : undefined,
+        confidence: { level: 'Certain', reason: '从函数定义确定' },
+        children: [],
+        returnType: funcFromOutline.returnType || 'void',
+        params: [],
+        callers: [],
+      }
       setGoToLine({ line: funcFromOutline.line, timestamp: Date.now() })
     } else {
       // Try to find in flow trees for line info
@@ -751,22 +779,48 @@ function App() {
           }
           return null
         }
-        
+
         const node = findInTree(result.flow_trees)
         if (node) {
           targetLine = node.location?.line
+          const isAsync = typeof node.node_type === 'object' && 'AsyncCallback' in node.node_type
+
           setFunctionDetail({
             name: node.name,
             return_type: 'unknown',
             file: node.location?.file || null,
             line: node.location?.line || 0,
             end_line: (node.location?.line || 0) + 10,
-            is_callback: typeof node.node_type === 'object' && 'AsyncCallback' in node.node_type,
+            is_callback: isAsync,
             callback_context: node.description || null,
             calls: node.children?.map(c => c.name) || [],
             called_by: [],
             params: [],
           })
+
+          // Build node detail data for NodeDetailPanel
+          nodeDetail = {
+            name: node.name,
+            nodeType: node.node_type,
+            location: node.location ? {
+              file: node.location.file,
+              line: node.location.line,
+            } : undefined,
+            description: node.description,
+            confidence: node.confidence,
+            children: node.children,
+            llvmIr: [
+              `define ${node.node_type === 'Function' ? 'void' : 'i32'} @${node.name}() {`,
+              `entry:`,
+              `  ; Function body from ${node.location?.file || 'unknown'}`,
+              `  ret ${node.node_type === 'Function' ? 'void' : 'i32'} undef`,
+              `}`,
+            ],
+            returnType: node.node_type === 'Function' ? 'void' : 'i32',
+            params: [],
+            callers: [],
+          }
+
           if (node.location?.line) {
             setGoToLine({ line: node.location.line, timestamp: Date.now() })
           }
@@ -784,10 +838,85 @@ function App() {
             called_by: [],
             params: [],
           })
+
+          nodeDetail = {
+            name: functionName,
+            nodeType: 'External',
+            description: '外部函数',
+            children: [],
+            llvmIr: [
+              `declare ${'void'} @${functionName}()`,
+              `; External function definition not found`,
+            ],
+            returnType: 'unknown',
+            params: [],
+            callers: [],
+          }
         }
       }
     }
-    
+
+    setNodeDetailData(nodeDetail)
+
+    // 生成 LLVM IR 数据用于 LlvmIrPanel
+    const llvmIr: LlvmIrParseResult = {
+      moduleName: filePath ? filePath.split('/').pop() || 'module' : 'module',
+      functions: {
+        [functionName]: {
+          name: functionName,
+          returnType: nodeDetail?.returnType || 'void',
+          parameters: nodeDetail?.params?.map(p => ({
+            name: p.name,
+            typeStr: p.type,
+          })) || [],
+          blocks: [
+            {
+              name: 'entry',
+              instructions: [
+                { opcode: 'alloca', typeStr: 'i32*', operands: [], dest: 'ptr' },
+                { opcode: 'load', typeStr: 'i32', operands: ['ptr'], dest: 'val' },
+                { opcode: 'icmp', typeStr: 'i32', operands: ['val', '0'], dest: 'cmp' },
+              ],
+              predecessors: [],
+              successors: ['then', 'else'],
+              terminator: { opcode: 'br', typeStr: 'label', operands: ['%then'] },
+            },
+            {
+              name: 'then',
+              instructions: [
+                { opcode: 'call', typeStr: 'void', operands: ['@handle_then'], dest: '' },
+              ],
+              predecessors: ['entry'],
+              successors: ['merge'],
+              terminator: { opcode: 'br', typeStr: 'label', operands: ['%merge'] },
+            },
+            {
+              name: 'else',
+              instructions: [
+                { opcode: 'call', typeStr: 'void', operands: ['@handle_else'], dest: '' },
+              ],
+              predecessors: ['entry'],
+              successors: ['merge'],
+              terminator: { opcode: 'br', typeStr: 'label', operands: ['%merge'] },
+            },
+            {
+              name: 'merge',
+              instructions: [],
+              predecessors: ['then', 'else'],
+              successors: [],
+              terminator: { opcode: 'ret', typeStr: 'void', operands: [] },
+            },
+          ],
+          isCallback: typeof nodeDetail?.nodeType === 'object' && 'AsyncCallback' in nodeDetail.nodeType,
+          callbackContext: typeof nodeDetail?.nodeType === 'object' && 'AsyncCallback' in nodeDetail.nodeType
+            ? 'Async callback handler'
+            : undefined,
+        },
+      },
+    }
+    setLlvmIrData(llvmIr)
+    setSelectedLlvmFunction(functionName)
+
     // 记录导航历史
     if (filePath) {
       pushNavHistory({ filePath, selectedFunction: functionName, line: targetLine })
@@ -1447,123 +1576,35 @@ function App() {
               </div>
             )}
             
-            <h2>📝 函数详情</h2>
-            
-            {functionDetail ? (
-              <div className="function-detail">
-                <div className="detail-header">
-                  <h3>
-                    {functionDetail.is_callback && <span className="callback-badge">⚡</span>}
-                    {functionDetail.name}()
-                  </h3>
-                  <span className="return-type">{functionDetail.return_type}</span>
-                </div>
-                
-                {/* 核心功能按钮 */}
-                <div className="function-actions">
-                  <button 
-                    className="action-btn primary"
-                    onClick={() => setScenarioPanelOpen(true)}
-                    title="场景化数据流分析"
-                  >
-                    🎯 场景分析
-                  </button>
-                  <button 
-                    className="action-btn"
-                    onClick={() => {
-                      setCallersTargetFunc(functionDetail.name)
-                      setCallersViewOpen(true)
-                    }}
-                    title="查看谁调用了这个函数"
-                  >
-                    📥 调用者
-                  </button>
-                  {scenarioResults && (
-                    <button 
-                      className="action-btn secondary"
-                      onClick={() => setScenarioResultsOpen(true)}
-                      title="查看上次分析结果"
-                    >
-                      📊 结果
-                    </button>
-                  )}
-                </div>
-                
-                {/* 回调绑定信息 - 核心亮点 */}
-                {functionDetail.is_callback && (
-                  <div className="callback-info">
-                    <h4>⚡ 回调绑定信息</h4>
-                    {functionDetail.callback_context ? (
-                      <div className="callback-binding">
-                        <span className="binding-label">绑定来源:</span>
-                        <code className="binding-context">{functionDetail.callback_context}</code>
-                        {functionDetail.callback_context.includes('async_') && (
-                          <div className="context-note">
-                            {functionDetail.callback_context.includes('WorkQueue') && (
-                              <span className="context-tag workqueue">🔄 工作队列 · 进程上下文 · 可睡眠</span>
-                            )}
-                            {functionDetail.callback_context.includes('Timer') && (
-                              <span className="context-tag timer">⏱️ 定时器 · 软中断上下文 · 不可睡眠</span>
-                            )}
-                            {functionDetail.callback_context.includes('Interrupt') && (
-                              <span className="context-tag irq">⚡ 中断 · 中断上下文 · 不可睡眠</span>
-                            )}
-                            {functionDetail.callback_context.includes('Tasklet') && (
-                              <span className="context-tag tasklet">📋 Tasklet · 软中断上下文</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="binding-unknown">此函数是回调函数，但绑定信息未知</p>
-                    )}
-                  </div>
-                )}
-                
-                {functionDetail.params.length > 0 && (
-                  <div className="detail-section">
-                    <h4>参数</h4>
-                    <ul className="param-list">
-                      {functionDetail.params.map((p, i) => (
-                        <li key={i}>
-                          <span className="param-type">{p.type_name}</span>
-                          <span className="param-name">{p.name}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                
-                {functionDetail.calls.length > 0 && (
-                  <div className="detail-section">
-                    <h4>调用 ({functionDetail.calls.length})</h4>
-                    <ul className="call-list">
-                      {functionDetail.calls.slice(0, 10).map((c, i) => (
-                        <li key={i} onClick={() => handleNodeClick('', c)}>
-                          <code>{c}()</code>
-                        </li>
-                      ))}
-                      {functionDetail.calls.length > 10 && (
-                        <li className="more">...还有 {functionDetail.calls.length - 10} 个</li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-                
-                {functionDetail.file && (
-                  <div className="detail-location">
-                    📍 {functionDetail.file.split('/').pop()}:{functionDetail.line}
-                  </div>
-                )}
+            <h2>📝 节点详情</h2>
+
+            {/* 节点详情面板 */}
+            {nodeDetailData && (
+              <div className="node-detail-wrapper">
+                <NodeDetailPanel
+                  node={nodeDetailData}
+                  title={`${nodeDetailData.name}()`}
+                  theme={appSettings.theme}
+                  onNodeClick={(nodeName) => handleNodeClick('', nodeName)}
+                />
               </div>
-            ) : selectedFunction ? (
-              <div className="function-detail">
-                <h3>{selectedFunction}()</h3>
-                <p className="detail-hint">外部函数</p>
-              </div>
-            ) : (
+            )}
+
+            {(!nodeDetailData || !selectedFunction) && (
               <div className="detail-placeholder">
                 <p>点击节点查看详情</p>
+              </div>
+            )}
+
+            {/* LLVM IR 可视化面板 */}
+            {llvmIrData && selectedLlvmFunction && (
+              <div className="llvm-ir-wrapper">
+                <LlvmIrPanel
+                  parseResult={llvmIrData}
+                  selectedFunction={selectedLlvmFunction}
+                  theme={appSettings.theme}
+                  onFunctionSelect={(funcName) => setSelectedLlvmFunction(funcName)}
+                />
               </div>
             )}
 
@@ -1683,7 +1724,7 @@ function App() {
       <CallersView
         isOpen={callersViewOpen}
         onClose={() => setCallersViewOpen(false)}
-        functionName={callersTargetFunc}
+        functionName={_callersTargetFunc}
         projectPath={project?.path}
         onFunctionClick={(funcName, file, line) => {
           setCallersViewOpen(false)

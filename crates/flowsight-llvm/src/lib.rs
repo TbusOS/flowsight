@@ -9,6 +9,9 @@
 //! This crate provides accurate type and pointer information that complements
 //! the Tree-sitter-based source code analysis.
 
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
 pub mod ir_parser;
 pub mod types;
 
@@ -16,6 +19,11 @@ pub mod types;
 pub use flowsight_core::ExecutionContext;
 
 // Re-export our own types
+pub use types::{
+    LlvmBasicBlock, LlvmFunction, LlvmInstruction, LlvmIrPageRequest, LlvmIrPageResponse,
+    LlvmIrParseResult, LlvmParameter,
+};
+
 pub use types::{
     IrBasicBlock, IrCall, IrFunction, IrInstruction, IrParameter, IrParseResult, IrType,
 };
@@ -105,6 +113,147 @@ pub fn find_function<'a>(result: &'a IrParseResult, name: &str) -> Option<&'a Ir
         // Try to find by suffix (mangled names)
         result.functions.values().find(|f| f.name.ends_with(name))
     })
+}
+
+/// Convert internal IrParseResult to frontend-compatible LlvmIrParseResult
+pub fn to_frontend_format(result: &IrParseResult) -> LlvmIrParseResult {
+    let mut functions: HashMap<String, LlvmFunction> = HashMap::new();
+
+    for (name, ir_func) in &result.functions {
+        let blocks: Vec<LlvmBasicBlock> = ir_func
+            .blocks
+            .iter()
+            .map(|block| LlvmBasicBlock {
+                name: block.name.clone(),
+                instructions: block
+                    .instructions
+                    .iter()
+                    .map(|instr| LlvmInstruction {
+                        opcode: instr.opcode.clone(),
+                        dest: instr.dest.clone(),
+                        type_str: instr.type_str.clone(),
+                        operands: instr.operands.clone(),
+                        location: instr.location.clone(),
+                    })
+                    .collect(),
+                predecessors: block.predecessors.clone(),
+                successors: block.successors.clone(),
+                terminator: block.terminator.as_ref().map(|instr| LlvmInstruction {
+                    opcode: instr.opcode.clone(),
+                    dest: instr.dest.clone(),
+                    type_str: instr.type_str.clone(),
+                    operands: instr.operands.clone(),
+                    location: instr.location.clone(),
+                }),
+            })
+            .collect();
+
+        let parameters: Vec<LlvmParameter> = ir_func
+            .parameters
+            .iter()
+            .map(|p| LlvmParameter {
+                name: p.name.clone(),
+                type_str: p.type_str.clone(),
+            })
+            .collect();
+
+        functions.insert(
+            name.clone(),
+            LlvmFunction {
+                name: ir_func.name.clone(),
+                return_type: ir_func.return_type.clone(),
+                parameters,
+                blocks,
+                is_callback: ir_func.is_callback,
+                callback_context: ir_func.callback_context.clone(),
+            },
+        );
+    }
+
+    LlvmIrParseResult {
+        module_name: result.module_name.clone(),
+        functions,
+    }
+}
+
+/// Paginate instructions within a function
+pub fn paginate_function(
+    result: &LlvmIrParseResult,
+    request: &LlvmIrPageRequest,
+) -> Option<LlvmIrPageResponse> {
+    let func = result.functions.get(&request.function_name)?;
+
+    // Collect all instructions (including terminators)
+    let all_instructions: Vec<&LlvmInstruction> = func
+        .blocks
+        .iter()
+        .flat_map(|block| {
+            block
+                .instructions
+                .iter()
+                .chain(block.terminator.as_ref())
+        })
+        .collect();
+
+    let total_instructions = all_instructions.len() as u32;
+    let total_pages = (total_instructions as f64 / request.page_size as f64).ceil() as u32;
+
+    let start = (request.page * request.page_size) as usize;
+    let end = ((request.page + 1) * request.page_size) as usize;
+    let page_instructions: Vec<LlvmInstruction> = all_instructions
+        .get(start..end.min(all_instructions.len()))
+        .map(|slice| slice.iter().map(|instr| (*instr).clone()).collect())
+        .unwrap_or_default();
+
+    Some(LlvmIrPageResponse {
+        function_name: request.function_name.clone(),
+        page: request.page,
+        page_size: request.page_size,
+        total_instructions,
+        total_pages,
+        has_next: request.page + 1 < total_pages,
+        has_previous: request.page > 0,
+        instructions: page_instructions,
+        block_name: None,
+    })
+}
+
+/// Get function summary (for quick display)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionSummary {
+    pub name: String,
+    pub return_type: String,
+    pub param_count: usize,
+    pub instruction_count: u32,
+    pub block_count: usize,
+    pub is_callback: bool,
+}
+
+/// Get summary of all functions in a parse result
+pub fn get_function_summaries(result: &LlvmIrParseResult) -> Vec<FunctionSummary> {
+    result
+        .functions
+        .values()
+        .map(|func| {
+            let instruction_count: u32 = func
+                .blocks
+                .iter()
+                .map(|block| {
+                    block.instructions.len() as u32
+                        + block.terminator.as_ref().map_or(0, |_| 1u32)
+                })
+                .sum();
+
+            FunctionSummary {
+                name: func.name.clone(),
+                return_type: func.return_type.clone(),
+                param_count: func.parameters.len(),
+                instruction_count,
+                block_count: func.blocks.len(),
+                is_callback: func.is_callback,
+            }
+        })
+        .collect()
 }
 
 /// Utility to get call graph from ParseResult

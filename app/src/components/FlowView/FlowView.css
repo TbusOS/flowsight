@@ -8,70 +8,82 @@
   position: relative;
 }
 
-/* 工具栏 */
+/* 工具栏 - 现代化设计 */
 .flow-toolbar {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 12px;
+  left: 12px;
   z-index: 10;
   display: flex;
   gap: 6px;
+  background: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(12px);
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .flow-toolbar button {
-  padding: 5px 10px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 4px;
+  padding: 6px 10px;
+  background: rgba(51, 65, 85, 0.6);
+  border: 1px solid rgba(71, 85, 105, 0.6);
+  border-radius: 6px;
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
 .flow-toolbar button:hover {
-  background: #334155;
+  background: rgba(71, 85, 105, 0.8);
   color: #e2e8f0;
-  border-color: #475569;
+  border-color: rgba(100, 116, 139, 0.8);
+  transform: translateY(-1px);
+}
+
+.flow-toolbar button:active {
+  transform: translateY(0);
 }
 
 .flow-toolbar button.active {
-  background: #0ea5e9;
-  border-color: #38bdf8;
-  color: #fff;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.3), rgba(14, 165, 233, 0.2));
+  border-color: rgba(14, 165, 233, 0.6);
+  color: #38bdf8;
 }
 
 .flow-toolbar button.active:hover {
-  background: #38bdf8;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.4), rgba(14, 165, 233, 0.3));
 }
 
 /* 工具栏分隔符 */
 .toolbar-divider {
   width: 1px;
-  background: #334155;
-  margin: 0 4px;
+  background: linear-gradient(180deg, transparent, rgba(71, 85, 105, 0.6), transparent);
+  margin: 4px 6px;
 }
 
 /* 异步机制图例 */
 .async-legend {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid #334155;
+  gap: 12px;
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(71, 85, 105, 0.6);
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-size: 10px;
   color: #94a3b8;
   cursor: help;
+  transition: color 0.2s;
 }
 
 .legend-item:hover {
@@ -79,9 +91,10 @@
 }
 
 .legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .legend-dot.workqueue {
@@ -141,31 +154,39 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 4px;
-  padding: 2px 6px;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(71, 85, 105, 0.4);
+  border-radius: 8px;
+  padding: 4px 6px;
 }
 
 .depth-label {
   font-size: 10px;
   color: #64748b;
   margin-right: 4px;
+  font-weight: 500;
 }
 
 .depth-btn {
-  padding: 2px 6px !important;
-  min-width: 22px;
-  font-size: 10px !important;
+  padding: 4px 8px !important;
+  min-width: 24px;
+  font-size: 11px !important;
   background: transparent !important;
-  border: none !important;
+  border: 1px solid transparent !important;
   color: #64748b !important;
-  border-radius: 2px !important;
+  border-radius: 5px !important;
+  font-weight: 600;
 }
 
 .depth-btn:hover {
-  background: #334155 !important;
+  background: rgba(51, 65, 85, 0.6) !important;
   color: #e2e8f0 !important;
+}
+
+.depth-btn.active {
+  background: rgba(88, 166, 255, 0.2) !important;
+  border-color: rgba(88, 166, 255, 0.4) !important;
+  color: #58a6ff !important;
 }
 
 /* 聚焦指示器 */
@@ -196,34 +217,63 @@
   background: #ef4444 !important;
 }
 
-/* 右键菜单 */
+/* 右键菜单 - 现代化设计 */
 .context-menu {
   position: fixed;
   z-index: 1000;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  min-width: 140px;
-  padding: 4px;
+  background: rgba(30, 41, 59, 0.98);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(71, 85, 105, 0.6);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  min-width: 160px;
+  padding: 6px;
+  animation: menuFadeIn 0.15s ease-out;
+}
+
+@keyframes menuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .context-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: transparent;
   border: none;
   color: #e2e8f0;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
-  border-radius: 4px;
-  transition: background 0.15s;
+  border-radius: 6px;
+  transition: all 0.15s ease;
 }
 
 .context-menu button:hover {
-  background: #334155;
+  background: rgba(71, 85, 105, 0.6);
+}
+
+.context-menu button.danger {
+  color: #ef4444;
+}
+
+.context-menu button.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.context-menu .menu-divider {
+  height: 1px;
+  background: rgba(71, 85, 105, 0.5);
+  margin: 6px 8px;
 }
 
 /* 空状态 */
@@ -261,96 +311,156 @@
 }
 
 .flow-view .react-flow__controls {
-  bottom: 10px;
+  bottom: 60px;
   right: 10px;
   left: auto;
   top: auto;
 }
 
 .flow-view .react-flow__controls-button {
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(71, 85, 105, 0.6);
   color: #94a3b8;
   fill: #94a3b8;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  transition: all 0.2s ease;
 }
 
 .flow-view .react-flow__controls-button:hover {
-  background: #334155;
+  background: rgba(51, 65, 85, 0.95);
+  color: #e2e8f0;
+  fill: #e2e8f0;
+  border-color: rgba(100, 116, 139, 0.8);
 }
 
-/* 边样式 */
+/* 边样式 - 现代化设计 */
 .flow-view .react-flow__edge-path {
   stroke: #475569;
-  stroke-width: 1.5;
+  stroke-width: 2;
+  transition: stroke-width 0.2s ease, filter 0.2s ease;
 }
 
+/* 边悬停效果 */
+.flow-view .react-flow__edge:hover .react-flow__edge-path {
+  stroke: #58a6ff;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px rgba(88, 166, 255, 0.4));
+}
+
+/* 异步边动画 */
 .flow-view .react-flow__edge.animated path {
-  stroke: #f59e0b;
-  stroke-dasharray: 5;
-  animation: dashdraw 0.5s linear infinite;
+  stroke: url(#asyncGradient);
+  stroke-width: 2;
+  stroke-dasharray: 8 4;
+  animation: edgeFlow 1s linear infinite;
 }
 
-@keyframes dashdraw {
+@keyframes edgeFlow {
   from {
-    stroke-dashoffset: 10;
+    stroke-dashoffset: 24;
   }
   to {
     stroke-dashoffset: 0;
   }
 }
 
+/* 高亮路径边 */
+.flow-view .react-flow__edge.path-highlighted path {
+  stroke: #60a5fa;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px rgba(96, 165, 250, 0.6));
+}
+
+/* 路径边悬停效果 */
+.flow-view .react-flow__edge.path-highlighted:hover path {
+  stroke: #93c5fd;
+  stroke-width: 4;
+  filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.7));
+}
+
+/* 选中边样式 */
+.flow-view .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #58a6ff;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px rgba(88, 166, 255, 0.5));
+}
+
 /* 迷你地图 */
 .flow-view .react-flow__minimap {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 4px;
+  background: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(71, 85, 105, 0.6);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.flow-view .react-flow__minimap-node {
+  fill: #475569;
+  stroke: #1e293b;
+}
+
+.flow-view .react-flow__minimap-node--selected {
+  fill: #58a6ff;
+}
+
+.flow-view .react-flow__minimap-mask {
+  fill: rgba(15, 23, 42, 0.6);
 }
 
 /* 自定义缩放控制 */
 .zoom-controls {
   position: absolute;
-  bottom: 10px;
-  right: 10px;
+  bottom: 16px;
+  right: 16px;
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(30, 41, 59, 0.9);
-  backdrop-filter: blur(4px);
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid #334155;
+  background: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(12px);
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   z-index: 5;
 }
 
 .zoom-controls button {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  background: rgba(51, 65, 85, 0.6);
+  border: 1px solid rgba(71, 85, 105, 0.6);
+  border-radius: 6px;
   color: #94a3b8;
   font-size: 16px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .zoom-controls button:hover {
-  background: #334155;
+  background: rgba(71, 85, 105, 0.8);
   color: #e2e8f0;
-  border-color: #475569;
+  border-color: rgba(100, 116, 139, 0.8);
+  transform: scale(1.05);
+}
+
+.zoom-controls button:active {
+  transform: scale(0.95);
 }
 
 .zoom-level {
   font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
   color: #94a3b8;
-  min-width: 45px;
+  min-width: 48px;
   text-align: center;
+  font-weight: 500;
 }
 
 /* 内部容器 */
@@ -386,21 +496,28 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 8px;
+  padding: 4px 8px;
+  border: 1px solid rgba(51, 65, 85, 0.6);
 }
 
 .flow-search input {
-  padding: 4px 8px;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid #334155;
-  border-radius: 4px;
+  padding: 6px 10px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid transparent;
+  border-radius: 6px;
   color: #e2e8f0;
   font-size: 12px;
-  width: 140px;
+  width: 160px;
+  transition: all 0.2s;
 }
 
 .flow-search input:focus {
   outline: none;
-  border-color: #60a5fa;
+  border-color: #58a6ff;
+  background: rgba(30, 41, 59, 1);
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
 }
 
 .flow-search input::placeholder {
@@ -410,13 +527,14 @@
 .flow-search .search-count {
   font-size: 11px;
   color: #94a3b8;
-  padding: 0 4px;
+  padding: 0 6px;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .flow-search button {
-  padding: 2px 6px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid #334155;
+  padding: 4px 8px;
+  background: rgba(51, 65, 85, 0.6);
+  border: 1px solid rgba(71, 85, 105, 0.6);
   border-radius: 4px;
   color: #94a3b8;
   font-size: 10px;
@@ -425,47 +543,51 @@
 }
 
 .flow-search button:hover {
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(71, 85, 105, 0.8);
   color: #e2e8f0;
 }
 
-/* 悬停预览 Tooltip */
+/* 悬停预览 Tooltip - 现代化设计 */
 .hover-preview {
   position: fixed;
   z-index: 1000;
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  border: 1px solid #334155;
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
-  padding: 12px 14px;
-  min-width: 200px;
-  max-width: 300px;
+  border: 1px solid rgba(71, 85, 105, 0.6);
+  border-radius: 12px;
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  padding: 14px 16px;
+  min-width: 220px;
+  max-width: 320px;
   pointer-events: none;
-  animation: fadeIn 0.15s ease-out;
+  animation: tooltipFadeIn 0.2s ease-out;
 }
 
-@keyframes fadeIn {
+@keyframes tooltipFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-6px) scale(0.95);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 .preview-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #334155;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.5);
 }
 
 .preview-icon {
-  font-size: 18px;
+  font-size: 20px;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
 }
 
 .preview-name {
@@ -477,27 +599,36 @@
 
 .preview-async {
   font-size: 10px;
-  padding: 2px 6px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
   font-weight: 600;
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .preview-location {
-  font-size: 11px;
+  font-size: 12px;
   color: #94a3b8;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
 }
 
 .preview-description {
   font-size: 12px;
   color: #cbd5e1;
-  line-height: 1.4;
-  margin-bottom: 8px;
+  line-height: 1.5;
+  margin-bottom: 10px;
   font-style: italic;
+  padding: 8px 10px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 6px;
+  border-left: 3px solid rgba(59, 130, 246, 0.5);
 }
 
 .preview-confidence {
@@ -506,6 +637,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
 }
 
 .preview-confidence .confidence-certain {

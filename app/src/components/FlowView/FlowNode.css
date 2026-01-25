@@ -1,67 +1,190 @@
-/* FlowNode 节点样式 - 可折叠设计 */
+/* FlowNode 节点样式 - 现代化设计 */
 
 .flow-node {
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
   border: 1.5px solid #334155;
-  background: #1e293b;
-  min-width: 120px;
-  max-width: 280px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  min-width: 140px;
+  max-width: 300px;
   font-size: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  transition: all 0.15s ease;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   cursor: pointer;
+  overflow: hidden;
 }
 
+/* 节点悬停效果 */
 .flow-node:hover {
   border-color: #58a6ff;
-  background: #263548;
+  background: linear-gradient(135deg, #263548 0%, #1e293b 100%);
+  box-shadow:
+    0 4px 16px rgba(88, 166, 255, 0.25),
+    0 0 0 1px rgba(88, 166, 255, 0.1) inset;
+  transform: translateY(-1px);
 }
 
-/* 选中状态 */
+/* 节点点击波纹效果 */
+.flow-node::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.flow-node:active::after {
+  opacity: 1;
+}
+
+/* 选中状态 - 增强发光效果 */
 .flow-node.selected {
   border-color: #58a6ff;
-  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.3);
-  background: #1e3a5f;
+  box-shadow:
+    0 0 0 2px rgba(88, 166, 255, 0.2),
+    0 0 20px rgba(88, 166, 255, 0.3),
+    0 4px 12px rgba(88, 166, 255, 0.2);
+  background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
 }
 
-/* 节点类型样式 */
+/* 选中状态悬停 */
+.flow-node.selected:hover {
+  box-shadow:
+    0 0 0 2px rgba(88, 166, 255, 0.3),
+    0 0 28px rgba(88, 166, 255, 0.4),
+    0 6px 16px rgba(88, 166, 255, 0.25);
+}
+
+/* 节点类型样式 - 入口点 */
 .node-entry {
   border-color: #22c55e;
-  background: linear-gradient(135deg, #1e293b 0%, rgba(34, 197, 94, 0.15) 100%);
+  background: linear-gradient(135deg, #1e293b 0%, rgba(34, 197, 94, 0.12) 100%);
 }
 
+.node-entry::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #22c55e, #16a34a);
+  border-radius: 8px 0 0 8px;
+}
+
+.node-entry:hover {
+  border-color: #4ade80;
+  box-shadow:
+    0 4px 16px rgba(34, 197, 94, 0.25),
+    0 0 0 1px rgba(34, 197, 94, 0.1) inset;
+}
+
+/* 节点类型样式 - 异步回调 */
 .node-async {
   border-color: #f59e0b;
-  background: linear-gradient(135deg, #1e293b 0%, rgba(245, 158, 11, 0.15) 100%);
+  background: linear-gradient(135deg, #1e293b 0%, rgba(245, 158, 11, 0.12) 100%);
 }
 
+.node-async::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #f59e0b, #d97706);
+  border-radius: 8px 0 0 8px;
+}
+
+.node-async:hover {
+  border-color: #fbbf24;
+  box-shadow:
+    0 4px 16px rgba(245, 158, 11, 0.25),
+    0 0 0 1px rgba(245, 158, 11, 0.1) inset;
+}
+
+/* 节点类型样式 - 内核 API */
 .node-kernel {
   border-color: #60a5fa;
-  background: linear-gradient(135deg, #1e293b 0%, rgba(96, 165, 250, 0.1) 100%);
+  background: linear-gradient(135deg, #1e293b 0%, rgba(96, 165, 250, 0.08) 100%);
 }
 
+.node-kernel::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #60a5fa, #3b82f6);
+  border-radius: 8px 0 0 8px;
+}
+
+.node-kernel:hover {
+  border-color: #93c5fd;
+  box-shadow:
+    0 4px 16px rgba(96, 165, 250, 0.25),
+    0 0 0 1px rgba(96, 165, 250, 0.1) inset;
+}
+
+/* 节点类型样式 - 外部函数 */
 .node-external {
   border-color: #64748b;
-  background: #1a2332;
-  opacity: 0.85;
+  background: linear-gradient(135deg, #1a2332 0%, rgba(100, 116, 139, 0.08) 100%);
+  opacity: 0.9;
 }
 
-/* 异步类型标签 - 不同机制不同颜色 */
+.node-external::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #64748b, #475569);
+  border-radius: 8px 0 0 8px;
+}
+
+.node-external:hover {
+  border-color: #94a3b8;
+  opacity: 1;
+}
+
+/* 异步类型标签 - 现代化设计 */
 .node-async-badge {
   position: absolute;
   top: -10px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
   white-space: nowrap;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  animation: asyncBadgePulse 2s ease-in-out infinite;
+}
+
+@keyframes asyncBadgePulse {
+  0%, 100% {
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 2px 12px rgba(0, 0, 0, 0.4),
+      0 0 0 2px rgba(255, 255, 255, 0.15);
+  }
 }
 
 /* 默认异步标签 - 橙色 */
@@ -79,7 +202,7 @@
 /* 定时器 - 绿色 */
 .node-async-badge.async-timer {
   background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: #000;
+  color: #fff;
 }
 
 /* 中断 - 红色 */
@@ -116,109 +239,145 @@
 .node-main {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
-/* 展开/收起按钮 */
+/* 展开/收起按钮 - 现代化设计 */
 .node-toggle {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border: none;
-  background: #334155;
+  background: rgba(51, 65, 85, 0.8);
   color: #94a3b8;
-  border-radius: 3px;
+  border-radius: 5px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 8px;
-  transition: all 0.15s;
+  font-size: 10px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
 }
 
 .node-toggle:hover {
   background: #475569;
   color: #e2e8f0;
+  transform: scale(1.05);
+}
+
+.node-toggle:active {
+  transform: scale(0.95);
 }
 
 .node-toggle.expanded {
-  background: #3b82f6;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
+}
+
+.node-toggle.expanded:hover {
+  background: linear-gradient(135deg, #60a5fa, #3b82f6);
 }
 
 /* 图标 */
 .node-icon {
-  font-size: 12px;
+  font-size: 14px;
   flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
 /* 函数名 - 显示完整 */
 .node-name {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 11px;
+  font-size: 12px;
   color: #e2e8f0;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 /* 子节点数量标签 */
 .node-count {
-  background: #475569;
+  background: rgba(71, 85, 105, 0.6);
   color: #94a3b8;
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
   margin-left: auto;
   flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* Handle 样式 */
+/* Handle 样式 - 现代化设计 */
 .flow-node .react-flow__handle {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   background: #475569;
-  border: none;
+  border: 2px solid #1e293b;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #475569;
+  transition: all 0.2s ease;
 }
 
 .flow-node:hover .react-flow__handle {
   background: #58a6ff;
+  box-shadow: 0 0 0 2px #58a6ff, 0 0 8px rgba(88, 166, 255, 0.4);
 }
 
 .flow-node .react-flow__handle-left {
-  left: -3px;
+  left: -5px;
 }
 
 .flow-node .react-flow__handle-right {
-  right: -3px;
+  right: -5px;
 }
 
 /* 异步节点 handle */
 .node-async .react-flow__handle {
   background: #f59e0b;
+  box-shadow: 0 0 0 2px #f59e0b;
+}
+
+.node-async:hover .react-flow__handle {
+  background: #fbbf24;
+  box-shadow: 0 0 0 2px #fbbf24, 0 0 12px rgba(245, 158, 11, 0.5);
 }
 
 /* 入口点节点 handle */
 .node-entry .react-flow__handle {
   background: #22c55e;
+  box-shadow: 0 0 0 2px #22c55e;
 }
 
-/* ========== 置信度指示器样式 ========== */
+.node-entry:hover .react-flow__handle {
+  background: #4ade80;
+  box-shadow: 0 0 0 2px #4ade80, 0 0 12px rgba(34, 197, 94, 0.5);
+}
+
+/* ========== 置信度指示器样式 - 现代化设计 ========== */
 
 /* 置信度徽章 */
 .node-confidence-badge {
   position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 18px;
-  height: 18px;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: bold;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.3),
+    0 0 0 2px rgba(255, 255, 255, 0.1);
   z-index: 10;
   cursor: help;
+  transition: transform 0.2s ease;
+}
+
+.node-confidence-badge:hover {
+  transform: scale(1.15);
 }
 
 /* 可能 - 黄色警告 */
@@ -249,10 +408,51 @@
 /* 置信度悬停效果 */
 .flow-node.confidence-possible:hover {
   border-color: #fbbf24;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3), 0 4px 16px rgba(245, 158, 11, 0.25);
 }
 
 .flow-node.confidence-unknown:hover {
   border-color: #f87171;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3), 0 4px 16px rgba(239, 68, 68, 0.25);
+}
+
+/* ========== 点击波纹效果 ========== */
+.node-ripple {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  animation: rippleEffect 0.4s ease-out forwards;
+  pointer-events: none;
+  z-index: 5;
+}
+
+@keyframes rippleEffect {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+/* ========== 节点缩放动画 ========== */
+@keyframes nodePulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.flow-node.selected {
+  animation: nodePulse 0.3s ease-out;
 }

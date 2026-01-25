@@ -1,0 +1,539 @@
+/**
+ * LlvmIrPanel CSS - LLVM IR 可视化面板样式
+ */
+
+/* 主面板容器 */
+.llvm-ir-panel {
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #30363d;
+  height: 100%;
+}
+
+/* 浅色主题 */
+.llvm-ir-panel.light {
+  background: #ffffff;
+  border-color: #d0d7de;
+}
+
+.llvm-ir-panel.light .panel-header {
+  background: #f6f8fa;
+  border-color: #d0d7de;
+}
+
+.llvm-ir-panel.light .panel-header h3 {
+  color: #24292f;
+}
+
+.llvm-ir-panel.light .function-badge {
+  background: #f6f8fa;
+  color: #57606a;
+}
+
+.llvm-ir-panel.light .ir-count {
+  color: #57606a;
+}
+
+/* 面板头部 */
+.llvm-ir-panel .panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+}
+
+.llvm-ir-panel .panel-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.llvm-ir-panel .function-badge {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: #8b949e;
+  background: #21262d;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.llvm-ir-panel .callback-indicator {
+  font-size: 10px;
+}
+
+.llvm-ir-panel .ir-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #6e7681;
+}
+
+/* 函数选择器 */
+.llvm-ir-panel .function-selector {
+  padding: 12px 16px;
+  border-bottom: 1px solid #30363d;
+}
+
+.llvm-ir-panel .function-select {
+  width: 100%;
+  padding: 8px 12px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.llvm-ir-panel .function-select:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.llvm-ir-panel .function-select option {
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+/* 搜索框 */
+.llvm-ir-panel .search-box {
+  padding: 8px 16px;
+  border-bottom: 1px solid #30363d;
+}
+
+.llvm-ir-panel .search-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.llvm-ir-panel .search-input:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.llvm-ir-panel .search-input::placeholder {
+  color: #6e7681;
+}
+
+/* 函数信息区域 */
+.llvm-ir-panel .function-info {
+  padding: 12px 16px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+}
+
+.llvm-ir-panel .function-signature {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: #c9d1d9;
+  word-break: break-all;
+}
+
+.llvm-ir-panel .function-signature .keyword {
+  color: #ff79c6;
+}
+
+.llvm-ir-panel .function-signature .type {
+  color: #8be9fd;
+}
+
+.llvm-ir-panel .function-signature .function-name {
+  color: #50fa7b;
+}
+
+.llvm-ir-panel .function-signature .params {
+  color: #6272a4;
+}
+
+.llvm-ir-panel .callback-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  background: #f59e0b22;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #f59e0b;
+}
+
+.llvm-ir-panel .callback-icon {
+  font-size: 10px;
+}
+
+.llvm-ir-panel .callback-context {
+  color: #8b949e;
+  font-size: 11px;
+}
+
+/* 基本块容器 */
+.llvm-ir-panel .blocks-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* 基本块样式 */
+.llvm-ir-panel .basic-block {
+  background: #161b22;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  border: 1px solid #30363d;
+}
+
+.llvm-ir-panel .basic-block.expanded {
+  border-color: #388bfd;
+}
+
+.llvm-ir-panel .basic-block.light {
+  background: #f6f8fa;
+  border-color: #d0d7de;
+}
+
+.llvm-ir-panel .basic-block.light.expanded {
+  border-color: #0969da;
+}
+
+/* 基本块头部 */
+.llvm-ir-panel .block-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: #21262d;
+  border-bottom: 1px solid transparent;
+}
+
+.llvm-ir-panel .basic-block.expanded .block-header {
+  border-bottom-color: #30363d;
+}
+
+.llvm-ir-panel .block-header:hover {
+  background: #1c2128;
+}
+
+.llvm-ir-panel .block-toggle {
+  color: #6e7681;
+  font-size: 10px;
+  width: 16px;
+  text-align: center;
+}
+
+.llvm-ir-panel .block-name {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d4;
+}
+
+.llvm-ir-panel .block-info {
+  font-size: 11px;
+  color: #6e7681;
+}
+
+.llvm-ir-panel .block-predecessors,
+.llvm-ir-panel .block-successors {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  color: #6e7681;
+  background: #21262d;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: auto;
+}
+
+/* 基本块内容 */
+.llvm-ir-panel .block-content {
+  padding: 4px 0;
+}
+
+/* 代码行 */
+.llvm-ir-panel .llvm-code-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 2px 12px;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  cursor: default;
+  transition: background-color 0.15s;
+}
+
+.llvm-ir-panel .llvm-code-line:hover {
+  background: #1c2128 !important;
+}
+
+.llvm-ir-panel .llvm-code-line.key-instruction {
+  border-left: 3px solid transparent;
+}
+
+.llvm-ir-panel .llvm-code-line.light.key-instruction {
+  border-left-color: #0969da;
+}
+
+.llvm-ir-panel .llvm-code-line.dark.key-instruction {
+  border-left-color: #388bfd;
+}
+
+.llvm-ir-panel .llvm-code-line .line-number {
+  flex-shrink: 0;
+  width: 40px;
+  text-align: right;
+  padding-right: 12px;
+  color: #484f58;
+  user-select: none;
+  font-size: 11px;
+}
+
+.llvm-ir-panel .llvm-code-line .line-content {
+  flex: 1;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* 语法高亮 token */
+.llvm-ir-panel .llvm-code-line .token {
+  color: #c9d1d9;
+}
+
+.llvm-ir-panel .llvm-code-line .token.keyword {
+  color: #ff79c6;
+  font-weight: 500;
+}
+
+.llvm-ir-panel .llvm-code-line .token.opcode {
+  color: #ff79c6;
+  font-weight: 500;
+}
+
+.llvm-ir-panel .llvm-code-line .token.register {
+  color: #e6edf3;
+}
+
+.llvm-ir-panel .llvm-code-line .token.type {
+  color: #8be9fd;
+}
+
+.llvm-ir-panel .llvm-code-line .token.number {
+  color: #bd93f9;
+}
+
+.llvm-ir-panel .llvm-code-line .token.string {
+  color: #f1fa8c;
+}
+
+.llvm-ir-panel .llvm-code-line .token.comment {
+  color: #6e7681;
+  font-style: italic;
+}
+
+.llvm-ir-panel .llvm-code-line .token.label {
+  color: #50fa7b;
+  font-weight: 600;
+}
+
+/* 浅色主题 token */
+.llvm-ir-panel .llvm-code-line.light .token {
+  color: #24292e;
+}
+
+.llvm-ir-panel .llvm-code-line.light .token.keyword,
+.llvm-ir-panel .llvm-code-line.light .token.opcode {
+  color: #d73a49;
+}
+
+.llvm-ir-panel .llvm-code-line.light .token.register {
+  color: #24292e;
+}
+
+.llvm-ir-panel .llvm-code-line.light .token.type {
+  color: #005cc5;
+}
+
+.llvm-ir-panel .llvm-code-line.light .token.number {
+  color: #005cc5;
+}
+
+.llvm-ir-panel .llvm-code-line.light .token.string {
+  color: #032f62;
+}
+
+.llvm-ir-panel .llvm-code-line.light .token.comment {
+  color: #6a737d;
+}
+
+.llvm-ir-panel .llvm-code-line.light .token.label {
+  color: #22863a;
+  font-weight: 600;
+}
+
+/* 关键指令标记 */
+.llvm-ir-panel .key-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* 关键指令图例 */
+.llvm-ir-panel .instruction-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+  flex-wrap: wrap;
+}
+
+.llvm-ir-panel .legend-title {
+  font-size: 11px;
+  color: #6e7681;
+}
+
+.llvm-ir-panel .legend-item {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+/* 加载状态 */
+.llvm-ir-panel .panel-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 16px;
+  color: #8b949e;
+}
+
+.llvm-ir-panel .loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 错误状态 */
+.llvm-ir-panel .panel-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+  color: #f85149;
+}
+
+.llvm-ir-panel .error-icon {
+  font-size: 32px;
+}
+
+/* 空状态 */
+.llvm-ir-panel .panel-empty,
+.llvm-ir-panel .panel-search-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+  color: #8b949e;
+}
+
+.llvm-ir-panel .empty-icon,
+.llvm-ir-panel .search-icon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+.llvm-ir-panel .panel-empty p,
+.llvm-ir-panel .panel-search-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.llvm-ir-panel .empty-hint {
+  font-size: 12px;
+  color: #6e7681;
+}
+
+/* 面板底部 */
+.llvm-ir-panel .panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+}
+
+.llvm-ir-panel .module-name {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.llvm-ir-panel .footer-hint {
+  font-size: 11px;
+  color: #6e7681;
+}
+
+/* 滚动条样式 */
+.llvm-ir-panel .blocks-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.llvm-ir-panel .blocks-container::-webkit-scrollbar-track {
+  background: #0d1117;
+}
+
+.llvm-ir-panel .blocks-container::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+.llvm-ir-panel .blocks-container::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
+.llvm-ir-panel.light .blocks-container::-webkit-scrollbar-track {
+  background: #f6f8fa;
+}
+
+.llvm-ir-panel.light .blocks-container::-webkit-scrollbar-thumb {
+  background: #d0d7de;
+}
+
+.llvm-ir-panel.light .blocks-container::-webkit-scrollbar-thumb:hover {
+  background: #afb8c1;
+}
