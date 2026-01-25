@@ -1,10 +1,135 @@
 //! Type definitions for LLVM IR parsing
+//!
+//! This module provides types for LLVM IR parsing with frontend compatibility.
+//! All types are serialized using serde for JSON serialization.
 
 use flowsight_core::ExecutionContext;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// LLVM IR function
+// ============================================================
+// Frontend-compatible types (matching LlvmIrPanel interfaces)
+// ============================================================
+
+/// LLVM IR basic block - matches LlvmIrPanel.LlvmBasicBlock
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlvmBasicBlock {
+    /// Block name
+    pub name: String,
+    /// Instructions in this block
+    #[serde(default)]
+    pub instructions: Vec<LlvmInstruction>,
+    /// Predecessor blocks
+    #[serde(default)]
+    pub predecessors: Vec<String>,
+    /// Successor blocks
+    #[serde(default)]
+    pub successors: Vec<String>,
+    /// Terminator instruction (ret, br, etc.)
+    #[serde(default)]
+    pub terminator: Option<LlvmInstruction>,
+}
+
+/// LLVM IR instruction - matches LlvmIrPanel.LlvmInstruction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlvmInstruction {
+    /// Opcode (add, call, ret, etc.)
+    pub opcode: String,
+    /// Destination register (if any)
+    #[serde(default)]
+    pub dest: Option<String>,
+    /// Result type
+    #[serde(default)]
+    pub type_str: String,
+    /// Operands
+    #[serde(default)]
+    pub operands: Vec<String>,
+    /// Source location
+    #[serde(default)]
+    pub location: Option<LocationInfo>,
+}
+
+/// LLVM IR function - matches LlvmIrPanel.LlvmFunction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlvmFunction {
+    /// Function name
+    pub name: String,
+    /// Return type
+    pub return_type: String,
+    /// Parameters
+    #[serde(default)]
+    pub parameters: Vec<LlvmParameter>,
+    /// Basic blocks
+    #[serde(default)]
+    pub blocks: Vec<LlvmBasicBlock>,
+    /// Whether this is a callback function
+    #[serde(default)]
+    pub is_callback: bool,
+    /// Callback context
+    #[serde(default)]
+    pub callback_context: Option<String>,
+}
+
+/// LLVM IR parameter - matches LlvmIrPanel.LlvmParameter
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlvmParameter {
+    /// Parameter name
+    pub name: String,
+    /// Parameter type string
+    pub type_str: String,
+}
+
+/// LLVM IR parse result - matches LlvmIrPanel.LlvmIrParseResult
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LlvmIrParseResult {
+    /// Module name
+    pub module_name: String,
+    /// Functions mapping - function name -> LlvmFunction
+    #[serde(default)]
+    pub functions: HashMap<String, LlvmFunction>,
+}
+
+/// Page request for large IR data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlvmIrPageRequest {
+    /// Function name to paginate
+    pub function_name: String,
+    /// Page number (0-indexed)
+    pub page: u32,
+    /// Page size (number of instructions per page)
+    pub page_size: u32,
+}
+
+/// Page response for large IR data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlvmIrPageResponse {
+    /// Function name
+    pub function_name: String,
+    /// Current page number
+    pub page: u32,
+    /// Page size
+    pub page_size: u32,
+    /// Total instructions
+    pub total_instructions: u32,
+    /// Total pages
+    pub total_pages: u32,
+    /// Whether has next page
+    pub has_next: bool,
+    /// Whether has previous page
+    pub has_previous: bool,
+    /// Instructions in this page
+    #[serde(default)]
+    pub instructions: Vec<LlvmInstruction>,
+    /// Block name (if paginating by block)
+    #[serde(default)]
+    pub block_name: Option<String>,
+}
+
+// ============================================================
+// Internal types (for parser use)
+// ============================================================
+
+/// Location information for instructions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IrFunction {
     /// Function name

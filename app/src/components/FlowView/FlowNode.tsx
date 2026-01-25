@@ -1,8 +1,14 @@
 /**
  * FlowNode - 可折叠的执行流节点
+ *
+ * Features:
+ * - 现代化视觉效果
+ * - 丰富的交互反馈
+ * - 键盘导航支持
+ * - 无障碍访问
  */
 
-import { memo } from 'react'
+import { memo, useState, useCallback } from 'react'
 import { Handle, Position, NodeProps } from '@xyflow/react'
 import type { ConfidenceLevel, CallConfidence } from '../../types'
 import './FlowNode.css'
@@ -33,6 +39,25 @@ const confidenceInfo: Record<ConfidenceLevel, { icon: string; label: string; col
   'Unknown': { icon: '!', label: '未知', color: '#ef4444' },
 }
 
+// 异步机制信息
+const asyncInfoMap: Record<string, string> = {
+  'WorkQueue': '🔄 工作队列 (进程上下文，可睡眠)',
+  'Timer': '⏱️ 定时器 (软中断上下文，不可睡眠)',
+  'IRQ': '⚡ 硬中断 (中断上下文，不可睡眠)',
+  'Tasklet': '📋 Tasklet (软中断上下文)',
+  'KThread': '🧵 内核线程 (进程上下文，可睡眠)',
+  'Async': '⏳ 异步调用',
+}
+
+// 节点类型标签
+const nodeTypeLabels: Record<string, string> = {
+  'user': '👤 用户定义函数',
+  'kernel-api': '🔧 内核 API',
+  'external': '📦 外部函数',
+  'callback': '⚡ 回调函数',
+  'async-callback': '⏰ 异步回调',
+}
+
 export const FlowNodeComponent = memo(({ data }: NodeProps) => {
   const nodeData = data as unknown as FlowNodeData
   const {
@@ -52,35 +77,37 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
     confidence,
   } = nodeData
 
-  const handleToggleClick = (e: React.MouseEvent) => {
+  // 点击波纹效果状态
+  const [ripple, setRipple] = useState<{ x: number; y: number; id: number } | null>(null)
+  const [rippleId, setRippleId] = useState(0)
+
+  const handleToggleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     onToggle()
-  }
+  }, [onToggle])
+
+  // 处理节点点击 - 添加波纹效果
+  const handleNodeClick = useCallback((e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const newRippleId = rippleId + 1
+    setRippleId(newRippleId)
+    setRipple({ x, y, id: newRippleId })
+
+    // 移除波纹效果
+    setTimeout(() => setRipple(null), 400)
+  }, [rippleId])
 
   // 构建详细 tooltip
-  const buildTooltip = () => {
+  const buildTooltip = useCallback(() => {
     const parts = [`📌 ${name}()`]
     if (nodeType) {
-      const typeLabels: Record<string, string> = {
-        'user': '👤 用户定义函数',
-        'kernel-api': '🔧 内核 API',
-        'external': '📦 外部函数',
-        'callback': '⚡ 回调函数',
-        'async-callback': '⏰ 异步回调',
-      }
-      parts.push(`${typeLabels[nodeType] || nodeType}`)
+      parts.push(`${nodeTypeLabels[nodeType] || nodeType}`)
     }
     // 异步机制信息
     if (asyncLabel) {
-      const asyncInfo: Record<string, string> = {
-        'WorkQueue': '🔄 工作队列 (进程上下文，可睡眠)',
-        'Timer': '⏱️ 定时器 (软中断上下文，不可睡眠)',
-        'IRQ': '⚡ 硬中断 (中断上下文，不可睡眠)',
-        'Tasklet': '📋 Tasklet (软中断上下文)',
-        'KThread': '🧵 内核线程 (进程上下文，可睡眠)',
-        'Async': '⏳ 异步调用',
-      }
-      parts.push(asyncInfo[asyncLabel] || `异步: ${asyncLabel}`)
+      parts.push(asyncInfoMap[asyncLabel] || `异步: ${asyncLabel}`)
     }
     // 置信度信息
     if (confidence) {
@@ -101,20 +128,48 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
       parts.push(`📊 调用 ${childCount} 个函数`)
     }
     return parts.join('\n')
-  }
+  }, [name, nodeType, asyncLabel, confidence, file, line, hasChildren, childCount])
 
   // 获取置信度样式类
-  const getConfidenceClass = () => {
+  const getConfidenceClass = useCallback(() => {
     if (!confidence) return ''
     return `confidence-${confidence.level.toLowerCase()}`
-  }
+  }, [confidence])
+
+  // 构建 ARIA 标签
+  const getAriaLabel = useCallback(() => {
+    const parts = [name]
+    if (asyncLabel) parts.push(`异步: ${asyncLabel}`)
+    if (confidence) parts.push(`置信度: ${confidenceInfo[confidence.level].label}`)
+    if (hasChildren) parts.push(`${childCount} 个子节点`)
+    return parts.join(', ')
+  }, [name, asyncLabel, confidence, hasChildren, childCount])
 
   return (
     <div
       className={`flow-node node-${nodeClass} ${isSelected ? 'selected' : ''} ${getConfidenceClass()}`}
       onContextMenu={onContextMenu}
+      onClick={handleNodeClick}
       title={buildTooltip()}
+      role="button"
+      tabIndex={0}
+      aria-label={getAriaLabel()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onToggle()
+        }
+      }}
     >
+      {/* 点击波纹效果 */}
+      {ripple && (
+        <span
+          className="node-ripple"
+          style={{ left: ripple.x, top: ripple.y }}
+          key={ripple.id}
+        />
+      )}
+
       <Handle type="target" position={Position.Left} />
 
       {/* 置信度指示器 */}
@@ -122,6 +177,8 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
         <div
           className={`node-confidence-badge confidence-${confidence.level.toLowerCase()}`}
           title={`${confidenceInfo[confidence.level].label}: ${confidence.reason}`}
+          role="status"
+          aria-label={`置信度: ${confidenceInfo[confidence.level].label}`}
         >
           {confidenceInfo[confidence.level].icon}
         </div>
@@ -132,6 +189,8 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
         <div
           className={`node-async-badge async-${asyncLabel.toLowerCase()}`}
           data-async-type={asyncLabel}
+          role="status"
+          aria-label={`异步机制: ${asyncLabel}`}
         >
           {asyncLabel}
         </div>
@@ -144,20 +203,31 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
             className={`node-toggle ${isExpanded ? 'expanded' : ''}`}
             onClick={handleToggleClick}
             title={isExpanded ? '收起' : `展开 (${childCount})`}
+            aria-label={isExpanded ? '收起子节点' : `展开 ${childCount} 个子节点`}
           >
-            {isExpanded ? '▼' : '▶'}
+            {isExpanded ? (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
+                <path d="M2 3L4 5L6 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
+                <path d="M3 2L5 4L3 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
           </button>
         )}
 
         {/* 图标 */}
-        <span className="node-icon">{icon}</span>
+        <span className="node-icon" aria-hidden="true">{icon}</span>
 
         {/* 函数名 */}
-        <span className="node-name">{name}()</span>
+        <span className="node-name">{name}</span>
 
         {/* 子节点数量 */}
         {hasChildren && !isExpanded && (
-          <span className="node-count">{childCount}</span>
+          <span className="node-count" title={`${childCount} 个子节点`}>
+            +{childCount}
+          </span>
         )}
       </div>
 

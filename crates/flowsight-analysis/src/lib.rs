@@ -19,6 +19,7 @@ pub mod constraint;
 pub mod evaluator;
 pub mod funcptr;
 pub mod learning;
+pub mod node_detail;
 pub mod pointer;
 pub mod propagation;
 pub mod scenario;
