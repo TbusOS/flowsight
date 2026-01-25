@@ -79,7 +79,7 @@ impl ParallelParser {
                 let result = self.parse_file_cached(path);
 
                 let current = processed.fetch_add(1, Ordering::SeqCst) + 1;
-                if current % 10 == 0 || current == total {
+                if current.is_multiple_of(10) || current == total {
                     self.emit_progress(
                         ProgressPhase::Parsing,
                         current,

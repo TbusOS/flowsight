@@ -4,167 +4,107 @@
   flex: 1;
   min-height: 0;
   width: 100%;
-  background: #0c1222;
+  background: var(--bg-primary);
   position: relative;
 }
 
-/* 工具栏 - 现代化设计 */
+/* ============================================
+   工具栏 - 极简设计
+   ============================================ */
 .flow-toolbar {
   position: absolute;
   top: 12px;
   left: 12px;
   z-index: 10;
   display: flex;
-  gap: 6px;
-  background: rgba(30, 41, 59, 0.95);
-  backdrop-filter: blur(12px);
-  padding: 6px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(51, 65, 85, 0.6);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  box-shadow: var(--shadow-md);
 }
 
 .flow-toolbar button {
-  padding: 6px 10px;
-  background: rgba(51, 65, 85, 0.6);
-  border: 1px solid rgba(71, 85, 105, 0.6);
-  border-radius: 6px;
-  color: #94a3b8;
-  font-size: 12px;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--transition-fast);
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  min-width: 32px;
 }
 
 .flow-toolbar button:hover {
-  background: rgba(71, 85, 105, 0.8);
-  color: #e2e8f0;
-  border-color: rgba(100, 116, 139, 0.8);
-  transform: translateY(-1px);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .flow-toolbar button:active {
-  transform: translateY(0);
+  transform: scale(0.97);
 }
 
 .flow-toolbar button.active {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.3), rgba(14, 165, 233, 0.2));
-  border-color: rgba(14, 165, 233, 0.6);
-  color: #38bdf8;
-}
-
-.flow-toolbar button.active:hover {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.4), rgba(14, 165, 233, 0.3));
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* 工具栏分隔符 */
 .toolbar-divider {
   width: 1px;
-  background: linear-gradient(180deg, transparent, rgba(71, 85, 105, 0.6), transparent);
-  margin: 4px 6px;
+  height: 18px;
+  background: var(--border-light);
+  margin: 0 4px;
 }
 
-/* 异步机制图例 */
+/* ============================================
+   异步机制图例
+   ============================================ */
 .async-legend {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-left: 6px;
-  padding-left: 10px;
-  border-left: 1px solid rgba(71, 85, 105, 0.6);
+  gap: 6px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-light);
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--text-muted);
   cursor: help;
-  transition: color 0.2s;
 }
 
 .legend-item:hover {
-  color: #e2e8f0;
+  color: var(--text-primary);
 }
 
 .legend-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
-.legend-dot.workqueue {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-}
-
-.legend-dot.timer {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-}
-
-.legend-dot.irq {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-}
-
-.legend-dot.tasklet {
-  background: linear-gradient(135deg, #a855f7, #9333ea);
-}
-
-/* 置信度图例 */
-.confidence-legend {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid #334155;
-}
-
-.confidence-dot {
-  width: 16px;
-  height: 16px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: bold;
+  background: var(--text-muted);
 }
 
-.confidence-dot.certain {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: #000;
-}
-
-.confidence-dot.possible {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #000;
-}
-
-.confidence-dot.unknown {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: #fff;
-}
-
-/* 深度选择器 */
+/* ============================================
+   深度选择器
+   ============================================ */
 .depth-selector {
   display: flex;
   align-items: center;
   gap: 2px;
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(71, 85, 105, 0.4);
-  border-radius: 8px;
-  padding: 4px 6px;
-}
-
-.depth-label {
-  font-size: 10px;
-  color: #64748b;
-  margin-right: 4px;
-  font-weight: 500;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
 }
 
 .depth-btn {
@@ -172,108 +112,136 @@
   min-width: 24px;
   font-size: 11px !important;
   background: transparent !important;
-  border: 1px solid transparent !important;
-  color: #64748b !important;
-  border-radius: 5px !important;
-  font-weight: 600;
+  border: none !important;
+  color: var(--text-muted) !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 500;
+  font-family: var(--font-mono);
 }
 
 .depth-btn:hover {
-  background: rgba(51, 65, 85, 0.6) !important;
-  color: #e2e8f0 !important;
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
 }
 
 .depth-btn.active {
-  background: rgba(88, 166, 255, 0.2) !important;
-  border-color: rgba(88, 166, 255, 0.4) !important;
-  color: #58a6ff !important;
+  background: var(--text-primary) !important;
+  color: var(--bg-primary) !important;
 }
 
-/* 聚焦指示器 */
-.focus-indicator {
-  font-size: 11px;
-  color: #f59e0b;
+/* ============================================
+   搜索框
+   ============================================ */
+.flow-search {
   display: flex;
   align-items: center;
   gap: 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--border-light);
 }
 
-.focus-indicator code {
-  background: #1e293b;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: 'JetBrains Mono', monospace;
+.flow-search:focus-within {
+  border-color: var(--text-muted);
+}
+
+.flow-search input {
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  width: 120px;
+}
+
+.flow-search input:focus {
+  outline: none;
+}
+
+.flow-search input::placeholder {
+  color: var(--text-muted);
+}
+
+.flow-search .search-count {
   font-size: 10px;
-  color: #fbbf24;
+  color: var(--text-muted);
+  padding: 0 4px;
+  font-family: var(--font-mono);
 }
 
-.clear-focus-btn {
-  background: #dc2626 !important;
-  border-color: #ef4444 !important;
-  color: #fff !important;
+.flow-search button {
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
 }
 
-.clear-focus-btn:hover {
-  background: #ef4444 !important;
+.flow-search button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
-/* 右键菜单 - 现代化设计 */
+/* 右键菜单 */
 .context-menu {
   position: fixed;
   z-index: 1000;
-  background: rgba(30, 41, 59, 0.98);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(71, 85, 105, 0.6);
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  min-width: 160px;
-  padding: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  min-width: 150px;
+  padding: 4px;
   animation: menuFadeIn 0.15s ease-out;
 }
 
 @keyframes menuFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-4px) scale(0.98);
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
 .context-menu button {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: transparent;
   border: none;
-  color: #e2e8f0;
+  color: var(--text-primary);
   font-size: 13px;
   text-align: left;
   cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.15s ease;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
 }
 
 .context-menu button:hover {
-  background: rgba(71, 85, 105, 0.6);
+  background: var(--bg-tertiary);
 }
 
 .context-menu button.danger {
-  color: #ef4444;
+  color: var(--error);
 }
 
 .context-menu button.danger:hover {
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(248, 113, 113, 0.1);
 }
 
 .context-menu .menu-divider {
   height: 1px;
-  background: rgba(71, 85, 105, 0.5);
-  margin: 6px 8px;
+  background: var(--border-light);
+  margin: 4px 8px;
 }
 
 /* 空状态 */
@@ -284,19 +252,19 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #64748b;
-  background: #0c1222;
+  color: var(--text-muted);
+  background: var(--bg-primary);
 }
 
 .flow-view-empty .empty-icon {
   font-size: 48px;
   margin-bottom: 16px;
-  opacity: 0.5;
+  opacity: 0.3;
 }
 
 .flow-view-empty h3 {
   margin: 0 0 8px 0;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -307,61 +275,58 @@
 
 /* React Flow 覆盖样式 */
 .flow-view .react-flow__background {
-  background: #0c1222;
+  background: var(--bg-primary);
 }
 
 .flow-view .react-flow__controls {
-  bottom: 60px;
+  bottom: 16px;
   right: 10px;
   left: auto;
   top: auto;
 }
 
 .flow-view .react-flow__controls-button {
-  background: rgba(30, 41, 59, 0.95);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(71, 85, 105, 0.6);
-  color: #94a3b8;
-  fill: #94a3b8;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  margin-bottom: 4px;
-  transition: all 0.2s ease;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  fill: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 2px;
+  transition: all var(--transition-fast);
 }
 
 .flow-view .react-flow__controls-button:hover {
-  background: rgba(51, 65, 85, 0.95);
-  color: #e2e8f0;
-  fill: #e2e8f0;
-  border-color: rgba(100, 116, 139, 0.8);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  fill: var(--text-primary);
 }
 
-/* 边样式 - 现代化设计 */
+/* 边样式 */
 .flow-view .react-flow__edge-path {
-  stroke: #475569;
-  stroke-width: 2;
-  transition: stroke-width 0.2s ease, filter 0.2s ease;
+  stroke: var(--border-light);
+  stroke-width: 1.5;
+  transition: all var(--transition-fast);
 }
 
 /* 边悬停效果 */
 .flow-view .react-flow__edge:hover .react-flow__edge-path {
-  stroke: #58a6ff;
-  stroke-width: 3;
-  filter: drop-shadow(0 0 4px rgba(88, 166, 255, 0.4));
+  stroke: var(--text-primary);
+  stroke-width: 2;
 }
 
 /* 异步边动画 */
 .flow-view .react-flow__edge.animated path {
-  stroke: url(#asyncGradient);
-  stroke-width: 2;
-  stroke-dasharray: 8 4;
-  animation: edgeFlow 1s linear infinite;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  animation: edgeFlow 1.2s linear infinite;
 }
 
 @keyframes edgeFlow {
   from {
-    stroke-dashoffset: 24;
+    stroke-dashoffset: 20;
   }
   to {
     stroke-dashoffset: 0;
@@ -370,45 +335,35 @@
 
 /* 高亮路径边 */
 .flow-view .react-flow__edge.path-highlighted path {
-  stroke: #60a5fa;
-  stroke-width: 3;
-  filter: drop-shadow(0 0 6px rgba(96, 165, 250, 0.6));
-}
-
-/* 路径边悬停效果 */
-.flow-view .react-flow__edge.path-highlighted:hover path {
-  stroke: #93c5fd;
-  stroke-width: 4;
-  filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.7));
+  stroke: var(--text-primary);
+  stroke-width: 2;
 }
 
 /* 选中边样式 */
 .flow-view .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #58a6ff;
-  stroke-width: 3;
-  filter: drop-shadow(0 0 6px rgba(88, 166, 255, 0.5));
+  stroke: var(--text-primary);
+  stroke-width: 2;
 }
 
 /* 迷你地图 */
 .flow-view .react-flow__minimap {
-  background: rgba(30, 41, 59, 0.95);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(71, 85, 105, 0.6);
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
 }
 
 .flow-view .react-flow__minimap-node {
-  fill: #475569;
-  stroke: #1e293b;
+  fill: var(--bg-tertiary);
+  stroke: transparent;
 }
 
 .flow-view .react-flow__minimap-node--selected {
-  fill: #58a6ff;
+  fill: var(--text-primary);
 }
 
 .flow-view .react-flow__minimap-mask {
-  fill: rgba(15, 23, 42, 0.6);
+  fill: rgba(0, 0, 0, 0.3);
 }
 
 /* 自定义缩放控制 */
@@ -418,36 +373,33 @@
   right: 16px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  background: rgba(30, 41, 59, 0.95);
-  backdrop-filter: blur(12px);
-  padding: 6px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(51, 65, 85, 0.6);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  box-shadow: var(--shadow-md);
   z-index: 5;
 }
 
 .zoom-controls button {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(51, 65, 85, 0.6);
-  border: 1px solid rgba(71, 85, 105, 0.6);
-  border-radius: 6px;
-  color: #94a3b8;
-  font-size: 16px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 14px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--transition-fast);
 }
 
 .zoom-controls button:hover {
-  background: rgba(71, 85, 105, 0.8);
-  color: #e2e8f0;
-  border-color: rgba(100, 116, 139, 0.8);
-  transform: scale(1.05);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .zoom-controls button:active {
@@ -455,10 +407,10 @@
 }
 
 .zoom-level {
-  font-size: 12px;
-  font-family: 'JetBrains Mono', monospace;
-  color: #94a3b8;
-  min-width: 48px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  min-width: 40px;
   text-align: center;
   font-weight: 500;
 }
@@ -478,7 +430,7 @@
   right: 0;
   bottom: 0;
   z-index: 1000;
-  background: #0c1222;
+  background: var(--bg-primary);
 }
 
 .flow-view-inner.fullscreen .flow-toolbar {
@@ -491,202 +443,90 @@
   right: 16px;
 }
 
-/* 搜索框 */
-.flow-search {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(15, 23, 42, 0.8);
-  border-radius: 8px;
-  padding: 4px 8px;
-  border: 1px solid rgba(51, 65, 85, 0.6);
-}
-
-.flow-search input {
-  padding: 6px 10px;
-  background: rgba(30, 41, 59, 0.8);
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: #e2e8f0;
-  font-size: 12px;
-  width: 160px;
-  transition: all 0.2s;
-}
-
-.flow-search input:focus {
-  outline: none;
-  border-color: #58a6ff;
-  background: rgba(30, 41, 59, 1);
-  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
-}
-
-.flow-search input::placeholder {
-  color: #64748b;
-}
-
-.flow-search .search-count {
-  font-size: 11px;
-  color: #94a3b8;
-  padding: 0 6px;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.flow-search button {
-  padding: 4px 8px;
-  background: rgba(51, 65, 85, 0.6);
-  border: 1px solid rgba(71, 85, 105, 0.6);
-  border-radius: 4px;
-  color: #94a3b8;
-  font-size: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.flow-search button:hover {
-  background: rgba(71, 85, 105, 0.8);
-  color: #e2e8f0;
-}
-
-/* 悬停预览 Tooltip - 现代化设计 */
+/* ============================================
+   悬停预览 Tooltip
+   ============================================ */
 .hover-preview {
   position: fixed;
   z-index: 1000;
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  border: 1px solid rgba(71, 85, 105, 0.6);
-  border-radius: 12px;
-  box-shadow:
-    0 10px 40px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  padding: 14px 16px;
-  min-width: 220px;
-  max-width: 320px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 12px;
+  min-width: 180px;
+  max-width: 260px;
   pointer-events: none;
-  animation: tooltipFadeIn 0.2s ease-out;
+  animation: tooltipFadeIn 0.15s ease-out;
 }
 
 @keyframes tooltipFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-6px) scale(0.95);
+    transform: translateY(-2px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
 .preview-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(71, 85, 105, 0.5);
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .preview-icon {
-  font-size: 20px;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
+  font-size: 16px;
 }
 
 .preview-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: #f1f5f9;
-  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
 }
 
 .preview-async {
   font-size: 10px;
-  font-weight: 600;
-  padding: 3px 8px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 6px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  color: var(--text-muted);
 }
 
 .preview-location {
-  font-size: 12px;
-  color: #94a3b8;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
 }
 
 .preview-description {
   font-size: 12px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   line-height: 1.5;
-  margin-bottom: 10px;
-  font-style: italic;
-  padding: 8px 10px;
-  background: rgba(59, 130, 246, 0.1);
-  border-radius: 6px;
-  border-left: 3px solid rgba(59, 130, 246, 0.5);
 }
 
 .preview-confidence {
   font-size: 11px;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 6px;
+  color: var(--text-muted);
+  margin-top: 8px;
 }
 
 .preview-confidence .confidence-certain {
-  color: #22c55e;
-  font-weight: 600;
+  color: var(--success);
 }
 
 .preview-confidence .confidence-possible {
-  color: #f59e0b;
-  font-weight: 600;
+  color: var(--warning);
 }
 
 .preview-confidence .confidence-unknown {
-  color: #ef4444;
-  font-weight: 600;
-}
-
-/* 节点高亮样式 */
-.flow-node.highlighted {
-  box-shadow: 0 0 0 2px #60a5fa, 0 4px 12px rgba(96, 165, 250, 0.4);
-}
-
-.flow-node.highlighted .node-content {
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(59, 130, 246, 0.1));
-}
-
-/* 路径高亮边 */
-.flow-view .react-flow__edge.path-highlighted {
-  stroke: #60a5fa;
-  stroke-width: 3;
-  filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.6));
-}
-
-/* 增强模式样式 */
-.flow-view-inner.enhanced .flow-toolbar {
-  background: rgba(30, 41, 59, 0.95);
-  backdrop-filter: blur(8px);
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid #334155;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.flow-view-inner.enhanced .async-legend {
-  border-left-color: #475569;
-}
-
-.flow-view-inner.enhanced .confidence-legend {
-  border-left-color: #475569;
+  color: var(--error);
 }

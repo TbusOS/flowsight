@@ -673,38 +673,41 @@ pub async fn execute_scenario(
         .collect();
     
     // Build scenario
-    let options = scenario.options.as_ref().map(|o| ScenarioOptions {
-        follow_async: o.follow_async.unwrap_or(true),
-        show_kernel_api: o.show_kernel_api.unwrap_or(true),
-        max_depth: o.max_depth.unwrap_or(10),
-    }).unwrap_or_default();
-    
+    let opts = scenario.options.as_ref();
+    let options = ScenarioOptions {
+        follow_async: opts.and_then(|o| o.follow_async).unwrap_or(true),
+        show_kernel_api: opts.and_then(|o| o.show_kernel_api).unwrap_or(true),
+        max_depth: opts.and_then(|o| o.max_depth).unwrap_or(10),
+        multi_path: false,
+        max_paths: 10,
+        propagate_constraints: true,
+        record_traces: true,
+    };
+
     let scenario_config = Scenario {
         name: scenario.name,
         entry_function: scenario.entry_function,
         bindings,
         options: options.clone(),
     };
-    
+
     // Execute scenario
     let mut executor = ScenarioExecutor::new(options);
     let result = executor.execute(&scenario_config, entry_tree);
-    
-    // Convert states
-    let states: Vec<ScenarioState> = result.states.iter()
+
+    // Convert path steps to states
+    let states: Vec<ScenarioState> = result.primary_path.steps.iter()
         .map(|s| ScenarioState {
             function: s.function.clone(),
-            line: s.location.line,
-            variables: s.variables.iter()
-                .map(|(k, v)| (k.clone(), v.display()))
-                .collect(),
+            line: s.location.as_ref().map(|l| l.line).unwrap_or(0),
+            variables: std::collections::HashMap::new(),
         })
         .collect();
-    
+
     Ok(ScenarioResult {
         success: true,
         path: states,
-        annotated_flow_tree: result.flow_tree,
+        annotated_flow_tree: result.annotated_tree,
         error: None,
     })
 }

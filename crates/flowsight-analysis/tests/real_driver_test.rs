@@ -404,8 +404,8 @@ fn test_usb_probe_scenario() {
         let mut executor = ScenarioExecutor::new(ScenarioOptions::default());
         let exec_result = executor.execute(&scenario, tree);
 
-        assert!(exec_result.completed, "Scenario execution should complete");
-        assert!(!exec_result.states.is_empty(), "Should have execution states");
+        assert!(exec_result.primary_path.completed, "Scenario execution should complete");
+        assert!(exec_result.primary_path.step_count > 0, "Should have execution steps");
     }
 }
 

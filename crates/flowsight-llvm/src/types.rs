@@ -331,8 +331,8 @@ impl IrType {
         let s = s.trim();
 
         // Handle pointer types
-        if s.ends_with("*") {
-            let inner = &s[..s.len() - 1].trim();
+        if let Some(stripped) = s.strip_suffix("*") {
+            let inner = stripped.trim();
             if let Some(inner_type) = Self::parse_from_str(inner) {
                 return Some(IrType::Pointer(PointerType {
                     pointee: Box::new(inner_type),

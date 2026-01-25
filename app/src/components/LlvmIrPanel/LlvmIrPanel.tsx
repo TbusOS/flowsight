@@ -6,9 +6,11 @@
  * - 基本块展开/折叠
  * - 关键指令标注（call, br, store, load, ret）
  * - 支持复制和搜索功能
+ * - 多函数对比模式
+ * - 指令跳转和高亮
  */
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import './LlvmIrPanel.css'
 
 // ============================================
@@ -92,8 +94,22 @@ export interface LlvmIrPanelProps {
   error?: string | null
   /** 主题模式 */
   theme?: 'dark' | 'light'
+  /** 是否启用对比模式 */
+  comparisonMode?: boolean
+  /** 对比模式下右侧函数名 */
+  compareFunction?: string | null
+  /** 高亮的指令位置 */
+  highlightedInstruction?: {
+    functionName: string
+    blockName: string
+    instructionIndex: number
+  } | null
   /** 函数选择变化回调 */
   onFunctionSelect?: (funcName: string | null) => void
+  /** 对比函数选择变化回调 */
+  onCompareSelect?: (funcName: string | null) => void
+  /** 切换对比模式回调 */
+  onToggleComparison?: (enabled: boolean) => void
   /** 指令点击回调 */
   onInstructionClick?: (instruction: LlvmInstruction, blockName: string) => void
   /** 块点击回调 */
@@ -138,9 +154,10 @@ interface LlvmCodeLineProps {
   instruction?: LlvmInstruction | null
   onClick?: () => void
   theme: 'dark' | 'light'
+  highlighted?: boolean
 }
 
-function LlvmCodeLine({ line, lineNumber, instruction, onClick, theme }: LlvmCodeLineProps) {
+function LlvmCodeLine({ line, lineNumber, instruction, onClick, theme, highlighted = false }: LlvmCodeLineProps) {
   const keyInfo = instruction ? getKeyInstructionInfo(instruction.opcode) : null
 
   // 语法高亮解析
@@ -329,9 +346,9 @@ function LlvmCodeLine({ line, lineNumber, instruction, onClick, theme }: LlvmCod
 
   return (
     <div
-      className={`llvm-code-line ${keyInfo ? 'key-instruction' : ''} ${theme}`}
+      className={`llvm-code-line ${keyInfo ? 'key-instruction' : ''} ${theme} ${highlighted ? 'highlighted' : ''}`}
       onClick={onClick}
-      style={keyInfo ? { backgroundColor: `${keyInfo.bgColor}33` } : undefined}
+      style={keyInfo ? { backgroundColor: `${keyInfo.bgColor}33` } : highlighted ? { backgroundColor: 'rgba(88, 166, 255, 0.15)' } : undefined}
     >
       <span className="line-number">{lineNumber}</span>
       <span className="line-content">
@@ -346,6 +363,9 @@ function LlvmCodeLine({ line, lineNumber, instruction, onClick, theme }: LlvmCod
           {keyInfo.label}
         </span>
       )}
+      {highlighted && !keyInfo && (
+        <span className="highlight-indicator">→</span>
+      )}
     </div>
   )
 }
@@ -359,6 +379,8 @@ interface BasicBlockProps {
   lineOffset: number
   expanded: boolean
   theme: 'dark' | 'light'
+  highlighted?: boolean
+  highlightedIndex?: number | null
   onToggle: () => void
   onInstructionClick?: (instruction: LlvmInstruction) => void
 }
@@ -368,6 +390,8 @@ function BasicBlock({
   lineOffset,
   expanded,
   theme,
+  highlighted = false,
+  highlightedIndex = null,
   onToggle,
   onInstructionClick
 }: BasicBlockProps) {
@@ -404,8 +428,15 @@ function BasicBlock({
   // 解析行
   const lines = blockIrText.split('\n')
 
+  // 自动展开高亮的块
+  useEffect(() => {
+    if (highlighted && !expanded) {
+      onToggle()
+    }
+  }, [highlighted, expanded, onToggle])
+
   return (
-    <div className={`basic-block ${expanded ? 'expanded' : 'collapsed'} ${theme}`}>
+    <div className={`basic-block ${expanded ? 'expanded' : 'collapsed'} ${theme} ${highlighted ? 'highlighted' : ''}`}>
       <div className="block-header" onClick={onToggle}>
         <span className="block-toggle">{expanded ? '▼' : '▶'}</span>
         <span className="block-name">{block.name}</span>
@@ -433,6 +464,7 @@ function BasicBlock({
             const instruction = !isLabel && instructionIdx < block.instructions.length
               ? block.instructions[instructionIdx]
               : null
+            const isHighlighted = highlighted && highlightedIndex === instructionIdx
 
             return (
               <LlvmCodeLine
@@ -441,6 +473,7 @@ function BasicBlock({
                 lineNumber={lineNumber}
                 instruction={instruction}
                 theme={theme}
+                highlighted={isHighlighted}
                 onClick={() => instruction && onInstructionClick?.(instruction)}
               />
             )
@@ -462,7 +495,12 @@ export function LlvmIrPanel({
   loading = false,
   error = null,
   theme = 'dark',
+  comparisonMode = false,
+  compareFunction = null,
+  highlightedInstruction = null,
   onFunctionSelect,
+  onCompareSelect,
+  onToggleComparison,
   onInstructionClick,
   onBlockClick,
 }: LlvmIrPanelProps) {
@@ -481,6 +519,11 @@ export function LlvmIrPanel({
   // 获取当前选中的函数
   const currentFunction = selectedFunction && parseResult?.functions
     ? parseResult.functions[selectedFunction]
+    : null
+
+  // 获取对比函数
+  const compareFunc = compareFunction && parseResult?.functions
+    ? parseResult.functions[compareFunction]
     : null
 
   // 过滤搜索结果
@@ -509,6 +552,19 @@ export function LlvmIrPanel({
     })
     return lines
   }, [currentFunction])
+
+  // 检查块是否高亮
+  const isBlockHighlighted = useCallback((blockName: string) => {
+    if (!highlightedInstruction) return false
+    return highlightedInstruction.blockName === blockName
+  }, [highlightedInstruction])
+
+  // 获取高亮的指令索引
+  const getHighlightedIndex = useCallback((blockName: string) => {
+    if (!highlightedInstruction) return null
+    if (highlightedInstruction.blockName !== blockName) return null
+    return highlightedInstruction.instructionIndex
+  }, [highlightedInstruction])
 
   // 渲染加载状态
   if (loading) {
@@ -574,7 +630,7 @@ export function LlvmIrPanel({
 
   // 渲染主要内容
   return (
-    <div className={`llvm-ir-panel ${theme}`}>
+    <div className={`llvm-ir-panel ${theme} ${comparisonMode ? 'comparison-mode' : ''}`}>
       <div className="panel-header">
         <h3>{title}</h3>
         {selectedFunction && (
@@ -588,77 +644,156 @@ export function LlvmIrPanel({
         <span className="ir-count">
           {Object.keys(parseResult.functions).length} 个函数
         </span>
-      </div>
-
-      {/* 函数选择器 */}
-      <div className="function-selector">
-        <select
-          value={selectedFunction || ''}
-          onChange={(e) => onFunctionSelect?.(e.target.value || null)}
-          className="function-select"
+        <button
+          className={`comparison-toggle ${comparisonMode ? 'active' : ''}`}
+          onClick={() => onToggleComparison?.(!comparisonMode)}
+          title={comparisonMode ? '关闭对比模式' : '开启对比模式'}
         >
-          <option value="">选择函数...</option>
-          {Object.keys(parseResult.functions).map(funcName => (
-            <option key={funcName} value={funcName}>
-              {funcName}
-              {parseResult.functions[funcName].isCallback ? ' ⚡' : ''}
-            </option>
-          ))}
-        </select>
+          {comparisonMode ? '取消对比' : '对比'}
+        </button>
       </div>
 
-      {/* 搜索框 */}
-      <div className="search-box">
-        <input
-          type="text"
-          placeholder="搜索指令、寄存器..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="search-input"
-        />
-      </div>
+      {/* 主函数区域 */}
+      <div className={comparisonMode ? 'comparison-panel' : ''}>
+        <div className="comparison-header">
+          主函数: {selectedFunction || '未选择'}
+        </div>
 
-      {/* 函数信息 */}
-      {currentFunction && (
-        <div className="function-info">
-          <div className="function-signature">
-            <span className="keyword">define</span>{' '}
-            <span className="type">{currentFunction.returnType}</span>{' '}
-            <span className="function-name">@{currentFunction.name}</span>
-            <span className="params">({currentFunction.parameters.map(p => `${p.typeStr} %${p.name}`).join(', ')})</span>
+        {/* 函数选择器 */}
+        <div className="function-selector">
+          <select
+            value={selectedFunction || ''}
+            onChange={(e) => onFunctionSelect?.(e.target.value || null)}
+            className="function-select"
+          >
+            <option value="">选择函数...</option>
+            {Object.keys(parseResult.functions).map(funcName => (
+              <option key={funcName} value={funcName}>
+                {funcName}
+                {parseResult.functions[funcName].isCallback ? ' ⚡' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 搜索框 */}
+        <div className="search-box">
+          <input
+            type="text"
+            placeholder="搜索指令、寄存器..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+          />
+        </div>
+
+        {/* 函数信息 */}
+        {currentFunction && (
+          <div className="function-info">
+            <div className="function-signature">
+              <span className="keyword">define</span>{' '}
+              <span className="type">{currentFunction.returnType}</span>{' '}
+              <span className="function-name">@{currentFunction.name}</span>
+              <span className="params">({currentFunction.parameters.map(p => `${p.typeStr} %${p.name}`).join(', ')})</span>
+            </div>
+            {currentFunction.isCallback && (
+              <div className="callback-badge">
+                <span className="callback-icon">⚡</span>
+                <span>回调函数</span>
+                {currentFunction.callbackContext && (
+                  <span className="callback-context">({currentFunction.callbackContext})</span>
+                )}
+              </div>
+            )}
           </div>
-          {currentFunction.isCallback && (
-            <div className="callback-badge">
-              <span className="callback-icon">⚡</span>
-              <span>回调函数</span>
-              {currentFunction.callbackContext && (
-                <span className="callback-context">({currentFunction.callbackContext})</span>
+        )}
+
+        {/* 基本块列表 */}
+        <div className="blocks-container">
+          {filteredBlocks.map((block, idx) => {
+            const lineOffset = idx // 简化行号计算
+            return (
+              <BasicBlock
+                key={block.name}
+                block={block}
+                lineOffset={lineOffset}
+                expanded={expandedBlocks[block.name] !== false}
+                theme={theme}
+                highlighted={isBlockHighlighted(block.name)}
+                highlightedIndex={getHighlightedIndex(block.name)}
+                onToggle={() => {
+                  toggleBlock(block.name)
+                  onBlockClick?.(block.name)
+                }}
+                onInstructionClick={(instr) => onInstructionClick?.(instr, block.name)}
+              />
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 对比函数区域 */}
+      {comparisonMode && (
+        <div className="comparison-panel">
+          <div className="comparison-header">
+            对比函数: {compareFunction || '未选择'}
+          </div>
+
+          {/* 对比函数选择器 */}
+          <div className="function-selector">
+            <select
+              value={compareFunction || ''}
+              onChange={(e) => onCompareSelect?.(e.target.value || null)}
+              className="function-select"
+            >
+              <option value="">选择函数...</option>
+              {Object.keys(parseResult.functions)
+                .filter(fn => fn !== selectedFunction)
+                .map(funcName => (
+                <option key={funcName} value={funcName}>
+                  {funcName}
+                  {parseResult.functions[funcName].isCallback ? ' ⚡' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 对比函数信息 */}
+          {compareFunc && (
+            <div className="function-info">
+              <div className="function-signature">
+                <span className="keyword">define</span>{' '}
+                <span className="type">{compareFunc.returnType}</span>{' '}
+                <span className="function-name">@{compareFunc.name}</span>
+                <span className="params">({compareFunc.parameters.map(p => `${p.typeStr} %${p.name}`).join(', ')})</span>
+              </div>
+              {compareFunc.isCallback && (
+                <div className="callback-badge">
+                  <span className="callback-icon">⚡</span>
+                  <span>回调函数</span>
+                  {compareFunc.callbackContext && (
+                    <span className="callback-context">({compareFunc.callbackContext})</span>
+                  )}
+                </div>
               )}
             </div>
           )}
+
+          {/* 对比函数基本块列表 */}
+          <div className="blocks-container">
+            {compareFunc?.blocks.map((block, idx) => (
+              <BasicBlock
+                key={block.name}
+                block={block}
+                lineOffset={idx}
+                expanded={expandedBlocks[`${compareFunction}:${block.name}`] !== false}
+                theme={theme}
+                onToggle={() => toggleBlock(`${compareFunction}:${block.name}`)}
+              />
+            ))}
+          </div>
         </div>
       )}
-
-      {/* 基本块列表 */}
-      <div className="blocks-container">
-        {filteredBlocks.map((block, idx) => {
-          const lineOffset = idx // 简化行号计算
-          return (
-            <BasicBlock
-              key={block.name}
-              block={block}
-              lineOffset={lineOffset}
-              expanded={expandedBlocks[block.name] !== false}
-              theme={theme}
-              onToggle={() => {
-                toggleBlock(block.name)
-                onBlockClick?.(block.name)
-              }}
-              onInstructionClick={(instr) => onInstructionClick?.(instr, block.name)}
-            />
-          )
-        })}
-      </div>
 
       {/* 关键指令图例 */}
       <div className="instruction-legend">
@@ -681,6 +816,7 @@ export function LlvmIrPanel({
         </span>
         <span className="footer-hint">
           {totalLines} 行 IR 代码
+          {comparisonMode && compareFunction && ' × 2 (对比模式)'}
         </span>
       </div>
     </div>

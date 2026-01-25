@@ -1,11 +1,12 @@
 /**
  * 欢迎页面组件
- * 
+ *
  * 显示快速入门指南和快捷键说明
  */
 
 import { useState, useEffect } from 'react'
 import { getRecentFiles, formatTimestamp, clearRecentFiles, type RecentFile } from '../../utils/recentFiles'
+import { Icons } from '../Icons/Icons'
 import './Welcome.css'
 
 interface WelcomeProps {
@@ -40,7 +41,9 @@ export function Welcome({ onOpenFile, onOpenProject, onOpenRecentFile, onOpenRec
       <div className="welcome-content">
         {/* Logo & Title */}
         <div className="welcome-header">
-          <div className="welcome-logo">🔭</div>
+          <div className="welcome-logo">
+            <Icons.Chart size={48} />
+          </div>
           <h1>FlowSight</h1>
           <p className="welcome-tagline">看见代码的"灵魂" — 执行流可视化 IDE</p>
         </div>
@@ -48,15 +51,15 @@ export function Welcome({ onOpenFile, onOpenProject, onOpenRecentFile, onOpenRec
         {/* Quick Actions */}
         <div className="welcome-actions">
           <button className="action-btn primary" onClick={onOpenProject}>
-            <span className="action-icon">📁</span>
+            <span className="action-icon"><Icons.FolderProject size={20} /></span>
             <span className="action-text">
               <strong>打开项目</strong>
               <small>选择代码目录进行分析</small>
             </span>
           </button>
-          
+
           <button className="action-btn" onClick={onOpenFile}>
-            <span className="action-icon">📄</span>
+            <span className="action-icon"><Icons.File size={20} /></span>
             <span className="action-text">
               <strong>打开文件</strong>
               <small>快速查看单个 C/H 文件</small>
@@ -68,16 +71,16 @@ export function Welcome({ onOpenFile, onOpenProject, onOpenRecentFile, onOpenRec
         {recentFiles.filter(f => f.isProject).length > 0 && (
           <div className="welcome-recent projects">
             <div className="recent-header">
-              <h3>📂 最近项目</h3>
+              <h3><Icons.FolderProject size={14} /> 最近项目</h3>
             </div>
             <div className="recent-list">
               {recentFiles.filter(f => f.isProject).slice(0, 5).map((file, index) => (
-                <button 
-                  key={index} 
+                <button
+                  key={index}
                   className="recent-item project"
                   onClick={() => handleOpenRecent(file)}
                 >
-                  <span className="recent-icon">📁</span>
+                  <span className="recent-icon"><Icons.FolderProject size={14} /></span>
                   <span className="recent-info">
                     <span className="recent-name">{file.name}</span>
                     <span className="recent-path">{file.path}</span>
@@ -93,19 +96,19 @@ export function Welcome({ onOpenFile, onOpenProject, onOpenRecentFile, onOpenRec
         {recentFiles.filter(f => !f.isProject).length > 0 && (
           <div className="welcome-recent files">
             <div className="recent-header">
-              <h3>📄 最近文件</h3>
+              <h3><Icons.File size={14} /> 最近文件</h3>
               <button className="clear-btn" onClick={handleClearRecent} title="清除记录">
                 清除
               </button>
             </div>
             <div className="recent-list">
               {recentFiles.filter(f => !f.isProject).slice(0, 5).map((file, index) => (
-                <button 
-                  key={index} 
+                <button
+                  key={index}
                   className="recent-item"
                   onClick={() => handleOpenRecent(file)}
                 >
-                  <span className="recent-icon">📄</span>
+                  <span className="recent-icon"><Icons.File size={14} /></span>
                   <span className="recent-info">
                     <span className="recent-name">{file.name}</span>
                     <span className="recent-path">{file.path}</span>
@@ -119,7 +122,7 @@ export function Welcome({ onOpenFile, onOpenProject, onOpenRecentFile, onOpenRec
 
         {/* Shortcuts */}
         <div className="welcome-shortcuts">
-          <h3>⌨️ 快捷键</h3>
+          <h3>键盘快捷键</h3>
           <div className="shortcuts-grid">
             <div className="shortcut">
               <kbd>Ctrl</kbd> + <kbd>P</kbd>
@@ -150,22 +153,22 @@ export function Welcome({ onOpenFile, onOpenProject, onOpenRecentFile, onOpenRec
 
         {/* Features */}
         <div className="welcome-features">
-          <h3>✨ 核心功能</h3>
+          <h3>核心功能</h3>
           <ul>
             <li>
-              <span className="feature-icon">📊</span>
+              <span className="feature-icon"><Icons.Chart size={14} /></span>
               <span>执行流可视化 — 理解异步调用、回调模式</span>
             </li>
             <li>
-              <span className="feature-icon">🔍</span>
+              <span className="feature-icon"><Icons.Search size={14} /></span>
               <span>函数指针解析 — 追踪 ops 表、变量赋值</span>
             </li>
             <li>
-              <span className="feature-icon">⚡</span>
+              <span className="feature-icon"><Icons.Lightning size={14} /></span>
               <span>异步机制追踪 — 工作队列、定时器、中断</span>
             </li>
             <li>
-              <span className="feature-icon">📝</span>
+              <span className="feature-icon"><Icons.List size={14} /></span>
               <span>多视图切换 — 图形、ftrace 风格、树形</span>
             </li>
           </ul>

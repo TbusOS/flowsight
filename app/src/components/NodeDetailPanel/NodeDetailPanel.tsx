@@ -6,38 +6,40 @@
  * - 上下文信息
  * - LLVM IR 代码片段
  * - 折叠/展开和复制功能
+ * - 快捷操作按钮
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { FlowTreeNode, FlowNodeType, ConfidenceLevel } from '../../types'
+import { Icons } from '../Icons/Icons'
 import './NodeDetailPanel.css'
 
 // 置信度信息
-const confidenceInfo: Record<ConfidenceLevel, { icon: string; label: string; color: string }> = {
-  'Certain': { icon: '✓', label: '确定', color: '#22c55e' },
-  'Possible': { icon: '?', label: '可能', color: '#f59e0b' },
-  'Unknown': { icon: '!', label: '未知', color: '#ef4444' },
+const confidenceInfo: Record<ConfidenceLevel, { icon: React.ReactNode; label: string; color: string }> = {
+  'Certain': { icon: <Icons.Check size={12} />, label: '确定', color: '#34d399' },
+  'Possible': { icon: <Icons.Alert size={12} />, label: '可能', color: '#fbbf24' },
+  'Unknown': { icon: <Icons.Info size={12} />, label: '未知', color: '#f87171' },
 }
 
 // 节点类型标签映射
-const nodeTypeLabels: Record<string, { icon: string; label: string; color: string }> = {
-  'Function': { icon: '📦', label: '函数', color: '#58a6ff' },
-  'EntryPoint': { icon: '🚀', label: '入口点', color: '#3fb950' },
-  'KernelApi': { icon: '⚙️', label: '内核 API', color: '#f59e0b' },
-  'External': { icon: '🔗', label: '外部函数', color: '#8b949e' },
-  'AsyncCallback': { icon: '⚡', label: '异步回调', color: '#a855f7' },
+const nodeTypeLabels: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
+  'Function': { icon: <Icons.Function size={13} />, label: '函数', color: '#60a5fa' },
+  'EntryPoint': { icon: <Icons.EntryPoint size={14} />, label: '入口点', color: '#34d399' },
+  'KernelApi': { icon: <Icons.Api size={13} />, label: '内核 API', color: '#fbbf24' },
+  'External': { icon: <Icons.ExternalLink size={12} />, label: '外部函数', color: '#9ca3af' },
+  'AsyncCallback': { icon: <Icons.Zap size={13} />, label: '异步回调', color: '#a855f7' },
 }
 
 // 异步机制标签映射
-const asyncMechanismLabels: Record<string, { icon: string; label: string; color: string }> = {
-  'WorkQueue': { icon: '🔄', label: '工作队列', color: '#f59e0b' },
-  'Timer': { icon: '⏱️', label: '定时器', color: '#22c55e' },
-  'Irq': { icon: '⚡', label: '硬中断', color: '#ef4444' },
-  'Tasklet': { icon: '📋', label: 'Tasklet', color: '#a855f7' },
-  'KThread': { icon: '🧵', label: '内核线程', color: '#3b82f6' },
-  'Softirq': { icon: '🔄', label: '软中断', color: '#ec4899' },
-  'Completion': { icon: '✅', label: 'Completion', color: '#14b8a6' },
-  'Rcu': { icon: '🔒', label: 'RCU', color: '#f97316' },
+const asyncMechanismLabels: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
+  'WorkQueue': { icon: <Icons.Refresh size={12} />, label: '工作队列', color: '#fbbf24' },
+  'Timer': { icon: <Icons.Zap size={12} />, label: '定时器', color: '#34d399' },
+  'Irq': { icon: <Icons.Zap size={12} />, label: '硬中断', color: '#f87171' },
+  'Tasklet': { icon: <Icons.Code size={12} />, label: 'Tasklet', color: '#a855f7' },
+  'KThread': { icon: <Icons.Settings size={12} />, label: '内核线程', color: '#3b82f6' },
+  'Softirq': { icon: <Icons.Refresh size={12} />, label: '软中断', color: '#ec4899' },
+  'Completion': { icon: <Icons.Check size={12} />, label: 'Completion', color: '#14b8a6' },
+  'Rcu': { icon: <Icons.Lock size={12} />, label: 'RCU', color: '#f97316' },
 }
 
 // 节点详情数据类型
@@ -82,13 +84,19 @@ export interface NodeDetailPanelProps {
   onClose?: () => void
   /** 节点跳转回调 */
   onNodeClick?: (nodeName: string) => void
+  /** 复制名称回调 */
+  onCopyName?: (name: string) => void
+  /** 跳转到源码回调 */
+  onGoToSource?: (file: string, line: number) => void
+  /** 展开调用图回调 */
+  onExpandCallGraph?: (nodeName: string) => void
 }
 
 // 异步机制详情
 interface AsyncMechanismDetail {
   type: string
   label: string
-  icon: string
+  icon: React.ReactNode
   color: string
   details: Record<string, string>
 }
@@ -101,6 +109,9 @@ export function NodeDetailPanel({
   theme = 'dark',
   onClose,
   onNodeClick,
+  onCopyName,
+  onGoToSource,
+  onExpandCallGraph,
 }: NodeDetailPanelProps) {
   // 展开状态
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -112,6 +123,9 @@ export function NodeDetailPanel({
 
   // 复制状态
   const [copiedSection, setCopiedSection] = useState<string | null>(null)
+
+  // 动画引用
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   // 切换展开状态
   const toggleSection = useCallback((section: string) => {
@@ -132,10 +146,32 @@ export function NodeDetailPanel({
     }
   }, [])
 
+  // 快捷操作：复制函数名
+  const handleCopyName = useCallback(() => {
+    if (node) {
+      copyToClipboard(node.name, 'name')
+      onCopyName?.(node.name)
+    }
+  }, [node, copyToClipboard, onCopyName])
+
+  // 快捷操作：跳转到源码
+  const handleGoToSource = useCallback(() => {
+    if (node?.location) {
+      onGoToSource?.(node.location.file, node.location.line)
+    }
+  }, [node, onGoToSource])
+
+  // 快捷操作：展开调用图
+  const handleExpandCallGraph = useCallback(() => {
+    if (node) {
+      onExpandCallGraph?.(node.name)
+    }
+  }, [node, onExpandCallGraph])
+
   // 获取节点类型信息
-  const getNodeTypeInfo = useCallback((nodeType: FlowNodeType): { icon: string; label: string; color: string; isAsync: boolean; asyncMechanism?: AsyncMechanismDetail } => {
+  const getNodeTypeInfo = useCallback((nodeType: FlowNodeType): { icon: React.ReactNode; label: string; color: string; isAsync: boolean; asyncMechanism?: AsyncMechanismDetail } => {
     if (typeof nodeType === 'string') {
-      const info = nodeTypeLabels[nodeType] || { icon: '📦', label: nodeType, color: '#8b949e' }
+      const info = nodeTypeLabels[nodeType] || { icon: <Icons.Function size={13} />, label: nodeType, color: '#9ca3af' }
       return { ...info, isAsync: false }
     }
 
@@ -145,7 +181,7 @@ export function NodeDetailPanel({
         const keys = Object.keys(mechanism)
         if (keys.length > 0) {
           const mechType = keys[0]
-          const asyncInfo = asyncMechanismLabels[mechType] || { icon: '⚡', label: mechType, color: '#a855f7' }
+          const asyncInfo = asyncMechanismLabels[mechType] || { icon: <Icons.Zap size={12} />, label: mechType, color: '#a855f7' }
 
           // 获取机制详细信息
           const mechValue = mechanism[mechType as keyof typeof mechanism]
@@ -168,10 +204,10 @@ export function NodeDetailPanel({
           }
         }
       }
-      return { icon: '⚡', label: '异步回调', color: '#a855f7', isAsync: true }
+      return { icon: <Icons.Zap size={13} />, label: '异步回调', color: '#a855f7', isAsync: true }
     }
 
-    return { icon: '📦', label: '未知', color: '#8b949e', isAsync: false }
+    return { icon: <Icons.Function size={13} />, label: '未知', color: '#9ca3af', isAsync: false }
   }, [])
 
   // 格式化 LLVM IR
@@ -202,7 +238,7 @@ export function NodeDetailPanel({
           <h3>{title}</h3>
         </div>
         <div className="panel-empty">
-          <span className="empty-icon">📌</span>
+          <Icons.Link size={32} />
           <p>未选中节点</p>
           <span className="empty-hint">点击流程图中的节点查看详情</span>
         </div>
@@ -236,13 +272,42 @@ export function NodeDetailPanel({
               className="async-badge"
               style={{ backgroundColor: `${nodeTypeInfo.color}22`, color: nodeTypeInfo.color }}
             >
-              {nodeTypeInfo.icon} {nodeTypeInfo.asyncMechanism?.label || '异步'}
+              {nodeTypeInfo.asyncMechanism?.label || '异步'}
             </span>
           )}
         </div>
         {onClose && (
           <button className="close-btn" onClick={onClose} title="关闭">
-            ✕
+            <Icons.X size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="quick-actions">
+        <button
+          className="quick-action-btn"
+          onClick={handleCopyName}
+          title="复制函数名"
+        >
+          {copiedSection === 'name' ? <Icons.Check size={11} /> : <Icons.Copy size={11} />} 复制
+        </button>
+        {node.location && (
+          <button
+            className="quick-action-btn primary"
+            onClick={handleGoToSource}
+            title="跳转到源码"
+          >
+            <Icons.MapPin size={11} /> 源码
+          </button>
+        )}
+        {childCount > 0 && (
+          <button
+            className="quick-action-btn"
+            onClick={handleExpandCallGraph}
+            title="展开调用图"
+          >
+            <Icons.Link size={11} /> 调用
           </button>
         )}
       </div>
@@ -250,12 +315,12 @@ export function NodeDetailPanel({
       {/* Content */}
       <div className="panel-content">
         {/* 节点基本信息 */}
-        <div className="section">
+        <div className={`section ${expandedSections.info ? 'expanded' : ''}`}>
           <div
             className="section-header"
             onClick={() => toggleSection('info')}
           >
-            <span className="expand-icon">{expandedSections.info ? '▼' : '▶'}</span>
+            <span className="expand-icon"><Icons.ChevronRight size={10} /></span>
             <span className="section-title">基本信息</span>
             {confidence && (
               <span
@@ -282,7 +347,8 @@ export function NodeDetailPanel({
                 <div className="info-row">
                   <span className="info-label">位置</span>
                   <span className="info-value location">
-                    📍 {node.location.file.split('/').pop()}:{node.location.line}
+                    <Icons.MapPin size={10} />
+                    {node.location.file.split('/').pop()}:{node.location.line}
                   </span>
                 </div>
               )}
@@ -363,12 +429,12 @@ export function NodeDetailPanel({
 
         {/* LLVM IR 代码 */}
         {showLlvmIr && (
-          <div className="section">
+          <div className={`section ${expandedSections.llvmIr ? 'expanded' : ''}`}>
             <div
               className="section-header"
               onClick={() => toggleSection('llvmIr')}
             >
-              <span className="expand-icon">{expandedSections.llvmIr ? '▼' : '▶'}</span>
+              <span className="expand-icon"><Icons.ChevronRight size={10} /></span>
               <span className="section-title">LLVM IR</span>
               <span className="section-badge">{llvmIrLines.length} 行</span>
               <button
@@ -379,7 +445,7 @@ export function NodeDetailPanel({
                 }}
                 title="复制"
               >
-                {copiedSection === 'llvmIr' ? '✓' : '📋'}
+                {copiedSection === 'llvmIr' ? <Icons.Check size={11} /> : <Icons.Copy size={11} />}
               </button>
             </div>
 
@@ -395,12 +461,12 @@ export function NodeDetailPanel({
 
         {/* 被调用函数 */}
         {node.children && node.children.length > 0 && (
-          <div className="section">
+          <div className={`section ${expandedSections.calls ? 'expanded' : ''}`}>
             <div
               className="section-header"
               onClick={() => toggleSection('calls')}
             >
-              <span className="expand-icon">{expandedSections.calls ? '▼' : '▶'}</span>
+              <span className="expand-icon"><Icons.ChevronRight size={10} /></span>
               <span className="section-title">调用 ({childCount})</span>
             </div>
 
@@ -432,12 +498,12 @@ export function NodeDetailPanel({
 
         {/* 调用者 */}
         {node.callers && node.callers.length > 0 && (
-          <div className="section">
+          <div className={`section ${expandedSections.callers ? 'expanded' : ''}`}>
             <div
               className="section-header"
               onClick={() => toggleSection('callers')}
             >
-              <span className="expand-icon">{expandedSections.callers ? '▼' : '▶'}</span>
+              <span className="expand-icon"><Icons.ChevronRight size={10} /></span>
               <span className="section-title">被调用 ({callerCount})</span>
             </div>
 
@@ -450,7 +516,7 @@ export function NodeDetailPanel({
                       className="call-item"
                       onClick={() => onNodeClick?.(caller)}
                     >
-                      <span className="call-icon">📦</span>
+                      <span className="call-icon"><Icons.Function size={12} /></span>
                       <code className="call-name">{caller}()</code>
                     </li>
                   ))}

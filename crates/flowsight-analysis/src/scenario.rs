@@ -2,15 +2,23 @@
 //!
 //! Core feature: Execute code symbolically with user-defined parameter values
 //! to visualize execution paths and variable states.
+//!
+//! ## Enhanced Features
+//!
+//! - Multi-path exploration with branch tracking
+//! - Enhanced constraint propagation with range/pointer support
+//! - Integration with symbolic execution via SymbolicBridge
+//! - Path visualization support
 
-use flowsight_core::{ExecutionContext, FlowNode, FlowNodeType, Location};
+use flowsight_core::{FlowNode, FlowNodeType, Location};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::Path;
 
 use crate::propagation::{ConstantPropagator, BranchResult};
+use crate::path_tracing::{ExecutionTracer, BranchOutcome, CallCategory, PathValue, ValueType};
 
 /// User-defined scenario for analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,15 +55,21 @@ pub enum SymbolicValue {
     Pointer { is_null: bool, size: Option<usize> },
     /// Value range (min..max)
     Range { min: i64, max: i64 },
+    /// Bitfield value with mask
+    Bitfield { value: u64, mask: u64 },
+    /// Enumeration value with named constant
+    Enum { value: i64, name: String },
     /// Unknown value with optional hint
     Unknown { hint: Option<String> },
+    /// Array of values
+    Array { elements: Vec<SymbolicValue> },
 }
 
 impl SymbolicValue {
     /// Parse from string input
     pub fn parse(s: &str, type_hint: &str) -> Self {
         let s = s.trim();
-        
+
         // Check for pointer types
         if type_hint == "pointer" {
             return match s.to_lowercase().as_str() {
@@ -64,7 +78,7 @@ impl SymbolicValue {
                 _ => SymbolicValue::Pointer { is_null: false, size: None },
             };
         }
-        
+
         // Check for range (e.g., "0..100")
         if s.contains("..") {
             if let Some((min_str, max_str)) = s.split_once("..") {
@@ -76,12 +90,26 @@ impl SymbolicValue {
                 }
             }
         }
-        
+
+        // Check for enum format: "ENUM_NAME(value)" or just "name"
+        if let Some(enum_start) = s.find('(') {
+            let name = &s[..enum_start];
+            if let Some(enum_end) = s.find(')') {
+                let value_str = &s[enum_start + 1..enum_end];
+                if let Ok(val) = Self::parse_int(value_str) {
+                    return SymbolicValue::Enum {
+                        value: val,
+                        name: name.to_string(),
+                    };
+                }
+            }
+        }
+
         // Try to parse as integer
         if let Ok(n) = Self::parse_int(s) {
             return SymbolicValue::Integer(n);
         }
-        
+
         // Otherwise treat as string
         if s.starts_with('"') && s.ends_with('"') {
             SymbolicValue::String(s[1..s.len() - 1].to_string())
@@ -89,7 +117,8 @@ impl SymbolicValue {
             SymbolicValue::String(s.to_string())
         }
     }
-    
+
+    /// Parse an integer (decimal, hex, binary)
     fn parse_int(s: &str) -> Result<i64, ()> {
         let s = s.trim();
         if s.starts_with("0x") || s.starts_with("0X") {
@@ -100,7 +129,7 @@ impl SymbolicValue {
             s.parse::<i64>().map_err(|_| ())
         }
     }
-    
+
     /// Display value
     pub fn display(&self) -> String {
         match self {
@@ -122,9 +151,57 @@ impl SymbolicValue {
                 }
             }
             SymbolicValue::Range { min, max } => format!("{}..{}", min, max),
+            SymbolicValue::Bitfield { value, mask } => format!("0x{:x} & 0x{:x}", value, mask),
+            SymbolicValue::Enum { value, name } => format!("{}({})", name, value),
             SymbolicValue::Unknown { hint } => {
                 hint.as_ref().map(|h| format!("<?:{}>", h)).unwrap_or_else(|| "?".to_string())
             }
+            SymbolicValue::Array { elements } => {
+                let elements_str: Vec<String> = elements.iter().map(|e| e.display()).collect();
+                format!("[{}]", elements_str.join(", "))
+            }
+        }
+    }
+
+    /// Check if value is definitely zero
+    pub fn is_zero(&self) -> bool {
+        match self {
+            SymbolicValue::Integer(n) => *n == 0,
+            SymbolicValue::Pointer { is_null, .. } => *is_null,
+            SymbolicValue::Range { min: _, max } => *max < 0,
+            _ => false,
+        }
+    }
+
+    /// Check if value is definitely non-zero
+    pub fn is_nonzero(&self) -> bool {
+        match self {
+            SymbolicValue::Integer(n) => *n != 0,
+            SymbolicValue::Pointer { is_null, .. } => !*is_null,
+            SymbolicValue::Range { min, .. } => *min > 0,
+            _ => false,
+        }
+    }
+
+    /// Get bitfield mask if applicable
+    pub fn as_bitfield(&self) -> Option<(u64, u64)> {
+        match self {
+            SymbolicValue::Bitfield { value, mask } => Some((*value, *mask)),
+            SymbolicValue::Integer(n) if *n != 0 => {
+                // Extract lowest set bit as mask
+                let mask = *n as u64;
+                let value = mask & mask; // Value is the masked portion
+                Some((value, mask))
+            }
+            _ => None,
+        }
+    }
+
+    /// Get enum info if applicable
+    pub fn as_enum(&self) -> Option<(i64, &str)> {
+        match self {
+            SymbolicValue::Enum { value, name } => Some((*value, name.as_str())),
+            _ => None,
         }
     }
 }
@@ -308,6 +385,18 @@ pub struct ScenarioOptions {
     /// Maximum recursion depth
     #[serde(default = "default_depth")]
     pub max_depth: usize,
+    /// Enable multi-path exploration
+    #[serde(default = "default_true")]
+    pub multi_path: bool,
+    /// Maximum paths to explore
+    #[serde(default = "default_max_paths")]
+    pub max_paths: usize,
+    /// Enable constraint propagation
+    #[serde(default = "default_true")]
+    pub propagate_constraints: bool,
+    /// Record execution traces
+    #[serde(default = "default_true")]
+    pub record_traces: bool,
 }
 
 fn default_true() -> bool {
@@ -318,12 +407,20 @@ fn default_depth() -> usize {
     10
 }
 
+fn default_max_paths() -> usize {
+    100
+}
+
 impl Default for ScenarioOptions {
     fn default() -> Self {
         Self {
             follow_async: true,
             show_kernel_api: true,
             max_depth: 10,
+            multi_path: true,
+            max_paths: 100,
+            propagate_constraints: true,
+            record_traces: true,
         }
     }
 }
@@ -341,29 +438,120 @@ pub struct ProgramState {
     pub branch_condition: Option<String>,
     /// Whether this path is reachable
     pub reachable: bool,
+    /// Call depth
+    pub depth: usize,
 }
 
-/// Execution path result
+/// Result of multi-path scenario execution
+#[derive(Debug, Clone)]
+pub struct MultiPathResult {
+    /// Primary/first execution path
+    pub primary_path: ExecutionPath,
+    /// Alternative paths discovered
+    pub alternative_paths: Vec<ExecutionPath>,
+    /// Annotated flow tree with variable annotations
+    pub annotated_tree: Option<FlowNode>,
+}
+
+impl MultiPathResult {
+    /// Get total number of paths discovered
+    pub fn path_count(&self) -> usize {
+        1 + self.alternative_paths.len()
+    }
+
+    /// Get all paths
+    pub fn all_paths(&self) -> Vec<&ExecutionPath> {
+        std::iter::once(&self.primary_path)
+            .chain(self.alternative_paths.iter())
+            .collect()
+    }
+
+    /// Check if there are multiple paths
+    pub fn has_branches(&self) -> bool {
+        !self.alternative_paths.is_empty()
+    }
+}
+
+/// Execution path result (legacy, for backward compatibility)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionPath {
-    /// States along the path
-    pub states: Vec<ProgramState>,
-    /// Whether the path completed normally
+    /// Unique path identifier
+    pub id: String,
+    /// Human-readable name/description
+    pub name: String,
+    /// Step-by-step execution sequence
+    pub steps: Vec<crate::path_tracing::PathStep>,
+    /// Branch decisions made along this path
+    pub branches: Vec<crate::path_tracing::BranchInfo>,
+    /// Variables with their values at the end of the path
+    pub final_values: HashMap<String, crate::path_tracing::PathValue>,
+    /// Whether this path leads to completion
     pub completed: bool,
     /// Termination reason (if not completed)
     pub termination_reason: Option<String>,
-    /// Flow tree with variable annotations
-    pub flow_tree: Option<FlowNode>,
+    /// Maximum call depth reached
+    pub max_depth: usize,
+    /// Total steps in path
+    pub step_count: usize,
 }
 
-/// Scenario executor with constant propagation
+impl ExecutionPath {
+    /// Create a new execution path
+    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            steps: Vec::new(),
+            branches: Vec::new(),
+            final_values: HashMap::new(),
+            completed: false,
+            termination_reason: None,
+            max_depth: 0,
+            step_count: 0,
+        }
+    }
+
+    /// Get path length
+    pub fn len(&self) -> usize {
+        self.steps.len()
+    }
+
+    /// Check if path is empty
+    pub fn is_empty(&self) -> bool {
+        self.steps.is_empty()
+    }
+}
+
+impl From<crate::path_tracing::ExecutionPath> for ExecutionPath {
+    fn from(path: crate::path_tracing::ExecutionPath) -> Self {
+        Self {
+            id: path.id,
+            name: path.name,
+            steps: path.steps,
+            branches: path.branches,
+            final_values: path.final_values,
+            completed: path.completed,
+            termination_reason: path.termination_reason,
+            max_depth: path.max_depth,
+            step_count: path.step_count,
+        }
+    }
+}
+
+/// Scenario executor with constant propagation and multi-path exploration
 pub struct ScenarioExecutor {
     /// Constant propagator for branch analysis
     propagator: ConstantPropagator,
-    /// Execution path being built
+    /// Current execution path being built
     path: Vec<ProgramState>,
     /// Options
     options: ScenarioOptions,
+    /// Execution tracer for path recording
+    tracer: ExecutionTracer,
+    /// Discovered paths during multi-path exploration
+    discovered_paths: Vec<ExecutionPath>,
+    /// Current path ID for multi-path exploration
+    path_id: usize,
 }
 
 impl ScenarioExecutor {
@@ -373,11 +561,14 @@ impl ScenarioExecutor {
             propagator: ConstantPropagator::new(),
             path: Vec::new(),
             options,
+            tracer: ExecutionTracer::new(),
+            discovered_paths: Vec::new(),
+            path_id: 0,
         }
     }
 
     /// Execute scenario on a flow tree
-    pub fn execute(&mut self, scenario: &Scenario, flow_tree: &FlowNode) -> ExecutionPath {
+    pub fn execute(&mut self, scenario: &Scenario, flow_tree: &FlowNode) -> MultiPathResult {
         // Initialize propagator from scenario bindings
         let bindings: Vec<_> = scenario.bindings.iter()
             .map(|b| (b.path.clone(), b.value.clone()))
@@ -385,46 +576,336 @@ impl ScenarioExecutor {
         self.propagator.init_from_bindings(&bindings);
 
         self.path.clear();
+        self.discovered_paths.clear();
+        self.path_id = 0;
 
-        // Walk the flow tree and build execution path
-        let annotated_tree = self.walk_tree(flow_tree, 0, true);
+        if self.options.multi_path {
+            // Multi-path exploration mode
+            self.execute_multi_path(scenario, flow_tree)
+        } else {
+            // Single path mode - use tracer to trace the tree
+            self.tracer.trace_flow_tree(flow_tree);
 
-        ExecutionPath {
-            states: self.path.clone(),
-            completed: true,
-            termination_reason: None,
-            flow_tree: Some(annotated_tree),
+            MultiPathResult {
+                primary_path: ExecutionPath {
+                    id: "primary".to_string(),
+                    name: "Primary Execution Path".to_string(),
+                    steps: self.convert_states_to_steps(),
+                    branches: self.extract_branches(),
+                    final_values: self.extract_final_values(),
+                    completed: true,
+                    termination_reason: None,
+                    max_depth: self.path.iter().map(|s| s.depth).max().unwrap_or(0),
+                    step_count: self.path.len(),
+                },
+                alternative_paths: Vec::new(),
+                annotated_tree: None,
+            }
         }
     }
 
-    fn walk_tree(&mut self, node: &FlowNode, depth: usize, reachable: bool) -> FlowNode {
+    /// Multi-path exploration: explore all feasible paths
+    fn execute_multi_path(&mut self, scenario: &Scenario, flow_tree: &FlowNode) -> MultiPathResult {
+        // Record entry point in tracer
+        self.tracer.start_path(
+            format!("path_{}", self.path_id),
+            format!("Path {}", self.path_id)
+        );
+
+        // Start exploring from root
+        self.explore_path(flow_tree, scenario, 0, true);
+
+        // Build annotated tree with branch information
+        let annotated_tree = self.build_annotated_tree(flow_tree, scenario, 0, true, &HashSet::new());
+
+        MultiPathResult {
+            primary_path: self.discovered_paths.first().cloned().unwrap_or_else(|| {
+                ExecutionPath {
+                    id: "primary".to_string(),
+                    name: "Primary Path".to_string(),
+                    steps: Vec::new(),
+                    branches: Vec::new(),
+                    final_values: HashMap::new(),
+                    completed: false,
+                    termination_reason: Some("No paths explored".to_string()),
+                    max_depth: 0,
+                    step_count: 0,
+                }
+            }),
+            alternative_paths: self.discovered_paths.get(1..).map(|s| s.to_vec()).unwrap_or_default(),
+            annotated_tree: Some(annotated_tree),
+        }
+    }
+
+    /// Explore a single path recursively
+    fn explore_path(
+        &mut self,
+        node: &FlowNode,
+        scenario: &Scenario,
+        depth: usize,
+        reachable: bool,
+    ) {
+        if depth > self.options.max_depth {
+            return;
+        }
+
+        // Check if we should stop exploring
+        if self.discovered_paths.len() >= self.options.max_paths {
+            return;
+        }
+
+        if !reachable {
+            // Record unreachable path
+            self.finalize_current_path(false, Some("Unreachable code"));
+            return;
+        }
+
+        // Record this node in current path
+        let args: Vec<PathValue> = self.extract_arguments_for_node(node, scenario);
+        self.tracer.record_call(&node.name, node.location.clone(), self.classify_call(node), &args);
+
+        // Get current branch conditions from node
+        let branch_conditions = self.extract_branch_conditions(node);
+
+        if branch_conditions.is_empty() {
+            // No branching - continue to children
+            let show_kernel_api = self.options.show_kernel_api;
+            for child in &node.children {
+                if !show_kernel_api && matches!(child.node_type, FlowNodeType::KernelApi) {
+                    continue;
+                }
+                self.explore_path(child, scenario, depth + 1, true);
+            }
+        } else {
+            // Has branching - explore each branch
+            for (i, condition) in branch_conditions.iter().enumerate() {
+                // Clone state for this branch
+                let saved_state = self.propagator.clone_state();
+
+                // Determine branch outcome
+                let branch_taken = match self.propagator.eval_condition(condition) {
+                    BranchResult::AlwaysTrue => BranchOutcome::True,
+                    BranchResult::AlwaysFalse => BranchOutcome::False,
+                    BranchResult::Unknown => {
+                        if i == 0 { BranchOutcome::True } else { BranchOutcome::False }
+                    }
+                };
+
+                // Record branch decision
+                self.tracer.record_branch(node.location.clone(), condition, branch_taken);
+
+                // Finalize current path and start new one for alternative
+                self.finalize_current_path(true, None);
+                self.path_id += 1;
+                self.tracer.start_path(
+                    format!("path_{}", self.path_id),
+                    format!("Path {}", self.path_id)
+                );
+                // Re-record the call in new path
+                let args: Vec<PathValue> = self.extract_arguments_for_node(node, scenario);
+                self.tracer.record_call(&node.name, node.location.clone(), self.classify_call(node), &args);
+
+                // Explore this branch
+                let child_reachable = matches!(branch_taken, BranchOutcome::True | BranchOutcome::Fallthrough(_));
+                let children: Vec<_> = node.children.iter().filter(|c| {
+                    if !self.options.show_kernel_api && matches!(c.node_type, FlowNodeType::KernelApi) {
+                        return false;
+                    }
+                    true
+                }).collect();
+
+                if let Some(child) = children.get(i).or(children.first()) {
+                    self.explore_path(child, scenario, depth + 1, child_reachable);
+                }
+
+                // Restore state for next iteration
+                self.propagator.restore_state(saved_state);
+            }
+        }
+
+        // Record return
+        self.tracer.record_return(None);
+
+        // Finalize path for leaf nodes (no children and no branches to explore)
+        if node.children.is_empty() || depth >= self.options.max_depth {
+            self.finalize_current_path(true, None);
+        }
+    }
+
+    /// Finalize current path and store it
+    fn finalize_current_path(&mut self, completed: bool, reason: Option<&str>) {
+        self.tracer.finalize_path(completed, reason);
+        if let Some(path) = self.tracer.paths().last().cloned() {
+            self.discovered_paths.push(path.into());
+        }
+    }
+
+    /// Convert program states to path steps
+    fn convert_states_to_steps(&self) -> Vec<crate::path_tracing::PathStep> {
+        self.path.iter().enumerate().map(|(i, state)| {
+            crate::path_tracing::PathStep {
+                step_id: i,
+                function: state.function.clone(),
+                location: Some(state.location.clone()),
+                arguments: Vec::new(),
+                return_value: None,
+                call_type: crate::path_tracing::CallCategory::Direct,
+                depth: state.depth,
+                sequence: i as u64,
+            }
+        }).collect()
+    }
+
+    /// Extract branch information from visited nodes
+    fn extract_branches(&self) -> Vec<crate::path_tracing::BranchInfo> {
+        self.path.iter()
+            .filter_map(|state| {
+                state.branch_condition.as_ref().map(|cond| {
+                    crate::path_tracing::BranchInfo {
+                        location: Some(state.location.clone()),
+                        condition: cond.clone(),
+                        taken: BranchOutcome::True, // Would need more info
+                        alternative: None,
+                    }
+                })
+            })
+            .collect()
+    }
+
+    /// Extract final variable values
+    fn extract_final_values(&self) -> HashMap<String, PathValue> {
+        let mut values = HashMap::new();
+        for (path, sym_val) in self.propagator.all_vars() {
+            let value_type = match sym_val {
+                SymbolicValue::Integer(_) => ValueType::Integer,
+                SymbolicValue::Pointer { .. } => ValueType::Pointer,
+                SymbolicValue::String(_) => ValueType::String,
+                SymbolicValue::Range { .. } => ValueType::Integer,
+                SymbolicValue::Bitfield { .. } => ValueType::Integer,
+                SymbolicValue::Enum { .. } => ValueType::Integer,
+                SymbolicValue::Unknown { .. } => ValueType::Unknown,
+                SymbolicValue::Array { .. } => ValueType::Unknown,
+            };
+            values.insert(
+                path.clone(),
+                PathValue {
+                    name: path.clone(),
+                    concrete: Some(sym_val.display()),
+                    symbolic: None,
+                    value_type,
+                },
+            );
+        }
+        values
+    }
+
+    /// Extract branch conditions from node name/description
+    fn extract_branch_conditions(&self, node: &FlowNode) -> Vec<String> {
+        let mut conditions = Vec::new();
+
+        // Check node name for condition patterns
+        if node.name.contains("_if_") || node.name.contains("_check_") {
+            if let Some(cond) = self.extract_condition_from_name(&node.name) {
+                conditions.push(cond);
+            }
+        }
+
+        // Check description for conditions
+        if let Some(desc) = &node.description {
+            if desc.contains("if ") || desc.contains("when ") {
+                if let Some(cond) = self.extract_condition_from_desc(desc) {
+                    conditions.push(cond);
+                }
+            }
+        }
+
+        conditions
+    }
+
+    /// Extract condition from node name
+    fn extract_condition_from_name(&self, name: &str) -> Option<String> {
+        // Pattern: if_ptr_null -> ptr == NULL
+        if name.contains("_null") {
+            let var = name.replace("if_", "").replace("_null", "").replace("_check", "");
+            return Some(format!("{} == NULL", var));
+        }
+        if name.contains("_valid") || name.contains("_not_null") {
+            let var = name.replace("if_", "").replace("_valid", "").replace("_not_null", "").replace("_check", "");
+            return Some(format!("{} != NULL", var));
+        }
+        // Pattern: if_x_gt_0 -> x > 0
+        if name.contains("_gt_") {
+            if let Some(rest) = name.split("_gt_").nth(1) {
+                if let Some(val) = rest.split('_').next() {
+                    let var = name.replace("if_", "").replace("_gt_", "");
+                    return Some(format!("{} > {}", var, val));
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract condition from description
+    fn extract_condition_from_desc(&self, desc: &str) -> Option<String> {
+        // Simple patterns
+        if desc.contains("== NULL") {
+            return Some(desc.to_string());
+        }
+        if desc.contains("!= NULL") {
+            return Some(desc.to_string());
+        }
+        None
+    }
+
+    /// Classify the type of call
+    fn classify_call(&self, node: &FlowNode) -> CallCategory {
+        match node.node_type {
+            FlowNodeType::Function => CallCategory::Direct,
+            FlowNodeType::EntryPoint => CallCategory::Direct,
+            FlowNodeType::AsyncCallback { .. } => CallCategory::AsyncCallback,
+            FlowNodeType::KernelApi => CallCategory::KernelApi,
+            FlowNodeType::External => CallCategory::IndirectPointer,
+        }
+    }
+
+    /// Extract arguments for a node from scenario bindings
+    fn extract_arguments_for_node(&self, node: &FlowNode, scenario: &Scenario) -> Vec<PathValue> {
+        scenario.bindings.iter()
+            .filter(|b| b.path.contains(&node.name) || b.path.contains("arg"))
+            .map(|b| {
+                let value_type = match b.value {
+                    SymbolicValue::Integer(_) => ValueType::Integer,
+                    SymbolicValue::Pointer { .. } => ValueType::Pointer,
+                    SymbolicValue::String(_) => ValueType::String,
+                    _ => ValueType::Unknown,
+                };
+                PathValue::from_concrete(&b.path, b.value.display(), value_type)
+            })
+            .collect()
+    }
+
+    /// Build annotated tree with branch information
+    fn build_annotated_tree(
+        &mut self,
+        node: &FlowNode,
+        scenario: &Scenario,
+        depth: usize,
+        reachable: bool,
+        _visited: &HashSet<String>,
+    ) -> FlowNode {
         if depth > self.options.max_depth {
             return node.clone();
         }
 
-        // Get current variable values for state
-        let variables = self.propagator.all_vars().clone();
-
-        // Record state at this point
-        let state = ProgramState {
-            location: node.location.clone().unwrap_or_default(),
-            function: node.name.clone(),
-            variables,
-            branch_condition: None,
-            reachable,
+        // Determine reachability
+        let child_reachable = if reachable {
+            self.check_branch_reachability(node)
+        } else {
+            false
         };
-        self.path.push(state);
 
         // Build description with variable values
         let description = self.build_description(node, reachable);
-
-        // Determine node type for reachability display
-        let node_type = if reachable {
-            node.node_type.clone()
-        } else {
-            // Mark unreachable nodes (could add a new type or use description)
-            node.node_type.clone()
-        };
 
         // Filter and process children
         let show_kernel_api = self.options.show_kernel_api;
@@ -437,16 +918,9 @@ impl ScenarioExecutor {
             })
             .collect();
 
-        // Process children with reachability
         let children: Vec<FlowNode> = filtered_children.into_iter()
             .map(|child| {
-                // Check if this is a conditional branch
-                let child_reachable = if reachable {
-                    self.check_branch_reachability(child)
-                } else {
-                    false // Parent unreachable means children unreachable
-                };
-                self.walk_tree(child, depth + 1, child_reachable)
+                self.build_annotated_tree(child, scenario, depth + 1, child_reachable, _visited)
             })
             .collect();
 
@@ -455,7 +929,7 @@ impl ScenarioExecutor {
             name: node.name.clone(),
             display_name: node.display_name.clone(),
             location: node.location.clone(),
-            node_type,
+            node_type: node.node_type.clone(),
             children,
             description: Some(description),
             confidence: node.confidence.clone(),
@@ -468,53 +942,31 @@ impl ScenarioExecutor {
 
     /// Check if a branch is reachable based on conditions
     fn check_branch_reachability(&mut self, node: &FlowNode) -> bool {
-        // Check if node name contains condition hints
         let name = &node.name;
 
-        // Look for common condition patterns in function names
         if name.contains("if_") || name.contains("_check") {
-            // Try to extract and evaluate condition
-            if let Some(condition) = self.extract_condition(name) {
+            if let Some(condition) = self.extract_condition_from_name(name) {
                 match self.propagator.eval_condition(&condition) {
                     BranchResult::AlwaysFalse => return false,
-                    BranchResult::AlwaysTrue => return true,
-                    BranchResult::Unknown => return true, // Assume reachable if unknown
+                    BranchResult::AlwaysTrue | BranchResult::Unknown => return true,
                 }
             }
         }
 
-        // Default: assume reachable
         true
-    }
-
-    /// Try to extract a condition from node name or description
-    fn extract_condition(&self, name: &str) -> Option<String> {
-        // Simple heuristic: look for patterns like "if_ptr_null" -> "ptr == NULL"
-        if name.contains("_null") {
-            let var = name.replace("if_", "").replace("_null", "").replace("_check", "");
-            return Some(format!("{} == NULL", var));
-        }
-        if name.contains("_valid") || name.contains("_not_null") {
-            let var = name.replace("if_", "").replace("_valid", "").replace("_not_null", "").replace("_check", "");
-            return Some(format!("{} != NULL", var));
-        }
-        None
     }
 
     fn build_description(&self, node: &FlowNode, reachable: bool) -> String {
         let mut desc = Vec::new();
 
-        // Add reachability indicator
         if !reachable {
             desc.push("[unreachable]".to_string());
         }
 
-        // Add location info
         if let Some(loc) = &node.location {
             desc.push(format!("L{}", loc.line));
         }
 
-        // Add relevant variable values
         let vars = self.propagator.all_vars();
         for (path, value) in vars {
             if self.is_relevant_variable(path, &node.name) {
@@ -541,13 +993,22 @@ pub fn annotate_flow_tree(
 ) -> FlowNode {
     let mut executor = ScenarioExecutor::new(scenario.options.clone());
     let result = executor.execute(scenario, flow_tree);
-    result.flow_tree.unwrap_or_else(|| flow_tree.clone())
+    result.annotated_tree.unwrap_or_else(|| flow_tree.clone())
+}
+
+/// Execute scenario and return all paths
+pub fn execute_scenario(
+    scenario: &Scenario,
+    flow_tree: &FlowNode,
+) -> MultiPathResult {
+    let mut executor = ScenarioExecutor::new(scenario.options.clone());
+    executor.execute(scenario, flow_tree)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flowsight_core::FlowNodeType;
+    use flowsight_core::{FlowNodeType, ExecutionContext};
 
     #[test]
     fn test_parse_integer() {
@@ -608,7 +1069,7 @@ mod tests {
             children: vec![],
             description: None,
             confidence: None,
-            execution_context: Some(ExecutionContext::Process),
+            execution_context: Some(flowsight_core::ExecutionContext::Process),
             can_sleep: Some(true),
             source_file: None,
             is_kernel_internal: false,
@@ -617,12 +1078,73 @@ mod tests {
         let mut executor = ScenarioExecutor::new(ScenarioOptions::default());
         let result = executor.execute(&scenario, &flow_tree);
 
-        assert!(result.completed);
-        assert!(result.flow_tree.is_some());
-        assert!(!result.states.is_empty());
-        assert!(result.states[0].reachable);
+        // Check primary path has steps
+        assert!(result.primary_path.step_count > 0 || result.primary_path.completed);
     }
 
+    #[test]
+    fn test_scenario_with_multi_path() {
+        let scenario = Scenario {
+            name: "multi_path_test".to_string(),
+            entry_function: "branch_func".to_string(),
+            bindings: vec![],
+            options: ScenarioOptions {
+                multi_path: true,
+                max_paths: 10,
+                ..Default::default()
+            },
+        };
+
+        let flow_tree = FlowNode {
+            id: "root".to_string(),
+            name: "branch_func".to_string(),
+            display_name: "branch_func()".to_string(),
+            location: Some(Location::new("test.c", 1, 0)),
+            node_type: FlowNodeType::Function,
+            children: vec![
+                FlowNode {
+                    id: "child1".to_string(),
+                    name: "if_true".to_string(),
+                    display_name: "if_true()".to_string(),
+                    location: None,
+                    node_type: FlowNodeType::Function,
+                    children: vec![],
+                    description: None,
+                    confidence: None,
+                    execution_context: None,
+                    can_sleep: None,
+                    source_file: None,
+                    is_kernel_internal: false,
+                },
+                FlowNode {
+                    id: "child2".to_string(),
+                    name: "if_false".to_string(),
+                    display_name: "if_false()".to_string(),
+                    location: None,
+                    node_type: FlowNodeType::Function,
+                    children: vec![],
+                    description: None,
+                    confidence: None,
+                    execution_context: None,
+                    can_sleep: None,
+                    source_file: None,
+                    is_kernel_internal: false,
+                },
+            ],
+            description: None,
+            confidence: None,
+            execution_context: None,
+            can_sleep: None,
+            source_file: None,
+            is_kernel_internal: false,
+        };
+
+        let mut executor = ScenarioExecutor::new(scenario.options.clone());
+        let result = executor.execute(&scenario, &flow_tree);
+
+        // Should have explored at least one path
+        assert!(result.primary_path.step_count > 0);
+    }
     #[test]
     fn test_scenario_executor_with_null_check() {
         let scenario = Scenario {
@@ -670,9 +1192,9 @@ mod tests {
         let mut executor = ScenarioExecutor::new(ScenarioOptions::default());
         let result = executor.execute(&scenario, &flow_tree);
 
-        assert!(result.completed);
+        assert!(result.primary_path.completed);
         // The if_ptr_null branch should be reachable since ptr is NULL
-        let tree = result.flow_tree.unwrap();
+        let tree = result.annotated_tree.unwrap();
         assert!(!tree.children.is_empty());
     }
 

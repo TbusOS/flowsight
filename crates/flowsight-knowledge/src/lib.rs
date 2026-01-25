@@ -224,21 +224,15 @@ impl KnowledgeBase {
                 if let Ok(netdev_kb) = Self::load_yaml(&path) {
                     // Merge frameworks
                     for (name, framework) in netdev_kb.frameworks {
-                        if !self.frameworks.contains_key(&name) {
-                            self.frameworks.insert(name, framework);
-                        }
+                        self.frameworks.entry(name).or_insert(framework);
                     }
                     // Merge async patterns
                     for (name, pattern) in netdev_kb.async_patterns {
-                        if !self.async_patterns.contains_key(&name) {
-                            self.async_patterns.insert(name, pattern);
-                        }
+                        self.async_patterns.entry(name).or_insert(pattern);
                     }
                     // Merge kernel APIs
                     for (name, api) in netdev_kb.kernel_apis {
-                        if !self.kernel_apis.contains_key(&name) {
-                            self.kernel_apis.insert(name, api);
-                        }
+                        self.kernel_apis.entry(name).or_insert(api);
                     }
                     // Merge callback patterns (if we had them in YAML)
                     return;

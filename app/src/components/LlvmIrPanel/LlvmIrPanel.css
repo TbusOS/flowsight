@@ -1,40 +1,18 @@
 /**
  * LlvmIrPanel CSS - LLVM IR 可视化面板样式
+ *
+ * 极简设计：使用全局变量，去除自定义颜色
  */
 
 /* 主面板容器 */
 .llvm-ir-panel {
   display: flex;
   flex-direction: column;
-  background: #0d1117;
-  border-radius: 8px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
   overflow: hidden;
-  border: 1px solid #30363d;
+  border: 1px solid var(--border-light);
   height: 100%;
-}
-
-/* 浅色主题 */
-.llvm-ir-panel.light {
-  background: #ffffff;
-  border-color: #d0d7de;
-}
-
-.llvm-ir-panel.light .panel-header {
-  background: #f6f8fa;
-  border-color: #d0d7de;
-}
-
-.llvm-ir-panel.light .panel-header h3 {
-  color: #24292f;
-}
-
-.llvm-ir-panel.light .function-badge {
-  background: #f6f8fa;
-  color: #57606a;
-}
-
-.llvm-ir-panel.light .ir-count {
-  color: #57606a;
 }
 
 /* 面板头部 */
@@ -42,53 +20,77 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  background: #161b22;
-  border-bottom: 1px solid #30363d;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .llvm-ir-panel .panel-header h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: #c9d1d9;
+  color: var(--text-primary);
 }
 
 .llvm-ir-panel .function-badge {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
-  color: #8b949e;
-  background: #21262d;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.llvm-ir-panel .callback-indicator {
-  font-size: 10px;
+.llvm-ir-panel .function-badge:hover {
+  background: var(--bg-hover);
 }
 
 .llvm-ir-panel .ir-count {
   margin-left: auto;
   font-size: 12px;
-  color: #6e7681;
+  color: var(--text-muted);
+}
+
+/* 对比模式切换按钮 */
+.llvm-ir-panel .comparison-toggle {
+  margin-left: 8px;
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.llvm-ir-panel .comparison-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.llvm-ir-panel .comparison-toggle.active {
+  background: var(--bg-tertiary);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 /* 函数选择器 */
 .llvm-ir-panel .function-selector {
-  padding: 12px 16px;
-  border-bottom: 1px solid #30363d;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .llvm-ir-panel .function-select {
   width: 100%;
   padding: 8px 12px;
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  color: #c9d1d9;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
@@ -96,68 +98,72 @@
 
 .llvm-ir-panel .function-select:focus {
   outline: none;
-  border-color: #58a6ff;
-}
-
-.llvm-ir-panel .function-select option {
-  background: #0d1117;
-  color: #c9d1d9;
+  border-color: var(--text-muted);
 }
 
 /* 搜索框 */
 .llvm-ir-panel .search-box {
-  padding: 8px 16px;
-  border-bottom: 1px solid #30363d;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .llvm-ir-panel .search-input {
   width: 100%;
   padding: 8px 12px;
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  color: #c9d1d9;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
 }
 
 .llvm-ir-panel .search-input:focus {
   outline: none;
-  border-color: #58a6ff;
+  border-color: var(--text-muted);
 }
 
 .llvm-ir-panel .search-input::placeholder {
-  color: #6e7681;
+  color: var(--text-muted);
 }
 
 /* 函数信息区域 */
 .llvm-ir-panel .function-info {
-  padding: 12px 16px;
-  background: #161b22;
-  border-bottom: 1px solid #30363d;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  animation: fadeIn 200ms ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .llvm-ir-panel .function-signature {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
-  color: #c9d1d9;
+  color: var(--text-primary);
   word-break: break-all;
+  line-height: 1.5;
 }
 
 .llvm-ir-panel .function-signature .keyword {
-  color: #ff79c6;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .llvm-ir-panel .function-signature .type {
-  color: #8be9fd;
+  color: var(--text-muted);
 }
 
 .llvm-ir-panel .function-signature .function-name {
-  color: #50fa7b;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .llvm-ir-panel .function-signature .params {
-  color: #6272a4;
+  color: var(--text-secondary);
 }
 
 .llvm-ir-panel .callback-badge {
@@ -166,18 +172,14 @@
   gap: 6px;
   margin-top: 8px;
   padding: 4px 10px;
-  background: #f59e0b22;
-  border-radius: 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
   font-size: 12px;
-  color: #f59e0b;
-}
-
-.llvm-ir-panel .callback-icon {
-  font-size: 10px;
+  color: var(--text-secondary);
 }
 
 .llvm-ir-panel .callback-context {
-  color: #8b949e;
+  color: var(--text-muted);
   font-size: 11px;
 }
 
@@ -190,24 +192,20 @@
 
 /* 基本块样式 */
 .llvm-ir-panel .basic-block {
-  background: #161b22;
-  border-radius: 6px;
-  margin-bottom: 8px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
   overflow: hidden;
-  border: 1px solid #30363d;
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--transition-fast);
+}
+
+.llvm-ir-panel .basic-block:hover {
+  border-color: var(--border-light);
 }
 
 .llvm-ir-panel .basic-block.expanded {
-  border-color: #388bfd;
-}
-
-.llvm-ir-panel .basic-block.light {
-  background: #f6f8fa;
-  border-color: #d0d7de;
-}
-
-.llvm-ir-panel .basic-block.light.expanded {
-  border-color: #0969da;
+  border-color: var(--border-light);
 }
 
 /* 基本块头部 */
@@ -215,54 +213,84 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   cursor: pointer;
   user-select: none;
-  background: #21262d;
+  background: var(--bg-tertiary);
   border-bottom: 1px solid transparent;
+  transition: background var(--transition-fast);
 }
 
 .llvm-ir-panel .basic-block.expanded .block-header {
-  border-bottom-color: #30363d;
+  border-bottom-color: var(--border-subtle);
+  padding-bottom: 10px;
 }
 
 .llvm-ir-panel .block-header:hover {
-  background: #1c2128;
+  background: var(--bg-hover);
 }
 
 .llvm-ir-panel .block-toggle {
-  color: #6e7681;
+  color: var(--text-muted);
   font-size: 10px;
-  width: 16px;
+  width: 14px;
   text-align: center;
+  transition: transform var(--transition-normal);
+}
+
+.llvm-ir-panel .basic-block.expanded .block-toggle {
+  transform: rotate(0deg);
+}
+
+.llvm-ir-panel .basic-block:not(.expanded) .block-toggle {
+  transform: rotate(-90deg);
 }
 
 .llvm-ir-panel .block-name {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 12px;
   font-weight: 600;
-  color: #d4d4d4;
+  color: var(--text-primary);
 }
 
 .llvm-ir-panel .block-info {
   font-size: 11px;
-  color: #6e7681;
+  color: var(--text-muted);
 }
 
 .llvm-ir-panel .block-predecessors,
 .llvm-ir-panel .block-successors {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
-  color: #6e7681;
-  background: #21262d;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
   padding: 2px 6px;
   border-radius: 3px;
   margin-left: auto;
 }
 
-/* 基本块内容 */
+.llvm-ir-panel .block-predecessors:hover,
+.llvm-ir-panel .block-successors:hover {
+  background: var(--bg-hover);
+}
+
+/* 基本块内容动画 */
 .llvm-ir-panel .block-content {
   padding: 4px 0;
+  animation: blockExpand 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes blockExpand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1000px;
+  }
 }
 
 /* 代码行 */
@@ -270,35 +298,23 @@
   display: flex;
   align-items: flex-start;
   padding: 2px 12px;
-  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 12px;
   line-height: 1.6;
   cursor: default;
   transition: background-color 0.15s;
 }
 
 .llvm-ir-panel .llvm-code-line:hover {
-  background: #1c2128 !important;
-}
-
-.llvm-ir-panel .llvm-code-line.key-instruction {
-  border-left: 3px solid transparent;
-}
-
-.llvm-ir-panel .llvm-code-line.light.key-instruction {
-  border-left-color: #0969da;
-}
-
-.llvm-ir-panel .llvm-code-line.dark.key-instruction {
-  border-left-color: #388bfd;
+  background: var(--bg-tertiary) !important;
 }
 
 .llvm-ir-panel .llvm-code-line .line-number {
   flex-shrink: 0;
-  width: 40px;
+  width: 36px;
   text-align: right;
-  padding-right: 12px;
-  color: #484f58;
+  padding-right: 10px;
+  color: var(--text-muted);
   user-select: none;
   font-size: 11px;
 }
@@ -311,78 +327,65 @@
 
 /* 语法高亮 token */
 .llvm-ir-panel .llvm-code-line .token {
-  color: #c9d1d9;
+  color: var(--text-primary);
 }
 
 .llvm-ir-panel .llvm-code-line .token.keyword {
-  color: #ff79c6;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .llvm-ir-panel .llvm-code-line .token.opcode {
-  color: #ff79c6;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .llvm-ir-panel .llvm-code-line .token.register {
-  color: #e6edf3;
+  color: var(--text-primary);
 }
 
 .llvm-ir-panel .llvm-code-line .token.type {
-  color: #8be9fd;
+  color: var(--text-muted);
 }
 
 .llvm-ir-panel .llvm-code-line .token.number {
-  color: #bd93f9;
+  color: var(--text-muted);
 }
 
 .llvm-ir-panel .llvm-code-line .token.string {
-  color: #f1fa8c;
+  color: var(--text-secondary);
 }
 
 .llvm-ir-panel .llvm-code-line .token.comment {
-  color: #6e7681;
+  color: var(--text-muted);
   font-style: italic;
 }
 
 .llvm-ir-panel .llvm-code-line .token.label {
-  color: #50fa7b;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
-/* 浅色主题 token */
-.llvm-ir-panel .llvm-code-line.light .token {
-  color: #24292e;
+/* 高亮样式 */
+.llvm-ir-panel .llvm-code-line.highlighted {
+  background: var(--bg-tertiary) !important;
+  border-left: 2px solid var(--text-muted);
 }
 
-.llvm-ir-panel .llvm-code-line.light .token.keyword,
-.llvm-ir-panel .llvm-code-line.light .token.opcode {
-  color: #d73a49;
-}
-
-.llvm-ir-panel .llvm-code-line.light .token.register {
-  color: #24292e;
-}
-
-.llvm-ir-panel .llvm-code-line.light .token.type {
-  color: #005cc5;
-}
-
-.llvm-ir-panel .llvm-code-line.light .token.number {
-  color: #005cc5;
-}
-
-.llvm-ir-panel .llvm-code-line.light .token.string {
-  color: #032f62;
-}
-
-.llvm-ir-panel .llvm-code-line.light .token.comment {
-  color: #6a737d;
-}
-
-.llvm-ir-panel .llvm-code-line.light .token.label {
-  color: #22863a;
+.llvm-ir-panel .llvm-code-line.highlighted .line-number {
+  color: var(--text-secondary);
   font-weight: 600;
+}
+
+.llvm-ir-panel .highlight-indicator {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* 基本块高亮 */
+.llvm-ir-panel .basic-block.highlighted {
+  border-color: var(--text-muted);
 }
 
 /* 关键指令标记 */
@@ -402,15 +405,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  background: #161b22;
-  border-top: 1px solid #30363d;
+  padding: 8px 14px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-subtle);
   flex-wrap: wrap;
 }
 
 .llvm-ir-panel .legend-title {
   font-size: 11px;
-  color: #6e7681;
+  color: var(--text-muted);
 }
 
 .llvm-ir-panel .legend-item {
@@ -427,18 +430,18 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
-  gap: 16px;
-  color: #8b949e;
+  padding: 40px 20px;
+  gap: 12px;
+  color: var(--text-secondary);
 }
 
 .llvm-ir-panel .loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #30363d;
-  border-top-color: #58a6ff;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-light);
+  border-top-color: var(--text-muted);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -448,15 +451,16 @@
 /* 错误状态 */
 .llvm-ir-panel .panel-error {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: 40px 20px;
   gap: 12px;
-  color: #f85149;
+  color: var(--error);
 }
 
 .llvm-ir-panel .error-icon {
-  font-size: 32px;
+  font-size: 28px;
 }
 
 /* 空状态 */
@@ -466,26 +470,26 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: 40px 20px;
   gap: 12px;
-  color: #8b949e;
+  color: var(--text-secondary);
 }
 
 .llvm-ir-panel .empty-icon,
 .llvm-ir-panel .search-icon {
-  font-size: 32px;
-  opacity: 0.5;
+  font-size: 28px;
+  opacity: 0.3;
 }
 
 .llvm-ir-panel .panel-empty p,
 .llvm-ir-panel .panel-search-empty p {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .llvm-ir-panel .empty-hint {
   font-size: 12px;
-  color: #6e7681;
+  color: var(--text-muted);
 }
 
 /* 面板底部 */
@@ -493,47 +497,44 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  background: #161b22;
-  border-top: 1px solid #30363d;
+  padding: 8px 14px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .llvm-ir-panel .module-name {
   font-size: 11px;
-  color: #8b949e;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
 }
 
 .llvm-ir-panel .footer-hint {
   font-size: 11px;
-  color: #6e7681;
+  color: var(--text-muted);
 }
 
-/* 滚动条样式 */
-.llvm-ir-panel .blocks-container::-webkit-scrollbar {
-  width: 8px;
+/* 多函数对比模式 */
+.llvm-ir-panel.comparison-mode {
+  display: flex;
+  flex-direction: row;
 }
 
-.llvm-ir-panel .blocks-container::-webkit-scrollbar-track {
-  background: #0d1117;
+.llvm-ir-panel.comparison-mode .comparison-panel {
+  flex: 1;
+  min-width: 0;
+  border-right: 1px solid var(--border-subtle);
 }
 
-.llvm-ir-panel .blocks-container::-webkit-scrollbar-thumb {
-  background: #30363d;
-  border-radius: 4px;
+.llvm-ir-panel.comparison-mode .comparison-panel:last-child {
+  border-right: none;
 }
 
-.llvm-ir-panel .blocks-container::-webkit-scrollbar-thumb:hover {
-  background: #484f58;
-}
-
-.llvm-ir-panel.light .blocks-container::-webkit-scrollbar-track {
-  background: #f6f8fa;
-}
-
-.llvm-ir-panel.light .blocks-container::-webkit-scrollbar-thumb {
-  background: #d0d7de;
-}
-
-.llvm-ir-panel.light .blocks-container::-webkit-scrollbar-thumb:hover {
-  background: #afb8c1;
+.llvm-ir-panel.comparison-mode .comparison-header {
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
 }

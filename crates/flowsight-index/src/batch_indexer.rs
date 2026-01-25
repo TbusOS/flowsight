@@ -156,10 +156,10 @@ impl BatchIndexer {
 
     /// Simple glob pattern matching
     fn matches_pattern(filename: &str, pattern: &str) -> bool {
-        if pattern.starts_with('*') {
-            filename.ends_with(&pattern[1..])
-        } else if pattern.ends_with('*') {
-            filename.starts_with(&pattern[..pattern.len() - 1])
+        if let Some(stripped) = pattern.strip_prefix('*') {
+            filename.ends_with(stripped)
+        } else if let Some(stripped) = pattern.strip_suffix('*') {
+            filename.starts_with(stripped)
         } else {
             filename == pattern
         }

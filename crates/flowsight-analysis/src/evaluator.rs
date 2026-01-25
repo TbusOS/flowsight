@@ -50,7 +50,10 @@ impl From<&SymbolicValue> for EvalResult {
                 // For ranges, use midpoint as representative value
                 EvalResult::Integer((min + max) / 2)
             }
+            SymbolicValue::Bitfield { value, .. } => EvalResult::Integer(*value as i64),
+            SymbolicValue::Enum { value, .. } => EvalResult::Integer(*value),
             SymbolicValue::Unknown { .. } => EvalResult::Unknown,
+            SymbolicValue::Array { .. } => EvalResult::Unknown,
         }
     }
 }

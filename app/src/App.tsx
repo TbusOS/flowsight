@@ -29,7 +29,8 @@ import { AboutDialog } from './components/AboutDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { QuickOpen } from './components/QuickOpen'
 import { addRecentFile, getRecentFiles } from './utils/recentFiles'
-import { 
+import Icons from './components/Icons/Icons'
+import {
   AnalysisResult, 
   FlowTreeNode, 
   ProjectInfo, 
@@ -1180,7 +1181,7 @@ function App() {
   const flowTrees: FlowTreeNode[] = result?.flow_trees || []
 
   return (
-    <div 
+    <div
       className={`app ${isDragging ? 'dragging' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -1190,110 +1191,11 @@ function App() {
       {isDragging && (
         <div className="drop-overlay">
           <div className="drop-hint">
-            <span className="drop-icon">📂</span>
+            <Icons.FolderProject size={48} className="drop-icon" />
             <span>释放以打开文件</span>
           </div>
         </div>
       )}
-      
-      <header className="header">
-        <div className="header-content">
-          <div className="header-title">
-            <h1>🔭 FlowSight</h1>
-          </div>
-          <div className="header-actions">
-            {/* 导航按钮 */}
-            <div className="nav-buttons">
-              <button 
-                onClick={goBack} 
-                disabled={!canGoBack}
-                className="button nav-btn"
-                title="后退 (Alt+←)"
-              >
-                ◀
-              </button>
-              <button 
-                onClick={goForward} 
-                disabled={!canGoForward}
-                className="button nav-btn"
-                title="前进 (Alt+→)"
-              >
-                ▶
-              </button>
-            </div>
-            <button onClick={handleOpenProject} className="button secondary">
-              📂 项目
-            </button>
-            <button onClick={handleOpenFile} className="button secondary">
-              📄 文件
-            </button>
-            <div className="search-container">
-              <input
-                type="text"
-                className="search-input"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="🔍 搜索函数或结构体..."
-              />
-              {searchResults.length > 0 && (
-                <div className="search-dropdown">
-                  {searchResults.map((r, i) => (
-                    <div 
-                      key={i} 
-                      className="search-item"
-                      onClick={() => handleSearchResultClick(r)}
-                    >
-                      <span className="search-icon">
-                        {r.kind === 'function' ? (r.is_callback ? '⚡' : '📦') : '🏗️'}
-                      </span>
-                      <span className="search-name">{r.name}</span>
-                      <span className="search-kind">{r.kind}</span>
-                      {r.file && (
-                        <span className="search-file">{r.file.split('/').pop()}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="view-toggle">
-              <button 
-                className={`toggle-btn ${viewMode === 'code' ? 'active' : ''}`}
-                onClick={() => setViewMode('code')}
-                title="代码视图"
-              >
-                📝
-              </button>
-              <button 
-                className={`toggle-btn ${viewMode === 'split' ? 'active' : ''}`}
-                onClick={() => setViewMode('split')}
-                title="分屏视图"
-              >
-                ⚡
-              </button>
-              <button 
-                className={`toggle-btn ${viewMode === 'flow' ? 'active' : ''}`}
-                onClick={() => setViewMode('flow')}
-                title="执行流视图"
-              >
-                📊
-              </button>
-            </div>
-            <button onClick={() => handleAnalyze()} disabled={loading || !filePath} className="button primary">
-              {loading ? '⏳' : '🔄'}
-            </button>
-            <button onClick={() => setShortcutsOpen(true)} className="button icon" title="快捷键帮助 (?)">
-              ⌨️
-            </button>
-            <button onClick={() => setSettingsOpen(true)} className="button icon" title="设置">
-              ⚙️
-            </button>
-            <button onClick={() => setAboutOpen(true)} className="button icon" title="关于 FlowSight">
-              ℹ️
-            </button>
-          </div>
-        </div>
-      </header>
 
       <main className="main">
         {/* 左侧栏折叠按钮 */}
@@ -1308,14 +1210,97 @@ function App() {
         {/* 左侧面板 - 文件浏览器 */}
         {leftPanelOpen && (
           <>
-            <div 
+            <div
               className="panel sidebar explorer-sidebar"
               style={{ width: leftPanelWidth }}
             >
+              {/* 顶部操作栏 */}
+              <div className="explorer-toolbar">
+                <button onClick={handleOpenProject} className="toolbar-btn" title="打开项目">
+                  <Icons.FolderProject size={12} /> 项目
+                </button>
+                <button onClick={handleOpenFile} className="toolbar-btn" title="打开文件">
+                  <Icons.File size={12} /> 文件
+                </button>
+                <button onClick={() => handleAnalyze()} disabled={loading || !filePath} className="toolbar-btn" title="重新分析">
+                  <Icons.Refresh size={12} className={loading ? 'animate-spin' : ''} />
+                </button>
+              </div>
+
+              {/* 搜索框 */}
+              <div className="toolbar-search">
+                <input
+                  type="text"
+                  className="search-input"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="🔍 搜索函数..."
+                />
+                {searchResults.length > 0 && (
+                  <div className="search-dropdown">
+                    {searchResults.map((r, i) => (
+                      <div
+                        key={i}
+                        className="search-item"
+                        onClick={() => handleSearchResultClick(r)}
+                      >
+                        <span className="search-name">{r.name}</span>
+                        <span className="search-kind">{r.kind}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 导航按钮 */}
+              <div className="mini-nav">
+                <button
+                  onClick={goBack}
+                  disabled={!canGoBack}
+                  className="nav-btn-mini"
+                  title="后退"
+                >
+                  <Icons.ChevronLeft size={10} />
+                </button>
+                <button
+                  onClick={goForward}
+                  disabled={!canGoForward}
+                  className="nav-btn-mini"
+                  title="前进"
+                >
+                  <Icons.ChevronRight size={10} />
+                </button>
+              </div>
+
+              {/* 视图切换 */}
+              <div className="view-toggle-mini">
+                <button
+                  className={`toggle-btn-mini ${viewMode === 'code' ? 'active' : ''}`}
+                  onClick={() => setViewMode('code')}
+                  title="代码视图"
+                >
+                  <Icons.Code size={12} />
+                </button>
+                <button
+                  className={`toggle-btn-mini ${viewMode === 'split' ? 'active' : ''}`}
+                  onClick={() => setViewMode('split')}
+                  title="分屏视图"
+                >
+                  <Icons.Split size={12} />
+                </button>
+                <button
+                  className={`toggle-btn-mini ${viewMode === 'flow' ? 'active' : ''}`}
+                  onClick={() => setViewMode('flow')}
+                  title="执行流视图"
+                >
+                  <Icons.Chart size={12} />
+                </button>
+              </div>
+
               {project ? (
                 <>
                   <div className="project-header">
-                    <h2>📁 {project.path.split('/').pop()}</h2>
+                    <h2><Icons.FolderProject size={14} /> {project.path.split('/').pop()}</h2>
                     <div className="project-stats">
                       <span>{indexStats?.files || 0} 文件</span>
                       <span>•</span>
@@ -1348,7 +1333,8 @@ function App() {
                 </>
               ) : (
                 <div className="welcome-project">
-                  <h2>👋 开始使用</h2>
+                  <Icons.FolderProject size={32} className="mb-3" style={{ opacity: 0.5 }} />
+                  <h2>开始使用</h2>
                   <p>点击"项目"打开代码目录</p>
                   <p>或点击"文件"打开单个文件</p>
                 </div>
@@ -1356,7 +1342,7 @@ function App() {
               
               {error && (
                 <div className="error">
-                  <strong>❌ 错误：</strong> {error}
+                  <Icons.Alert size={14} /> 错误：{error}
                 </div>
               )}
             </div>
@@ -1373,9 +1359,9 @@ function App() {
         <div className="panel main-content">
           <div className="panel-header">
             <h2>
-              {viewMode === 'code' ? '📝 代码' : 
-               viewMode === 'flow' ? '📊 执行流' : 
-               '⚡ 代码 + 执行流'}
+              {viewMode === 'code' ? <><Icons.Code size={14} /> 代码</> :
+               viewMode === 'flow' ? <><Icons.Chart size={14} /> 执行流</> :
+               <><Icons.Split size={14} /> 代码 + 执行流</>}
             </h2>
             {selectedFunction && (
               <span className="selected-info">
@@ -1474,19 +1460,19 @@ function App() {
               <div className="flow-panel">
                 {/* 执行流视图模式切换 */}
                 <div className="flow-mode-toggle">
-                  <button 
+                  <button
                     className={flowDisplayMode === 'graph' ? 'active' : ''}
                     onClick={() => setFlowDisplayMode('graph')}
                     title="图形视图"
                   >
-                    📊 图形
+                    <Icons.Chart size={12} /> 图形
                   </button>
-                  <button 
+                  <button
                     className={flowDisplayMode === 'text' ? 'active' : ''}
                     onClick={() => setFlowDisplayMode('text')}
                     title="文本视图 (ftrace风格)"
                   >
-                    📝 文本
+                    <Icons.List size={12} /> 文本
                   </button>
                 </div>
                 
@@ -1525,7 +1511,7 @@ function App() {
             {/* 分析概览 */}
             {result && (
               <div className="analysis-overview">
-                <h2>📋 分析概览</h2>
+                <h2><Icons.Chart size={14} /> 分析概览</h2>
                 <div className="overview-stats">
                   <div className="stat-item">
                     <span className="stat-value">{result.functions_count}</span>
@@ -1540,14 +1526,14 @@ function App() {
                     <span className="stat-label">异步</span>
                   </div>
                 </div>
-                
+
                 {result.entry_points.length > 0 && (
                   <div className="entry-points">
-                    <h3>🚀 入口点</h3>
+                    <h3><Icons.Play size={12} /> 入口点</h3>
                     <ul>
                       {result.entry_points.map((entry, i) => (
-                        <li 
-                          key={i} 
+                        <li
+                          key={i}
                           className={selectedFunction === entry ? 'selected' : ''}
                           onClick={() => handleNodeClick('', entry)}
                         >
@@ -1564,9 +1550,9 @@ function App() {
             {/* 代码大纲 */}
             {outlineItems.length > 0 && (
               <div className="outline-section-wrapper">
-                <h2>📋 大纲</h2>
+                <h2><Icons.ListOrdered size={14} /> 大纲</h2>
                 <div className="outline-container">
-                  <Outline 
+                  <Outline
                     items={outlineItems}
                     onItemClick={handleOutlineClick}
                     selectedItem={selectedFunction || undefined}
@@ -1575,8 +1561,8 @@ function App() {
                 <hr className="divider" />
               </div>
             )}
-            
-            <h2>📝 节点详情</h2>
+
+            <h2><Icons.Node size={14} /> 节点详情</h2>
 
             {/* 节点详情面板 */}
             {nodeDetailData && (
@@ -1611,10 +1597,10 @@ function App() {
             <div className="legend">
               <h3>图例</h3>
               <ul>
-                <li><span className="legend-icon entry">🚀</span> 入口点</li>
-                <li><span className="legend-icon async">⚡</span> 异步回调</li>
-                <li><span className="legend-icon kernel">⚙️</span> 内核 API</li>
-                <li><span className="legend-icon func">📦</span> 普通函数</li>
+                <li><span className="legend-icon entry"><Icons.Play size={12} /></span> 入口点</li>
+                <li><span className="legend-icon async"><Icons.Lightning size={12} /></span> 异步回调</li>
+                <li><span className="legend-icon kernel"><Icons.Api size={12} /></span> 内核 API</li>
+                <li><span className="legend-icon func"><Icons.Function size={12} /></span> 普通函数</li>
               </ul>
             </div>
           </div>

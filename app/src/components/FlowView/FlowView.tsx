@@ -31,6 +31,7 @@ import dagre from 'dagre'
 import { FlowNodeComponent } from './FlowNode'
 import { toPng, toSvg } from 'html-to-image'
 import type { FlowTreeNode, FlowNodeType } from '../../types'
+import { Icons } from '../Icons/Icons'
 import './FlowView.css'
 
 // Node types
@@ -67,21 +68,26 @@ interface FlowViewProps {
   groupBy?: 'none' | 'file' | 'async'  // Node grouping
 }
 
+// Icon component wrapper
+function IconComponent({ icon }: { icon: React.ReactNode }) {
+  return <span className="node-icon">{icon}</span>
+}
+
 // Helper: Get node icon
-function getNodeIcon(nodeType: FlowNodeType): string {
+function getNodeIcon(nodeType: FlowNodeType): React.ReactNode {
   if (typeof nodeType === 'string') {
     switch (nodeType) {
-      case 'Function': return '📦'
-      case 'EntryPoint': return '🚀'
-      case 'KernelApi': return '⚙️'
-      case 'External': return '🔗'
-      default: return '📦'
+      case 'Function': return <Icons.Function size={13} />
+      case 'EntryPoint': return <Icons.EntryPoint size={14} />
+      case 'KernelApi': return <Icons.Api size={13} />
+      case 'External': return <Icons.ExternalLink size={12} />
+      default: return <Icons.Function size={13} />
     }
   }
   if (typeof nodeType === 'object' && 'AsyncCallback' in nodeType) {
-    return '⚡'
+    return <Icons.Zap size={13} />
   }
-  return '📦'
+  return <Icons.Function size={13} />
 }
 
 // Helper: Get async mechanism label
@@ -595,6 +601,7 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
 
     return {
       name: node.name,
+      node_type: node.node_type,
       icon: getNodeIcon(node.node_type),
       file: node.location?.file,
       line: node.location?.line,
@@ -623,15 +630,18 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
     <div className="flow-view-inner enhanced" onMouseMove={handleMouseMove}>
       {/* Toolbar */}
       <div className="flow-toolbar">
-        <button onClick={expandAll} title="Expand all">📂</button>
-        <button onClick={collapseAll} title="Collapse all">📁</button>
+        <button onClick={expandAll} title="Expand all">
+          <Icons.FolderOpen size={14} />
+        </button>
+        <button onClick={collapseAll} title="Collapse all">
+          <Icons.Folder size={14} />
+        </button>
 
         {/* Async legend */}
         <div className="async-legend">
           {Object.entries(ASYNC_COLORS).map(([name, color]) => (
             <span key={name} className="legend-item" title={name}>
               <span className="legend-dot" style={{ backgroundColor: color }}></span>
-              {name}
             </span>
           ))}
         </div>
@@ -652,33 +662,40 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
 
         <div className="toolbar-divider" />
 
-        <button onClick={handleFitView} title="Fit view">🎯</button>
+        <button onClick={handleFitView} title="Fit view">
+          <Icons.Maximize size={14} />
+        </button>
         <button
           onClick={toggleKernelApi}
           className={hideKernelApi ? 'active' : ''}
           title={hideKernelApi ? 'Show kernel APIs' : 'Hide kernel APIs'}
         >
-          ⚙️
+          <Icons.Api size={14} />
         </button>
 
         <div className="toolbar-divider" />
 
-        <button onClick={exportToPng} title="Export PNG">📷</button>
-        <button onClick={exportToSvg} title="Export SVG">🖼️</button>
+        <button onClick={exportToPng} title="Export PNG">
+          <Icons.Image size={14} />
+        </button>
+        <button onClick={exportToSvg} title="Export SVG">
+          <Icons.Download size={14} />
+        </button>
 
         {/* Search */}
         <div className="flow-search">
+          <Icons.Search size={12} />
           <input
             type="text"
-            placeholder="🔍 Search..."
+            placeholder="Search..."
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
           />
           {searchResults.length > 0 && (
             <>
               <span className="search-count">{searchIndex + 1}/{searchResults.length}</span>
-              <button onClick={prevSearchResult}>▲</button>
-              <button onClick={nextSearchResult}>▼</button>
+              <button onClick={prevSearchResult}><Icons.ArrowUp size={10} /></button>
+              <button onClick={nextSearchResult}><Icons.ArrowDown size={10} /></button>
             </>
           )}
         </div>
@@ -694,7 +711,7 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
           }}
         >
           <div className="preview-header">
-            <span className="preview-icon">{hoverData.icon}</span>
+            <span className="preview-icon">{getNodeIcon(nodeTypeToIconType(hoverData.node_type))}</span>
             <span className="preview-name">{hoverData.name}</span>
             {hoverData.asyncLabel && (
               <span className="preview-async" style={{ color: ASYNC_COLORS[hoverData.asyncLabel] }}>
@@ -704,7 +721,8 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
           </div>
           {hoverData.file && (
             <div className="preview-location">
-              📍 {hoverData.file?.split('/').pop()}:{hoverData.line}
+              <Icons.MapPin size={10} />
+              {hoverData.file?.split('/').pop()}:{hoverData.line}
             </div>
           )}
           {hoverData.description && (
@@ -740,14 +758,19 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
 
         {/* Zoom controls */}
         <div className="zoom-controls">
-          <button onClick={() => zoomOut()}>−</button>
+          <button onClick={() => zoomOut()}><Icons.ZoomOut size={14} /></button>
           <span className="zoom-level">{Math.round(zoom * 100)}%</span>
-          <button onClick={() => zoomIn()}>+</button>
-          <button onClick={handleFitView}>⊙</button>
+          <button onClick={() => zoomIn()}><Icons.ZoomIn size={14} /></button>
+          <button onClick={handleFitView}><Icons.Maximize size={14} /></button>
         </div>
       </ReactFlow>
     </div>
   )
+}
+
+// Helper function to convert node_type for icon
+function nodeTypeToIconType(nodeType: FlowNodeType): FlowNodeType {
+  return nodeType
 }
 
 // Main component
@@ -755,7 +778,7 @@ export function FlowView(props: FlowViewProps) {
   if (props.flowTrees.length === 0) {
     return (
       <div className="flow-view-empty">
-        <div className="empty-icon">📊</div>
+        <Icons.BarChart size={40} />
         <h3>No execution flow data</h3>
         <p>Please analyze a source file first</p>
       </div>

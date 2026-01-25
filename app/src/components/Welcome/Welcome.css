@@ -22,9 +22,14 @@
 }
 
 .welcome-logo {
-  font-size: 4rem;
   margin-bottom: 1rem;
-  text-shadow: 0 0 30px rgba(88, 166, 255, 0.3);
+  color: var(--accent);
+  filter: drop-shadow(0 0 30px rgba(59, 130, 246, 0.3));
+}
+
+.welcome-logo svg {
+  width: 64px;
+  height: 64px;
 }
 
 .welcome-header h1 {
@@ -80,7 +85,13 @@
 }
 
 .action-icon {
-  font-size: 1.5rem;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.action-icon svg {
+  width: 20px;
+  height: 20px;
 }
 
 .action-text {
@@ -116,6 +127,14 @@
   font-weight: 500;
   color: var(--text-secondary);
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.recent-header h3 svg {
+  width: 16px;
+  height: 16px;
 }
 
 .clear-btn {
@@ -176,8 +195,13 @@
 }
 
 .recent-icon {
-  font-size: 1rem;
   flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.recent-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .recent-info {
@@ -213,7 +237,8 @@
   text-align: left;
 }
 
-.welcome-shortcuts h3 {
+.welcome-shortcuts h3,
+.welcome-features h3 {
   font-size: 1rem;
   font-weight: 500;
   margin-bottom: 1rem;
@@ -273,7 +298,13 @@
 }
 
 .feature-icon {
-  font-size: 1.1rem;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.feature-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Footer */

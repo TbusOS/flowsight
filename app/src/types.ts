@@ -27,7 +27,7 @@ export type AsyncMechanism =
   | { Irq: { irq_name: string; flags: string | null } }
   | { Completion: { completion_name: string } }
   | { Rcu: { rcu_type: string } }
-  | { Kthread: { kthread_name: string } }
+  | { KThread: { kthread_name: string } }
   | { WaitQueue: { queue_name: string } }
   | { Custom: string }
 

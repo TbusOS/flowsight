@@ -5,11 +5,13 @@
 //! - Function pointer resolution
 //! - Andersen-style pointer analysis
 //! - Call graph construction
-//! - Scenario-based symbolic execution
+//! - Scenario-based symbolic execution with multi-path exploration
 //! - Expression evaluation
 //! - Data flow analysis
 //! - Result classification (Certain/Possible/Unknown)
 //! - User-assisted learning for uncertain cases
+//! - Execution path tracing and visualization
+//! - Symbolic execution integration (KLEE bridge)
 
 pub mod async_tracker;
 pub mod callback;
@@ -20,9 +22,11 @@ pub mod evaluator;
 pub mod funcptr;
 pub mod learning;
 pub mod node_detail;
+pub mod path_tracing;
 pub mod pointer;
 pub mod propagation;
 pub mod scenario;
+pub mod symbolic_bridge;
 pub mod types;
 
 use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};

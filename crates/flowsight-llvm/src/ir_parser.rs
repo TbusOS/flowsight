@@ -43,7 +43,8 @@ pub struct ContextPattern {
 
 impl KnowledgeBase {
     /// Get default knowledge base
-    pub fn default() -> Self {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
         Self {
             callback_patterns: vec![
                 CallbackPattern {
@@ -83,7 +84,7 @@ pub fn parse_llvm_ir(
     path: &Path,
     knowledge_base: Option<&KnowledgeBase>,
 ) -> Result<IrParseResult, LlvmError> {
-    let content = std::fs::read_to_string(path).map_err(|e| LlvmError::IoError(e))?;
+    let content = std::fs::read_to_string(path).map_err(LlvmError::IoError)?;
     parse_llvm_ir_from_str(&content, knowledge_base)
 }
 
@@ -209,7 +210,7 @@ fn extract_types(content: &str) -> HashMap<String, IrType> {
             .split(',')
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
-            .filter_map(|s| IrType::parse_from_str(s))
+            .filter_map(IrType::parse_from_str)
             .collect();
 
         types.insert(
@@ -528,12 +529,13 @@ fn find_predecessors(func_body: &str, target: &str) -> Vec<String> {
 
     // Look for branches to target
     let br_re = regex::Regex::new(&format!(r"br\s+.*label\s+%{}", regex::escape(target))).unwrap();
+    // Pre-compile block regex outside the loop
+    let block_re = regex::Regex::new(r"(?m)^([\w.]+):").unwrap();
 
     for cap in br_re.captures_iter(func_body) {
         // Find which block this branch is in
         let match_pos = cap.get(0).unwrap().start();
         let before = &func_body[..match_pos];
-        let block_re = regex::Regex::new(r"(?m)^([\w.]+):").unwrap();
 
         if let Some(cap) = block_re.captures_iter(before).last() {
             let pred_name = cap.get(1).unwrap().as_str().to_string();

@@ -1,458 +1,258 @@
-/* FlowNode 节点样式 - 现代化设计 */
-
+/* ============================================
+   FlowNode 节点样式 - 极简设计
+   ============================================ */
 .flow-node {
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1.5px solid #334155;
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  min-width: 140px;
-  max-width: 300px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  min-width: 120px;
+  max-width: 260px;
   font-size: 12px;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.3),
-    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
   position: relative;
   cursor: pointer;
-  overflow: hidden;
 }
 
 /* 节点悬停效果 */
 .flow-node:hover {
-  border-color: #58a6ff;
-  background: linear-gradient(135deg, #263548 0%, #1e293b 100%);
-  box-shadow:
-    0 4px 16px rgba(88, 166, 255, 0.25),
-    0 0 0 1px rgba(88, 166, 255, 0.1) inset;
-  transform: translateY(-1px);
+  background: var(--bg-tertiary);
+  border-color: var(--text-muted);
 }
 
-/* 节点点击波纹效果 */
-.flow-node::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
-  opacity: 0;
-  transition: opacity 0.2s;
-  pointer-events: none;
-}
-
-.flow-node:active::after {
-  opacity: 1;
-}
-
-/* 选中状态 - 增强发光效果 */
+/* 选中状态 */
 .flow-node.selected {
-  border-color: #58a6ff;
-  box-shadow:
-    0 0 0 2px rgba(88, 166, 255, 0.2),
-    0 0 20px rgba(88, 166, 255, 0.3),
-    0 4px 12px rgba(88, 166, 255, 0.2);
-  background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
+  background: var(--bg-tertiary);
+  border-color: var(--text-primary);
 }
 
-/* 选中状态悬停 */
-.flow-node.selected:hover {
-  box-shadow:
-    0 0 0 2px rgba(88, 166, 255, 0.3),
-    0 0 28px rgba(88, 166, 255, 0.4),
-    0 6px 16px rgba(88, 166, 255, 0.25);
-}
+/* ============================================
+   节点类型样式
+   ============================================ */
 
-/* 节点类型样式 - 入口点 */
+/* 入口点 - 左侧细线 */
 .node-entry {
-  border-color: #22c55e;
-  background: linear-gradient(135deg, #1e293b 0%, rgba(34, 197, 94, 0.12) 100%);
+  border-left: 3px solid var(--success);
 }
 
-.node-entry::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: linear-gradient(180deg, #22c55e, #16a34a);
-  border-radius: 8px 0 0 8px;
-}
-
-.node-entry:hover {
-  border-color: #4ade80;
-  box-shadow:
-    0 4px 16px rgba(34, 197, 94, 0.25),
-    0 0 0 1px rgba(34, 197, 94, 0.1) inset;
-}
-
-/* 节点类型样式 - 异步回调 */
+/* 异步回调 - 左侧细线 */
 .node-async {
-  border-color: #f59e0b;
-  background: linear-gradient(135deg, #1e293b 0%, rgba(245, 158, 11, 0.12) 100%);
+  border-left: 3px solid var(--text-secondary);
 }
 
-.node-async::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: linear-gradient(180deg, #f59e0b, #d97706);
-  border-radius: 8px 0 0 8px;
-}
-
-.node-async:hover {
-  border-color: #fbbf24;
-  box-shadow:
-    0 4px 16px rgba(245, 158, 11, 0.25),
-    0 0 0 1px rgba(245, 158, 11, 0.1) inset;
-}
-
-/* 节点类型样式 - 内核 API */
+/* 内核 API - 左侧细线 */
 .node-kernel {
-  border-color: #60a5fa;
-  background: linear-gradient(135deg, #1e293b 0%, rgba(96, 165, 250, 0.08) 100%);
+  border-left: 3px solid var(--text-muted);
 }
 
-.node-kernel::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: linear-gradient(180deg, #60a5fa, #3b82f6);
-  border-radius: 8px 0 0 8px;
-}
-
-.node-kernel:hover {
-  border-color: #93c5fd;
-  box-shadow:
-    0 4px 16px rgba(96, 165, 250, 0.25),
-    0 0 0 1px rgba(96, 165, 250, 0.1) inset;
-}
-
-/* 节点类型样式 - 外部函数 */
+/* 外部函数 - 左侧细线 */
 .node-external {
-  border-color: #64748b;
-  background: linear-gradient(135deg, #1a2332 0%, rgba(100, 116, 139, 0.08) 100%);
-  opacity: 0.9;
+  border-left: 3px solid var(--text-muted);
+  opacity: 0.8;
 }
 
-.node-external::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: linear-gradient(180deg, #64748b, #475569);
-  border-radius: 8px 0 0 8px;
-}
-
-.node-external:hover {
-  border-color: #94a3b8;
-  opacity: 1;
-}
-
-/* 异步类型标签 - 现代化设计 */
+/* ============================================
+   异步类型标签
+   ============================================ */
 .node-async-badge {
   position: absolute;
-  top: -10px;
+  top: -6px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 10px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
   white-space: nowrap;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.3),
-    0 0 0 1px rgba(255, 255, 255, 0.1);
-  animation: asyncBadgePulse 2s ease-in-out infinite;
+  background: var(--text-secondary);
+  color: var(--bg-primary);
 }
 
-@keyframes asyncBadgePulse {
-  0%, 100% {
-    box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.3),
-      0 0 0 1px rgba(255, 255, 255, 0.1);
-  }
-  50% {
-    box-shadow:
-      0 2px 12px rgba(0, 0, 0, 0.4),
-      0 0 0 2px rgba(255, 255, 255, 0.15);
-  }
-}
-
-/* 默认异步标签 - 橙色 */
-.node-async-badge {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #000;
-}
-
-/* 工作队列 - 橙色 */
+/* 异步类型颜色变体 */
 .node-async-badge.async-workqueue {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  background: var(--warning);
   color: #000;
 }
 
-/* 定时器 - 绿色 */
 .node-async-badge.async-timer {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: #fff;
+  background: var(--success);
 }
 
-/* 中断 - 红色 */
 .node-async-badge.async-irq {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: #fff;
+  background: var(--error);
 }
 
-/* Tasklet - 紫色 */
 .node-async-badge.async-tasklet {
-  background: linear-gradient(135deg, #a855f7, #9333ea);
-  color: #fff;
+  background: #a855f7;
 }
 
-/* 内核线程 - 蓝色 */
 .node-async-badge.async-kthread {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: #fff;
+  background: var(--text-muted);
+  color: var(--bg-primary);
 }
 
-/* 软中断 - 青色 */
 .node-async-badge.async-softirq {
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  background: #06b6d4;
   color: #000;
 }
 
-/* 通用异步 */
 .node-async-badge.async-async {
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  color: #fff;
+  background: var(--text-secondary);
 }
 
-/* 节点主体内容 */
+/* ============================================
+   节点主体内容
+   ============================================ */
 .node-main {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
-/* 展开/收起按钮 - 现代化设计 */
+/* 展开/收起按钮 */
 .node-toggle {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border: none;
-  background: rgba(51, 65, 85, 0.8);
-  color: #94a3b8;
-  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--transition-fast);
   flex-shrink: 0;
 }
 
 .node-toggle:hover {
-  background: #475569;
-  color: #e2e8f0;
-  transform: scale(1.05);
-}
-
-.node-toggle:active {
-  transform: scale(0.95);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .node-toggle.expanded {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: white;
-}
-
-.node-toggle.expanded:hover {
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* 图标 */
 .node-icon {
-  font-size: 14px;
+  font-size: 12px;
   flex-shrink: 0;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
-/* 函数名 - 显示完整 */
+/* 函数名 */
 .node-name {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 12px;
-  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
   white-space: nowrap;
   font-weight: 500;
 }
 
 /* 子节点数量标签 */
 .node-count {
-  background: rgba(71, 85, 105, 0.6);
-  color: #94a3b8;
-  font-size: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-size: 9px;
   font-weight: 600;
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: 10px;
   margin-left: auto;
   flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* Handle 样式 - 现代化设计 */
+/* ============================================
+   Handle 样式
+   ============================================ */
 .flow-node .react-flow__handle {
-  width: 8px;
-  height: 8px;
-  background: #475569;
-  border: 2px solid #1e293b;
+  width: 5px;
+  height: 5px;
+  background: var(--text-muted);
+  border: 1px solid var(--bg-primary);
   border-radius: 50%;
-  box-shadow: 0 0 0 2px #475569;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .flow-node:hover .react-flow__handle {
-  background: #58a6ff;
-  box-shadow: 0 0 0 2px #58a6ff, 0 0 8px rgba(88, 166, 255, 0.4);
+  background: var(--text-secondary);
 }
 
 .flow-node .react-flow__handle-left {
-  left: -5px;
+  left: -3px;
 }
 
 .flow-node .react-flow__handle-right {
-  right: -5px;
+  right: -3px;
 }
 
 /* 异步节点 handle */
 .node-async .react-flow__handle {
-  background: #f59e0b;
-  box-shadow: 0 0 0 2px #f59e0b;
-}
-
-.node-async:hover .react-flow__handle {
-  background: #fbbf24;
-  box-shadow: 0 0 0 2px #fbbf24, 0 0 12px rgba(245, 158, 11, 0.5);
+  background: var(--text-secondary);
 }
 
 /* 入口点节点 handle */
 .node-entry .react-flow__handle {
-  background: #22c55e;
-  box-shadow: 0 0 0 2px #22c55e;
+  background: var(--success);
 }
 
-.node-entry:hover .react-flow__handle {
-  background: #4ade80;
-  box-shadow: 0 0 0 2px #4ade80, 0 0 12px rgba(34, 197, 94, 0.5);
-}
-
-/* ========== 置信度指示器样式 - 现代化设计 ========== */
-
-/* 置信度徽章 */
+/* ============================================
+   置信度指示器
+   ============================================ */
 .node-confidence-badge {
   position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 20px;
-  height: 20px;
+  top: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: bold;
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.3),
-    0 0 0 2px rgba(255, 255, 255, 0.1);
-  z-index: 10;
+  z-index: 5;
   cursor: help;
-  transition: transform 0.2s ease;
+  transition: transform var(--transition-fast);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
 }
 
 .node-confidence-badge:hover {
   transform: scale(1.15);
 }
 
-/* 可能 - 黄色警告 */
+/* 可能 - 黄色边框 */
 .node-confidence-badge.confidence-possible {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #000;
-  border: 2px solid #fbbf24;
+  color: var(--warning);
+  border-color: var(--warning);
 }
 
-/* 未知 - 红色警告 */
+/* 未知 - 红色边框 */
 .node-confidence-badge.confidence-unknown {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: #fff;
-  border: 2px solid #f87171;
+  color: var(--error);
+  border-color: var(--error);
 }
 
-/* 节点边框置信度样式 */
+/* 置信度边框样式 */
 .flow-node.confidence-possible {
-  border-color: #f59e0b;
+  border-color: var(--warning);
   border-style: dashed;
 }
 
 .flow-node.confidence-unknown {
-  border-color: #ef4444;
+  border-color: var(--error);
   border-style: dotted;
 }
 
-/* 置信度悬停效果 */
 .flow-node.confidence-possible:hover {
-  border-color: #fbbf24;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3), 0 4px 16px rgba(245, 158, 11, 0.25);
+  border-color: var(--warning);
 }
 
 .flow-node.confidence-unknown:hover {
-  border-color: #f87171;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3), 0 4px 16px rgba(239, 68, 68, 0.25);
-}
-
-/* ========== 点击波纹效果 ========== */
-.node-ripple {
-  position: absolute;
-  width: 100px;
-  height: 100px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
-  border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  animation: rippleEffect 0.4s ease-out forwards;
-  pointer-events: none;
-  z-index: 5;
-}
-
-@keyframes rippleEffect {
-  0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(2);
-    opacity: 0;
-  }
-}
-
-/* ========== 节点缩放动画 ========== */
-@keyframes nodePulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.02);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.flow-node.selected {
-  animation: nodePulse 0.3s ease-out;
+  border-color: var(--error);
 }
