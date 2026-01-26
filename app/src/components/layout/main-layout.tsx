@@ -8,7 +8,16 @@ import { Sidebar } from "./sidebar"
 import { Header } from "./header"
 import { StatusBar } from "./status-bar"
 import { CommandMenu } from "../../components/ui/command"
-import { sidebarOpenAtom, bottomPanelOpenAtom, bottomPanelTabAtom } from "../../lib/atoms/layout-atoms"
+import { OutlinePanel } from "../../components/panels/outline-panel"
+import { NodeDetailPanel } from "../../components/panels/node-detail-panel"
+import {
+  sidebarOpenAtom,
+  bottomPanelOpenAtom,
+  bottomPanelTabAtom,
+  rightPanelOpenAtom,
+  rightPanelTabAtom,
+  rightPanelWidthAtom,
+} from "../../lib/atoms/layout-atoms"
 
 // Placeholder components for different views
 function CodeView() {
@@ -71,11 +80,55 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [bottomPanelOpen, setBottomPanelOpen] = useAtom(bottomPanelOpenAtom)
   const [bottomPanelTab, setBottomPanelTab] = useAtom(bottomPanelTabAtom)
   const [commandMenuOpen, setCommandMenuOpen] = useAtom(sidebarOpenAtom)  // Just for demo
+  const [rightPanelOpen, setRightPanelOpen] = useAtom(rightPanelOpenAtom)
+  const [rightPanelTab, setRightPanelTab] = useAtom(rightPanelTabAtom)
+  const rightPanelWidth = useAtomValue(rightPanelWidthAtom)
 
   // Update command menu open state
   React.useEffect(() => {
     setCommandMenuOpen(sidebarOpen)
   }, [sidebarOpen, setCommandMenuOpen])
+
+  // Keyboard shortcuts
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault()
+        // Toggle sidebar
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault()
+        setRightPanelOpen(prev => !prev)
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [setRightPanelOpen])
+
+  // Render right panel based on tab
+  const renderRightPanel = () => {
+    switch (rightPanelTab) {
+      case "outline":
+        return <OutlinePanel />
+      case "detail":
+        return <NodeDetailPanel />
+      case "llvm-ir":
+        return (
+          <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+            LLVM IR 面板
+          </div>
+        )
+      case "explorer":
+        return (
+          <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
+            文件浏览器
+          </div>
+        )
+      default:
+        return <OutlinePanel />
+    }
+  }
 
   return (
     <div className="flex h-screen w-full flex-col bg-[var(--bg-primary)] text-[var(--text-primary)]">
@@ -153,6 +206,51 @@ export function MainLayout({ children }: MainLayoutProps) {
             )}
           </AnimatePresence>
         </main>
+
+        {/* Right Panel */}
+        <AnimatePresence>
+          {rightPanelOpen && (
+            <motion.div
+              className="flex h-full border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
+              initial={{ width: 0 }}
+              animate={{ width: rightPanelWidth }}
+              exit={{ width: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            >
+              {/* Right Panel Tabs */}
+              <div className="flex flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-tertiary)]">
+                {[
+                  { id: "outline", label: "大纲", icon: "📋" },
+                  { id: "detail", label: "详情", icon: "📊" },
+                  { id: "llvm-ir", label: "IR", icon: "⚙️" },
+                  { id: "explorer", label: "文件", icon: "📁" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    className={cn(
+                      "flex flex-col items-center gap-1 px-3 py-2 text-[10px] transition-colors",
+                      rightPanelTab === tab.id
+                        ? "text-[var(--accent)] bg-[var(--bg-secondary)]"
+                        : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                    )}
+                    onClick={() => {
+                      setRightPanelTab(tab.id as typeof rightPanelTab)
+                      setRightPanelOpen(true)
+                    }}
+                  >
+                    <span className="text-sm">{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Panel Content */}
+              <div className="flex-1 overflow-hidden">
+                {renderRightPanel()}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Status Bar */}
