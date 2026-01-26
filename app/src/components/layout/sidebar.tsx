@@ -116,13 +116,13 @@ export function Sidebar({ className }: SidebarProps) {
           whileHover={{ scale: 1 }}
           whileTap={{ scale: 0.97 }}
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-[var(--accent)] text-white">
-            <Sparkles className="h-4 w-4" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-[var(--accent)] text-white">
+            <Sparkles className="h-4.5 w-4.5" />
           </div>
         </motion.div>
 
         {/* Nav Items */}
-        <nav className="flex flex-col gap-0.5 px-1">
+        <nav className="flex flex-col gap-1 px-1">
           {navItems.map((item) => (
             <SidebarButton
               key={item.id}
@@ -137,7 +137,7 @@ export function Sidebar({ className }: SidebarProps) {
         <div className="flex-1" />
 
         {/* Bottom Items */}
-        <nav className="flex flex-col gap-0.5 px-1 pb-1">
+        <nav className="flex flex-col gap-1 px-1 pb-1">
           {bottomItems.map((item) => (
             <SidebarButton
               key={item.id}
@@ -189,7 +189,7 @@ function SidebarButton({ item, isActive, onClick }: SidebarButtonProps) {
           ref={buttonRef}
           variant="ghost"
           className={cn(
-            "group relative flex h-8 w-8 items-center justify-center rounded-sm transition-all duration-100",
+            "group relative flex h-9 w-9 items-center justify-center rounded-sm transition-all duration-100",
             isActive
               ? "bg-[var(--bg-tertiary)] text-[var(--accent)]"
               : "text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
@@ -199,7 +199,7 @@ function SidebarButton({ item, isActive, onClick }: SidebarButtonProps) {
           onMouseLeave={() => setShowTooltip(false)}
         >
           <Icon className={cn(
-            "h-4 w-4 transition-all duration-100",
+            "h-4.5 w-4.5 transition-all duration-100",
             isActive && "scale-105"
           )} />
 

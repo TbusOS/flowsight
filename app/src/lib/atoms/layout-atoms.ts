@@ -6,7 +6,7 @@ import { atom } from "jotai"
 
 // 侧边栏状态
 export const sidebarOpenAtom = atom(true)
-export const sidebarWidthAtom = atom(72)  // 图标栏宽度
+export const sidebarWidthAtom = atom(80)  // 图标栏宽度
 
 // 右侧面板状态
 export const rightPanelOpenAtom = atom(false)
