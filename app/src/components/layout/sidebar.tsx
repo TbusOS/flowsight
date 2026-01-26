@@ -10,9 +10,6 @@ import {
   Search,
   Command,
   Settings,
-  GitBranch,
-  Box,
-  Cpu,
   Sparkles,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -41,7 +38,7 @@ const navItems: NavItem[] = [
   { id: "outline", icon: FileCode, label: "大纲", panelTab: "outline" },
   { id: "flow", icon: Zap, label: "执行流" },
   { id: "search", icon: Search, label: "搜索" },
-  { id: "command", icon: Command, label: "命令", shortcut: "⌘K" },
+  { id: "command", icon: Command, label: "命令", shortcut: "K" },
 ]
 
 const bottomItems: NavItem[] = [
@@ -68,7 +65,6 @@ export function Sidebar({ className }: SidebarProps) {
     } else if (item.id === "dashboard") {
       setViewMode("code")
     } else if (item.panelTab) {
-      // Toggle right panel with specific tab
       if (rightPanelTab === item.panelTab && rightPanelOpen) {
         setRightPanelOpen(false)
       } else {
@@ -108,29 +104,25 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "flex flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] transition-all duration-300 ease-out",
+        "flex flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] transition-all duration-100 ease-out",
         className
       )}
       style={{ width: sidebarOpen ? sidebarWidth : 0 }}
     >
-      <div className="flex flex-col items-center py-4">
-        {/* Logo / App Icon - macOS style */}
+      <div className="flex flex-col items-center py-2">
+        {/* Logo / App Icon - Cursor/21st.dev style */}
         <motion.div
-          className="mb-4 relative"
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+          className="mb-2 relative"
+          whileHover={{ scale: 1 }}
+          whileTap={{ scale: 0.97 }}
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-hover)] text-white shadow-lg shadow-[var(--accent)]/25">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          {/* macOS traffic light indicator */}
-          <div className="absolute -top-1 -right-1 flex gap-1">
-            <div className="h-2 w-2 rounded-full bg-[var(--accent)]/80" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-[var(--accent)] text-white">
+            <Sparkles className="h-4 w-4" />
           </div>
         </motion.div>
 
         {/* Nav Items */}
-        <nav className="flex flex-col gap-1.5 px-2">
+        <nav className="flex flex-col gap-0.5 px-1">
           {navItems.map((item) => (
             <SidebarButton
               key={item.id}
@@ -145,7 +137,7 @@ export function Sidebar({ className }: SidebarProps) {
         <div className="flex-1" />
 
         {/* Bottom Items */}
-        <nav className="flex flex-col gap-1.5 px-2 pb-3">
+        <nav className="flex flex-col gap-0.5 px-1 pb-1">
           {bottomItems.map((item) => (
             <SidebarButton
               key={item.id}
@@ -160,7 +152,7 @@ export function Sidebar({ className }: SidebarProps) {
       {/* Resize Handle */}
       {sidebarOpen && (
         <div
-          className="absolute right-0 top-0 bottom-0 w-0.5 cursor-col-resize hover:bg-[var(--accent)]/30 transition-colors"
+          className="absolute right-0 top-0 bottom-0 w-px cursor-col-resize hover:bg-[var(--accent)]/40 transition-colors"
           onMouseDown={handleMouseDown}
         />
       )}
@@ -180,44 +172,42 @@ function SidebarButton({ item, isActive, onClick }: SidebarButtonProps) {
   const tooltipRef = React.useRef<HTMLSpanElement>(null)
   const buttonRef = React.useRef<HTMLButtonElement>(null)
 
-  // Calculate tooltip position
   React.useEffect(() => {
     if (showTooltip && buttonRef.current && tooltipRef.current) {
       const buttonRect = buttonRef.current.getBoundingClientRect()
       const tooltipRect = tooltipRef.current.getBoundingClientRect()
-      // Tooltip is positioned to the right with fixed offset
     }
   }, [showTooltip])
 
   return (
     <div className="relative">
       <motion.div
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+        whileHover={{ scale: 1 }}
+        whileTap={{ scale: 0.97 }}
       >
         <Button
           ref={buttonRef}
           variant="ghost"
           className={cn(
-            "group relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200",
+            "group relative flex h-8 w-8 items-center justify-center rounded-sm transition-all duration-100",
             isActive
-              ? "bg-[var(--bg-tertiary)] text-[var(--accent)] shadow-sm"
-              : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              ? "bg-[var(--bg-tertiary)] text-[var(--accent)]"
+              : "text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
           )}
           onClick={onClick}
           onMouseEnter={() => setShowTooltip(true)}
           onMouseLeave={() => setShowTooltip(false)}
         >
           <Icon className={cn(
-            "h-5 w-5 transition-all duration-200",
-            isActive && "scale-110"
+            "h-4 w-4 transition-all duration-100",
+            isActive && "scale-105"
           )} />
 
-          {/* Active Indicator - macOS style pill */}
+          {/* Active Indicator */}
           {isActive && (
             <motion.div
               layoutId="active-indicator"
-              className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-[var(--accent)]"
+              className="absolute left-0 top-1/2 h-3.5 w-px -translate-y-1/2 rounded-r-full bg-[var(--accent)]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -226,23 +216,23 @@ function SidebarButton({ item, isActive, onClick }: SidebarButtonProps) {
         </Button>
       </motion.div>
 
-      {/* Tooltip - macOS style */}
+      {/* Tooltip - Cursor/21st.dev style */}
       <AnimatePresence>
         {showTooltip && (
           <motion.span
             ref={tooltipRef}
-            initial={{ opacity: 0, x: 8 }}
+            initial={{ opacity: 0, x: 4 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 4 }}
-            transition={{ duration: 0.15 }}
-            className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none"
+            exit={{ opacity: 0, x: 2 }}
+            transition={{ duration: 0.1 }}
+            className="absolute left-full ml-1.5 top-1/2 -translate-y-1/2 z-50 pointer-events-none"
           >
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-light)] shadow-lg">
+            <div className="flex items-center gap-2 px-2 py-1 rounded-sm bg-[var(--bg-tertiary)] border border-[var(--border-light)] shadow-sm">
               <span className="text-xs font-medium text-[var(--text-primary)] whitespace-nowrap">
                 {item.label}
               </span>
               {item.shortcut && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)] font-mono">
+                <span className="text-[10px] px-1 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)] font-mono">
                   {item.shortcut}
                 </span>
               )}
@@ -253,5 +243,3 @@ function SidebarButton({ item, isActive, onClick }: SidebarButtonProps) {
     </div>
   )
 }
-
-// Unused imports removed

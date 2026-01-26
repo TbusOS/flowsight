@@ -8,12 +8,12 @@
 @import "tailwindcss";
 
 @theme {
-  /* 背景色 - 极简深色系 */
-  --color-bg-primary: #0a0a0b;
-  --color-bg-secondary: #141416;
-  --color-bg-tertiary: #1c1c1e;
-  --color-bg-hover: #242426;
-  --color-bg-active: #2c2c2e;
+  /* 背景色 - Cursor/21st.dev 极简深色系 */
+  --color-bg-primary: #000000;
+  --color-bg-secondary: #0a0a0b;
+  --color-bg-tertiary: #111111;
+  --color-bg-hover: #1a1a1a;
+  --color-bg-active: #242424;
 
   /* 文字色 */
   --color-text-primary: #f5f5f7;
@@ -38,27 +38,27 @@
   --color-error: #ef4444;
   --color-info: #3b82f6;
 
-  /* 边框 */
-  --color-border-subtle: rgba(255, 255, 255, 0.04);
-  --color-border-light: rgba(255, 255, 255, 0.06);
-  --color-border-medium: rgba(255, 255, 255, 0.08);
-  --color-border-highlight: rgba(59, 130, 246, 0.2);
+  /* 边框 - 更明显的对比 (Cursor/21st.dev 风格 8-12%) */
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-light: rgba(255, 255, 255, 0.12);
+  --color-border-medium: rgba(255, 255, 255, 0.16);
+  --color-border-highlight: rgba(59, 130, 246, 0.3);
 
   /* 字体 */
   --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
-  --shadow-glow: 0 0 24px rgba(59, 130, 246, 0.2);
+  /* 阴影 - 更精致的微阴影 */
+  --shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 16px rgba(59, 130, 246, 0.15);
 
-  /* 圆角 */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  /* 圆角 - 更小的圆角 (4-8px Cursor/21st.dev 风格) */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
   --radius-full: 9999px;
 }
 
@@ -66,15 +66,15 @@
    CSS 变量 - 保留兼容性
    ============================================ */
 :root {
-  /* 背景色 */
-  --bg-primary: #0a0a0b;
-  --bg-secondary: #141416;
-  --bg-tertiary: #1c1c1e;
-  --bg-hover: #242426;
-  --bg-active: #2c2c2e;
+  /* 背景色 - Cursor/21st.dev 极简深色系 */
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0b;
+  --bg-tertiary: #111111;
+  --bg-hover: #1a1a1a;
+  --bg-active: #242424;
 
   /* 渐变背景 */
-  --bg-gradient: linear-gradient(180deg, #0a0a0b 0%, #141416 100%);
+  --bg-gradient: linear-gradient(180deg, #000000 0%, #0a0a0b 100%);
 
   /* 文字色 */
   --text-primary: #f5f5f7;
@@ -99,44 +99,44 @@
   --error: #ef4444;
   --info: #3b82f6;
 
-  /* 边框 */
-  --border-subtle: rgba(255, 255, 255, 0.04);
-  --border-light: rgba(255, 255, 255, 0.06);
-  --border-medium: rgba(255, 255, 255, 0.08);
-  --border-highlight: rgba(59, 130, 246, 0.2);
+  /* 边框 - 更明显的对比 (Cursor/21st.dev 风格 8-12%) */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.12);
+  --border-medium: rgba(255, 255, 255, 0.16);
+  --border-highlight: rgba(59, 130, 246, 0.3);
 
   /* 玻璃态效果 */
-  --glass-bg: rgba(10, 10, 11, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.04);
+  --glass-bg: rgba(0, 0, 0, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
   --glass-blur: blur(16px);
 
   /* 字体 */
   --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
-  --shadow-glow: 0 0 24px rgba(59, 130, 246, 0.2);
+  /* 阴影 - 更精致的微阴影 */
+  --shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 16px rgba(59, 130, 246, 0.15);
 
-  /* 圆角 */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  /* 圆角 - 更小的圆角 (4-8px Cursor/21st.dev 风格) */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
   --radius-full: 9999px;
 
-  /* 过渡 */
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* 过渡 - 更快的动画 (Cursor/21st.dev 风格 100-150ms) */
+  --transition-fast: 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 250ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* 动画 */
-  --animate-fade-in: fadeIn 0.2s ease-out;
-  --animate-slide-up: slideUp 0.3s ease-out;
-  --animate-slide-down: slideDown 0.3s ease-out;
-  --animate-scale-in: scaleIn 0.2s ease-out;
+  /* 动画 - 更快的动画 (Cursor/21st.dev 风格) */
+  --animate-fade-in: fadeIn 0.1s ease-out;
+  --animate-slide-up: slideUp 0.15s ease-out;
+  --animate-slide-down: slideDown 0.15s ease-out;
+  --animate-scale-in: scaleIn 0.1s ease-out;
 }
 
 /* ============================================
@@ -789,11 +789,11 @@ body {
 }
 
 /* ============================================
-   滚动条 - 现代化设计
+   滚动条 - 极简设计 (6px Cursor/21st.dev 风格)
    ============================================ */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -802,13 +802,12 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--bg-active);
-  border-radius: 4px;
-  border: 1px solid var(--bg-secondary);
+  border-radius: 3px;
+  border: none;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
-  border-color: var(--bg-tertiary);
 }
 
 ::-webkit-scrollbar-corner {
