@@ -536,6 +536,11 @@ transition-duration: 150ms;
 - `/tmp/1code/src/renderer/components/ui/` - 1code 的 shadcn/ui 实现
 - `/tmp/1code/src/renderer/features/layout/agents-layout.tsx` - 布局模式
 
+### AI 测试工具
+
+- [open-computer-use](https://github.com/LLmHub-dev/open-computer-use) - AI 桌面自动化框架
+- [claude-computer-use-macos](https://github.com/PallavAg/claude-computer-use-macos) - macOS 原生版
+
 ---
 
 ## 附录
@@ -587,3 +592,130 @@ transition-duration: 150ms;
 | `⌘W` | 关闭标签 |
 | `⌘Tab` | 切换标签 |
 | `⌘[` / `⌘]` | 后退/前进 |
+
+---
+
+## AI 视觉测试方案
+
+### 问题背景
+
+FlowSight 使用 Tauri 构建，UI 渲染在系统原生 WebView 中。传统的浏览器测试工具（如 Playwright MCP）只能测试 DOM 结构，无法验证：
+
+- 模糊背景渲染效果
+- 阴影层次是否到位
+- 动画流畅度
+- 字体渲染质量
+- 面板位置精确度
+
+### 解决方案：Open Computer Use
+
+使用 **AI 桌面自动化框架**，让 AI 能够"看到"并控制真实的桌面应用。
+
+### 工作原理
+
+```
+┌─────────────────┐
+│   Tauri IDE     │  ← 实际渲染的窗口 (FlowSight)
+│  (FlowSight)    │
+└────────┬────────┘
+         │ 屏幕截图
+         ▼
+┌─────────────────┐
+│  AI Agent       │  ← 分析截图，理解视觉状态
+│  - 识别UI元素   │  ← 理解布局、颜色、动画
+│  - 规划操作     │  ← 决定交互策略
+└────────┬────────┘
+         │ 鼠标/键盘控制
+         ▼
+┌─────────────────┐
+│   操作系统      │  ← 执行实际点击、输入
+└─────────────────┘
+```
+
+### 开源项目推荐
+
+| 项目 | 链接 | 说明 |
+|------|------|------|
+| **open-computer-use** | [LLmHub-dev/open-computer-use](https://github.com/LLmHub-dev/open-computer-use) | 完整的开源框架，支持多 AI 提供商 |
+| **claude-computer-use-macos** | [PallavAg/claude-computer-use-macos](https://github.com/PallavAg/claude-computer-use-macos) | macOS 原生版本，无需 Docker |
+
+### 安装与配置
+
+#### 方案一：open-computer-use（推荐）
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/LLmHub-dev/open-computer-use.git
+cd open-computer-use
+
+# 2. 创建 Supabase 数据库
+# 访问 https://supabase.com 创建新项目
+# 获取 ANON_KEY 和 SERVICE_ROLE_KEY
+
+# 3. 配置环境变量
+cp .env.example .env
+# 编辑 .env，填入：
+# - SUPABASE_URL
+# - SUPABASE_ANON_KEY
+# - SUPABASE_SERVICE_ROLE_KEY
+# - ANTHROPIC_API_KEY (或 OpenAI API Key)
+
+# 4. 安装依赖
+# 前端
+npm install
+# 后端
+pip install -r requirements.txt
+
+# 5. 启动
+docker compose up -d
+# 或手动启动：
+# npm run dev
+# python -m app.main
+```
+
+#### 方案二：claude-computer-use-macos（macOS 专用）
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/PallavAg/claude-computer-use-macos.git
+cd claude-computer-use-macos
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 配置 API Key
+export ANTHROPIC_API_KEY="your-api-key"
+
+# 4. 运行
+python main.py
+```
+
+### 测试场景
+
+使用 AI 视觉测试可以验证：
+
+1. **视觉效果**
+   - 模糊背景 (`backdrop-blur`) 是否正确渲染
+   - 阴影层次是否符合设计规范
+   - 圆角是否平滑
+   - 颜色是否准确
+
+2. **交互体验**
+   - 悬浮面板动画是否流畅
+   - 面板滑入/滑出时间是否合理
+   - 命令面板 (⌘K) 是否正确弹出
+
+3. **响应式行为**
+   - 面板位置是否精确
+   - 鼠标悬停状态是否正确
+   - 键盘快捷键是否生效
+
+### 验收检查清单
+
+- [ ] 模糊背景渲染正确，无伪影
+- [ ] 阴影层次分明，符合设计规范
+- [ ] 面板动画 60fps 流畅
+- [ ] ⌘K 命令面板居中悬浮
+- [ ] 悬浮提示 (tooltip) 及时显示
+- [ ] 键盘导航完整可用
+- [ ] 三平台视觉一致
