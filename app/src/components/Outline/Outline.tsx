@@ -10,6 +10,19 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import {
+  Search,
+  X,
+  ChevronRight,
+  ArrowRight,
+  Box,
+  Building2,
+  Pin,
+  Wrench,
+  ListOrdered,
+  FileType,
+  Zap,
+} from 'lucide-react'
 import './Outline.css'
 
 export interface OutlineItem {
@@ -30,14 +43,14 @@ interface OutlineProps {
   filePath?: string
 }
 
-// Kind configuration
-const kindConfig: Record<string, { icon: string; color: string; label: string }> = {
-  function: { icon: '📦', color: '#60a5fa', label: 'Functions' },
-  struct: { icon: '🏗️', color: '#c084fc', label: 'Structures' },
-  variable: { icon: '📌', color: '#fbbf24', label: 'Variables' },
-  macro: { icon: '🔧', color: '#34d399', label: 'Macros' },
-  enum: { icon: '📋', color: '#f472b6', label: 'Enums' },
-  typedef: { icon: '📝', color: '#38bdf8', label: 'Typedefs' },
+// Kind configuration with Lucide icons and theme colors
+const kindConfig: Record<string, { icon: React.ElementType; color: string; label: string }> = {
+  function: { icon: Box, color: 'var(--accent)', label: 'Functions' },
+  struct: { icon: Building2, color: 'var(--accent-purple)', label: 'Structures' },
+  variable: { icon: Pin, color: 'var(--accent-amber)', label: 'Variables' },
+  macro: { icon: Wrench, color: 'var(--accent-emerald)', label: 'Macros' },
+  enum: { icon: ListOrdered, color: 'var(--accent-pink)', label: 'Enums' },
+  typedef: { icon: FileType, color: 'var(--accent-cyan)', label: 'Typedefs' },
 }
 
 // Sort items by line number
@@ -176,7 +189,9 @@ export function Outline({ items, onItemClick, selectedItem }: OutlineProps) {
   if (items.length === 0) {
     return (
       <div className="outline outline-empty">
-        <div className="empty-icon">📋</div>
+        <div className="empty-icon">
+          <FileType className="w-8 h-8" />
+        </div>
         <p>No symbols found</p>
         <span className="empty-hint">Open a source file to see its outline</span>
       </div>
@@ -187,7 +202,9 @@ export function Outline({ items, onItemClick, selectedItem }: OutlineProps) {
   if (filteredItems.length === 0) {
     return (
       <div className="outline outline-empty">
-        <div className="empty-icon">🔍</div>
+        <div className="empty-icon">
+          <Search className="w-8 h-8" />
+        </div>
         <p>No matching symbols</p>
         <span className="empty-hint">Try a different search term</span>
         {searchQuery && (
@@ -206,10 +223,11 @@ export function Outline({ items, onItemClick, selectedItem }: OutlineProps) {
     <div className="outline">
       {/* Search bar */}
       <div className="outline-search">
+        <Search className="search-icon" />
         <input
           ref={searchInputRef}
           type="text"
-          placeholder="🔍 / Search..."
+          placeholder="Search symbols..."
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value)
@@ -227,7 +245,7 @@ export function Outline({ items, onItemClick, selectedItem }: OutlineProps) {
             }}
             title="Clear search"
           >
-            ✕
+            <X className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
@@ -253,11 +271,13 @@ export function Outline({ items, onItemClick, selectedItem }: OutlineProps) {
                 className={`outline-section-header ${isExpanded ? 'expanded' : ''}`}
                 onClick={() => toggleSection(kind)}
               >
-                <span className="section-icon">{config.icon}</span>
+                <span className="section-icon" style={{ color: config.color }}>
+                  <config.icon className="w-3.5 h-3.5" strokeWidth={2} />
+                </span>
                 <span className="section-label">{config.label}</span>
                 <span className="section-count">{sectionItems.length}</span>
                 <span className={`section-arrow ${isExpanded ? 'rotated' : ''}`}>
-                  ▶
+                  <ChevronRight className="w-3 h-3" strokeWidth={2} />
                 </span>
               </button>
 
@@ -281,7 +301,11 @@ export function Outline({ items, onItemClick, selectedItem }: OutlineProps) {
                           style={{ color: config.color }}
                           title={config.label}
                         >
-                          {item.isCallback ? '⚡' : config.icon}
+                          {item.isCallback ? (
+                            <Zap className="w-3.5 h-3.5" strokeWidth={2} />
+                          ) : (
+                            <config.icon className="w-3.5 h-3.5" strokeWidth={2} />
+                          )}
                         </span>
                         <span className="item-name">{item.name}</span>
                         {item.returnType && (
@@ -301,7 +325,7 @@ export function Outline({ items, onItemClick, selectedItem }: OutlineProps) {
                               handleItemClick(item)
                             }}
                           >
-                            →
+                            <ArrowRight className="w-3 h-3" strokeWidth={2} />
                           </button>
                         </div>
                       </li>

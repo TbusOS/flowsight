@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
+import { CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react'
 import './Toast.css'
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
@@ -38,19 +39,24 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: () => v
   }
 
   const getIcon = () => {
+    const iconProps = { className: "w-4 h-4", strokeWidth: 2 }
     switch (toast.type) {
-      case 'success': return '✅'
-      case 'error': return '❌'
-      case 'warning': return '⚠️'
-      case 'info': return 'ℹ️'
+      case 'success': return <CheckCircle2 {...iconProps} />
+      case 'error': return <XCircle {...iconProps} />
+      case 'warning': return <AlertTriangle {...iconProps} />
+      case 'info': return <Info {...iconProps} />
     }
+  }
+
+  const getCloseIcon = () => {
+    return <X className="w-3.5 h-3.5" strokeWidth={2} />
   }
 
   return (
     <div className={`toast toast-${toast.type} ${isExiting ? 'exiting' : ''}`}>
       <span className="toast-icon">{getIcon()}</span>
       <span className="toast-message">{toast.message}</span>
-      <button className="toast-close" onClick={handleClose}>✕</button>
+      <button className="toast-close" onClick={handleClose}>{getCloseIcon()}</button>
     </div>
   )
 }

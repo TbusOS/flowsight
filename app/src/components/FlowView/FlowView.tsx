@@ -47,16 +47,16 @@ const LAYOUT_CONFIG = {
   nodeSpacing: 40,
 }
 
-// Async mechanism colors
+// Async mechanism colors (using CSS variables)
 const ASYNC_COLORS: Record<string, string> = {
-  WorkQueue: '#f59e0b',
-  Timer: '#22c55e',
-  Irq: '#ef4444',
-  Tasklet: '#a855f7',
-  KThread: '#3b82f6',
-  Softirq: '#ec4899',
-  Completion: '#14b8a6',
-  Rcu: '#f97316',
+  WorkQueue: 'var(--async-workqueue)',
+  Timer: 'var(--async-timer)',
+  Irq: 'var(--async-irq)',
+  Tasklet: 'var(--async-tasklet)',
+  KThread: 'var(--async-kthread)',
+  Softirq: 'var(--async-softirq)',
+  Completion: 'var(--async-completion)',
+  Rcu: 'var(--async-rcu)',
 }
 
 // Interface
@@ -265,20 +265,23 @@ function buildFlowGraph(
         animated: isAsync,
         label: isAsync ? asyncLabel : undefined,
         labelStyle: {
-          fill: asyncColor || '#475569',
+          fill: asyncColor || 'var(--text-muted)',
           fontSize: 10,
           fontWeight: 600
         },
-        labelBgStyle: { fill: '#0f1419', fillOpacity: 0.8 },
+        labelBgStyle: { fill: 'var(--bg-secondary)', fillOpacity: 0.9 },
         labelBgPadding: [4, 2] as [number, number],
         style: {
-          stroke: asyncColor || '#475569',
-          strokeWidth: isAsync ? 2 : 1,
+          stroke: asyncColor || 'var(--border-light)',
+          strokeWidth: isAsync ? 2 : 1.5,
           strokeOpacity: isHighlighted ? 1 : 0.8,
+        },
+        data: {
+          'async-type': asyncLabel || null
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: asyncColor || '#475569',
+          color: asyncColor || 'var(--border-light)',
           width: 12,
           height: 12,
         },
@@ -639,9 +642,9 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
 
         {/* Async legend */}
         <div className="async-legend">
-          {Object.entries(ASYNC_COLORS).map(([name, color]) => (
-            <span key={name} className="legend-item" title={name}>
-              <span className="legend-dot" style={{ backgroundColor: color }}></span>
+          {Object.keys(ASYNC_COLORS).map((name) => (
+            <span key={name} className="legend-item" data-async={name} title={name}>
+              <span className="legend-dot"></span>
             </span>
           ))}
         </div>

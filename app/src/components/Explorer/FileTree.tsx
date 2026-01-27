@@ -1,12 +1,27 @@
 /**
  * FileTree - 文件树浏览组件
- * 
+ *
  * 支持延迟加载目录内容
  * 支持右键菜单: 新建文件/文件夹、删除、重命名
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import {
+  Folder,
+  FolderOpen,
+  FileCode,
+  FileJson,
+  FileText,
+  Settings,
+  File,
+  ChevronRight,
+  Loader2,
+  FilePlus,
+  FolderPlus,
+  Pencil,
+  Trash2,
+} from 'lucide-react'
 import './Explorer.css'
 
 export interface FileNode {
@@ -101,28 +116,43 @@ const FileTreeItem = ({
   
   const getFileIcon = () => {
     if (node.is_dir) {
-      return isExpanded ? '📂' : '📁'
+      return isExpanded ? (
+        <FolderOpen className="w-4 h-4 text-amber-400" strokeWidth={1.5} />
+      ) : (
+        <Folder className="w-4 h-4 text-amber-400" strokeWidth={1.5} />
+      )
     }
-    
+
     const ext = node.extension || node.name.split('.').pop()?.toLowerCase()
     switch (ext) {
-      case 'c': return '🔷'
-      case 'h': return '📘'
+      case 'c':
+        return <FileCode className="w-4 h-4 text-blue-400" strokeWidth={1.5} />
+      case 'h':
+        return <FileCode className="w-4 h-4 text-blue-300" strokeWidth={1.5} />
       case 'cpp':
       case 'cc':
-      case 'cxx': return '🔶'
+      case 'cxx':
+        return <FileCode className="w-4 h-4 text-orange-400" strokeWidth={1.5} />
       case 'hpp':
-      case 'hxx': return '📙'
-      case 'rs': return '🦀'
-      case 'py': return '🐍'
+      case 'hxx':
+        return <FileCode className="w-4 h-4 text-orange-300" strokeWidth={1.5} />
+      case 'rs':
+        return <FileCode className="w-4 h-4 text-orange-500" strokeWidth={1.5} />
+      case 'py':
+        return <FileCode className="w-4 h-4 text-yellow-400" strokeWidth={1.5} />
       case 'js':
       case 'ts':
-      case 'tsx': return '💛'
-      case 'json': return '📋'
-      case 'md': return '📝'
+      case 'tsx':
+        return <FileCode className="w-4 h-4 text-yellow-300" strokeWidth={1.5} />
+      case 'json':
+        return <FileJson className="w-4 h-4 text-yellow-500" strokeWidth={1.5} />
+      case 'md':
+        return <FileText className="w-4 h-4 text-slate-400" strokeWidth={1.5} />
       case 'yaml':
-      case 'yml': return '⚙️'
-      default: return '📄'
+      case 'yml':
+        return <Settings className="w-4 h-4 text-slate-500" strokeWidth={1.5} />
+      default:
+        return <File className="w-4 h-4 text-slate-400" strokeWidth={1.5} />
     }
   }
   
@@ -136,7 +166,11 @@ const FileTreeItem = ({
       >
         {node.is_dir && (
           <span className={`chevron ${isExpanded ? 'expanded' : ''} ${isLoading ? 'loading' : ''}`}>
-            {isLoading ? '◌' : '▶'}
+            {isLoading ? (
+              <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" strokeWidth={2} />
+            )}
           </span>
         )}
         <span className="file-icon">{getFileIcon()}</span>
@@ -396,28 +430,32 @@ export const FileTree = ({ nodes, onFileSelect, selectedPath, onTreeUpdate, onRe
       
       {/* Context Menu */}
       {contextMenu.visible && contextMenu.node && (
-        <div 
+        <div
           className="file-context-menu"
-          style={{ 
-            position: 'fixed', 
-            left: contextMenu.x, 
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
             top: contextMenu.y,
             zIndex: 1000,
           }}
           onClick={(e) => e.stopPropagation()}
         >
           <button onClick={handleNewFile}>
-            📄 新建文件
+            <FilePlus className="w-3.5 h-3.5" strokeWidth={2} />
+            新建文件
           </button>
           <button onClick={handleNewFolder}>
-            📁 新建文件夹
+            <FolderPlus className="w-3.5 h-3.5" strokeWidth={2} />
+            新建文件夹
           </button>
           <div className="menu-divider" />
           <button onClick={handleRename}>
-            ✏️ 重命名
+            <Pencil className="w-3.5 h-3.5" strokeWidth={2} />
+            重命名
           </button>
           <button onClick={handleDelete} className="danger">
-            🗑️ 删除
+            <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
+            删除
           </button>
         </div>
       )}

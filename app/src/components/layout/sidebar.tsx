@@ -109,20 +109,20 @@ export function Sidebar({ className }: SidebarProps) {
       )}
       style={{ width: sidebarOpen ? sidebarWidth : 0 }}
     >
-      <div className="flex flex-col items-center py-2">
+      <div className="flex flex-col items-center py-3">
         {/* Logo / App Icon - Cursor/21st.dev style */}
         <motion.div
           className="mb-2 relative"
           whileHover={{ scale: 1 }}
           whileTap={{ scale: 0.97 }}
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-[var(--accent)] text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--accent)] text-white">
             <Sparkles className="h-4.5 w-4.5" />
           </div>
         </motion.div>
 
         {/* Nav Items */}
-        <nav className="flex flex-col gap-1 px-1">
+        <nav className="flex flex-col gap-1.5 px-1.5 py-2">
           {navItems.map((item) => (
             <SidebarButton
               key={item.id}
@@ -189,7 +189,7 @@ function SidebarButton({ item, isActive, onClick }: SidebarButtonProps) {
           ref={buttonRef}
           variant="ghost"
           className={cn(
-            "group relative flex h-9 w-9 items-center justify-center rounded-sm transition-all duration-100",
+            "group relative flex h-9 w-9 items-center justify-center rounded-md transition-all duration-100",
             isActive
               ? "bg-[var(--bg-tertiary)] text-[var(--accent)]"
               : "text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"

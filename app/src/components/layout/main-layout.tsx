@@ -17,6 +17,7 @@ import {
   rightPanelOpenAtom,
   rightPanelTabAtom,
   rightPanelWidthAtom,
+  commandMenuOpenAtom,
 } from "../../lib/atoms/layout-atoms"
 
 // Placeholder components for different views
@@ -79,7 +80,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarOpen] = useAtom(sidebarOpenAtom)
   const [bottomPanelOpen, setBottomPanelOpen] = useAtom(bottomPanelOpenAtom)
   const [bottomPanelTab, setBottomPanelTab] = useAtom(bottomPanelTabAtom)
-  const [commandMenuOpen, setCommandMenuOpen] = useAtom(sidebarOpenAtom)  // Just for demo
+  const [commandMenuOpen, setCommandMenuOpen] = useAtom(commandMenuOpenAtom)
   const [rightPanelOpen, setRightPanelOpen] = useAtom(rightPanelOpenAtom)
   const [rightPanelTab, setRightPanelTab] = useAtom(rightPanelTabAtom)
   const rightPanelWidth = useAtomValue(rightPanelWidthAtom)
@@ -173,7 +174,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                 <div className="flex h-full flex-col">
                   {/* Resize Handle */}
                   <div
-                    className="h-1 cursor-row-resize hover:bg-[var(--accent)]/20"
+                    className="h-1.5 cursor-row-resize hover:bg-[var(--accent)]/30 active:bg-[var(--accent)]/50 flex items-center justify-center transition-colors duration-150"
                     onMouseDown={(e) => {
                       e.preventDefault()
                       const startY = e.clientY
@@ -197,7 +198,9 @@ export function MainLayout({ children }: MainLayoutProps) {
                       document.addEventListener("mousemove", handleMouseMove)
                       document.addEventListener("mouseup", handleMouseUp)
                     }}
-                  />
+                  >
+                    <div className="h-0.5 w-8 rounded-full bg-[var(--text-muted)] group-hover:bg-[var(--accent)] transition-colors" />
+                  </div>
                   <div id="bottom-panel" className="flex-1 overflow-hidden">
                     {bottomPanelTab === "terminal" && <TerminalPanel />}
                   </div>

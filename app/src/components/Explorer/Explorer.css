@@ -258,7 +258,7 @@
 }
 
 .file-context-menu button.danger {
-  color: #ef4444;
+  color: var(--error, #ef4444);
 }
 
 .file-context-menu button.danger:hover {

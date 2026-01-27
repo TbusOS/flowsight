@@ -11,39 +11,55 @@
 }
 
 .empty-icon {
-  font-size: 3rem;
   margin-bottom: 1rem;
   opacity: 0.5;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon svg {
+  width: 48px;
+  height: 48px;
+  stroke-width: 1;
 }
 
 .empty-title {
   margin: 0 0 0.5rem;
-  font-size: 1.1rem;
+  font-size: 1.125rem;
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .empty-description {
   margin: 0 0 1.5rem;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
   max-width: 280px;
   line-height: 1.5;
 }
 
 .empty-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 0.5rem 1.25rem;
   background: var(--accent);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: white;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--transition-fast);
 }
 
 .empty-action:hover {
   background: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
+.empty-action:active {
+  transform: translateY(0);
+}

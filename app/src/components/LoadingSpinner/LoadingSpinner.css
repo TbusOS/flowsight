@@ -8,70 +8,30 @@
   gap: 1rem;
 }
 
-.spinner-icon {
-  position: relative;
+.spinner-container {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+.spinner-icon {
+  animation: spin 1s linear infinite;
+}
+
 /* 尺寸变体 */
 .loading-spinner.small .spinner-icon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 
 .loading-spinner.medium .spinner-icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
 }
 
 .loading-spinner.large .spinner-icon {
-  width: 64px;
-  height: 64px;
-}
-
-/* 旋转环 */
-.spinner-ring {
-  position: absolute;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
-}
-
-.loading-spinner.small .spinner-ring {
-  width: 20px;
-  height: 20px;
-  border-width: 2px;
-}
-
-.loading-spinner.medium .spinner-ring {
-  width: 32px;
-  height: 32px;
-  border-width: 3px;
-}
-
-.loading-spinner.large .spinner-ring {
-  width: 52px;
-  height: 52px;
-  border-width: 4px;
-}
-
-.spinner-ring:nth-child(1) {
-  border-top-color: var(--accent);
-  animation-delay: -0.45s;
-}
-
-.spinner-ring:nth-child(2) {
-  border-right-color: var(--accent);
-  animation-delay: -0.3s;
-  opacity: 0.8;
-}
-
-.spinner-ring:nth-child(3) {
-  border-bottom-color: var(--accent);
-  animation-delay: -0.15s;
-  opacity: 0.6;
+  width: 56px;
+  height: 56px;
 }
 
 @keyframes spin {
@@ -84,19 +44,42 @@
 }
 
 .spinner-message {
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
+  text-align: center;
+}
+
+.spinner-cancel {
+  padding: 6px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.spinner-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
 }
 
 /* 遮罩层 */
 .loading-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(15, 20, 25, 0.85);
+  background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
+  animation: fadeIn 0.15s ease-out;
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

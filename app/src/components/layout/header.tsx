@@ -24,6 +24,7 @@ import {
 import { cn } from "../../lib/utils"
 import { viewModeAtom, commandMenuOpenAtom, bottomPanelOpenAtom, bottomPanelTabAtom } from "../../lib/atoms/layout-atoms"
 import { Button } from "../ui/button"
+import { ThemeSelector } from "../ThemeSelector/ThemeSelector"
 
 interface HeaderProps {
   className?: string
@@ -66,21 +67,21 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
         {/* Menubar (hidden on small screens) */}
         <Menubar className="hidden md:flex border-none bg-transparent">
           <MenubarMenu>
-            <MenubarTrigger className="flex items-center gap-1 px-2 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer rounded-md hover:bg-[var(--bg-tertiary)]">
+            <MenubarTrigger className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-normal text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer rounded-md hover:bg-[var(--bg-tertiary)] transition-colors duration-150">
               文件
               <ChevronDown className="h-3 w-3" />
             </MenubarTrigger>
-            <MenubarContent className="min-w-[180px] rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)] p-1 shadow-xl">
-              <MenubarItem className="flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)]">
+            <MenubarContent className="min-w-[200px] rounded-lg border border-[var(--border-light)] bg-[var(--bg-secondary)] p-1.5 shadow-xl">
+              <MenubarItem className="flex cursor-pointer items-center rounded-md px-3 py-2.5 gap-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)] transition-colors duration-100">
                 新建项目
                 <kbd className="ml-auto text-[var(--text-muted)]">⌘N</kbd>
               </MenubarItem>
-              <MenubarItem className="flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)]">
+              <MenubarItem className="flex cursor-pointer items-center rounded-md px-3 py-2.5 gap-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)] transition-colors duration-100">
                 打开文件
                 <kbd className="ml-auto text-[var(--text-muted)]">⌘O</kbd>
               </MenubarItem>
-              <MenubarSeparator className="my-1 h-px bg-[var(--border-light)]" />
-              <MenubarItem className="flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)]">
+              <MenubarSeparator className="my-1.5 h-px bg-[var(--border-light)]" />
+              <MenubarItem className="flex cursor-pointer items-center rounded-md px-3 py-2.5 gap-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)] transition-colors duration-100">
                 保存
                 <kbd className="ml-auto text-[var(--text-muted)]">⌘S</kbd>
               </MenubarItem>
@@ -88,27 +89,27 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
           </MenubarMenu>
 
           <MenubarMenu>
-            <MenubarTrigger className="flex items-center gap-1 px-2 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer rounded-md hover:bg-[var(--bg-tertiary)]">
+            <MenubarTrigger className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-normal text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer rounded-md hover:bg-[var(--bg-tertiary)] transition-colors duration-150">
               视图
               <ChevronDown className="h-3 w-3" />
             </MenubarTrigger>
-            <MenubarContent className="min-w-[180px] rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)] p-1 shadow-xl">
+            <MenubarContent className="min-w-[200px] rounded-lg border border-[var(--border-light)] bg-[var(--bg-secondary)] p-1.5 shadow-xl">
               <MenubarItem
-                className="flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)]"
+                className="flex cursor-pointer items-center rounded-md px-3 py-2.5 gap-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)] transition-colors duration-100"
                 onClick={() => setViewMode("code")}
               >
                 <FileCode className="mr-2 h-4 w-4" />
                 代码视图
               </MenubarItem>
               <MenubarItem
-                className="flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)]"
+                className="flex cursor-pointer items-center rounded-md px-3 py-2.5 gap-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)] transition-colors duration-100"
                 onClick={() => setViewMode("flow")}
               >
                 <Zap className="mr-2 h-4 w-4" />
                 执行流视图
               </MenubarItem>
               <MenubarItem
-                className="flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)]"
+                className="flex cursor-pointer items-center rounded-md px-3 py-2.5 gap-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)] transition-colors duration-100"
                 onClick={handleToggleTerminal}
               >
                 <Terminal className="mr-2 h-4 w-4" />
@@ -119,25 +120,25 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
           </MenubarMenu>
 
           <MenubarMenu>
-            <MenubarTrigger className="flex items-center gap-1 px-2 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer rounded-md hover:bg-[var(--bg-tertiary)]">
+            <MenubarTrigger className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-normal text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer rounded-md hover:bg-[var(--bg-tertiary)] transition-colors duration-150">
               命令
               <ChevronDown className="h-3 w-3" />
             </MenubarTrigger>
-            <MenubarContent className="min-w-[180px] rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)] p-1 shadow-xl">
+            <MenubarContent className="min-w-[200px] rounded-lg border border-[var(--border-light)] bg-[var(--bg-secondary)] p-1.5 shadow-xl">
               <MenubarItem
-                className="flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)]"
+                className="flex cursor-pointer items-center rounded-md px-3 py-2.5 gap-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)] transition-colors duration-100"
                 onClick={() => setCommandMenuOpen(true)}
               >
                 <Command className="mr-2 h-4 w-4" />
                 命令面板
                 <kbd className="ml-auto text-[var(--text-muted)]">⌘K</kbd>
               </MenubarItem>
-              <MenubarSeparator className="my-1 h-px bg-[var(--border-light)]" />
-              <MenubarItem className="flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)]">
+              <MenubarSeparator className="my-1.5 h-px bg-[var(--border-light)]" />
+              <MenubarItem className="flex cursor-pointer items-center rounded-md px-3 py-2.5 gap-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)] transition-colors duration-100">
                 运行分析
                 <kbd className="ml-auto text-[var(--text-muted)]">⌘⇧A</kbd>
               </MenubarItem>
-              <MenubarItem className="flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)]">
+              <MenubarItem className="flex cursor-pointer items-center rounded-md px-3 py-2.5 gap-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus:bg-[var(--bg-tertiary)] transition-colors duration-100">
                 查找引用
                 <kbd className="ml-auto text-[var(--text-muted)]">⌘⇧F</kbd>
               </MenubarItem>
@@ -148,6 +149,9 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2 no-drag">
+        {/* Theme Selector */}
+        <ThemeSelector />
+
         {/* Command Palette Button */}
         <Button
           variant="ghost"

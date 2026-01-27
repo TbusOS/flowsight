@@ -11,6 +11,18 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import {
+  Search,
+  Command,
+  File,
+  FunctionSquare,
+  Bot,
+  ChevronRight,
+  X,
+  ArrowRight,
+  FolderOpen,
+  Zap,
+} from 'lucide-react'
 import './CommandPalette.css'
 
 interface CommandItem {
@@ -18,7 +30,7 @@ interface CommandItem {
   type: 'file' | 'symbol' | 'command' | 'agent'
   name: string
   description?: string
-  icon: string
+  icon: React.ReactNode
   path?: string
   line?: number
   detail?: string
@@ -27,33 +39,27 @@ interface CommandItem {
 // Agent 命令定义
 const BUILTIN_COMMANDS: CommandItem[] = [
   // 文件操作
-  { id: 'cmd:openFile', type: 'command', name: '打开文件', icon: '📂', description: '打开一个文件', detail: 'Ctrl+O' },
-  { id: 'cmd:saveFile', type: 'command', name: '保存文件', icon: '💾', description: '保存当前文件', detail: 'Ctrl+S' },
-  { id: 'cmd:closeTab', type: 'command', name: '关闭标签页', icon: '❌', description: '关闭当前标签页', detail: 'Ctrl+W' },
+  { id: 'cmd:openFile', type: 'command', name: '打开文件', icon: <FolderOpen className="w-4 h-4" />, description: '打开一个文件', detail: 'Ctrl+O' },
+  { id: 'cmd:saveFile', type: 'command', name: '保存文件', icon: <File className="w-4 h-4" />, description: '保存当前文件', detail: 'Ctrl+S' },
+  { id: 'cmd:closeTab', type: 'command', name: '关闭标签页', icon: <X className="w-4 h-4" />, description: '关闭当前标签页', detail: 'Ctrl+W' },
 
   // 视图操作
-  { id: 'cmd:toggleSidebar', type: 'command', name: '切换侧边栏', icon: '📑', description: '显示/隐藏侧边栏', detail: 'Ctrl+\\' },
-  { id: 'cmd:togglePanel', type: 'command', name: '切换底部面板', icon: '📊', description: '显示/隐藏底部面板', detail: 'Ctrl+`' },
-  { id: 'cmd:toggleTerminal', type: 'command', name: '切换终端', icon: '💻', description: '显示/隐藏终端', detail: 'Ctrl+`' },
+  { id: 'cmd:toggleSidebar', type: 'command', name: '切换侧边栏', icon: <ChevronRight className="w-4 h-4" />, description: '显示/隐藏侧边栏', detail: 'Ctrl+\\' },
+  { id: 'cmd:togglePanel', type: 'command', name: '切换底部面板', icon: <Command className="w-4 h-4" />, description: '显示/隐藏底部面板', detail: 'Ctrl+`' },
 
   // 导航
-  { id: 'cmd:goBack', type: 'command', name: '后退', icon: '⬅️', description: '后退到上一个位置', detail: 'Alt+←' },
-  { id: 'cmd:goForward', type: 'command', name: '前进', icon: '➡️', description: '前进到下一个位置', detail: 'Alt+→' },
-  { id: 'cmd:goToLine', type: 'command', name: '跳转到行', icon: '📍', description: '跳转到指定行', detail: 'Ctrl+G' },
+  { id: 'cmd:goBack', type: 'command', name: '后退', icon: <ArrowRight className="w-4 h-4 rotate-180" />, description: '后退到上一个位置', detail: 'Alt+←' },
+  { id: 'cmd:goForward', type: 'command', name: '前进', icon: <ArrowRight className="w-4 h-4" />, description: '前进到下一个位置', detail: 'Alt+→' },
 
   // 分析
-  { id: 'cmd:analyzeFile', type: 'command', name: '分析当前文件', icon: '🔍', description: '分析当前文件的执行流', detail: 'F5' },
-  { id: 'cmd:analyzeFunction', type: 'command', name: '分析当前函数', icon: '📊', description: '分析当前函数的调用链', detail: 'F6' },
-  { id: 'cmd:exportFlow', type: 'command', name: '导出执行流', icon: '📥', description: '导出分析结果', detail: 'Ctrl+E' },
+  { id: 'cmd:analyzeFile', type: 'command', name: '分析当前文件', icon: <Search className="w-4 h-4" />, description: '分析当前文件的执行流', detail: 'F5' },
 
   // Agent 命令
-  { id: 'agent:analyze', type: 'agent', name: 'AI 分析', icon: '🤖', description: '让 AI 分析代码执行流', detail: 'Analyze Agent' },
-  { id: 'agent:explain', type: 'agent', name: 'AI 解释', icon: '💡', description: '让 AI 解释代码逻辑', detail: 'Explain Agent' },
-  { id: 'agent:search', type: 'agent', name: 'AI 搜索', icon: '🎯', description: '让 AI 搜索代码模式', detail: 'Search Agent' },
+  { id: 'agent:analyze', type: 'agent', name: 'AI 分析', icon: <Bot className="w-4 h-4" />, description: '让 AI 分析代码执行流', detail: 'Agent' },
+  { id: 'agent:explain', type: 'agent', name: 'AI 解释', icon: <Bot className="w-4 h-4" />, description: '让 AI 解释代码逻辑', detail: 'Agent' },
 
   // 设置
-  { id: 'cmd:settings', type: 'command', name: '打开设置', icon: '⚙️', description: '打开设置面板', detail: 'Ctrl+,' },
-  { id: 'cmd:shortcuts', type: 'command', name: '键盘快捷键', icon: '⌨️', description: '查看所有快捷键', detail: 'Ctrl+K Ctrl+S' },
+  { id: 'cmd:shortcuts', type: 'command', name: '键盘快捷键', icon: <Command className="w-4 h-4" />, description: '查看所有快捷键', detail: 'Ctrl+K Ctrl+S' },
 ]
 
 interface CommandPaletteProps {
@@ -137,7 +143,7 @@ export function CommandPalette({
         type: 'symbol',
         name: s.name,
         description: s.file ? `${s.file.split('/').pop()}:${s.line}` : s.kind,
-        icon: s.isCallback ? '⚡' : (s.kind === 'function' ? '📦' : '🏗️'),
+        icon: s.isCallback ? <Zap className="w-4 h-4" /> : <FunctionSquare className="w-4 h-4" />,
         path: s.file,
         line: s.line,
       })
@@ -239,22 +245,11 @@ export function CommandPalette({
 
   if (!isOpen) return null
 
-  // 获取类型标签
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'file': return '文件'
-      case 'symbol': return '符号'
-      case 'command': return '命令'
-      case 'agent': return 'AI'
-      default: return ''
-    }
-  }
-
   return (
     <div className="command-palette-overlay" onClick={onClose}>
       <div className="command-palette" onClick={e => e.stopPropagation()}>
         <div className="palette-input-container">
-          <span className="palette-icon">🔍</span>
+          <Search className="palette-icon w-4 h-4" strokeWidth={2} />
           <input
             ref={inputRef}
             type="text"
@@ -292,7 +287,7 @@ export function CommandPalette({
                 </div>
                 <div className="item-right">
                   {item.detail && <span className="item-shortcut">{item.detail}</span>}
-                  <span className={`item-type type-${item.type}`}>{getTypeLabel(item.type)}</span>
+                  <span className={`item-type type-${item.type}`}>{item.type === 'command' ? '命令' : item.type === 'file' ? '文件' : item.type === 'symbol' ? '符号' : 'AI'}</span>
                 </div>
               </div>
             ))
@@ -312,33 +307,31 @@ export function CommandPalette({
 }
 
 // 根据文件名获取图标
-function getFileIcon(name: string): string {
+function getFileIcon(name: string): React.ReactNode {
   const ext = name.split('.').pop()?.toLowerCase()
   switch (ext) {
     case 'c':
     case 'cpp':
     case 'cc':
     case 'cxx':
-      return '📄'
+      return <File className="w-4 h-4 text-blue-400" />
     case 'h':
     case 'hpp':
-      return '📋'
+      return <File className="w-4 h-4 text-blue-300" />
     case 'rs':
-      return '🦀'
+      return <File className="w-4 h-4 text-orange-500" />
     case 'py':
-      return '🐍'
+      return <File className="w-4 h-4 text-yellow-400" />
     case 'js':
     case 'ts':
     case 'tsx':
-      return '📜'
+      return <File className="w-4 h-4 text-yellow-300" />
     case 'json':
-      return '📦'
+      return <File className="w-4 h-4 text-yellow-500" />
     case 'md':
-      return '📝'
-    case 'txt':
-      return '📃'
+      return <File className="w-4 h-4 text-slate-400" />
     default:
-      return '📄'
+      return <File className="w-4 h-4 text-slate-400" />
   }
 }
 

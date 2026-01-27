@@ -1,30 +1,67 @@
 /* ============================================
-   FlowNode 节点样式 - 极简设计
+   FlowNode 节点样式 - 沉浸式设计
    ============================================ */
 .flow-node {
   padding: 6px 10px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-light);
   background: var(--bg-secondary);
   min-width: 120px;
   max-width: 260px;
   font-size: 12px;
-  box-shadow: var(--shadow-sm);
-  transition: all var(--transition-fast);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    0 0 0 0 rgba(59, 130, 246, 0);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   cursor: pointer;
 }
 
-/* 节点悬停效果 */
+/* 节点悬停效果 - 深度提升 */
 .flow-node:hover {
   background: var(--bg-tertiary);
   border-color: var(--text-muted);
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.3),
+    0 0 12px rgba(59, 130, 246, 0.15),
+    0 0 0 0 rgba(59, 130, 246, 0);
+  transform: translateY(-1px);
 }
 
-/* 选中状态 */
+/* 选中状态 - 强高亮 */
 .flow-node.selected {
   background: var(--bg-tertiary);
   border-color: var(--text-primary);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    0 0 0 1px var(--accent-dim),
+    0 0 16px rgba(59, 130, 246, 0.2);
+}
+
+/* 选中悬停效果 */
+.flow-node.selected:hover {
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.5),
+    0 0 0 1px var(--accent),
+    0 0 24px rgba(59, 130, 246, 0.3);
+  transform: translateY(-2px);
+}
+
+/* 波纹效果 */
+.node-ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(0);
+  animation: rippleEffect 0.4s ease-out;
+  pointer-events: none;
+}
+
+@keyframes rippleEffect {
+  to {
+    transform: scale(2.5);
+    opacity: 0;
+  }
 }
 
 /* ============================================
@@ -57,18 +94,29 @@
    ============================================ */
 .node-async-badge {
   position: absolute;
-  top: -6px;
+  top: -8px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 4px;
+  padding: 2px 8px 2px 5px;
+  border-radius: 10px;
   white-space: nowrap;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   background: var(--text-secondary);
   color: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  z-index: 5;
+}
+
+.async-badge-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 异步类型颜色变体 */
@@ -86,16 +134,16 @@
 }
 
 .node-async-badge.async-tasklet {
-  background: #a855f7;
+  background: var(--accent-purple);
 }
 
 .node-async-badge.async-kthread {
-  background: var(--text-muted);
-  color: var(--bg-primary);
+  background: var(--accent);
+  color: white;
 }
 
 .node-async-badge.async-softirq {
-  background: #06b6d4;
+  background: var(--accent-cyan);
   color: #000;
 }
 
@@ -205,37 +253,36 @@
    ============================================ */
 .node-confidence-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 14px;
-  height: 14px;
+  top: -5px;
+  right: -5px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
-  font-weight: bold;
   z-index: 5;
   cursor: help;
-  transition: transform var(--transition-fast);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: var(--bg-secondary);
-  border: 1px solid var(--border-light);
+  border: 2px solid;
 }
 
 .node-confidence-badge:hover {
   transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* 可能 - 黄色边框 */
 .node-confidence-badge.confidence-possible {
-  color: var(--warning);
   border-color: var(--warning);
+  color: var(--warning);
 }
 
 /* 未知 - 红色边框 */
 .node-confidence-badge.confidence-unknown {
-  color: var(--error);
   border-color: var(--error);
+  color: var(--error);
 }
 
 /* 置信度边框样式 */

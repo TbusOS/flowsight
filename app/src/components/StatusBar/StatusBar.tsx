@@ -1,10 +1,11 @@
 /**
  * 状态栏组件
- * 
+ *
  * 显示当前文件信息、分析状态等
  */
 
 import './StatusBar.css'
+import { Loader2, CheckCircle2, XCircle, Circle, FileCode, Dot } from 'lucide-react'
 
 interface StatusBarProps {
   /** 当前文件路径 */
@@ -56,13 +57,21 @@ export function StatusBar({
     }
   }
 
-  // 获取状态图标
+  // 获取状态图标组件
   const getStatusIcon = () => {
+    const iconProps = {
+      className: "w-3.5 h-3.5",
+      strokeWidth: 2,
+    }
     switch (analysisStatus) {
-      case 'analyzing': return '⏳'
-      case 'done': return '✅'
-      case 'error': return '❌'
-      default: return '💤'
+      case 'analyzing':
+        return <Loader2 {...iconProps} className="animate-spin" />
+      case 'done':
+        return <CheckCircle2 {...iconProps} />
+      case 'error':
+        return <XCircle {...iconProps} />
+      default:
+        return <Circle {...iconProps} />
     }
   }
 
@@ -80,56 +89,58 @@ export function StatusBar({
       <div className="status-left">
         {/* 分析状态 */}
         <span className={`status-item status-${analysisStatus}`}>
-          {getStatusIcon()} {getStatusText()}
+          {getStatusIcon()} <span>{getStatusText()}</span>
         </span>
-        
+
         {/* 函数数量 */}
         {functionCount > 0 && (
           <span className="status-item">
-            ƒ {functionCount} 函数
+            <FileCode className="w-3.5 h-3.5" strokeWidth={2} />
+            <span>{functionCount} 函数</span>
           </span>
         )}
       </div>
-      
+
       <div className="status-right">
         {/* 当前位置 */}
         {currentLine && (
           <span className="status-item cursor-pos">
-            行 {currentLine}{currentColumn ? `, 列 ${currentColumn}` : ''}
+            <span>Ln {currentLine}{currentColumn ? `, Col ${currentColumn}` : ''}</span>
           </span>
         )}
-        
+
         {/* 选中文本 */}
         {selectionLength && selectionLength > 0 && (
           <span className="status-item selection">
             已选 {selectionLength} 字符
           </span>
         )}
-        
+
         {/* 文件统计 */}
         {lineCount > 0 && (
           <span className="status-item file-stats">
-            {lineCount} 行, {charCount.toLocaleString()} 字符
+            <span>{lineCount} 行, {charCount.toLocaleString()} 字符</span>
           </span>
         )}
-        
+
         {/* 文件修改状态 */}
         {isDirty && (
           <span className="status-item dirty">
-            ● 未保存
+            <Dot className="w-3.5 h-3.5" fill="currentColor" />
+            <span>未保存</span>
           </span>
         )}
-        
+
         {/* 文件语言 */}
         {filePath && (
           <span className="status-item language">
-            {getLanguage(filePath)}
+            <span>{getLanguage(filePath)}</span>
           </span>
         )}
-        
+
         {/* FlowSight 版本 */}
         <span className="status-item version">
-          FlowSight v0.1.0
+          <span>FlowSight v0.1.0</span>
         </span>
       </div>
     </div>

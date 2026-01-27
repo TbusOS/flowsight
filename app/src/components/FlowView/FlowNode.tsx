@@ -11,6 +11,21 @@
 import { memo, useState, useCallback } from 'react'
 import { Handle, Position, NodeProps } from '@xyflow/react'
 import type { ConfidenceLevel, CallConfidence } from '../../types'
+import {
+  Check,
+  HelpCircle,
+  AlertTriangle,
+  RefreshCw,
+  Clock,
+  Zap,
+  FileText,
+  Cpu,
+  User,
+  Settings,
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react'
 import './FlowNode.css'
 
 interface FlowNodeData {
@@ -33,29 +48,29 @@ interface FlowNodeData {
 }
 
 // 置信度对应的图标和颜色
-const confidenceInfo: Record<ConfidenceLevel, { icon: string; label: string; color: string }> = {
-  'Certain': { icon: '✓', label: '确定', color: '#22c55e' },
-  'Possible': { icon: '?', label: '可能', color: '#f59e0b' },
-  'Unknown': { icon: '!', label: '未知', color: '#ef4444' },
+const confidenceInfo: Record<ConfidenceLevel, { icon: React.ReactNode; label: string; colorVar: string }> = {
+  'Certain': { icon: <Check className="w-3 h-3" strokeWidth={2.5} />, label: '确定', colorVar: 'var(--success)' },
+  'Possible': { icon: <HelpCircle className="w-3 h-3" strokeWidth={2.5} />, label: '可能', colorVar: 'var(--warning)' },
+  'Unknown': { icon: <AlertTriangle className="w-3 h-3" strokeWidth={2.5} />, label: '未知', colorVar: 'var(--error)' },
 }
 
 // 异步机制信息
-const asyncInfoMap: Record<string, string> = {
-  'WorkQueue': '🔄 工作队列 (进程上下文，可睡眠)',
-  'Timer': '⏱️ 定时器 (软中断上下文，不可睡眠)',
-  'IRQ': '⚡ 硬中断 (中断上下文，不可睡眠)',
-  'Tasklet': '📋 Tasklet (软中断上下文)',
-  'KThread': '🧵 内核线程 (进程上下文，可睡眠)',
-  'Async': '⏳ 异步调用',
+const asyncInfoMap: Record<string, { icon: React.ReactNode; label: string; description: string }> = {
+  'WorkQueue': { icon: <RefreshCw className="w-3.5 h-3.5" strokeWidth={2} />, label: 'WorkQueue', description: '工作队列 (进程上下文，可睡眠)' },
+  'Timer': { icon: <Clock className="w-3.5 h-3.5" strokeWidth={2} />, label: 'Timer', description: '定时器 (软中断上下文，不可睡眠)' },
+  'IRQ': { icon: <Zap className="w-3.5 h-3.5" strokeWidth={2} />, label: 'IRQ', description: '硬中断 (中断上下文，不可睡眠)' },
+  'Tasklet': { icon: <FileText className="w-3.5 h-3.5" strokeWidth={2} />, label: 'Tasklet', description: 'Tasklet (软中断上下文)' },
+  'KThread': { icon: <Cpu className="w-3.5 h-3.5" strokeWidth={2} />, label: 'KThread', description: '内核线程 (进程上下文，可睡眠)' },
+  'Async': { icon: <Clock className="w-3.5 h-3.5" strokeWidth={2} />, label: 'Async', description: '异步调用' },
 }
 
 // 节点类型标签
-const nodeTypeLabels: Record<string, string> = {
-  'user': '👤 用户定义函数',
-  'kernel-api': '🔧 内核 API',
-  'external': '📦 外部函数',
-  'callback': '⚡ 回调函数',
-  'async-callback': '⏰ 异步回调',
+const nodeTypeLabels: Record<string, { icon: React.ReactNode; label: string }> = {
+  'user': { icon: <User className="w-3.5 h-3.5" strokeWidth={2} />, label: '用户定义函数' },
+  'kernel-api': { icon: <Settings className="w-3.5 h-3.5" strokeWidth={2} />, label: '内核 API' },
+  'external': { icon: <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />, label: '外部函数' },
+  'callback': { icon: <Zap className="w-3.5 h-3.5" strokeWidth={2} />, label: '回调函数' },
+  'async-callback': { icon: <Clock className="w-3.5 h-3.5" strokeWidth={2} />, label: '异步回调' },
 }
 
 export const FlowNodeComponent = memo(({ data }: NodeProps) => {
@@ -103,11 +118,17 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
   const buildTooltip = useCallback(() => {
     const parts = [`📌 ${name}()`]
     if (nodeType) {
-      parts.push(`${nodeTypeLabels[nodeType] || nodeType}`)
+      const typeInfo = nodeTypeLabels[nodeType]
+      if (typeInfo) {
+        parts.push(`${typeInfo.icon} ${typeInfo.label}`)
+      }
     }
     // 异步机制信息
     if (asyncLabel) {
-      parts.push(asyncInfoMap[asyncLabel] || `异步: ${asyncLabel}`)
+      const asyncInfo = asyncInfoMap[asyncLabel]
+      if (asyncInfo) {
+        parts.push(`${asyncInfo.icon} ${asyncInfo.description}`)
+      }
     }
     // 置信度信息
     if (confidence) {
@@ -176,6 +197,7 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
       {confidence && confidence.level !== 'Certain' && (
         <div
           className={`node-confidence-badge confidence-${confidence.level.toLowerCase()}`}
+          style={{ color: confidenceInfo[confidence.level].colorVar }}
           title={`${confidenceInfo[confidence.level].label}: ${confidence.reason}`}
           role="status"
           aria-label={`置信度: ${confidenceInfo[confidence.level].label}`}
@@ -192,6 +214,7 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
           role="status"
           aria-label={`异步机制: ${asyncLabel}`}
         >
+          <span className="async-badge-icon">{asyncInfoMap[asyncLabel]?.icon}</span>
           {asyncLabel}
         </div>
       )}
@@ -206,13 +229,9 @@ export const FlowNodeComponent = memo(({ data }: NodeProps) => {
             aria-label={isExpanded ? '收起子节点' : `展开 ${childCount} 个子节点`}
           >
             {isExpanded ? (
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
-                <path d="M2 3L4 5L6 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} />
             ) : (
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
-                <path d="M3 2L5 4L3 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <ChevronRight className="w-3.5 h-3.5" strokeWidth={2} />
             )}
           </button>
         )}

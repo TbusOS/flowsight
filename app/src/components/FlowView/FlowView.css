@@ -69,7 +69,7 @@
 .async-legend {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-left: 4px;
   padding-left: 8px;
   border-left: 1px solid var(--border-light);
@@ -79,21 +79,35 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
   cursor: help;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
 }
 
 .legend-item:hover {
+  background: var(--bg-tertiary);
   color: var(--text-primary);
 }
 
 .legend-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--text-muted);
 }
+
+/* 图例颜色变体 */
+.legend-item[data-async="WorkQueue"] .legend-dot { background: var(--async-workqueue); }
+.legend-item[data-async="Timer"] .legend-dot { background: var(--async-timer); }
+.legend-item[data-async="Irq"] .legend-dot { background: var(--async-irq); }
+.legend-item[data-async="Tasklet"] .legend-dot { background: var(--async-tasklet); }
+.legend-item[data-async="KThread"] .legend-dot { background: var(--async-kthread); }
+.legend-item[data-async="Softirq"] .legend-dot { background: var(--async-softirq); }
+.legend-item[data-async="Completion"] .legend-dot { background: var(--async-completion); }
+.legend-item[data-async="Rcu"] .legend-dot { background: var(--async-rcu); }
 
 /* ============================================
    深度选择器
@@ -316,17 +330,50 @@
   stroke-width: 2;
 }
 
-/* 异步边动画 */
+/* 异步边动画 - 渐变流动效果 */
 .flow-view .react-flow__edge.animated path {
   stroke: var(--text-muted);
   stroke-width: 1.5;
-  stroke-dasharray: 6 4;
-  animation: edgeFlow 1.2s linear infinite;
+  stroke-dasharray: 8 4;
+  animation: edgeFlow 1.5s linear infinite;
+}
+
+/* 异步类型特定颜色 */
+.flow-view .react-flow__edge.animated[data-async-type="WorkQueue"] path {
+  stroke: var(--async-workqueue);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Timer"] path {
+  stroke: var(--async-timer);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Irq"] path {
+  stroke: var(--async-irq);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Tasklet"] path {
+  stroke: var(--async-tasklet);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="KThread"] path {
+  stroke: var(--async-kthread);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Softirq"] path {
+  stroke: var(--async-softirq);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Completion"] path {
+  stroke: var(--async-completion);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Rcu"] path {
+  stroke: var(--async-rcu);
 }
 
 @keyframes edgeFlow {
   from {
-    stroke-dashoffset: 20;
+    stroke-dashoffset: 24;
   }
   to {
     stroke-dashoffset: 0;
@@ -343,6 +390,35 @@
 .flow-view .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--text-primary);
   stroke-width: 2;
+}
+
+/* 异步边箭头标记颜色 */
+.flow-view .react-flow__edge.animated {
+  --edge-color: var(--text-muted);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="WorkQueue"] {
+  --edge-color: var(--async-workqueue);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Timer"] {
+  --edge-color: var(--async-timer);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Irq"] {
+  --edge-color: var(--async-irq);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Tasklet"] {
+  --edge-color: var(--async-tasklet);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="KThread"] {
+  --edge-color: var(--async-kthread);
+}
+
+.flow-view .react-flow__edge.animated[data-async-type="Softirq"] {
+  --edge-color: var(--async-softirq);
 }
 
 /* 迷你地图 */

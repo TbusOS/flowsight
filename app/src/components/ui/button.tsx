@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium transition-all duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -19,11 +19,17 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]",
         link: "text-[var(--accent)] underline-offset-4 hover:underline",
+        success:
+          "bg-[var(--success)] text-white hover:bg-[var(--success)]/90 active:scale-[0.97]",
+        warning:
+          "bg-[var(--warning)] text-white hover:bg-[var(--warning)]/90 active:scale-[0.97]",
+        error:
+          "bg-[var(--error)] text-white hover:bg-[var(--error)]/90 active:scale-[0.97]",
       },
       size: {
         default: "h-8 px-3 py-1",
-        sm: "h-7 rounded-sm px-2 text-xs",
-        lg: "h-9 rounded-sm px-5",
+        sm: "h-7 rounded-md px-2 text-xs",
+        lg: "h-9 rounded-md px-5",
         icon: "h-8 w-8",
       },
     },
