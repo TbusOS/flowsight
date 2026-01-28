@@ -1,71 +1,72 @@
 /**
- * FlowSight 全局样式 - Modern Minimal Design System
+ * FlowSight 全局样式 - Low Saturation Design System
  *
- * 设计理念：极简、沉浸、现代
- * 使用纯色、精细的边框和微交互创造美感
+ * 设计理念：低饱和度、柔和、专业
+ * 参考 Cursor、Apple 的设计语言，使用柔和的灰色调
+ * 配色灵感：#222627, #43728f, #683544, #ffbd94
  */
 
 @import "tailwindcss";
 
 @theme {
-  /* 背景色 - Cursor/21st.dev 极简深色系 */
-  --color-bg-primary: #000000;
-  --color-bg-secondary: #0a0a0b;
-  --color-bg-tertiary: #111111;
-  --color-bg-hover: #1a1a1a;
-  --color-bg-active: #242424;
+  /* 背景色 - macOS Terminal 风格深灰 */
+  --color-bg-primary: #1e2021;
+  --color-bg-secondary: #262829;
+  --color-bg-tertiary: #2e3132;
+  --color-bg-hover: #383a3c;
+  --color-bg-active: #424547;
 
-  /* 文字色 */
-  --color-text-primary: #f5f5f7;
-  --color-text-secondary: #86868d;
-  --color-text-muted: #52525b;
+  /* 文字色 - Apple 风格柔和白 */
+  --color-text-primary: #e8e8e8;
+  --color-text-secondary: #9a9a9a;
+  --color-text-muted: #6a6a6a;
 
-  /* 强调色 - 纯净蓝 */
-  --color-accent: #3b82f6;
-  --color-accent-dim: rgba(59, 130, 246, 0.08);
-  --color-accent-hover: rgba(59, 130, 246, 0.12);
-  --color-accent-glow: rgba(59, 130, 246, 0.15);
+  /* 强调色 - macOS 风格蓝 (低饱和度) */
+  --color-accent: #61afef;
+  --color-accent-dim: rgba(97, 175, 239, 0.10);
+  --color-accent-hover: rgba(97, 175, 239, 0.15);
+  --color-accent-glow: rgba(97, 175, 239, 0.12);
 
-  /* 辅助色 */
-  --color-accent-cyan: #22d3ee;
-  --color-accent-purple: #8b5cf6;
-  --color-accent-emerald: #10b981;
-  --color-accent-amber: #f59e0b;
-  --color-accent-pink: #ec4899;
+  /* 辅助色 - 低饱和度 macOS 风格 */
+  --color-accent-cyan: #56b6c2;
+  --color-accent-purple: #c678dd;
+  --color-accent-emerald: #98c379;
+  --color-accent-amber: #d19a66;
+  --color-accent-pink: #e06c75;
 
-  /* 异步机制颜色 */
-  --color-async-workqueue: #f59e0b;
-  --color-async-timer: #22c55e;
-  --color-async-irq: #ef4444;
-  --color-async-tasklet: #8b5cf6;
-  --color-async-kthread: #3b82f6;
-  --color-async-softirq: #06b6d4;
-  --color-async-completion: #14b8a6;
-  --color-async-rcu: #f97316;
+  /* 异步机制颜色 - macOS 风格 */
+  --color-async-workqueue: #d19a66;
+  --color-async-timer: #98c379;
+  --color-async-irq: #e06c75;
+  --color-async-tasklet: #c678dd;
+  --color-async-kthread: #61afef;
+  --color-async-softirq: #56b6c2;
+  --color-async-completion: #98c379;
+  --color-async-rcu: #d19a66;
 
-  /* 功能色 */
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  --color-info: #3b82f6;
+  /* 功能色 - macOS Terminal 风格 */
+  --color-success: #98c379;
+  --color-warning: #d19a66;
+  --color-error: #e06c75;
+  --color-info: #61afef;
 
-  /* 边框 - 更明显的对比 (Cursor/21st.dev 风格 8-12%) */
-  --color-border-subtle: rgba(255, 255, 255, 0.08);
-  --color-border-light: rgba(255, 255, 255, 0.12);
-  --color-border-medium: rgba(255, 255, 255, 0.16);
-  --color-border-highlight: rgba(59, 130, 246, 0.3);
+  /* 边框 - 柔和边框 */
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-light: rgba(255, 255, 255, 0.10);
+  --color-border-medium: rgba(255, 255, 255, 0.14);
+  --color-border-highlight: rgba(97, 175, 239, 0.25);
 
-  /* 字体 */
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* 字体 - Apple 系统字体优先 */
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif;
 
-  /* 阴影 - 更精致的微阴影 */
-  --shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.7);
-  --shadow-glow: 0 0 16px rgba(59, 130, 246, 0.15);
+  /* 阴影 - 柔和阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 16px rgba(97, 175, 239, 0.10);
 
-  /* 圆角 - 更小的圆角 (4-8px Cursor/21st.dev 风格) */
+  /* 圆角 - Apple 风格 */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
@@ -74,87 +75,95 @@
 }
 
 /* ============================================
-   CSS 变量 - 保留兼容性
+   CSS 变量 - macOS Terminal 风格主题
+   配色灵感：Apple Terminal Pro 主题
+   特点：低饱和度、柔和、专业
    ============================================ */
 :root {
-  /* 背景色 - Cursor/21st.dev 极简深色系 */
-  --bg-primary: #000000;
-  --bg-secondary: #0a0a0b;
-  --bg-tertiary: #111111;
-  --bg-hover: #1a1a1a;
-  --bg-active: #242424;
+  /* 背景色 - macOS Terminal 风格深灰 */
+  --bg-primary: #1e2021;
+  --bg-secondary: #262829;
+  --bg-tertiary: #2e3132;
+  --bg-hover: #383a3c;
+  --bg-active: #424547;
 
   /* 渐变背景 */
-  --bg-gradient: linear-gradient(180deg, #000000 0%, #0a0a0b 100%);
+  --bg-gradient: linear-gradient(180deg, #1e2021 0%, #262829 100%);
 
-  /* 文字色 */
-  --text-primary: #f5f5f7;
-  --text-secondary: #86868d;
-  --text-muted: #52525b;
+  /* 文字色 - Apple 风格柔和白 */
+  --text-primary: #e8e8e8;
+  --text-secondary: #9a9a9a;
+  --text-muted: #6a6a6a;
 
-  /* 强调色 */
-  --accent: #3b82f6;
-  --accent-dim: rgba(59, 130, 246, 0.08);
-  --accent-hover: rgba(59, 130, 246, 0.12);
-  --accent-glow: rgba(59, 130, 246, 0.15);
+  /* 强调色 - macOS 风格蓝 (低饱和度) */
+  --accent: #61afef;
+  --accent-dim: rgba(97, 175, 239, 0.10);
+  --accent-hover: rgba(97, 175, 239, 0.15);
+  --accent-glow: rgba(97, 175, 239, 0.12);
 
-  /* 辅助色 */
-  --accent-cyan: #22d3ee;
-  --accent-purple: #8b5cf6;
-  --accent-emerald: #10b981;
-  --accent-amber: #f59e0b;
-  --accent-pink: #ec4899;
+  /* 辅助色 - 低饱和度 macOS 风格 */
+  --accent-cyan: #56b6c2;
+  --accent-purple: #c678dd;
+  --accent-emerald: #98c379;
+  --accent-amber: #d19a66;
+  --accent-pink: #e06c75;
 
-  /* 异步机制颜色 */
-  --async-workqueue: #f59e0b;
-  --async-timer: #22c55e;
-  --async-irq: #ef4444;
-  --async-tasklet: #8b5cf6;
-  --async-kthread: #3b82f6;
-  --async-softirq: #06b6d4;
-  --async-completion: #14b8a6;
-  --async-rcu: #f97316;
+  /* 玫瑰褐色强调 (基于 #683544) */
+  --accent-rose: #7d5a6a;
+  
+  /* 暖橙色强调 (基于 #ffbd94) */
+  --accent-warm: #d4a882;
 
-  /* 功能色 */
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --error: #ef4444;
-  --info: #3b82f6;
+  /* 异步机制颜色 - macOS 风格 */
+  --async-workqueue: #d19a66;
+  --async-timer: #98c379;
+  --async-irq: #e06c75;
+  --async-tasklet: #c678dd;
+  --async-kthread: #61afef;
+  --async-softirq: #56b6c2;
+  --async-completion: #98c379;
+  --async-rcu: #d19a66;
 
-  /* 边框 - 更明显的对比 (Cursor/21st.dev 风格 8-12%) */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-light: rgba(255, 255, 255, 0.12);
-  --border-medium: rgba(255, 255, 255, 0.16);
-  --border-highlight: rgba(59, 130, 246, 0.3);
+  /* 功能色 - macOS Terminal 风格 */
+  --success: #98c379;
+  --warning: #d19a66;
+  --error: #e06c75;
+  --info: #61afef;
+
+  /* 边框 - 柔和边框 */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-light: rgba(255, 255, 255, 0.10);
+  --border-medium: rgba(255, 255, 255, 0.14);
+  --border-highlight: rgba(97, 175, 239, 0.25);
 
   /* 玻璃态效果 */
-  --glass-bg: rgba(0, 0, 0, 0.8);
+  --glass-bg: rgba(30, 32, 33, 0.90);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-blur: blur(16px);
 
-  /* 字体 */
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* 字体 - Apple 系统字体优先 */
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif;
 
-  /* 阴影 - 更精致的微阴影 */
-  --shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.7);
-  --shadow-glow: 0 0 16px rgba(59, 130, 246, 0.15);
+  /* 阴影 - 柔和阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 16px rgba(97, 175, 239, 0.10);
 
-  /* 圆角 - 更小的圆角 (4-8px Cursor/21st.dev 风格) */
+  /* 圆角 - Apple 风格 */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
   --radius-full: 9999px;
 
-  /* 过渡 - 更快的动画 (Cursor/21st.dev 风格 100-150ms) */
+  /* 过渡 */
   --transition-fast: 100ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 250ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* 动画 - 更快的动画 (Cursor/21st.dev 风格) */
+  /* 动画 */
   --animate-fade-in: fadeIn 0.1s ease-out;
   --animate-slide-up: slideUp 0.15s ease-out;
   --animate-slide-down: slideDown 0.15s ease-out;
@@ -203,127 +212,153 @@
   animation: pulseGlow 2s ease-in-out infinite;
 }
 
-/* 浅色主题 - 更现代 */
-[data-theme="light"] {
-  --bg-primary: #ffffff;
-  --bg-secondary: #fafafa;
-  --bg-tertiary: #f5f5f5;
-  --bg-hover: #eeeeee;
-  --bg-active: #e5e5e5;
-
-  --text-primary: #1c1c1e;
-  --text-secondary: #6e6e73;
-  --text-muted: #a1a1a6;
-
-  --accent: #0a84ff;
-  --accent-dim: rgba(10, 132, 255, 0.08);
-  --accent-hover: rgba(10, 132, 255, 0.12);
-
-  --border-subtle: rgba(0, 0, 0, 0.04);
-  --border-light: rgba(0, 0, 0, 0.06);
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08);
+/* ============================================
+   焦点状态 - 可访问性
+   ============================================ */
+.focus-visible\:ring-2:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--accent);
 }
 
-/* Slate 主题 - 专业灰蓝 */
+.focus-visible\:ring-offset-2:focus-visible {
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--accent);
+}
+
+/* ============================================
+   reduced-motion 媒体查询 - 可访问性
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 浅色主题 - 低饱和度 */
+[data-theme="light"] {
+  --bg-primary: #f8f9fa;
+  --bg-secondary: #f0f1f3;
+  --bg-tertiary: #e8e9eb;
+  --bg-hover: #dfe0e2;
+  --bg-active: #d5d6d8;
+
+  --text-primary: #2c2e30;
+  --text-secondary: #6b6e73;
+  --text-muted: #9a9da2;
+
+  --accent: #4a7a96;
+  --accent-dim: rgba(74, 122, 150, 0.10);
+  --accent-hover: rgba(74, 122, 150, 0.15);
+
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  --border-light: rgba(0, 0, 0, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.10);
+}
+
+/* Slate 主题 - 专业灰蓝 (低饱和度) */
 [data-theme="slate"] {
-  --bg-primary: #0f1115;
-  --bg-secondary: #1a1c23;
-  --bg-tertiary: #232730;
-  --bg-hover: #2d3340;
-  --bg-active: #3a4252;
+  --bg-primary: #181a1e;
+  --bg-secondary: #1f2228;
+  --bg-tertiary: #282c33;
+  --bg-hover: #32363e;
+  --bg-active: #3c414a;
 
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #e2e4e8;
+  --text-secondary: #8a8f98;
+  --text-muted: #5a5f68;
 
-  --accent: #64748b;
-  --accent-dim: rgba(100, 116, 139, 0.10);
-  --accent-hover: rgba(100, 116, 139, 0.16);
-  --accent-glow: rgba(100, 116, 139, 0.12);
+  --accent: #6a7a8a;
+  --accent-dim: rgba(106, 122, 138, 0.10);
+  --accent-hover: rgba(106, 122, 138, 0.16);
+  --accent-glow: rgba(106, 122, 138, 0.12);
 
   --border-subtle: rgba(255, 255, 255, 0.04);
-  --border-light: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.07);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
 
-/* Forest 主题 - 清新绿 */
+/* Forest 主题 - 柔和绿 (低饱和度) */
 [data-theme="forest"] {
-  --bg-primary: #0a140d;
-  --bg-secondary: #0f1c15;
-  --bg-tertiary: #152920;
-  --bg-hover: #1e3d2c;
-  --bg-active: #2a5240;
+  --bg-primary: #1a1e1c;
+  --bg-secondary: #212724;
+  --bg-tertiary: #2a302c;
+  --bg-hover: #353b36;
+  --bg-active: #404742;
 
-  --text-primary: #ecfdf5;
-  --text-secondary: #6ee7b7;
-  --text-muted: #34d399;
+  --text-primary: #e2e6e4;
+  --text-secondary: #8a9a8e;
+  --text-muted: #5a6a5e;
 
-  --accent: #10b981;
-  --accent-dim: rgba(16, 185, 129, 0.10);
-  --accent-hover: rgba(16, 185, 129, 0.16);
-  --accent-glow: rgba(16, 185, 129, 0.12);
+  --accent: #5a8a6a;
+  --accent-dim: rgba(90, 138, 106, 0.10);
+  --accent-hover: rgba(90, 138, 106, 0.16);
+  --accent-glow: rgba(90, 138, 106, 0.12);
 
-  --border-subtle: rgba(16, 185, 129, 0.06);
-  --border-light: rgba(16, 185, 129, 0.10);
+  --border-subtle: rgba(90, 138, 106, 0.05);
+  --border-light: rgba(90, 138, 106, 0.08);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 12px rgba(16, 185, 129, 0.15);
-  --shadow-lg: 0 8px 32px rgba(16, 185, 129, 0.20);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(90, 138, 106, 0.10);
+  --shadow-lg: 0 8px 32px rgba(90, 138, 106, 0.15);
 }
 
-/* Sunset 主题 - 温暖橙 */
+/* Sunset 主题 - 温暖褐 (低饱和度，基于 #683544) */
 [data-theme="sunset"] {
-  --bg-primary: #120f0a;
-  --bg-secondary: #1a1610;
-  --bg-tertiary: #262015;
-  --bg-hover: #352d1f;
-  --bg-active: #453d2c;
+  --bg-primary: #1e1a1b;
+  --bg-secondary: #272223;
+  --bg-tertiary: #302a2b;
+  --bg-hover: #3b3435;
+  --bg-active: #463e40;
 
-  --text-primary: #fef3c7;
-  --text-secondary: #fbbf24;
-  --text-muted: #d97706;
+  --text-primary: #e6e2e3;
+  --text-secondary: #a09496;
+  --text-muted: #6a5e60;
 
-  --accent: #d97706;
-  --accent-dim: rgba(217, 119, 6, 0.10);
-  --accent-hover: rgba(217, 119, 6, 0.16);
-  --accent-glow: rgba(217, 119, 6, 0.12);
+  --accent: #8a5a6a;
+  --accent-dim: rgba(138, 90, 106, 0.10);
+  --accent-hover: rgba(138, 90, 106, 0.16);
+  --accent-glow: rgba(138, 90, 106, 0.12);
 
-  --border-subtle: rgba(217, 119, 6, 0.06);
-  --border-light: rgba(217, 119, 6, 0.10);
+  --border-subtle: rgba(138, 90, 106, 0.05);
+  --border-light: rgba(138, 90, 106, 0.08);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 12px rgba(217, 119, 6, 0.15);
-  --shadow-lg: 0 8px 32px rgba(217, 119, 6, 0.20);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(138, 90, 106, 0.10);
+  --shadow-lg: 0 8px 32px rgba(138, 90, 106, 0.15);
 }
 
-/* Lavender 主题 - 淡雅紫 */
+/* Lavender 主题 - 柔和紫 (低饱和度) */
 [data-theme="lavender"] {
-  --bg-primary: #0f0a16;
-  --bg-secondary: #151020;
-  --bg-tertiary: #1e1630;
-  --bg-hover: #2a2145;
-  --bg-active: #372e5f;
+  --bg-primary: #1c1a1e;
+  --bg-secondary: #242228;
+  --bg-tertiary: #2d2a32;
+  --bg-hover: #38343e;
+  --bg-active: #433e4a;
 
-  --text-primary: #f5f3ff;
-  --text-secondary: #c4b5fd;
-  --text-muted: #8b5cf6;
+  --text-primary: #e4e2e8;
+  --text-secondary: #9a94a2;
+  --text-muted: #6a646e;
 
-  --accent: #8b5cf6;
-  --accent-dim: rgba(139, 92, 246, 0.10);
-  --accent-hover: rgba(139, 92, 246, 0.16);
-  --accent-glow: rgba(139, 92, 246, 0.12);
+  --accent: #7a6a8a;
+  --accent-dim: rgba(122, 106, 138, 0.10);
+  --accent-hover: rgba(122, 106, 138, 0.16);
+  --accent-glow: rgba(122, 106, 138, 0.12);
 
-  --border-subtle: rgba(139, 92, 246, 0.06);
-  --border-light: rgba(139, 92, 246, 0.10);
+  --border-subtle: rgba(122, 106, 138, 0.05);
+  --border-light: rgba(122, 106, 138, 0.08);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 12px rgba(139, 92, 246, 0.15);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(122, 106, 138, 0.10);
   --shadow-lg: 0 8px 32px rgba(139, 92, 246, 0.20);
 }
 
@@ -1957,4 +1992,68 @@ body {
   max-height: 100%;
   border: none;
   border-radius: 0;
+}
+
+/* ============================================
+   Radix UI Menubar - macOS 风格菜单样式
+   ============================================ */
+[data-radix-menubar-content] {
+  min-width: 240px;
+  padding: 8px 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+}
+
+[data-radix-menu-content] {
+  min-width: 240px;
+  padding: 8px 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+}
+
+/* 菜单项样式 - 更大的行间距 */
+[role="menuitem"] {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px !important;
+  margin: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.1s ease;
+  outline: none;
+}
+
+[role="menuitem"]:hover,
+[role="menuitem"]:focus,
+[role="menuitem"][data-highlighted] {
+  background: var(--accent);
+  color: white;
+}
+
+/* 菜单分隔线 */
+[role="separator"] {
+  height: 1px;
+  margin: 8px 12px;
+  background: var(--border-light);
+}
+
+/* 菜单触发器样式 */
+[role="menubar"] [role="menuitem"][aria-expanded] {
+  padding: 8px 16px !important;
+  margin: 0 2px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+[role="menubar"] [role="menuitem"][aria-expanded]:hover,
+[role="menubar"] [role="menuitem"][aria-expanded="true"] {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }

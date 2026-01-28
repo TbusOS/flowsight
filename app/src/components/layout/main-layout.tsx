@@ -19,6 +19,20 @@ import {
   rightPanelWidthAtom,
   commandMenuOpenAtom,
 } from "../../lib/atoms/layout-atoms"
+import {
+  LayoutDashboard,
+  FolderOpen,
+  FileCode,
+  Zap,
+  Search,
+  Command,
+  Settings,
+  Sparkles,
+  FileText,
+  BarChart3,
+  Cpu,
+  Folder,
+} from "lucide-react"
 
 // Placeholder components for different views
 function CodeView() {
@@ -55,17 +69,23 @@ function FlowView() {
 
 function TerminalPanel() {
   return (
-    <div className="h-full w-full bg-[var(--bg-primary)] p-2 font-mono text-xs">
+    <div className="h-full w-full bg-[var(--bg-primary)] p-3 font-mono text-[13px] leading-relaxed">
       <div className="flex h-full flex-col">
-        <div className="flex-1 overflow-y-auto">
-          <p className="text-[var(--text-muted)]">$ flow analyze --project demo</p>
-          <p className="mt-1 text-[var(--success)]">Loading project...</p>
-          <p className="mt-1 text-[var(--text-secondary)]">Found 42 functions, 156 calls</p>
-          <p className="mt-1 text-[var(--success)]">Analysis complete in 1.2s</p>
+        <div className="flex-1 overflow-y-auto space-y-1">
+          {/* 命令行 */}
+          <p>
+            <span className="text-[var(--accent)]">$ </span>
+            <span className="text-[var(--text-primary)]">flow analyze --project demo</span>
+          </p>
+          {/* 输出信息 */}
+          <p className="text-[var(--success)]">Loading project...</p>
+          <p className="text-[var(--text-secondary)]">Found 42 functions, 156 calls</p>
+          <p className="text-[var(--success)]">Analysis complete in 1.2s</p>
         </div>
-        <div className="mt-2 flex items-center gap-2">
-          <span className="text-[var(--accent)]">$</span>
-          <span className="animate-pulse">_</span>
+        {/* 输入提示符 */}
+        <div className="mt-3 flex items-center">
+          <span className="text-[var(--accent)]">$ </span>
+          <span className="ml-1 inline-block w-2 h-4 bg-[var(--text-primary)] animate-pulse opacity-80" />
         </div>
       </div>
     </div>
@@ -77,7 +97,7 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
-  const [sidebarOpen] = useAtom(sidebarOpenAtom)
+  const [sidebarOpen, setSidebarOpen] = useAtom(sidebarOpenAtom)
   const [bottomPanelOpen, setBottomPanelOpen] = useAtom(bottomPanelOpenAtom)
   const [bottomPanelTab, setBottomPanelTab] = useAtom(bottomPanelTabAtom)
   const [commandMenuOpen, setCommandMenuOpen] = useAtom(commandMenuOpenAtom)
@@ -95,7 +115,7 @@ export function MainLayout({ children }: MainLayoutProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault()
-        // Toggle sidebar
+        setSidebarOpen(prev => !prev)
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
         e.preventDefault()
@@ -105,7 +125,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [setRightPanelOpen])
+  }, [setSidebarOpen, setRightPanelOpen])
 
   // Render right panel based on tab
   const renderRightPanel = () => {
@@ -145,7 +165,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         <Sidebar />
 
         {/* Content Area */}
-        <main className="flex flex-1 flex-col overflow-hidden">
+        <main id="main-content" className="flex flex-1 flex-col overflow-hidden">
           {/* View Area */}
           <div className="flex-1 overflow-hidden">
             <AnimatePresence mode="wait">
@@ -223,28 +243,31 @@ export function MainLayout({ children }: MainLayoutProps) {
               {/* Right Panel Tabs */}
               <div className="flex flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-tertiary)]">
                 {[
-                  { id: "outline", label: "大纲", icon: "📋" },
-                  { id: "detail", label: "详情", icon: "📊" },
-                  { id: "llvm-ir", label: "IR", icon: "⚙️" },
-                  { id: "explorer", label: "文件", icon: "📁" },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    className={cn(
-                      "flex flex-col items-center gap-1 px-3 py-2 text-[10px] transition-colors",
-                      rightPanelTab === tab.id
-                        ? "text-[var(--accent)] bg-[var(--bg-secondary)]"
-                        : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-                    )}
-                    onClick={() => {
-                      setRightPanelTab(tab.id as typeof rightPanelTab)
-                      setRightPanelOpen(true)
-                    }}
-                  >
-                    <span className="text-sm">{tab.icon}</span>
-                    <span>{tab.label}</span>
-                  </button>
-                ))}
+                  { id: "outline", label: "大纲", icon: FileText, iconClass: "h-4 w-4" },
+                  { id: "detail", label: "详情", icon: BarChart3, iconClass: "h-4 w-4" },
+                  { id: "llvm-ir", label: "IR", icon: Cpu, iconClass: "h-4 w-4" },
+                  { id: "explorer", label: "文件", icon: Folder, iconClass: "h-4 w-4" },
+                ].map((tab) => {
+                  const Icon = tab.icon
+                  return (
+                    <button
+                      key={tab.id}
+                      className={cn(
+                        "flex flex-col items-center gap-1 px-3 py-2 text-[10px] transition-colors cursor-pointer",
+                        rightPanelTab === tab.id
+                          ? "text-[var(--accent)] bg-[var(--bg-secondary)]"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                      )}
+                      onClick={() => {
+                        setRightPanelTab(tab.id as typeof rightPanelTab)
+                        setRightPanelOpen(true)
+                      }}
+                    >
+                      <Icon className={tab.iconClass} />
+                      <span>{tab.label}</span>
+                    </button>
+                  )
+                })}
               </div>
 
               {/* Panel Content */}
