@@ -227,6 +227,11 @@ pub fn build_flow_tree(
             level: ConfidenceLevel::Unknown,
             reason: "External function - definition not available".to_string(),
         }),
+        FlowNodeType::Separator { .. } => None, // Separators don't need confidence
+        FlowNodeType::Branch { .. } => Some(CallConfidence {
+            level: ConfidenceLevel::Possible,
+            reason: "Conditional branch".to_string(),
+        }),
     };
 
     Some(FlowNode {

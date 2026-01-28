@@ -22,6 +22,13 @@
 //!                                                   └── drv->probe()
 //!                                                         └── [用户的 probe 函数]
 //! ```
+//!
+//! ## 模块结构
+//!
+//! - `matcher`: 模式匹配器，用于识别异步机制和框架回调
+//! - `KnowledgeBase`: 知识库，包含框架定义和调用链
+
+pub mod matcher;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

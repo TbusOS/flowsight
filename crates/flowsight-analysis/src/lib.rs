@@ -12,6 +12,7 @@
 //! - User-assisted learning for uncertain cases
 //! - Execution path tracing and visualization
 //! - Symbolic execution integration (KLEE bridge)
+//! - **ExecutionFlow construction with knowledge injection**
 
 pub mod async_tracker;
 pub mod callback;
@@ -19,6 +20,7 @@ pub mod callgraph;
 pub mod classification;
 pub mod constraint;
 pub mod evaluator;
+pub mod flow_builder;
 pub mod funcptr;
 pub mod learning;
 pub mod node_detail;

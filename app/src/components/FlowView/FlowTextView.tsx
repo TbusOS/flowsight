@@ -3,16 +3,22 @@
  *
  * 支持 ftrace、tree 等纯文本格式显示
  * 交互式行选择、异步回调展示、置信度标注
+ * 
+ * Phase 1 增强:
+ * - 支持 ExecutionFlow 完整数据结构
+ * - 异步边界可视化
+ * - 执行上下文显示
+ * - 分支节点支持
  */
 
 import { useRef, useEffect, useState, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
-import { FlowTreeNode, AsyncCallback } from '../../types'
+import { FlowTreeNode, AsyncCallback, ExecutionFlow, AsyncBoundary, ExecutionContext } from '../../types'
 import { toFtraceFormat, toTreeFormat, ExportFormat, exportFlowTrees, getExportExtension } from '../../utils/flowFormatters'
 import './FlowTextView.css'
 
-type TextViewMode = 'ftrace' | 'tree'
+type TextViewMode = 'ftrace' | 'tree' | 'timeline'
 
 export interface TextLine {
   id: string
@@ -34,9 +40,23 @@ export interface FlowTextViewProps {
   onNodeClick?: (functionName: string) => void
   selectedFunction?: string
   asyncCallbacks?: AsyncCallback[]
+  /** ExecutionFlow 完整执行流数据 (Phase 1) */
+  executionFlow?: ExecutionFlow
+  /** 是否显示执行上下文 */
+  showContext?: boolean
+  /** 是否显示异步边界 */
+  showAsyncBoundaries?: boolean
 }
 
-export function FlowTextView({ flowTrees, onNodeClick, selectedFunction, asyncCallbacks = [] }: FlowTextViewProps) {
+export function FlowTextView({ 
+  flowTrees, 
+  onNodeClick, 
+  selectedFunction, 
+  asyncCallbacks = [],
+  executionFlow,
+  showContext = true,
+  showAsyncBoundaries = true,
+}: FlowTextViewProps) {
   const [viewMode, setViewMode] = useState<TextViewMode>('ftrace')
   const [content, setContent] = useState('')
   const [showHelp, setShowHelp] = useState(false)
@@ -396,6 +416,102 @@ export function FlowTextView({ flowTrees, onNodeClick, selectedFunction, asyncCa
     )
   }
 
+  // 获取执行上下文图标
+  const getContextIcon = (context?: ExecutionContext): string => {
+    switch (context) {
+      case 'Process': return '📦'
+      case 'SoftIrq': return '🔄'
+      case 'HardIrq': return '⚡'
+      default: return '❓'
+    }
+  }
+
+  // 获取执行上下文说明
+  const getContextDescription = (context?: ExecutionContext): string => {
+    switch (context) {
+      case 'Process': return '进程上下文 (可睡眠)'
+      case 'SoftIrq': return '软中断上下文 (不可睡眠)'
+      case 'HardIrq': return '硬中断上下文 (不可睡眠)'
+      default: return '未知上下文'
+    }
+  }
+
+  // 渲染时间线视图
+  const renderTimeline = () => {
+    if (!executionFlow) {
+      return (
+        <div className="timeline-empty">
+          <p>时间线视图需要 ExecutionFlow 数据</p>
+          <p className="hint">请使用最新的分析 API 获取执行流数据</p>
+        </div>
+      )
+    }
+
+    const { entry_function, async_boundaries, analysis_info } = executionFlow
+
+    return (
+      <div className="timeline-view">
+        {/* 分析信息摘要 */}
+        <div className="timeline-summary">
+          <div className="summary-item">
+            <span className="summary-label">入口函数</span>
+            <span className="summary-value">{entry_function}()</span>
+          </div>
+          <div className="summary-item">
+            <span className="summary-label">总节点数</span>
+            <span className="summary-value">{analysis_info.total_nodes}</span>
+          </div>
+          <div className="summary-item">
+            <span className="summary-label">直接调用</span>
+            <span className="summary-value">{analysis_info.direct_calls}</span>
+          </div>
+          <div className="summary-item">
+            <span className="summary-label">异步调用</span>
+            <span className="summary-value">{analysis_info.async_calls}</span>
+          </div>
+        </div>
+
+        {/* 异步边界列表 */}
+        {showAsyncBoundaries && async_boundaries.length > 0 && (
+          <div className="async-boundaries">
+            <h4>🔀 异步边界 ({async_boundaries.length})</h4>
+            {async_boundaries.map((boundary) => (
+              <div key={boundary.id} className="boundary-item">
+                <div className="boundary-trigger">
+                  <span className="boundary-icon">📤</span>
+                  <span className="boundary-call">{boundary.trigger_call}</span>
+                </div>
+                <div className="boundary-arrow">
+                  <span className="arrow-line"></span>
+                  <span className="arrow-label">{boundary.mechanism}</span>
+                  <span className="arrow-line"></span>
+                </div>
+                <div className="boundary-handler">
+                  <span className="boundary-icon">📥</span>
+                  <span className="boundary-func">{boundary.handler_function}()</span>
+                  <span className="boundary-context">{boundary.context_description}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 警告信息 */}
+        {analysis_info.warnings.length > 0 && (
+          <div className="timeline-warnings">
+            <h4>⚠️ 分析警告 ({analysis_info.warnings.length})</h4>
+            {analysis_info.warnings.map((warning, idx) => (
+              <div key={idx} className={`warning-item warning-${warning.kind.toLowerCase()}`}>
+                <span className="warning-icon">⚠️</span>
+                <span className="warning-message">{warning.message}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flow-text-view">
       <div className="flow-text-toolbar">
@@ -415,6 +531,13 @@ export function FlowTextView({ flowTrees, onNodeClick, selectedFunction, asyncCa
               title="树形视图"
             >
               🌲 树形
+            </button>
+            <button
+              className={viewMode === 'timeline' ? 'active' : ''}
+              onClick={() => setViewMode('timeline')}
+              title="时间线视图 (显示同步/异步边界)"
+            >
+              ⏱️ 时间线
             </button>
           </div>
         </div>
@@ -459,7 +582,9 @@ export function FlowTextView({ flowTrees, onNodeClick, selectedFunction, asyncCa
       )}
 
       <div className="flow-text-content">
-        {viewMode === 'ftrace' ? renderFtraceLines() : renderContent()}
+        {viewMode === 'ftrace' && renderFtraceLines()}
+        {viewMode === 'tree' && renderContent()}
+        {viewMode === 'timeline' && renderTimeline()}
       </div>
 
       {renderAsyncCallbacks()}

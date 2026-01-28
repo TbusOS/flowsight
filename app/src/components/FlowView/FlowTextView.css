@@ -649,3 +649,227 @@
 .flow-text-content .icon {
   font-family: 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
 }
+
+/* ============================================================================
+   时间线视图样式 (Phase 1)
+   ============================================================================ */
+
+.timeline-view {
+  padding: 16px;
+}
+
+.timeline-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: #8b949e;
+  text-align: center;
+}
+
+.timeline-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.timeline-empty .hint {
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* 分析信息摘要 */
+.timeline-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  background: #161b22;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-label {
+  font-size: 11px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #c9d1d9;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* 异步边界 */
+.async-boundaries {
+  margin-top: 16px;
+}
+
+.async-boundaries h4 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.boundary-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #21262d;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: 1px solid #30363d;
+}
+
+.boundary-trigger,
+.boundary-handler {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.boundary-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.boundary-call {
+  font-family: 'SF Mono', monospace;
+  font-size: 12px;
+  color: #8b949e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.boundary-func {
+  font-family: 'SF Mono', monospace;
+  font-size: 12px;
+  color: #dcdcaa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.boundary-context {
+  font-size: 10px;
+  color: #6e7681;
+  background: #0d1117;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.boundary-arrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.arrow-line {
+  width: 24px;
+  height: 2px;
+  background: linear-gradient(90deg, #30363d 0%, #58a6ff 50%, #30363d 100%);
+}
+
+.arrow-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #58a6ff;
+  padding: 2px 8px;
+  background: #1f6feb22;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* 警告信息 */
+.timeline-warnings {
+  margin-top: 16px;
+}
+
+.timeline-warnings h4 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.warning-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #21262d;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  border-left: 3px solid #d29922;
+}
+
+.warning-item.warning-unresolvedfunctionpointer {
+  border-left-color: #f85149;
+}
+
+.warning-item.warning-recursiondetected {
+  border-left-color: #a371f7;
+}
+
+.warning-item.warning-depthlimitreached {
+  border-left-color: #8b949e;
+}
+
+.warning-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.warning-message {
+  font-size: 12px;
+  color: #c9d1d9;
+  line-height: 1.5;
+}
+
+/* 执行上下文徽章 */
+.context-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.context-badge.process {
+  background: #23863622;
+  color: #3fb950;
+}
+
+.context-badge.softirq {
+  background: #f59e0b22;
+  color: #f59e0b;
+}
+
+.context-badge.hardirq {
+  background: #ef444422;
+  color: #ef4444;
+}
+
+.context-badge.unknown {
+  background: #6e768122;
+  color: #8b949e;
+}

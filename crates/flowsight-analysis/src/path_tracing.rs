@@ -399,6 +399,8 @@ impl ExecutionTracer {
             FlowNodeType::AsyncCallback { .. } => CallCategory::AsyncCallback,
             FlowNodeType::KernelApi => CallCategory::KernelApi,
             FlowNodeType::External => CallCategory::IndirectPointer,
+            FlowNodeType::Separator { .. } => CallCategory::Direct, // Not a call
+            FlowNodeType::Branch { .. } => CallCategory::Direct,    // Control flow
         };
 
         // Add step for this node

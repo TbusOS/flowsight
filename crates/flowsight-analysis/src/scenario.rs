@@ -865,6 +865,8 @@ impl ScenarioExecutor {
             FlowNodeType::AsyncCallback { .. } => CallCategory::AsyncCallback,
             FlowNodeType::KernelApi => CallCategory::KernelApi,
             FlowNodeType::External => CallCategory::IndirectPointer,
+            FlowNodeType::Separator { .. } => CallCategory::Direct, // Not a call, but use Direct as default
+            FlowNodeType::Branch { .. } => CallCategory::Direct,    // Control flow, not a call
         }
     }
 

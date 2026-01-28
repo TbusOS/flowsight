@@ -236,6 +236,12 @@ pub enum FlowNodeTypeDto {
     /// External function
     #[serde(rename = "External")]
     External,
+    /// Separator (async boundary, context switch, etc.)
+    #[serde(rename = "Separator")]
+    Separator { text: String },
+    /// Branch node
+    #[serde(rename = "Branch")]
+    Branch { condition: String, branch_type: String },
 }
 
 /// Async mechanism DTO
@@ -888,6 +894,11 @@ fn convert_node_type(node_type: &FlowNodeType) -> FlowNodeTypeDto {
         },
         FlowNodeType::KernelApi => FlowNodeTypeDto::KernelApi,
         FlowNodeType::External => FlowNodeTypeDto::External,
+        FlowNodeType::Separator { text } => FlowNodeTypeDto::Separator { text: text.clone() },
+        FlowNodeType::Branch { condition, branch_type } => FlowNodeTypeDto::Branch {
+            condition: condition.clone(),
+            branch_type: format!("{:?}", branch_type),
+        },
     }
 }
 

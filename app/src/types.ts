@@ -16,6 +16,8 @@ export type FlowNodeType =
   | { AsyncCallback: { mechanism: AsyncMechanism } }
   | 'KernelApi'
   | 'External'
+  | { Separator: { text: string } }
+  | { Branch: { condition: string; branch_type: string } }
 
 // 异步机制类型
 export type AsyncMechanism =
@@ -118,5 +120,59 @@ export interface AsyncCallback {
   handler: string
   execution_context: string
   trigger_explanation: string
+}
+
+// ============================================================================
+// ExecutionFlow - 完整执行流数据结构 (Phase 1)
+// ============================================================================
+
+// 异步边界
+export interface AsyncBoundary {
+  id: string
+  mechanism: string
+  trigger_call: string
+  trigger_location?: Location
+  handler_function: string
+  handler_node_id?: string
+  context_description: string
+}
+
+// 分析警告
+export interface AnalysisWarning {
+  kind: 'UnresolvedFunctionPointer' | 'UnknownAsyncPattern' | 'MissingKnowledge' | 'RecursionDetected' | 'DepthLimitReached'
+  message: string
+  location?: Location
+}
+
+// 分析信息
+export interface AnalysisInfo {
+  analyzed_at: string
+  source_file?: string
+  knowledge_version?: string
+  total_nodes: number
+  direct_calls: number
+  indirect_calls: number
+  async_calls: number
+  warnings: AnalysisWarning[]
+}
+
+// 执行流 - 顶层结构
+export interface ExecutionFlow {
+  entry_function: string
+  entry_location?: Location
+  root: FlowTreeNode
+  async_boundaries: AsyncBoundary[]
+  analysis_info: AnalysisInfo
+}
+
+// 执行上下文
+export type ExecutionContext = 'Process' | 'SoftIrq' | 'HardIrq' | 'Unknown'
+
+// 扩展 FlowTreeNode 以支持更多元数据
+export interface ExtendedFlowTreeNode extends FlowTreeNode {
+  execution_context?: ExecutionContext
+  can_sleep?: boolean
+  source_file?: string
+  is_kernel_internal?: boolean
 }
 
