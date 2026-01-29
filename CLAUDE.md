@@ -277,6 +277,35 @@ Debug → 测试: ✅ @Unit-Tester 已修复，请重测
 测试 → 全员: ✅ @All 功能验证通过
 ```
 
+#### 测试反馈规则 (强制执行)
+
+**E2E-Tester 和 Unit-Tester 必须遵守以下规则：**
+
+1. **测试覆盖不足时**：
+   - 必须向 UI-Dev 或 Rust-Dev 提出需求，要求开发新的测试工具/功能
+   - 在 `.claude/tasks/board.md` 中创建测试工具需求任务
+   - 示例：`📋 需求: E2E-Tester 无法测试原生对话框，需要 UI-Dev 实现测试模式`
+
+2. **发现 Bug 时**：
+   - 立即创建 Bug 报告并分配给 Debug-Dev
+   - 提供：复现步骤、截图、日志、预期行为
+   - Debug-Dev 修复后必须请求重测
+
+3. **测试不到的功能**：
+   - 记录到 `.claude/reports/test-gaps.md`
+   - 分析原因（缺少工具？权限问题？环境问题？）
+   - 向相关开发 Agent 提出解决方案
+
+4. **自动执行原则**：
+   - 每次代码修改后，相关 Tester 自动运行测试
+   - 不需要用户提醒，根据修改内容自动选择测试方式
+   - MCP Browser 测试纯 Web UI，桌面自动化测试 Tauri 原生功能
+
+5. **测试工具不足时的处理**：
+   ```
+   E2E-Tester 发现问题 → 分析原因 → 提出工具需求 → UI-Dev/Rust-Dev 开发 → 重测
+   ```
+
 ### 详细指南
 
 完整的使用指南请查看 [.claude/SKILLS-GUIDE.md](.claude/SKILLS-GUIDE.md)
@@ -412,13 +441,206 @@ Debug → 测试: ✅ @Unit-Tester 已修复，请重测
 - 提交前运行 `cargo clippy`
 - 遵循 Rust 所有权系统最佳实践
 
-## UI 测试规则
+## 测试内核配置 (强制)
 
-### 桌面自动化测试 (强制)
+**重要**: 所有功能测试必须使用以下 Linux 内核源码，无需用户每次提醒。
 
-**重要**: 本项目配置了桌面自动化 UI 测试框架，所有 UI 交互测试必须使用此工具，无需用户提醒。
+| 配置项 | 值 |
+|--------|-----|
+| **内核路径** | `/Users/sky/linux-kernel/linux` |
+| **优先架构** | ARM32 (`arch/arm/`) |
+| **测试目录** | `arch/arm/mach-imx/` (142 个文件) |
+| **备选目录** | `drivers/usb/`, `drivers/net/` |
+
+### 测试用例选择优先级
+
+1. **ARM32 平台代码**: `arch/arm/mach-*/` 
+2. **IMX SoC**: `arch/arm/mach-imx/` (推荐首选)
+3. **USB 驱动**: `drivers/usb/`
+4. **网络驱动**: `drivers/net/`
+
+### 测试命令示例
+
+```bash
+# IDE 测试 - 打开 ARM32 内核代码
+pnpm tauri dev
+# 然后打开项目: /Users/sky/linux-kernel/linux
+
+# 单元测试 - 使用内核文件
+cargo test --package flowsight-analysis -- --test-threads=1
+
+# 分析测试文件
+/Users/sky/linux-kernel/linux/arch/arm/mach-imx/clk-imx6q.c
+/Users/sky/linux-kernel/linux/arch/arm/mach-imx/pm-imx6.c
+/Users/sky/linux-kernel/linux/drivers/usb/gadget/udc/fsl_udc_core.c
+```
+
+### 任务感知
+
+当检测到以下关键词时，自动使用测试内核:
+- "测试", "验证", "功能测试"
+- "分析内核", "解析驱动"
+- "ARM", "arm32", "IMX"
+
+## UI 测试规则 (自动执行)
+
+**重要**: 开发完成后必须自动执行测试，无需用户提醒。根据任务类型自动选择测试方式。
+
+### 自动测试选择策略
+
+| 任务类型 | 测试方式 | 原因 |
+|----------|----------|------|
+| 纯 Web UI 修改 | MCP Browser | 快速验证 DOM/样式 |
+| Tauri 原生功能 | Playwright 桌面测试 | 需要完整桌面环境 |
+| 文件对话框/系统集成 | Playwright 桌面测试 | 原生 API 测试 |
+| 快捷键/命令面板 | Playwright 桌面测试 | 键盘事件测试 |
+| 复杂交互流程 | Playwright + MCP 组合 | 全面覆盖 |
+
+### 自动测试触发规则
+
+**开发完成后自动执行：**
+1. 修改 `app/src/components/` → 运行 Playwright UI 测试
+2. 修改 `app/src-tauri/` → 运行功能测试
+3. 修改命令面板 → 测试 ⌘K 打开和命令执行
+4. 修改样式/布局 → MCP Browser 快速验证 + Playwright 截图
+
+**自动测试命令：**
+```bash
+# 快速测试（MCP Browser 不可用时）
+cd app && npx playwright test tests/desktop/playwright.spec.ts --config=tests/desktop/playwright.config.ts --reporter=list
+
+# 完整测试
+cd app && npx playwright test tests/desktop/ --config=tests/desktop/playwright.config.ts
+```
+
+### 工具不足时的处理
+
+如果现有测试工具无法覆盖测试场景，需要：
+1. 在 `app/tests/desktop/playwright.spec.ts` 中添加新测试用例
+2. 或扩展 `app/tests/desktop/` 框架功能
+3. 确保新增测试可复用
+
+---
+
+### MCP Browser 自动化测试 (Web UI 快速验证)
+
+**重要**: 本项目优先使用 Cursor MCP Browser 进行 UI 测试，可直接在开发过程中自动验证功能。
+
+#### MCP Browser 测试流程
+
+```bash
+# 1. 启动应用 (后台运行)
+cd app && pnpm tauri dev
+
+# 2. 使用 MCP Browser 工具测试
+# - browser_navigate: 导航到 http://localhost:5173
+# - browser_snapshot: 获取页面快照
+# - browser_click: 点击元素
+# - browser_fill: 填充输入框
+# - browser_press_key: 按键操作
+# - browser_take_screenshot: 截图保存
+```
+
+#### 常用测试操作
+
+| 操作 | MCP 工具 | 示例 |
+|------|----------|------|
+| 打开应用 | `browser_navigate` | `{"url": "http://localhost:5173"}` |
+| 获取状态 | `browser_snapshot` | `{}` |
+| 点击按钮 | `browser_click` | `{"ref": "e1"}` |
+| 输入文本 | `browser_fill` | `{"ref": "e40", "value": "test"}` |
+| 按键 | `browser_press_key` | `{"key": "Escape"}` |
+| 截图 | `browser_take_screenshot` | `{}` |
+
+#### 测试 ARM32 内核文件分析
+
+**MCP Browser 限制**: 由于 MCP Browser 在纯浏览器环境运行，无法调用 Tauri 原生 API（如文件对话框）。以下为测试策略：
+
+**可用 MCP Browser 测试的功能**:
+- UI 布局和样式
+- 命令面板搜索和导航
+- 键盘快捷键
+- 视图切换
+- 状态管理响应
+
+**需要手动测试的功能**:
+- 打开项目/文件（原生对话框）
+- 文件保存
+- 桌面窗口行为
+
+**自动化测试流程**:
+```
+1. browser_navigate → http://localhost:5173
+2. browser_snapshot → 获取 UI 状态
+3. browser_click → 点击命令面板按钮 (⌘K)
+4. browser_snapshot → 验证命令菜单项（打开项目、打开文件等）
+5. browser_press_key → 测试键盘导航
+6. browser_snapshot → 验证状态变化
+```
+
+**手动测试步骤（Tauri 桌面应用）**:
+```
+1. 启动: pnpm tauri dev
+2. 按 ⌘K 打开命令面板
+3. 选择"打开项目"
+4. 选择 /Users/sky/linux-kernel/linux/arch/arm/mach-imx
+5. 等待索引完成
+6. 打开 .c 文件验证分析功能
+```
+
+#### 任务感知
+
+当检测到以下关键词时，自动使用 MCP Browser 测试:
+- "E2E 测试", "UI 测试", "界面测试"
+- "验证功能", "功能测试"
+- "浏览器测试", "自动化测试"
+
+### Playwright 桌面自动化测试 (推荐)
 
 测试框架位置: `app/tests/desktop/`
+
+#### 运行 Playwright 测试（首选方案）
+
+```bash
+# 确保应用已启动
+cd app && pnpm tauri dev
+
+# 运行桌面 UI 测试
+cd app && npx playwright test tests/desktop/playwright.spec.ts --config=tests/desktop/playwright.config.ts --reporter=list
+
+# 查看截图结果
+ls app/test-results/flowsight/
+```
+
+#### 测试用例
+
+| 测试组 | 测试内容 | 状态 |
+|--------|----------|------|
+| UI Components | Header, Sidebar, Main, Footer | ✅ 通过 |
+| Command Palette | Cmd+K 打开, 搜索输入框 | ✅ 通过 |
+| Layout Structure | 完整布局截图, Flexbox | ✅ 通过 |
+| Color System | 背景色, 文字色 | ⚠️ 部分通过 |
+| Navigation | 侧边栏按钮 | ⚠️ Hover 超时 |
+
+#### 添加新测试
+
+在 `app/tests/desktop/playwright.spec.ts` 中添加：
+
+```typescript
+test('my new feature test', async ({ page }) => {
+  await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+  
+  // 测试打开项目命令
+  await page.keyboard.press('Meta+K');
+  await page.waitForTimeout(500);
+  const openProjectOption = page.locator('text=打开项目');
+  await expect(openProjectOption).toBeVisible();
+  
+  await page.screenshot({ path: 'test-results/flowsight/my-test.png' });
+});
+```
+
+### Python 桌面自动化测试 (备选)
 
 #### 何时使用
 
@@ -428,6 +650,8 @@ Debug → 测试: ✅ @Unit-Tester 已修复，请重测
 | UI 样式修改后验证 | `python3 -m tests.desktop --phase visual` |
 | 交互功能修改后验证 | `python3 -m tests.desktop --phase interactive` |
 | 完整 UI 测试 | `python3 -m tests.desktop --full` |
+
+**macOS 依赖**: `pip3 install pyobjc-framework-Quartz Pillow`
 
 **注意**: 运行前请确保应用已启动 (如 `pnpm tauri dev`)
 

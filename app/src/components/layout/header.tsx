@@ -25,6 +25,8 @@ import {
   Play,
   Link2,
 } from "lucide-react"
+import { open as openDialog } from "@tauri-apps/plugin-dialog"
+import { invoke } from "@tauri-apps/api/core"
 import { cn } from "../../lib/utils"
 import { viewModeAtom, commandMenuOpenAtom, bottomPanelOpenAtom, bottomPanelTabAtom } from "../../lib/atoms/layout-atoms"
 import { Button } from "../ui/button"
@@ -59,6 +61,78 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
     }
   }
 
+  // 新建项目
+  const handleNewProject = async () => {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "选择项目目录",
+      })
+      if (selected && typeof selected === 'string') {
+        await invoke('open_project', { path: selected })
+        console.log('项目已打开:', selected)
+      }
+    } catch (error) {
+      console.error('新建项目失败:', error)
+    }
+  }
+
+  // 打开文件夹
+  const handleOpenFolder = async () => {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "打开文件夹",
+      })
+      if (selected && typeof selected === 'string') {
+        await invoke('open_project', { path: selected })
+        console.log('文件夹已打开:', selected)
+      }
+    } catch (error) {
+      console.error('打开文件夹失败:', error)
+    }
+  }
+
+  // 打开文件
+  const handleOpenFile = async () => {
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        filters: [
+          { name: 'C/C++ 源文件', extensions: ['c', 'h', 'cpp', 'hpp'] },
+          { name: '所有文件', extensions: ['*'] },
+        ],
+        title: "打开文件",
+      })
+      if (selected && typeof selected === 'string') {
+        await invoke('analyze_file', { path: selected })
+        console.log('文件已打开:', selected)
+      }
+    } catch (error) {
+      console.error('打开文件失败:', error)
+    }
+  }
+
+  // 保存
+  const handleSave = () => {
+    console.log('保存功能 (待实现)')
+    // TODO: 实现保存功能
+  }
+
+  // 运行分析
+  const handleRunAnalysis = () => {
+    console.log('运行分析 (待实现)')
+    // TODO: 实现运行分析功能
+  }
+
+  // 查找引用
+  const handleFindReferences = () => {
+    setCommandMenuOpen(true)
+    console.log('查找引用 (打开命令面板)')
+  }
+
   return (
     <header
       className={cn(
@@ -85,18 +159,18 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
               文件
             </MenubarTrigger>
             <MenubarContent className={menuContentClass}>
-              <MenubarItem className={cn(menuItemClass, "group")}>
+              <MenubarItem className={cn(menuItemClass, "group")} onClick={handleNewProject}>
                 <FilePlus className={menuIconClass} />
                 <span>新建项目</span>
                 <span className={menuShortcutClass}>⌘N</span>
               </MenubarItem>
-              <MenubarItem className={cn(menuItemClass, "group")}>
+              <MenubarItem className={cn(menuItemClass, "group")} onClick={handleOpenFolder}>
                 <FolderOpen className={menuIconClass} />
                 <span>打开文件夹</span>
                 <span className={menuShortcutClass}>⌘O</span>
               </MenubarItem>
               <MenubarSeparator className={menuSeparatorClass} />
-              <MenubarItem className={cn(menuItemClass, "group")}>
+              <MenubarItem className={cn(menuItemClass, "group")} onClick={handleSave}>
                 <Save className={menuIconClass} />
                 <span>保存</span>
                 <span className={menuShortcutClass}>⌘S</span>
@@ -139,12 +213,12 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
                 <span className={menuShortcutClass}>⌘K</span>
               </MenubarItem>
               <MenubarSeparator className={menuSeparatorClass} />
-              <MenubarItem className={cn(menuItemClass, "group")}>
+              <MenubarItem className={cn(menuItemClass, "group")} onClick={handleRunAnalysis}>
                 <Play className={menuIconClass} />
                 <span>运行分析</span>
                 <span className={menuShortcutClass}>⇧⌘A</span>
               </MenubarItem>
-              <MenubarItem className={cn(menuItemClass, "group")}>
+              <MenubarItem className={cn(menuItemClass, "group")} onClick={handleFindReferences}>
                 <Link2 className={menuIconClass} />
                 <span>查找引用</span>
                 <span className={menuShortcutClass}>⇧⌘F</span>

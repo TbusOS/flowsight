@@ -886,3 +886,313 @@ pub struct AsyncBindingInfo {
     pub bind_line: Option<u32>,
     pub trigger_lines: Vec<u32>,
 }
+
+// ============================================================
+// AI Inference Commands
+// ============================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AiExplanationResult {
+    pub trigger_condition: String,
+    pub business_meaning: String,
+    pub execution_result: String,
+    pub related_functions: Vec<String>,
+    pub common_errors: Vec<String>,
+    pub context_type: Option<String>,
+    pub can_sleep: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AiContextAnnotation {
+    pub context_type: String,
+    pub can_sleep: bool,
+    pub timing: String,
+    pub notes: Vec<String>,
+}
+
+/// Explain function business semantics using AI or knowledge base
+#[tauri::command]
+pub async fn explain_function(
+    file_path: String,
+    function_name: String,
+) -> Result<AiExplanationResult, String> {
+    // First try to match against knowledge base
+    let common_explanations = get_common_explanation(&function_name);
+    if let Some(explanation) = common_explanations {
+        return Ok(explanation);
+    }
+    
+    // Read source code
+    let source = std::fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
+    
+    // Find function in source
+    let function_code = extract_function_code(&source, &function_name)
+        .unwrap_or_else(|| source.clone());
+    
+    // For now, return a template-based explanation
+    // TODO: Integrate with actual AI model when available
+    Ok(AiExplanationResult {
+        trigger_condition: format!("当 {} 被调用时", function_name),
+        business_meaning: format!("函数 {} 执行其定义的操作", function_name),
+        execution_result: "执行函数体中的代码逻辑".to_string(),
+        related_functions: extract_called_functions(&function_code),
+        common_errors: vec![
+            "检查返回值".to_string(),
+            "注意错误处理".to_string(),
+        ],
+        context_type: detect_context_type(&function_code),
+        can_sleep: detect_can_sleep(&function_code),
+    })
+}
+
+/// Get context annotation for async handler
+#[tauri::command]
+pub async fn get_context_annotation(
+    mechanism: String,
+    handler_code: String,
+) -> Result<AiContextAnnotation, String> {
+    // Match based on mechanism type
+    let (context_type, can_sleep, timing, notes) = match mechanism.as_str() {
+        "WorkQueue" | "workqueue" => (
+            "进程上下文 (Process)".to_string(),
+            true,
+            "内核调度器选择合适的时机".to_string(),
+            vec![
+                "可以睡眠".to_string(),
+                "可以调用可能阻塞的函数".to_string(),
+                "执行时间不应过长".to_string(),
+            ],
+        ),
+        "Timer" | "timer" => (
+            "软中断上下文 (SoftIRQ)".to_string(),
+            false,
+            "定时器到期时在软中断上下文中执行".to_string(),
+            vec![
+                "不可睡眠".to_string(),
+                "快速执行完成".to_string(),
+                "注意与其他软中断的并发".to_string(),
+            ],
+        ),
+        "IRQ" | "irq" | "HardIRQ" => (
+            "硬中断上下文 (HardIRQ)".to_string(),
+            false,
+            "硬件中断触发时立即执行".to_string(),
+            vec![
+                "禁止睡眠".to_string(),
+                "尽快处理完成".to_string(),
+                "不要调用可能阻塞的函数".to_string(),
+                "使用 schedule_work() 延迟处理".to_string(),
+            ],
+        ),
+        "Tasklet" | "tasklet" => (
+            "软中断上下文 (SoftIRQ)".to_string(),
+            false,
+            "由软中断调度执行".to_string(),
+            vec![
+                "不可睡眠".to_string(),
+                "同一 tasklet 不会并发执行".to_string(),
+            ],
+        ),
+        "ThreadedIRQ" | "threaded_irq" => (
+            "进程上下文 (Process)".to_string(),
+            true,
+            "由内核线程执行".to_string(),
+            vec![
+                "可以睡眠".to_string(),
+                "适合复杂的中断处理".to_string(),
+            ],
+        ),
+        _ => (
+            "未知上下文".to_string(),
+            false,
+            "根据具体情况确定".to_string(),
+            vec!["请查阅相关文档".to_string()],
+        ),
+    };
+    
+    Ok(AiContextAnnotation {
+        context_type,
+        can_sleep,
+        timing,
+        notes,
+    })
+}
+
+/// Translate constraint condition to business meaning
+#[tauri::command]
+pub async fn translate_condition(
+    code: String,
+    constraint: String,
+    function_name: String,
+) -> Result<String, String> {
+    // Simple template-based translation
+    // TODO: Integrate with AI model for complex cases
+    
+    let translation = if constraint.contains("NULL") || constraint.contains("!") && constraint.contains("ptr") {
+        format!("检查 {} 中的指针是否有效", function_name)
+    } else if constraint.contains("< 0") || constraint.contains("ret") {
+        "检查操作是否成功（负值表示错误）".to_string()
+    } else if constraint.contains("== 0") {
+        "检查条件是否满足（零值通常表示成功或假）".to_string()
+    } else if constraint.contains("&&") || constraint.contains("||") {
+        "复合条件检查，需要同时满足多个条件".to_string()
+    } else {
+        format!("条件: {}", constraint)
+    };
+    
+    Ok(translation)
+}
+
+// Helper functions
+
+fn get_common_explanation(function_name: &str) -> Option<AiExplanationResult> {
+    // Common kernel function patterns
+    if function_name.ends_with("_probe") || function_name.contains("probe") {
+        return Some(AiExplanationResult {
+            trigger_condition: "设备与驱动匹配时".to_string(),
+            business_meaning: "驱动程序的设备探测函数，负责初始化设备".to_string(),
+            execution_result: "分配设备资源，初始化硬件，注册设备".to_string(),
+            related_functions: vec![
+                "devm_kzalloc".to_string(),
+                "platform_get_resource".to_string(),
+                "devm_request_irq".to_string(),
+            ],
+            common_errors: vec![
+                "内存分配失败".to_string(),
+                "资源获取失败".to_string(),
+                "中断注册失败".to_string(),
+            ],
+            context_type: Some("进程上下文 (Process)".to_string()),
+            can_sleep: Some(true),
+        });
+    }
+    
+    if function_name.ends_with("_remove") {
+        return Some(AiExplanationResult {
+            trigger_condition: "设备移除或驱动卸载时".to_string(),
+            business_meaning: "驱动程序的设备移除函数，负责清理资源".to_string(),
+            execution_result: "释放设备资源，注销设备".to_string(),
+            related_functions: vec![
+                "device_unregister".to_string(),
+                "free_irq".to_string(),
+            ],
+            common_errors: vec![
+                "资源释放顺序错误".to_string(),
+                "遗漏资源释放".to_string(),
+            ],
+            context_type: Some("进程上下文 (Process)".to_string()),
+            can_sleep: Some(true),
+        });
+    }
+    
+    if function_name.contains("irq") || function_name.contains("interrupt") {
+        return Some(AiExplanationResult {
+            trigger_condition: "硬件中断发生时".to_string(),
+            business_meaning: "中断处理函数，响应硬件事件".to_string(),
+            execution_result: "处理中断，可能调度后续工作".to_string(),
+            related_functions: vec![
+                "schedule_work".to_string(),
+                "tasklet_schedule".to_string(),
+            ],
+            common_errors: vec![
+                "处理时间过长".to_string(),
+                "调用了可能睡眠的函数".to_string(),
+            ],
+            context_type: Some("硬中断上下文 (HardIRQ)".to_string()),
+            can_sleep: Some(false),
+        });
+    }
+    
+    if function_name.contains("work") || function_name.ends_with("_fn") {
+        return Some(AiExplanationResult {
+            trigger_condition: "工作队列调度执行时".to_string(),
+            business_meaning: "延迟执行的工作函数，处理复杂任务".to_string(),
+            execution_result: "执行延迟处理的任务".to_string(),
+            related_functions: vec![
+                "schedule_work".to_string(),
+                "queue_work".to_string(),
+            ],
+            common_errors: vec![
+                "访问已释放的资源".to_string(),
+                "并发访问问题".to_string(),
+            ],
+            context_type: Some("进程上下文 (Process)".to_string()),
+            can_sleep: Some(true),
+        });
+    }
+    
+    None
+}
+
+fn extract_function_code(source: &str, function_name: &str) -> Option<String> {
+    // Simple extraction - find function and extract until closing brace
+    let pattern = format!(r"(?s)(\w+\s+)?{}\s*\([^)]*\)\s*\{{", regex::escape(function_name));
+    let re = regex::Regex::new(&pattern).ok()?;
+    
+    if let Some(mat) = re.find(source) {
+        let start = mat.start();
+        let mut brace_count = 0;
+        let mut end = start;
+        
+        for (i, c) in source[start..].char_indices() {
+            match c {
+                '{' => brace_count += 1,
+                '}' => {
+                    brace_count -= 1;
+                    if brace_count == 0 {
+                        end = start + i + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        return Some(source[start..end].to_string());
+    }
+    
+    None
+}
+
+fn extract_called_functions(code: &str) -> Vec<String> {
+    // Extract function calls from code
+    let re = regex::Regex::new(r"(\w+)\s*\(").unwrap();
+    let mut functions: Vec<String> = re
+        .captures_iter(code)
+        .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+        .filter(|name| !["if", "while", "for", "switch", "return", "sizeof"].contains(&name.as_str()))
+        .collect();
+    
+    functions.sort();
+    functions.dedup();
+    functions.truncate(10); // Limit to 10 functions
+    functions
+}
+
+fn detect_context_type(code: &str) -> Option<String> {
+    if code.contains("irqreturn_t") || code.contains("request_irq") {
+        Some("硬中断上下文 (HardIRQ)".to_string())
+    } else if code.contains("work_struct") || code.contains("INIT_WORK") {
+        Some("进程上下文 (Process)".to_string())
+    } else if code.contains("tasklet") {
+        Some("软中断上下文 (SoftIRQ)".to_string())
+    } else if code.contains("timer_list") || code.contains("timer_setup") {
+        Some("软中断上下文 (SoftIRQ)".to_string())
+    } else {
+        None
+    }
+}
+
+fn detect_can_sleep(code: &str) -> Option<bool> {
+    // Check for sleep-incompatible patterns
+    if code.contains("irqreturn_t") || code.contains("in_interrupt") {
+        return Some(false);
+    }
+    if code.contains("spin_lock") && !code.contains("spin_unlock_irqrestore") {
+        return Some(false);
+    }
+    if code.contains("work_struct") || code.contains("kthread") {
+        return Some(true);
+    }
+    None
+}

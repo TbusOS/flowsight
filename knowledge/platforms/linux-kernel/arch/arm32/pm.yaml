@@ -1,0 +1,331 @@
+# ARM32 Power Management Knowledge Base
+#
+# Reference: arch/arm/kernel/suspend.c
+# Reference: arch/arm/include/asm/suspend.h
+
+# ============================================================
+# ARM32 SUSPEND/RESUME
+# ============================================================
+
+arm32_suspend:
+  description: "ARM32 休眠/唤醒框架"
+  header: "arch/arm/include/asm/suspend.h"
+  icon: "💤"
+
+  context:
+    type: "process"
+    can_sleep: true
+
+  bind_patterns:
+    # cpu_suspend - CPU 休眠入口
+    - pattern: 'cpu_suspend\s*\(\s*(?P<arg>\w+)\s*,\s*(?P<fn>\w+)\s*\)'
+      handler_capture: "fn"
+      description: "CPU 休眠"
+      extra_captures:
+        - name: "arg"
+          description: "传递给回调的参数"
+
+    # cpu_resume - CPU 唤醒入口
+    - pattern: 'cpu_resume\s*\(\s*\)'
+      description: "CPU 唤醒"
+
+  kernel_call_chain:
+    trigger: "系统休眠"
+    chain:
+      - function: "suspend_enter"
+        file: "kernel/power/suspend.c"
+        description: "通用休眠入口"
+      - function: "suspend_ops->enter()"
+        file: "kernel/power/suspend.c"
+        description: "平台休眠回调"
+      - function: "cpu_suspend"
+        file: "arch/arm/kernel/suspend.c"
+        description: "ARM CPU 休眠"
+      - function: "__cpu_suspend"
+        file: "arch/arm/kernel/sleep.S"
+        description: "保存 CPU 状态 (汇编)"
+      - function: "platform_suspend_fn()"
+        file: "平台代码"
+        description: "平台特定休眠"
+        is_user_entry: true
+
+  resume_chain:
+    trigger: "唤醒事件"
+    chain:
+      - function: "cpu_resume"
+        file: "arch/arm/kernel/sleep.S"
+        description: "CPU 唤醒入口 (汇编)"
+      - function: "__cpu_resume_mmu"
+        file: "arch/arm/kernel/sleep.S"
+        description: "恢复 MMU"
+      - function: "cpu_do_resume"
+        file: "arch/arm/mm/proc-v7.S"
+        description: "恢复 CPU 状态"
+      - function: "从 __cpu_suspend 返回"
+        file: "arch/arm/kernel/suspend.c"
+        description: "恢复执行"
+
+  saved_state:
+    - name: "CPU registers"
+      description: "R4-R12, SP, LR"
+    - name: "CPSR"
+      description: "状态寄存器"
+    - name: "CP15 registers"
+      description: "系统控制寄存器"
+    - name: "MMU state"
+      description: "页表基址等"
+
+  notes:
+    - "cpu_suspend 会保存 CPU 状态到栈"
+    - "唤醒时从物理地址启动"
+    - "需要平台提供唤醒地址设置"
+
+
+# ============================================================
+# ARM32 HOTPLUG
+# ============================================================
+
+arm32_hotplug:
+  description: "ARM32 CPU 热插拔"
+  header: "arch/arm/include/asm/smp.h"
+  icon: "🔌"
+
+  context:
+    type: "process"
+    can_sleep: true
+
+  bind_patterns:
+    # cpu_up - 启动 CPU
+    - pattern: 'cpu_up\s*\(\s*(?P<cpu>\d+)\s*\)'
+      description: "启动 CPU"
+
+    # cpu_down - 关闭 CPU
+    - pattern: 'cpu_down\s*\(\s*(?P<cpu>\d+)\s*\)'
+      description: "关闭 CPU"
+
+  callbacks:
+    boot_secondary:
+      pattern: '\.smp_boot_secondary\s*=\s*(?P<fn>\w+)'
+      handler_capture: "fn"
+      description: "启动第二核回调"
+
+    secondary_startup:
+      pattern: 'secondary_startup\s*\(\s*\)'
+      description: "第二核启动入口"
+
+    cpu_die:
+      pattern: '\.cpu_die\s*=\s*(?P<fn>\w+)'
+      handler_capture: "fn"
+      description: "CPU 死亡回调"
+
+    cpu_kill:
+      pattern: '\.cpu_kill\s*=\s*(?P<fn>\w+)'
+      handler_capture: "fn"
+      description: "CPU 杀死回调"
+
+  kernel_call_chain:
+    trigger: "CPU 热启动"
+    chain:
+      - function: "cpu_up"
+        file: "kernel/cpu.c"
+        description: "通用 CPU 启动"
+      - function: "_cpu_up"
+        file: "kernel/cpu.c"
+        description: "内部 CPU 启动"
+      - function: "__cpu_up"
+        file: "arch/arm/kernel/smp.c"
+        description: "ARM CPU 启动"
+      - function: "boot_secondary"
+        file: "平台代码"
+        description: "平台启动第二核"
+        is_user_entry: true
+      - function: "secondary_startup"
+        file: "arch/arm/kernel/head.S"
+        description: "第二核启动入口"
+
+  notes:
+    - "使用 SRC 设置第二核启动地址"
+    - "通过 IPI 唤醒第二核"
+    - "第二核执行 secondary_startup"
+
+
+# ============================================================
+# ARM32 SMP
+# ============================================================
+
+arm32_smp:
+  description: "ARM32 对称多处理"
+  header: "arch/arm/include/asm/smp.h"
+  icon: "🔀"
+
+  context:
+    type: "process"
+    can_sleep: true
+
+  bind_patterns:
+    # smp_operations 结构体
+    - pattern: 'static struct smp_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "SMP 操作结构体"
+
+    # smp_set_ops
+    - pattern: 'smp_set_ops\s*\(\s*&?(?P<ops>\w+)\s*\)'
+      variable_capture: "ops"
+      description: "设置 SMP 操作"
+
+  smp_operations:
+    smp_init_cpus:
+      pattern: '\.smp_init_cpus\s*=\s*(?P<fn>\w+)'
+      handler_capture: "fn"
+      description: "初始化 CPU"
+
+    smp_prepare_cpus:
+      pattern: '\.smp_prepare_cpus\s*=\s*(?P<fn>\w+)'
+      handler_capture: "fn"
+      description: "准备 CPU"
+
+    smp_secondary_init:
+      pattern: '\.smp_secondary_init\s*=\s*(?P<fn>\w+)'
+      handler_capture: "fn"
+      description: "第二核初始化"
+
+    smp_boot_secondary:
+      pattern: '\.smp_boot_secondary\s*=\s*(?P<fn>\w+)'
+      handler_capture: "fn"
+      description: "启动第二核"
+
+  kernel_call_chain:
+    trigger: "SMP 初始化"
+    chain:
+      - function: "smp_init"
+        file: "kernel/smp.c"
+        description: "通用 SMP 初始化"
+      - function: "smp_prepare_cpus"
+        file: "arch/arm/kernel/smp.c"
+        description: "准备 CPU"
+      - function: "platform_smp_prepare_cpus"
+        file: "平台代码"
+        description: "平台 SMP 准备"
+        is_user_entry: true
+
+  notes:
+    - "ARM32 SMP 通过 SCU (Snoop Control Unit) 实现"
+    - "需要平台提供 SMP 操作"
+    - "使用自旋表或 PSCI 启动第二核"
+
+
+# ============================================================
+# ARM32 PSCI (Power State Coordination Interface)
+# ============================================================
+
+arm32_psci:
+  description: "ARM PSCI 电源状态协调接口"
+  header: "include/linux/psci.h"
+  icon: "🎛️"
+
+  context:
+    type: "process"
+    can_sleep: false  # SMC 调用
+
+  bind_patterns:
+    # psci_ops 使用
+    - pattern: 'psci_ops\.cpu_on\s*\(\s*(?P<cpu>\d+)\s*,\s*(?P<entry>[^)]+)\s*\)'
+      description: "PSCI CPU ON"
+
+    - pattern: 'psci_ops\.cpu_off\s*\(\s*(?P<state>[^)]+)\s*\)'
+      description: "PSCI CPU OFF"
+
+    - pattern: 'psci_ops\.system_suspend\s*\(\s*(?P<entry>[^)]+)\s*\)'
+      description: "PSCI 系统休眠"
+
+  psci_functions:
+    - name: "PSCI_CPU_ON"
+      id: "0xC4000003"
+      description: "启动 CPU"
+    - name: "PSCI_CPU_OFF"
+      id: "0x84000002"
+      description: "关闭 CPU"
+    - name: "PSCI_SYSTEM_SUSPEND"
+      id: "0xC400000E"
+      description: "系统休眠"
+    - name: "PSCI_SYSTEM_OFF"
+      id: "0x84000008"
+      description: "系统关机"
+    - name: "PSCI_SYSTEM_RESET"
+      id: "0x84000009"
+      description: "系统重启"
+
+  kernel_call_chain:
+    trigger: "PSCI 调用"
+    chain:
+      - function: "psci_cpu_on"
+        file: "drivers/firmware/psci/psci.c"
+        description: "PSCI CPU ON 调用"
+      - function: "invoke_psci_fn"
+        file: "drivers/firmware/psci/psci.c"
+        description: "调用 PSCI"
+      - function: "__invoke_psci_fn_smc"
+        file: "drivers/firmware/psci/psci.c"
+        description: "SMC 调用"
+      - function: "Secure Monitor (ATF/TF-A)"
+        file: "固件"
+        description: "安全监控器处理"
+        is_user_entry: true
+
+  notes:
+    - "PSCI 是 ARM 标准电源管理接口"
+    - "通过 SMC (Secure Monitor Call) 实现"
+    - "需要 ATF/TF-A 或 OP-TEE 固件支持"
+
+
+# ============================================================
+# ARM32 PM EXAMPLES
+# ============================================================
+
+examples:
+  - description: "平台 suspend 回调"
+    code: |
+      static int my_platform_suspend(void)
+      {
+          /* 保存平台状态 */
+          my_save_state();
+
+          /* 配置唤醒源 */
+          my_setup_wakeup_sources();
+
+          /* 进入低功耗模式 */
+          cpu_do_idle();
+
+          return 0;
+      }
+
+      static const struct platform_suspend_ops my_pm_ops = {
+          .enter = my_platform_suspend,
+          .valid = suspend_valid_only_mem,
+      };
+
+      static int __init my_pm_init(void)
+      {
+          suspend_set_ops(&my_pm_ops);
+          return 0;
+      }
+
+  - description: "SMP 启动第二核"
+    code: |
+      static int my_boot_secondary(unsigned int cpu,
+                                   struct task_struct *idle)
+      {
+          /* 设置第二核启动地址 */
+          writel(virt_to_phys(secondary_startup),
+                 my_src_base + SRC_GPR1 + cpu * 4);
+
+          /* 复位第二核 */
+          writel(1 << cpu, my_src_base + SRC_SCR);
+
+          /* 等待第二核启动 */
+          return smp_spin_table_cpu_postboot(cpu);
+      }
+
+      static struct smp_operations my_smp_ops __initdata = {
+          .smp_boot_secondary = my_boot_secondary,
+      };

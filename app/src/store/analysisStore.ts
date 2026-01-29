@@ -17,7 +17,7 @@ import {
   ExecutionFlow,
   AsyncBoundary,
 } from '../types'
-import { OutlineItem } from '../components/Outline/Outline'
+import { OutlineItem } from '../components/panels/outline-panel'
 
 // 入口点信息
 interface EntryPointInfo {

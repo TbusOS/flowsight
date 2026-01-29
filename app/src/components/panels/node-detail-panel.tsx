@@ -31,29 +31,12 @@ interface NodeDetail {
   execCount?: number
 }
 
-const mockDetail: NodeDetail = {
-  id: "demo_init",
-  name: "demo_init",
-  type: "function",
-  file: "demo.c",
-  line: 23,
-  column: 5,
-  returnType: "int",
-  parameters: [
-    { name: "void", type: "" },
-  ],
-  calls: ["kmalloc", "init_timer", "register_irq"],
-  calledBy: ["module_init"],
-  complexity: 3,
-  execCount: 1,
-}
-
 interface NodeDetailPanelProps {
   className?: string
   detail?: NodeDetail | null
 }
 
-export function NodeDetailPanel({ className, detail = mockDetail }: NodeDetailPanelProps) {
+export function NodeDetailPanel({ className, detail = null }: NodeDetailPanelProps) {
   if (!detail) {
     return (
       <div className={cn("flex flex-col h-full items-center justify-center p-4 text-center", className)}>

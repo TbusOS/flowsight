@@ -1,0 +1,432 @@
+# NXP/Freescale i.MX SoC Knowledge Base
+#
+# Reference: arch/arm/mach-imx/
+# Reference: Documentation/devicetree/bindings/arm/fsl.yaml
+
+# ============================================================
+# i.MX CLOCK FRAMEWORK
+# ============================================================
+
+imx_clk:
+  description: "i.MX 时钟框架"
+  header: "arch/arm/mach-imx/clk.h"
+  icon: "⏰"
+
+  context:
+    type: "process"
+    can_sleep: true
+
+  bind_patterns:
+    # imx_clk_hw_gate - 门控时钟
+    - pattern: 'imx_clk_hw_gate\s*\(\s*(?P<name>["\'][\w\-]+["\'])\s*,\s*(?P<parent>["\'][\w\-]+["\'])\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<bit>\d+)\s*\)'
+      description: "注册门控时钟"
+      extra_captures:
+        - name: "name"
+          description: "时钟名称"
+        - name: "parent"
+          description: "父时钟"
+        - name: "reg"
+          description: "寄存器地址"
+        - name: "bit"
+          description: "控制位"
+
+    # imx_clk_hw_pll - PLL 时钟
+    - pattern: 'imx_clk_hw_pll(?:v[123])?\s*\(\s*(?P<name>["\'][\w\-]+["\'])\s*,\s*(?P<parent>["\'][\w\-]+["\'])\s*,\s*(?P<base>[^)]+)\s*\)'
+      description: "注册 PLL 时钟"
+
+    # imx_clk_hw_mux - 多路选择时钟
+    - pattern: 'imx_clk_hw_mux\s*\(\s*(?P<name>["\'][\w\-]+["\'])\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<shift>\d+)\s*,\s*(?P<width>\d+)\s*,\s*(?P<parents>[^)]+)\s*\)'
+      description: "注册 MUX 时钟"
+
+    # imx_clk_hw_divider - 分频时钟
+    - pattern: 'imx_clk_hw_divider\s*\(\s*(?P<name>["\'][\w\-]+["\'])\s*,\s*(?P<parent>["\'][\w\-]+["\'])\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<shift>\d+)\s*,\s*(?P<width>\d+)\s*\)'
+      description: "注册分频时钟"
+
+    # imx_clk_hw_fixed - 固定时钟
+    - pattern: 'imx_clk_hw_fixed\s*\(\s*(?P<name>["\'][\w\-]+["\'])\s*,\s*(?P<rate>\d+)\s*\)'
+      description: "注册固定频率时钟"
+
+  clock_tree:
+    root:
+      - name: "osc"
+        description: "外部晶振 (24MHz)"
+      - name: "ckil"
+        description: "低速振荡器 (32.768kHz)"
+      - name: "ckih"
+        description: "高速外部时钟"
+
+    plls:
+      - name: "pll1"
+        description: "ARM PLL"
+        typical_freq: "792MHz - 1.2GHz"
+      - name: "pll2"
+        description: "System PLL (528MHz)"
+        children: ["pll2_pfd0", "pll2_pfd1", "pll2_pfd2"]
+      - name: "pll3"
+        description: "USB PLL (480MHz)"
+        children: ["pll3_pfd0", "pll3_pfd1", "pll3_pfd2", "pll3_pfd3"]
+      - name: "pll4"
+        description: "Audio PLL"
+      - name: "pll5"
+        description: "Video PLL"
+      - name: "pll6"
+        description: "ENET PLL"
+      - name: "pll7"
+        description: "USB Host PLL"
+
+  notes:
+    - "i.MX6 使用 CCM (Clock Controller Module)"
+    - "时钟树复杂，通过设备树配置"
+    - "使用 clk_get/clk_prepare_enable 接口"
+
+
+# ============================================================
+# i.MX POWER MANAGEMENT
+# ============================================================
+
+imx_pm:
+  description: "i.MX 电源管理"
+  header: "arch/arm/mach-imx/pm-imx6.c"
+  icon: "🔋"
+
+  context:
+    type: "process"
+    can_sleep: true
+
+  bind_patterns:
+    # imx6_pm_init - 电源管理初始化
+    - pattern: 'imx6[qsd]?[lux]?_pm_init\s*\(\s*\)'
+      description: "i.MX6 电源管理初始化"
+
+    # imx_gpc_init - GPC 初始化
+    - pattern: 'imx_gpc_init\s*\(\s*\)'
+      description: "GPC (General Power Controller) 初始化"
+
+  pm_modes:
+    - name: "RUN"
+      description: "正常运行模式"
+    - name: "WAIT"
+      description: "等待模式 (ARM WFI)"
+    - name: "STOP"
+      description: "停止模式 (低功耗)"
+    - name: "DSM"
+      description: "深度睡眠模式"
+
+  kernel_call_chain:
+    trigger: "系统休眠"
+    chain:
+      - function: "pm_suspend"
+        file: "kernel/power/suspend.c"
+        description: "通用休眠入口"
+      - function: "suspend_enter"
+        file: "kernel/power/suspend.c"
+        description: "进入休眠"
+      - function: "imx6q_pm_enter"
+        file: "arch/arm/mach-imx/pm-imx6.c"
+        description: "i.MX6 休眠处理"
+        is_user_entry: true
+      - function: "imx6_set_lpm"
+        file: "arch/arm/mach-imx/pm-imx6.c"
+        description: "设置低功耗模式"
+      - function: "cpu_v7_do_idle"
+        file: "arch/arm/mm/proc-v7.S"
+        description: "执行 WFI"
+
+  gpc_registers:
+    GPC_CNTR:
+      description: "GPC 控制寄存器"
+    GPC_PGC_CPU_PDN:
+      description: "CPU 电源域掉电"
+    GPC_IMR:
+      description: "GPC 中断屏蔽"
+
+  notes:
+    - "GPC 控制电源域开关"
+    - "ANATOP 控制模拟部分电源"
+    - "CCM 控制时钟门控"
+
+
+# ============================================================
+# i.MX CPUIDLE
+# ============================================================
+
+imx_cpuidle:
+  description: "i.MX CPU 空闲状态管理"
+  header: "arch/arm/mach-imx/cpuidle-imx6q.c"
+  icon: "😴"
+
+  context:
+    type: "process"
+    can_sleep: false  # 在 idle 路径上
+
+  bind_patterns:
+    - pattern: 'imx6[qsd]?[lux]?_cpuidle_init\s*\(\s*\)'
+      description: "i.MX6 cpuidle 初始化"
+
+    - pattern: 'cpuidle_register\s*\(\s*&(?P<drv>\w+)\s*,\s*(?P<mask>[^)]*)\s*\)'
+      variable_capture: "drv"
+      description: "注册 cpuidle 驱动"
+
+  idle_states:
+    - name: "C0"
+      description: "WFI (Wait For Interrupt)"
+      target_residency: "1us"
+      exit_latency: "1us"
+    - name: "C1"
+      description: "WAIT mode"
+      target_residency: "50us"
+      exit_latency: "50us"
+    - name: "C2"
+      description: "STOP mode (ARM power gated)"
+      target_residency: "500us"
+      exit_latency: "200us"
+
+  kernel_call_chain:
+    trigger: "CPU 空闲"
+    chain:
+      - function: "do_idle"
+        file: "kernel/sched/idle.c"
+        description: "空闲循环"
+      - function: "cpuidle_idle_call"
+        file: "drivers/cpuidle/cpuidle.c"
+        description: "cpuidle 调用"
+      - function: "imx6q_enter_wait"
+        file: "arch/arm/mach-imx/cpuidle-imx6q.c"
+        description: "进入 WAIT 模式"
+        is_user_entry: true
+
+  notes:
+    - "使用 ARM cpuidle 框架"
+    - "更深的睡眠状态需要更长的唤醒时间"
+
+
+# ============================================================
+# i.MX IOMUX (Pin Muxing)
+# ============================================================
+
+imx_iomux:
+  description: "i.MX IOMUX 引脚复用"
+  header: "arch/arm/mach-imx/iomux-v3.h"
+  icon: "🔀"
+
+  context:
+    type: "process"
+    can_sleep: true
+
+  bind_patterns:
+    # imx_iomux_v3_setup_pad - 设置单个引脚
+    - pattern: 'imx_iomux_v3_setup_pad\s*\(\s*(?P<pad>\w+)\s*\)'
+      variable_capture: "pad"
+      description: "设置引脚复用"
+
+    # imx_iomux_v3_setup_multiple_pads - 设置多个引脚
+    - pattern: 'imx_iomux_v3_setup_multiple_pads\s*\(\s*(?P<pads>\w+)\s*,\s*(?P<count>\w+)\s*\)'
+      variable_capture: "pads"
+      description: "批量设置引脚"
+
+    # IOMUX_PAD 宏
+    - pattern: 'IOMUX_PAD\s*\(\s*(?P<mux>[^,]+)\s*,\s*(?P<pad>[^,]+)\s*,\s*(?P<input>[^,]+)\s*,\s*(?P<config>[^,]+)\s*,\s*(?P<mode>[^)]+)\s*\)'
+      description: "定义 IOMUX 引脚配置"
+
+  pad_config:
+    SRE:
+      description: "Slew Rate Enable"
+    DSE:
+      description: "Drive Strength"
+    SPEED:
+      description: "速度选择"
+    ODE:
+      description: "Open Drain Enable"
+    PKE:
+      description: "Pull/Keeper Enable"
+    PUE:
+      description: "Pull/Keeper Select"
+    PUS:
+      description: "Pull Up/Down Config"
+    HYS:
+      description: "Hysteresis Enable"
+
+  notes:
+    - "通过设备树 pinctrl 子系统配置"
+    - "每个引脚可复用多种功能"
+    - "需要配置驱动强度、上下拉等"
+
+
+# ============================================================
+# i.MX SRC (System Reset Controller)
+# ============================================================
+
+imx_src:
+  description: "i.MX 系统复位控制器"
+  header: "arch/arm/mach-imx/src.c"
+  icon: "🔄"
+
+  context:
+    type: "process"
+    can_sleep: true
+
+  bind_patterns:
+    - pattern: 'imx_src_init\s*\(\s*\)'
+      description: "SRC 初始化"
+
+    - pattern: 'imx_enable_cpu\s*\(\s*(?P<cpu>\d+)\s*,\s*(?P<enable>\w+)\s*\)'
+      description: "启用/禁用 CPU"
+
+  functions:
+    imx_set_cpu_jump:
+      description: "设置 CPU 启动跳转地址"
+      pattern: 'imx_set_cpu_jump\s*\(\s*(?P<cpu>\d+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+
+    imx_src_prepare_restart:
+      description: "准备系统重启"
+      pattern: 'imx_src_prepare_restart\s*\(\s*\)'
+
+  registers:
+    SRC_SCR:
+      description: "SRC 控制寄存器"
+    SRC_GPR:
+      description: "通用寄存器 (用于 CPU 启动地址)"
+
+  notes:
+    - "控制 SoC 复位和 CPU 热插拔"
+    - "用于 SMP 启动第二核"
+
+
+# ============================================================
+# i.MX GPC (General Power Controller)
+# ============================================================
+
+imx_gpc:
+  description: "i.MX 通用电源控制器"
+  header: "arch/arm/mach-imx/gpc.c"
+  icon: "⚡"
+
+  context:
+    type: "hardirq"  # 中断唤醒处理
+    can_sleep: false
+
+  bind_patterns:
+    - pattern: 'imx_gpc_init\s*\(\s*\)'
+      description: "GPC 初始化"
+
+    - pattern: 'imx_gpc_irq_unmask\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "GPC 中断解除屏蔽"
+
+    - pattern: 'imx_gpc_irq_mask\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "GPC 中断屏蔽"
+
+  power_domains:
+    - name: "PU"
+      description: "GPU/VPU 电源域"
+    - name: "ARM"
+      description: "ARM 核心电源域"
+    - name: "SOC"
+      description: "SoC 电源域"
+
+  kernel_call_chain:
+    trigger: "GPC 中断唤醒"
+    chain:
+      - function: "gpc_handle_irq"
+        file: "arch/arm/mach-imx/gpc.c"
+        description: "GPC 中断处理"
+      - function: "imx_gpc_irq_unmask"
+        file: "arch/arm/mach-imx/gpc.c"
+        description: "解除屏蔽唤醒中断"
+
+  notes:
+    - "GPC 管理低功耗模式下的中断唤醒"
+    - "控制电源域开关"
+
+
+# ============================================================
+# i.MX ANATOP
+# ============================================================
+
+imx_anatop:
+  description: "i.MX 模拟顶层 (ANATOP)"
+  header: "arch/arm/mach-imx/anatop.c"
+  icon: "📊"
+
+  context:
+    type: "process"
+    can_sleep: true
+
+  functions:
+    regulator:
+      description: "内部稳压器控制"
+      pattern: 'imx_anatop_init\s*\(\s*\)'
+
+    thermal:
+      description: "温度传感器"
+      pattern: 'imx_init_tempmon\s*\(\s*\)'
+
+  voltage_rails:
+    - name: "vddarm"
+      description: "ARM 核心电压"
+    - name: "vddsoc"
+      description: "SoC 电压"
+    - name: "vddpu"
+      description: "GPU/VPU 电压"
+    - name: "vdd1p1"
+      description: "1.1V 电源"
+    - name: "vdd2p5"
+      description: "2.5V 电源"
+    - name: "vdd3p0"
+      description: "3.0V 电源"
+
+  notes:
+    - "管理内部 LDO 稳压器"
+    - "温度监控和过热保护"
+    - "PLL 参数控制"
+
+
+# ============================================================
+# i.MX EXAMPLES
+# ============================================================
+
+examples:
+  - description: "i.MX6 平台驱动"
+    code: |
+      static int my_imx6_probe(struct platform_device *pdev) {
+          struct my_device *dev;
+          struct clk *clk;
+          int irq, ret;
+
+          /* 获取时钟 */
+          clk = devm_clk_get(&pdev->dev, "ipg");
+          if (IS_ERR(clk))
+              return PTR_ERR(clk);
+
+          /* 使能时钟 */
+          ret = clk_prepare_enable(clk);
+          if (ret)
+              return ret;
+
+          /* 获取中断 */
+          irq = platform_get_irq(pdev, 0);
+          if (irq < 0)
+              return irq;
+
+          /* 注册中断 */
+          ret = devm_request_irq(&pdev->dev, irq, my_isr,
+                                 IRQF_TRIGGER_RISING,
+                                 "my-imx6-device", dev);
+          if (ret)
+              goto err_clk;
+
+          return 0;
+
+      err_clk:
+          clk_disable_unprepare(clk);
+          return ret;
+      }
+
+  - description: "i.MX 设备树匹配"
+    code: |
+      static const struct of_device_id my_imx_ids[] = {
+          { .compatible = "fsl,imx6q-mydev", .data = &imx6q_data },
+          { .compatible = "fsl,imx6ul-mydev", .data = &imx6ul_data },
+          { .compatible = "fsl,imx7d-mydev", .data = &imx7d_data },
+          { },
+      };
+      MODULE_DEVICE_TABLE(of, my_imx_ids);

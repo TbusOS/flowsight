@@ -41,6 +41,10 @@ pub fn run() {
             commands::build_execution_flow,
             commands::get_entry_points,
             commands::get_async_bindings,
+            // AI Inference Commands
+            commands::explain_function,
+            commands::get_context_annotation,
+            commands::translate_condition,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

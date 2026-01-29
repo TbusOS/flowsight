@@ -16,13 +16,17 @@ import { rightPanelOpenAtom, rightPanelTabAtom } from "../../lib/atoms/layout-at
 import { useAtom } from "jotai"
 
 // 模拟数据 - 实际应从后端获取
-interface OutlineItem {
-  id: string
+export interface OutlineItem {
+  id?: string
   name: string
-  type: "function" | "variable" | "type" | "struct" | "enum"
+  type?: "function" | "variable" | "type" | "struct" | "enum"
+  kind?: "function" | "variable" | "type" | "struct" | "enum" | string
   line: number
-  visibility: "public" | "private" | "protected"
+  visibility?: "public" | "private" | "protected"
   children?: OutlineItem[]
+  // 兼容旧版字段
+  isCallback?: boolean
+  returnType?: string
 }
 
 const mockOutline: OutlineItem[] = [
@@ -70,11 +74,15 @@ const mockOutline: OutlineItem[] = [
 
 interface OutlinePanelProps {
   className?: string
+  items?: OutlineItem[]
 }
 
-export function OutlinePanel({ className }: OutlinePanelProps) {
-  const [expandedItems, setExpandedItems] = React.useState<Set<string>>(new Set(["3"]))
+export function OutlinePanel({ className, items = [] }: OutlinePanelProps) {
+  const [expandedItems, setExpandedItems] = React.useState<Set<string>>(new Set())
   const [selectedItem, setSelectedItem] = React.useState<string | null>(null)
+  
+  // 使用传入的 items，如果没有则为空数组
+  const outlineItems = items
 
   const toggleExpand = (id: string) => {
     const newExpanded = new Set(expandedItems)
@@ -113,12 +121,14 @@ export function OutlinePanel({ className }: OutlinePanelProps) {
   }
 
   const renderItem = (item: OutlineItem, depth = 0) => {
+    const itemId = item.id ?? item.name
     const hasChildren = item.children && item.children.length > 0
-    const isExpanded = expandedItems.has(item.id)
-    const isSelected = selectedItem === item.id
+    const isExpanded = expandedItems.has(itemId)
+    const isSelected = selectedItem === itemId
+    const itemType = item.type ?? item.kind ?? "function"
 
     return (
-      <div key={item.id}>
+      <div key={itemId}>
         <div
           className={cn(
             "group flex items-center gap-1.5 px-3 py-1.5 cursor-pointer transition-colors rounded-md mx-2",
@@ -126,7 +136,7 @@ export function OutlinePanel({ className }: OutlinePanelProps) {
             !isSelected && "hover:bg-[var(--bg-hover)]"
           )}
           style={{ paddingLeft: `${8 + depth * 12}px` }}
-          onClick={() => setSelectedItem(item.id)}
+          onClick={() => setSelectedItem(itemId)}
         >
           {/* Expand/Collapse */}
           <div className="w-4 flex items-center justify-center">
@@ -135,7 +145,7 @@ export function OutlinePanel({ className }: OutlinePanelProps) {
                 className="p-0.5 rounded hover:bg-[var(--bg-active)]"
                 onClick={(e) => {
                   e.stopPropagation()
-                  toggleExpand(item.id)
+                  toggleExpand(itemId)
                 }}
               >
                 {isExpanded ? (
@@ -150,7 +160,7 @@ export function OutlinePanel({ className }: OutlinePanelProps) {
           </div>
 
           {/* Icon */}
-          {getTypeIcon(item.type)}
+          {getTypeIcon(itemType)}
 
           {/* Name */}
           <span className={cn(
@@ -166,7 +176,7 @@ export function OutlinePanel({ className }: OutlinePanelProps) {
           </span>
 
           {/* Visibility */}
-          {getVisibilityBadge(item.visibility)}
+          {item.visibility && getVisibilityBadge(item.visibility)}
         </div>
 
         {/* Children */}
@@ -187,7 +197,7 @@ export function OutlinePanel({ className }: OutlinePanelProps) {
           <Layers className="h-4 w-4 text-[var(--text-muted)]" />
           <span className="text-xs font-medium text-[var(--text-primary)]">大纲</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
-            {mockOutline.length}
+            {outlineItems.length}
           </span>
         </div>
       </div>
@@ -206,7 +216,14 @@ export function OutlinePanel({ className }: OutlinePanelProps) {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto py-2">
-        {mockOutline.map((item) => renderItem(item))}
+        {outlineItems.length > 0 ? (
+          outlineItems.map((item) => renderItem(item))
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+            <Layers className="h-8 w-8 text-[var(--text-muted)] mb-2" />
+            <p className="text-xs text-[var(--text-muted)]">打开文件查看大纲</p>
+          </div>
+        )}
       </div>
 
       {/* Footer */}

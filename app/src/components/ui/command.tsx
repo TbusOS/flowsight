@@ -21,6 +21,8 @@ import {
   Layout,
   Zap,
   BookOpen,
+  FolderOpen,
+  FileText,
 } from "lucide-react"
 import {
   Dialog,
@@ -30,6 +32,8 @@ import {
   DialogOverlay,
 } from "./dialog"
 import { cn } from "../../lib/utils"
+import { open as openDialog } from "@tauri-apps/plugin-dialog"
+import { invoke } from "@tauri-apps/api/core"
 
 interface CommandMenuProps {
   open: boolean
@@ -37,6 +41,45 @@ interface CommandMenuProps {
 }
 
 export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
+  // 打开项目目录
+  const handleOpenProject = async () => {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "选择项目目录",
+      })
+      if (selected && typeof selected === 'string') {
+        // 调用后端打开项目
+        await invoke('open_project', { path: selected })
+        onOpenChange(false)
+      }
+    } catch (e) {
+      console.error('打开项目失败:', e)
+    }
+  }
+
+  // 打开文件
+  const handleOpenFile = async () => {
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        title: "选择文件",
+        filters: [
+          { name: 'C/H 文件', extensions: ['c', 'h'] },
+          { name: '所有文件', extensions: ['*'] },
+        ],
+      })
+      if (selected && typeof selected === 'string') {
+        // 调用后端分析文件
+        await invoke('analyze_file', { path: selected })
+        onOpenChange(false)
+      }
+    } catch (e) {
+      console.error('打开文件失败:', e)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
@@ -60,6 +103,25 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
               <CommandEmpty className="py-6 text-center text-sm text-[var(--text-muted)]">
                 无结果
               </CommandEmpty>
+              <CommandGroup heading="文件操作">
+                <CommandItem 
+                  onSelect={handleOpenProject}
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
+                >
+                  <FolderOpen className="mr-2 h-4 w-4" />
+                  <span>打开项目</span>
+                  <kbd className="ml-auto text-xs text-[var(--text-muted)]">⌘⇧O</kbd>
+                </CommandItem>
+                <CommandItem 
+                  onSelect={handleOpenFile}
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span>打开文件</span>
+                  <kbd className="ml-auto text-xs text-[var(--text-muted)]">⌘O</kbd>
+                </CommandItem>
+              </CommandGroup>
+              <CommandSeparator className="my-2 -mx-2 h-px bg-[var(--border-light)]" />
               <CommandGroup heading="快速操作">
                 <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
                   <Layout className="mr-2 h-4 w-4" />

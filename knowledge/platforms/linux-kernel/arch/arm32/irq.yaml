@@ -1,0 +1,315 @@
+# ARM32 Interrupt Controller Knowledge Base
+#
+# Reference: arch/arm/include/asm/irq.h
+# Reference: arch/arm/kernel/irq.c
+
+# ============================================================
+# ARM32 INTERRUPT ENTRY
+# ============================================================
+
+arm32_irq_entry:
+  description: "ARM32 硬件中断入口"
+  header: "arch/arm/kernel/entry-armv.S"
+  icon: "⚡"
+
+  context:
+    type: "hardirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  kernel_call_chain:
+    trigger: "ARM32 IRQ 异常"
+    chain:
+      - function: "vector_irq"
+        file: "arch/arm/kernel/entry-armv.S"
+        description: "IRQ 向量入口 (汇编)"
+      - function: "__irq_svc / __irq_usr"
+        file: "arch/arm/kernel/entry-armv.S"
+        description: "根据 CPU 模式分支"
+      - function: "irq_handler"
+        file: "arch/arm/kernel/entry-armv.S"
+        description: "调用 C 处理函数"
+      - function: "handle_arch_irq"
+        file: "arch/arm/kernel/irq.c"
+        description: "架构级中断处理"
+      - function: "gic_handle_irq / vic_handle_irq / ..."
+        file: "驱动代码"
+        description: "中断控制器处理"
+        is_user_entry: true
+
+  notes:
+    - "ARM32 使用 IRQ/FIQ 两种中断模式"
+    - "中断向量在 0xFFFF0000 (高向量) 或 0x00000000 (低向量)"
+    - "需要保存 CPSR 和寄存器上下文"
+
+
+# ============================================================
+# GIC (Generic Interrupt Controller)
+# ============================================================
+
+gic:
+  description: "ARM GIC 中断控制器"
+  header: "include/linux/irqchip/arm-gic.h"
+  icon: "🎯"
+
+  bind_patterns:
+    # GIC 初始化
+    - pattern: 'gic_of_init\s*\(\s*(?P<node>[^,]+)\s*,\s*(?P<parent>[^)]*)\s*\)'
+      description: "GIC 设备树初始化"
+
+    - pattern: 'IRQCHIP_DECLARE\s*\(\s*(?P<name>\w+)\s*,\s*(?P<compat>["\'][\w,\-]+["\'])\s*,\s*(?P<init>\w+)\s*\)'
+      handler_capture: "init"
+      description: "中断芯片声明"
+
+  gic_versions:
+    - name: "GICv1"
+      compatible: "arm,cortex-a9-gic"
+      description: "Cortex-A9 GIC"
+    - name: "GICv2"
+      compatible: "arm,gic-400"
+      description: "GIC-400 控制器"
+    - name: "GICv3"
+      compatible: "arm,gic-v3"
+      description: "GICv3 (ARM64 主要使用)"
+
+  kernel_call_chain:
+    trigger: "GIC 中断发生"
+    chain:
+      - function: "gic_handle_irq"
+        file: "drivers/irqchip/irq-gic.c"
+        description: "GIC 中断处理入口"
+      - function: "gic_read_iar"
+        file: "drivers/irqchip/irq-gic.c"
+        description: "读取 IAR 获取中断号"
+      - function: "handle_domain_irq"
+        file: "kernel/irq/irqdesc.c"
+        description: "通用中断域处理"
+      - function: "generic_handle_irq"
+        file: "kernel/irq/irqdesc.c"
+        description: "调用设备中断处理"
+      - function: "my_irq_handler()"
+        file: "用户代码"
+        is_user_entry: true
+
+  registers:
+    GICD_CTLR:
+      description: "Distributor Control Register"
+    GICD_ISENABLER:
+      description: "Interrupt Set-Enable Registers"
+    GICD_ICENABLER:
+      description: "Interrupt Clear-Enable Registers"
+    GICC_IAR:
+      description: "Interrupt Acknowledge Register"
+    GICC_EOIR:
+      description: "End of Interrupt Register"
+
+  notes:
+    - "GIC 分为 Distributor 和 CPU Interface"
+    - "支持 SPI (Shared Peripheral Interrupt) 和 PPI (Private Peripheral Interrupt)"
+    - "SGI (Software Generated Interrupt) 用于 IPI"
+
+
+# ============================================================
+# VIC (Vectored Interrupt Controller)
+# ============================================================
+
+vic:
+  description: "ARM VIC 向量中断控制器"
+  header: "include/linux/irqchip/arm-vic.h"
+  icon: "📍"
+
+  compatible_strings:
+    - "arm,pl190-vic"
+    - "arm,pl192-vic"
+
+  kernel_call_chain:
+    trigger: "VIC 中断发生"
+    chain:
+      - function: "vic_handle_irq"
+        file: "drivers/irqchip/irq-vic.c"
+        description: "VIC 中断处理"
+      - function: "handle_domain_irq"
+        file: "kernel/irq/irqdesc.c"
+      - function: "my_irq_handler()"
+        file: "用户代码"
+        is_user_entry: true
+
+  notes:
+    - "常用于旧 ARM9/ARM11 SoC"
+    - "支持 32 个中断源"
+    - "支持向量化中断 (Vectored IRQ)"
+
+
+# ============================================================
+# TZIC (TrustZone Interrupt Controller)
+# ============================================================
+
+tzic:
+  description: "Freescale/NXP TZIC 中断控制器"
+  header: "arch/arm/mach-imx/tzic.c"
+  icon: "🔒"
+
+  compatible_strings:
+    - "fsl,imx51-tzic"
+    - "fsl,imx53-tzic"
+
+  kernel_call_chain:
+    trigger: "TZIC 中断发生"
+    chain:
+      - function: "tzic_handle_irq"
+        file: "arch/arm/mach-imx/tzic.c"
+        description: "TZIC 中断处理"
+      - function: "handle_domain_irq"
+        file: "kernel/irq/irqdesc.c"
+      - function: "my_irq_handler()"
+        file: "用户代码"
+        is_user_entry: true
+
+  notes:
+    - "用于 i.MX51/53 等 SoC"
+    - "支持 TrustZone 安全中断"
+    - "被 GIC 取代于新 SoC"
+
+
+# ============================================================
+# AVIC (ARM Vectored Interrupt Controller - Freescale)
+# ============================================================
+
+avic:
+  description: "Freescale AVIC 中断控制器"
+  header: "arch/arm/mach-imx/avic.c"
+  icon: "📡"
+
+  compatible_strings:
+    - "fsl,avic"
+    - "fsl,imx31-avic"
+
+  kernel_call_chain:
+    trigger: "AVIC 中断发生"
+    chain:
+      - function: "avic_handle_irq"
+        file: "arch/arm/mach-imx/avic.c"
+        description: "AVIC 中断处理"
+      - function: "handle_domain_irq"
+        file: "kernel/irq/irqdesc.c"
+      - function: "my_irq_handler()"
+        file: "用户代码"
+        is_user_entry: true
+
+  notes:
+    - "用于 i.MX1/21/25/27/31/35 等 SoC"
+    - "支持 64 个中断源"
+
+
+# ============================================================
+# ARM32 FIQ (Fast Interrupt Request)
+# ============================================================
+
+fiq:
+  description: "ARM32 快速中断请求"
+  header: "arch/arm/include/asm/fiq.h"
+  icon: "⚡⚡"
+
+  context:
+    type: "fiq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # claim_fiq - 获取 FIQ
+    - pattern: 'claim_fiq\s*\(\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      description: "获取 FIQ 处理"
+
+    # set_fiq_handler - 设置 FIQ 处理函数
+    - pattern: 'set_fiq_handler\s*\(\s*(?P<handler>[^,]+)\s*,\s*(?P<size>\w+)\s*\)'
+      handler_capture: "handler"
+      description: "设置 FIQ 处理代码"
+
+    # enable_fiq - 启用 FIQ
+    - pattern: 'enable_fiq\s*\(\s*(?P<fiq>\d+)\s*\)'
+      description: "启用 FIQ"
+
+  cancel_patterns:
+    - pattern: 'release_fiq\s*\(\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      description: "释放 FIQ"
+
+    - pattern: 'disable_fiq\s*\(\s*(?P<fiq>\d+)\s*\)'
+      description: "禁用 FIQ"
+
+  kernel_call_chain:
+    trigger: "FIQ 中断发生"
+    chain:
+      - function: "vector_fiq"
+        file: "arch/arm/kernel/entry-armv.S"
+        description: "FIQ 向量入口"
+      - function: "__fiq_svc / __fiq_usr"
+        file: "arch/arm/kernel/entry-armv.S"
+        description: "FIQ 处理"
+      - function: "my_fiq_handler()"
+        file: "用户代码"
+        description: "用户 FIQ 处理函数"
+        is_user_entry: true
+
+  notes:
+    - "FIQ 具有最高优先级"
+    - "FIQ 有独立的寄存器组 (R8-R14)"
+    - "通常用于实时性要求极高的场景"
+    - "现代 ARM (ARMv8+) 已弱化 FIQ"
+
+
+# ============================================================
+# IPI (Inter-Processor Interrupt)
+# ============================================================
+
+ipi:
+  description: "ARM32 处理器间中断"
+  header: "arch/arm/include/asm/smp.h"
+  icon: "🔀"
+
+  context:
+    type: "hardirq"
+    can_sleep: false
+
+  ipi_functions:
+    - name: "IPI_WAKEUP"
+      description: "唤醒 CPU"
+    - name: "IPI_TIMER"
+      description: "Timer 广播"
+    - name: "IPI_RESCHEDULE"
+      description: "重新调度"
+    - name: "IPI_CALL_FUNC"
+      description: "调用函数"
+    - name: "IPI_CALL_FUNC_SINGLE"
+      description: "单核调用函数"
+    - name: "IPI_CPU_STOP"
+      description: "停止 CPU"
+    - name: "IPI_IRQ_WORK"
+      description: "IRQ 工作"
+    - name: "IPI_COMPLETION"
+      description: "完成通知"
+
+  bind_patterns:
+    - pattern: 'smp_cross_call\s*\(\s*(?P<mask>[^,]+)\s*,\s*(?P<ipi>\w+)\s*\)'
+      description: "发送 IPI"
+
+  kernel_call_chain:
+    trigger: "IPI 发送"
+    chain:
+      - function: "smp_cross_call"
+        file: "arch/arm/kernel/smp.c"
+        description: "发送 IPI"
+      - function: "gic_raise_softirq"
+        file: "drivers/irqchip/irq-gic.c"
+        description: "GIC 触发 SGI"
+      - function: "handle_IPI"
+        file: "arch/arm/kernel/smp.c"
+        description: "处理 IPI"
+        is_user_entry: true
+
+  notes:
+    - "用于 SMP 系统多核通信"
+    - "通过 GIC 的 SGI 实现"

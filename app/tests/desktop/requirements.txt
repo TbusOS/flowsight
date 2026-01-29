@@ -1,0 +1,36 @@
+# FlowSight Desktop UI 自动化测试框架依赖
+
+# 图像处理
+Pillow>=10.0.0
+
+# WebView 测试 (Playwright)
+playwright>=1.40.0
+
+# 截图 (跨平台)
+# macOS: 使用内置 screencapture
+# Windows: 使用 pywin32
+# Linux: 使用 gnome-screenshot 或 scrot
+
+# Windows 自动化
+pywinauto>=0.6.8; sys_platform == "win32"
+pywin32>=306; sys_platform == "win32"
+
+# Linux 自动化
+# python-atspi (系统包, 非 pip)
+# xdotool (系统包, 非 pip)
+
+# AI/ML
+anthropic>=0.21.0
+
+# 可选: OCR 支持
+easyocr>=1.7.0
+pytesseract>=0.3.10
+
+# 可选: 图像相似度
+scikit-image>=0.22.0
+
+# 开发依赖
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+mypy>=1.5.0

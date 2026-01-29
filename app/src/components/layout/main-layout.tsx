@@ -105,18 +105,25 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [rightPanelTab, setRightPanelTab] = useAtom(rightPanelTabAtom)
   const rightPanelWidth = useAtomValue(rightPanelWidthAtom)
 
-  // Update command menu open state
-  React.useEffect(() => {
-    setCommandMenuOpen(sidebarOpen)
-  }, [sidebarOpen, setCommandMenuOpen])
-
   // Keyboard shortcuts
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K or Ctrl+K - Open command palette
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault()
+        setCommandMenuOpen(true)
+      }
+      // Cmd+B or Ctrl+B - Toggle sidebar
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault()
         setSidebarOpen(prev => !prev)
       }
+      // Cmd+J or Ctrl+J - Toggle bottom panel
+      if ((e.metaKey || e.ctrlKey) && e.key === "j") {
+        e.preventDefault()
+        setBottomPanelOpen(prev => !prev)
+      }
+      // Cmd+\ or Ctrl+\ - Toggle right panel
       if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
         e.preventDefault()
         setRightPanelOpen(prev => !prev)
@@ -125,7 +132,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [setSidebarOpen, setRightPanelOpen])
+  }, [setSidebarOpen, setRightPanelOpen, setBottomPanelOpen, setCommandMenuOpen])
 
   // Render right panel based on tab
   const renderRightPanel = () => {

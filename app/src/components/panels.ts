@@ -7,9 +7,8 @@
 export { FlowTextView } from './FlowView/FlowTextView'
 export type { FlowTextViewProps, TextLine } from './FlowView/FlowTextView'
 
-// Node detail panel
-export { NodeDetailPanel } from './NodeDetailPanel'
-export type { NodeDetailData, NodeDetailPanelProps } from './NodeDetailPanel'
+// Node detail panel (new version)
+export { NodeDetailPanel } from './panels/node-detail-panel'
 
 // AI-assisted translation and explanation panels
 export { ConditionTranslationPanel } from './ConditionTranslationPanel/ConditionTranslationPanel'
