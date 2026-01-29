@@ -30,7 +30,7 @@ import dagre from 'dagre'
 
 import { FlowNodeComponent } from './FlowNode'
 import { toPng, toSvg } from 'html-to-image'
-import type { FlowTreeNode, FlowNodeType } from '../../types'
+import type { FlowTreeNode, FlowNodeType, ExecutionFlow } from '../../types'
 import { Icons } from '../Icons/Icons'
 import './FlowView.css'
 
@@ -66,6 +66,10 @@ interface FlowViewProps {
   selectedFunction?: string
   layout?: 'auto' | 'tree' | 'dagre'  // Layout algorithm selection
   groupBy?: 'none' | 'file' | 'async'  // Node grouping
+  /** ExecutionFlow 完整执行流数据 (Phase 2) */
+  executionFlow?: ExecutionFlow
+  /** 是否显示异步边界标记 */
+  showAsyncBoundaries?: boolean
 }
 
 // Icon component wrapper
@@ -355,7 +359,7 @@ function persistState(expanded: Record<string, boolean>, hideKernel: boolean) {
 }
 
 // Inner component
-function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewProps) {
+function FlowViewInner({ flowTrees, onNodeClick, selectedFunction, executionFlow, showAsyncBoundaries = true }: FlowViewProps) {
   // State
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
   const [hideKernelApi, setHideKernelApi] = useState(false)
@@ -703,6 +707,46 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction }: FlowViewPro
           )}
         </div>
       </div>
+
+      {/* ExecutionFlow info panel (Phase 2) */}
+      {executionFlow && (
+        <div className="execution-flow-info">
+          <div className="info-header">
+            <Icons.Lightning size={12} />
+            <span>执行流: {executionFlow.entry_function}()</span>
+          </div>
+          <div className="info-stats">
+            <span title="总节点数">
+              <Icons.Node size={10} /> {executionFlow.analysis_info.total_nodes}
+            </span>
+            <span title="直接调用">
+              <Icons.ChevronRight size={10} /> {executionFlow.analysis_info.direct_calls}
+            </span>
+            <span title="异步调用">
+              <Icons.Zap size={10} /> {executionFlow.analysis_info.async_calls}
+            </span>
+          </div>
+          {showAsyncBoundaries && executionFlow.async_boundaries.length > 0 && (
+            <div className="async-boundaries-list">
+              {executionFlow.async_boundaries.slice(0, 3).map(b => (
+                <div key={b.id} className="boundary-badge" title={b.context_description}>
+                  <span className="boundary-mechanism">{b.mechanism}</span>
+                  <span className="boundary-handler">{b.handler_function}</span>
+                </div>
+              ))}
+              {executionFlow.async_boundaries.length > 3 && (
+                <span className="more-boundaries">+{executionFlow.async_boundaries.length - 3} more</span>
+              )}
+            </div>
+          )}
+          {executionFlow.analysis_info.warnings.length > 0 && (
+            <div className="info-warnings" title={`${executionFlow.analysis_info.warnings.length} 个警告`}>
+              <Icons.Alert size={10} />
+              <span>{executionFlow.analysis_info.warnings.length}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Hover preview tooltip */}
       {hoverData && (

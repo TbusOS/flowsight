@@ -3,8 +3,8 @@
 mod commands;
 
 pub use commands::{
-    AnalysisResult, FileNode, FunctionDetail, FunctionInfo, FunctionLocation, IndexStats,
-    ProjectInfo, SearchResult,
+    AnalysisResult, AsyncBindingInfo, EntryPointInfo, FileNode, FunctionDetail, FunctionInfo,
+    FunctionLocation, IndexStats, ProjectInfo, SearchResult,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,6 +16,7 @@ pub fn run() {
         .ok();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_devtools::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -36,6 +37,10 @@ pub fn run() {
             commands::create_directory,
             commands::rename_file,
             commands::delete_file_or_dir,
+            // Phase 2: ExecutionFlow API
+            commands::build_execution_flow,
+            commands::get_entry_points,
+            commands::get_async_bindings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

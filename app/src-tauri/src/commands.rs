@@ -1,9 +1,11 @@
 //! Tauri Commands
 
+use flowsight_analysis::flow_builder::{BuildOptions, FlowBuilder, FunctionInfo as BuilderFunctionInfo};
 use flowsight_analysis::Analyzer;
+use flowsight_core::ExecutionFlow;
 use flowsight_index::SymbolIndex;
 use flowsight_parser::get_parser;
-use flowsight_parser::parallel::{ParallelParser, ProgressPhase};
+use flowsight_parser::parallel::ParallelParser;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -710,4 +712,177 @@ pub async fn execute_scenario(
         annotated_flow_tree: result.annotated_tree,
         error: None,
     })
+}
+
+// ============================================================================
+// ExecutionFlow API (Phase 2)
+// ============================================================================
+
+/// Options for building ExecutionFlow
+#[derive(Debug, Deserialize)]
+pub struct ExecutionFlowOptions {
+    /// Maximum depth to traverse
+    pub max_depth: Option<usize>,
+    /// Whether to include kernel call chains from knowledge base
+    pub include_kernel_chains: Option<bool>,
+    /// Whether to expand async callbacks
+    pub expand_async: Option<bool>,
+}
+
+/// Build an ExecutionFlow for a specific function
+/// 
+/// This command uses the new FlowBuilder to construct a complete
+/// ExecutionFlow with async boundaries, confidence levels, and
+/// knowledge base injection.
+#[tauri::command]
+pub async fn build_execution_flow(
+    file_path: String,
+    entry_function: String,
+    options: Option<ExecutionFlowOptions>,
+) -> Result<ExecutionFlow, String> {
+    let path = PathBuf::from(&file_path);
+    
+    // Parse file
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
+    
+    // Read source for analysis
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    
+    // Run analysis to get async bindings and function info
+    let mut analyzer = Analyzer::new();
+    let analysis = analyzer
+        .analyze(&source, &mut parse_result)
+        .map_err(|e| e.to_string())?;
+    
+    // Build FlowBuilder and register functions
+    let mut builder = FlowBuilder::new();
+    
+    // Extract async bindings from source
+    builder.extract_async_bindings(&source);
+    
+    // Register all parsed functions
+    for (name, func) in &parse_result.functions {
+        builder.register_function(BuilderFunctionInfo {
+            name: name.clone(),
+            location: func.location.clone(),
+            calls: func.calls.clone(),
+            is_kernel: func.attributes.contains(&"__init".to_string()) 
+                || func.attributes.contains(&"__exit".to_string())
+                || name.starts_with("__"),
+        });
+    }
+    
+    // Build options
+    let opts = options.as_ref();
+    let build_opts = BuildOptions {
+        max_depth: opts.and_then(|o| o.max_depth).unwrap_or(50),
+        include_kernel_chains: opts.and_then(|o| o.include_kernel_chains).unwrap_or(true),
+        expand_async: opts.and_then(|o| o.expand_async).unwrap_or(true),
+    };
+    
+    // Build execution flow
+    let mut flow = builder.build(&entry_function, &build_opts);
+    
+    // Update source file in analysis info
+    flow.analysis_info.source_file = Some(file_path);
+    
+    Ok(flow)
+}
+
+/// Get list of entry points (callbacks, module init/exit) for a file
+#[tauri::command]
+pub async fn get_entry_points(file_path: String) -> Result<Vec<EntryPointInfo>, String> {
+    let path = PathBuf::from(&file_path);
+    
+    // Parse file
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
+    
+    // Read source for analysis
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    
+    // Run analysis
+    let mut analyzer = Analyzer::new();
+    let analysis = analyzer
+        .analyze(&source, &mut parse_result)
+        .map_err(|e| e.to_string())?;
+    
+    // Build entry point info
+    let entry_points: Vec<EntryPointInfo> = analysis.entry_points
+        .iter()
+        .map(|name| {
+            let func = parse_result.functions.get(name);
+            EntryPointInfo {
+                name: name.clone(),
+                kind: if let Some(f) = func {
+                    if f.callback_context.is_some() {
+                        f.callback_context.clone().unwrap_or("callback".into())
+                    } else if f.attributes.contains(&"__init".to_string()) {
+                        "module_init".into()
+                    } else if f.attributes.contains(&"__exit".to_string()) {
+                        "module_exit".into()
+                    } else {
+                        "function".into()
+                    }
+                } else {
+                    "unknown".into()
+                },
+                line: func.and_then(|f| f.location.as_ref().map(|l| l.line)).unwrap_or(0),
+            }
+        })
+        .collect();
+    
+    Ok(entry_points)
+}
+
+#[derive(Debug, Serialize)]
+pub struct EntryPointInfo {
+    pub name: String,
+    pub kind: String,
+    pub line: u32,
+}
+
+/// Get async bindings detected in a file
+#[tauri::command]
+pub async fn get_async_bindings(file_path: String) -> Result<Vec<AsyncBindingInfo>, String> {
+    let path = PathBuf::from(&file_path);
+    
+    // Parse file
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
+    
+    // Read source for analysis
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    
+    // Run analysis
+    let mut analyzer = Analyzer::new();
+    let analysis = analyzer
+        .analyze(&source, &mut parse_result)
+        .map_err(|e| e.to_string())?;
+    
+    // Convert async bindings
+    let bindings: Vec<AsyncBindingInfo> = analysis.async_bindings
+        .iter()
+        .map(|b| AsyncBindingInfo {
+            variable: b.variable.clone(),
+            handler: b.handler.clone(),
+            mechanism: format!("{:?}", b.mechanism),
+            context: format!("{:?}", b.context),
+            bind_line: b.bind_location.as_ref().map(|l| l.line),
+            trigger_lines: b.trigger_locations.iter().map(|l| l.line).collect(),
+        })
+        .collect();
+    
+    Ok(bindings)
+}
+
+#[derive(Debug, Serialize)]
+pub struct AsyncBindingInfo {
+    pub variable: String,
+    pub handler: String,
+    pub mechanism: String,
+    pub context: String,
+    pub bind_line: Option<u32>,
+    pub trigger_lines: Vec<u32>,
 }

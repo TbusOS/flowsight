@@ -606,3 +606,102 @@
 .preview-confidence .confidence-unknown {
   color: var(--error);
 }
+
+/* ============================================
+   ExecutionFlow Info Panel (Phase 2)
+   ============================================ */
+.execution-flow-info {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-md);
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.execution-flow-info .info-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.execution-flow-info .info-header svg {
+  color: var(--accent);
+}
+
+.execution-flow-info .info-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.execution-flow-info .info-stats span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.execution-flow-info .info-stats svg {
+  color: var(--text-muted);
+}
+
+.execution-flow-info .async-boundaries-list {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.execution-flow-info .boundary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+}
+
+.execution-flow-info .boundary-mechanism {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.execution-flow-info .boundary-handler {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.execution-flow-info .more-boundaries {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.execution-flow-info .info-warnings {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--warning);
+  padding: 4px 8px;
+  background: rgba(var(--warning-rgb), 0.1);
+  border-radius: var(--radius-sm);
+}
+
+.execution-flow-info .info-warnings svg {
+  color: var(--warning);
+}
