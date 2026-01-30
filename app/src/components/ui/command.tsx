@@ -23,6 +23,8 @@ import {
   BookOpen,
   FolderOpen,
   FileText,
+  Folder,
+  PanelRight,
 } from "lucide-react"
 import {
   Dialog,
@@ -34,6 +36,8 @@ import {
 import { cn } from "../../lib/utils"
 import { open as openDialog } from "@tauri-apps/plugin-dialog"
 import { invoke } from "@tauri-apps/api/core"
+import { useSetAtom } from "jotai"
+import { rightPanelOpenAtom, rightPanelTabAtom } from "../../lib/atoms/layout-atoms"
 
 interface CommandMenuProps {
   open: boolean
@@ -41,6 +45,23 @@ interface CommandMenuProps {
 }
 
 export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
+  const setRightPanelOpen = useSetAtom(rightPanelOpenAtom)
+  const setRightPanelTab = useSetAtom(rightPanelTabAtom)
+
+  // 打开文件浏览器面板
+  const handleOpenExplorer = () => {
+    setRightPanelTab("explorer")
+    setRightPanelOpen(true)
+    onOpenChange(false)
+  }
+
+  // 打开大纲面板
+  const handleOpenOutline = () => {
+    setRightPanelTab("outline")
+    setRightPanelOpen(true)
+    onOpenChange(false)
+  }
+
   // 打开项目目录
   const handleOpenProject = async () => {
     try {
@@ -149,9 +170,20 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                   <Zap className="mr-2 h-4 w-4" />
                   <span>执行流视图</span>
                 </CommandItem>
-                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
+                <CommandItem 
+                  onSelect={handleOpenOutline}
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
+                >
                   <BookOpen className="mr-2 h-4 w-4" />
                   <span>大纲视图</span>
+                </CommandItem>
+                <CommandItem 
+                  onSelect={handleOpenExplorer}
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
+                >
+                  <Folder className="mr-2 h-4 w-4" />
+                  <span>文件浏览器</span>
+                  <kbd className="ml-auto text-xs text-[var(--text-muted)]">⌘\</kbd>
                 </CommandItem>
               </CommandGroup>
               <CommandSeparator className="my-2 -mx-2 h-px bg-[var(--border-light)]" />

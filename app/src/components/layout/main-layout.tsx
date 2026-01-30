@@ -10,6 +10,7 @@ import { StatusBar } from "./status-bar"
 import { CommandMenu } from "../../components/ui/command"
 import { OutlinePanel } from "../../components/panels/outline-panel"
 import { NodeDetailPanel } from "../../components/panels/node-detail-panel"
+import { FileExplorer } from "../../components/panels/file-explorer"
 import {
   sidebarOpenAtom,
   bottomPanelOpenAtom,
@@ -104,6 +105,16 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [rightPanelOpen, setRightPanelOpen] = useAtom(rightPanelOpenAtom)
   const [rightPanelTab, setRightPanelTab] = useAtom(rightPanelTabAtom)
   const rightPanelWidth = useAtomValue(rightPanelWidthAtom)
+  
+  // 当前打开的文件
+  const [currentFile, setCurrentFile] = React.useState<string | null>(null)
+  
+  // 处理文件选择
+  const handleFileSelect = React.useCallback((path: string) => {
+    console.log('选择文件:', path)
+    setCurrentFile(path)
+    // TODO: 在代码编辑器中打开文件
+  }, [])
 
   // Keyboard shortcuts
   React.useEffect(() => {
@@ -148,11 +159,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
         )
       case "explorer":
-        return (
-          <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
-            文件浏览器
-          </div>
-        )
+        return <FileExplorer onFileSelect={handleFileSelect} />
       default:
         return <OutlinePanel />
     }
