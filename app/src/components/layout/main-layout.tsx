@@ -159,7 +159,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           <div className="flex-1 overflow-hidden">
             <AnimatePresence mode="wait">
               <motion.div
-                key="content"
+                key={viewMode}
                 className="h-full w-full"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
