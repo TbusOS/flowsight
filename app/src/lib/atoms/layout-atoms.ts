@@ -105,6 +105,37 @@ export const initThemeAtom = atom(null, (get, set) => {
 export const isLoadingAtom = atom(false)
 
 // ============================================================================
+// Node Selection Atoms - 节点选择状态
+// ============================================================================
+
+// 选中节点详情数据结构
+export interface SelectedNodeDetail {
+  id: string
+  name: string
+  return_type: string
+  parameters: Array<{ name: string; type: string }>
+  file_path: string | null
+  line: number
+  is_callback: boolean
+  callback_context?: string
+  calls: string[]
+  called_by: string[]
+  node_type?: string
+  description?: string
+}
+
+// 当前选中的节点
+export const selectedNodeAtom = atom<SelectedNodeDetail | null>(null)
+
+// 设置选中节点的 action atom
+export const setSelectedNodeAtom = atom(
+  null,
+  (_get, set, node: SelectedNodeDetail | null) => {
+    set(selectedNodeAtom, node)
+  }
+)
+
+// ============================================================================
 // Helper Atoms - 组合状态
 // ============================================================================
 

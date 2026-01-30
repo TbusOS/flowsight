@@ -18,8 +18,8 @@ import "@xyflow/react/dist/style.css"
 import { invoke } from "@tauri-apps/api/core"
 import { Loader2, Zap, Play, RefreshCw } from "lucide-react"
 import { cn } from "../../lib/utils"
-import { useAtomValue } from "jotai"
-import { currentFileAtom } from "../../lib/atoms/layout-atoms"
+import { useAtomValue, useSetAtom } from "jotai"
+import { currentFileAtom, setSelectedNodeAtom, type SelectedNodeDetail } from "../../lib/atoms/layout-atoms"
 import { useAnalysisStore } from "../../store/analysisStore"
 
 // 自定义节点类型
@@ -73,11 +73,58 @@ interface FlowViewProps {
 export function FlowView({ className }: FlowViewProps) {
   const currentFile = useAtomValue(currentFileAtom)
   const currentProject = useAnalysisStore((state) => state.currentProject)
+  const setSelectedNode = useSetAtom(setSelectedNodeAtom)
+  const getFunctionDetail = useAnalysisStore((state) => state.getFunctionDetail)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FunctionNodeData>>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [loading, setLoading] = React.useState(false)
   const [selectedFunction, setSelectedFunction] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+
+  // 处理节点点击 - 更新选中节点详情
+  const handleNodeClick = React.useCallback(async (_: React.MouseEvent, node: Node<FunctionNodeData>) => {
+    const funcName = node.data.label
+    setSelectedFunction(funcName)
+
+    // 获取详细信息并更新 atom
+    if (currentFile) {
+      try {
+        const detail = await getFunctionDetail(funcName, currentFile)
+        if (detail) {
+          const nodeDetail: SelectedNodeDetail = {
+            id: node.id,
+            name: detail.name,
+            return_type: detail.return_type,
+            parameters: detail.params.map(p => ({ name: p.name, type: p.type_name })),
+            file_path: detail.file,
+            line: detail.line,
+            is_callback: detail.is_callback,
+            callback_context: detail.callback_context || undefined,
+            calls: detail.calls,
+            called_by: detail.called_by,
+            node_type: node.data.type,
+            description: undefined,
+          }
+          setSelectedNode(nodeDetail)
+        }
+      } catch (err) {
+        console.error("获取节点详情失败:", err)
+        // 即使获取详情失败，也设置基本信息
+        setSelectedNode({
+          id: node.id,
+          name: funcName,
+          return_type: "unknown",
+          parameters: [],
+          file_path: currentFile,
+          line: node.data.line || 0,
+          is_callback: node.data.isCallback || false,
+          calls: [],
+          called_by: [],
+          node_type: node.data.type,
+        })
+      }
+    }
+  }, [currentFile, getFunctionDetail, setSelectedNode])
 
   // 加载执行流
   const loadExecutionFlow = React.useCallback(async (entryFunction: string) => {
@@ -303,6 +350,7 @@ export function FlowView({ className }: FlowViewProps) {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onNodeClick={handleNodeClick}
             nodeTypes={nodeTypes}
             fitView
             attributionPosition="bottom-left"
