@@ -7,27 +7,26 @@
  * - 大纲面板显示
  */
 
-import { test, expect, Page } from '@playwright/test';
-import * as fs from 'fs';
+import { test, expect, Page, Locator } from '@playwright/test';
+import { mkdirSync, existsSync } from 'fs';
 
 const SCREENSHOTS_DIR = './test-results/flowsight/sidebar-panels';
 
-// 侧边栏按钮索引映射 (基于实际测试结果 - 共 7 个按钮)
-// 注意: 这些映射需要通过 data-testid 或其他方式改进
-// 实际按钮顺序: dashboard, explorer, outline, flow, search, command, settings
-const SIDEBAR_BUTTONS = {
-  dashboard: 0,      // 项目 (代码视图)
-  explorer: 1,       // 文件浏览器 (打开右侧面板文件标签)
-  outline: 2,        // 大纲面板 (打开右侧面板大纲标签)
-  flow: 3,           // 执行流视图
-  search: 4,         // 搜索
-  command: 5,        // 命令
-  settings: 6,       // 设置
+// 侧边栏按钮 ID (使用 data-testid 定位)
+// 每个按钮都有 data-testid="sidebar-{id}" 属性
+const SIDEBAR_IDS = {
+  dashboard: 'dashboard',   // 项目 (代码视图)
+  explorer: 'explorer',     // 文件浏览器 (打开右侧面板文件标签)
+  outline: 'outline',       // 大纲面板 (打开右侧面板大纲标签)
+  flow: 'flow',             // 执行流视图
+  search: 'search',         // 搜索
+  command: 'command',       // 命令
+  settings: 'settings',     // 设置
 };
 
 test.beforeAll(() => {
-  if (!fs.existsSync(SCREENSHOTS_DIR)) {
-    fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+  if (!existsSync(SCREENSHOTS_DIR)) {
+    mkdirSync(SCREENSHOTS_DIR, { recursive: true });
   }
 });
 
@@ -41,7 +40,12 @@ test.beforeEach(async ({ page }) => {
   await page.waitForTimeout(100);
 });
 
-// 辅助函数: 获取侧边栏按钮
+// 辅助函数: 获取侧边栏按钮 (通过 data-testid)
+function getSidebarButton(page: Page, id: string): Locator {
+  return page.locator(`[data-testid="sidebar-${id}"]`);
+}
+
+// 辅助函数: 获取所有侧边栏按钮 (兼容旧测试)
 async function getSidebarButtons(page: Page) {
   return page.locator('aside button');
 }
@@ -82,116 +86,112 @@ test.describe('侧边栏视图切换', () => {
   });
 
   test('点击执行流按钮切换视图', async ({ page }) => {
-    const buttons = await getSidebarButtons(page);
-    const buttonCount = await buttons.count();
-    console.log(`找到 ${buttonCount} 个侧边栏按钮`);
-
     // 截图初始状态
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/before-flow-switch.png` });
 
-    // 执行流按钮是索引 3 (基于 7 个按钮)
-    if (buttonCount > SIDEBAR_BUTTONS.flow) {
-      await buttons.nth(SIDEBAR_BUTTONS.flow).click();
-      await page.waitForTimeout(500);
-      
-      await page.screenshot({ path: `${SCREENSHOTS_DIR}/after-flow-switch.png` });
-      
-      // 验证按钮激活状态
-      const flowButton = buttons.nth(SIDEBAR_BUTTONS.flow);
-      const isActive = await flowButton.evaluate((el) => {
-        return el.classList.contains('bg-') || 
-               window.getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)';
-      });
-      console.log('执行流按钮激活:', isActive);
-    }
+    // 使用 data-testid 定位执行流按钮
+    const flowButton = getSidebarButton(page, SIDEBAR_IDS.flow);
+    await expect(flowButton).toBeVisible();
+    
+    await flowButton.click();
+    await page.waitForTimeout(500);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/after-flow-switch.png` });
+    
+    // 验证按钮激活状态 (检查是否有激活样式)
+    const isActive = await flowButton.evaluate((el) => {
+      return el.classList.contains('bg-') || 
+             window.getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)';
+    });
+    console.log('执行流按钮激活:', isActive);
   });
 
   test('点击项目按钮切换回代码视图', async ({ page }) => {
-    const buttons = await getSidebarButtons(page);
-
     // 先点击执行流按钮
-    if (await buttons.count() > SIDEBAR_BUTTONS.flow) {
-      await buttons.nth(SIDEBAR_BUTTONS.flow).click();
-      await page.waitForTimeout(500);
-    }
+    const flowButton = getSidebarButton(page, SIDEBAR_IDS.flow);
+    await expect(flowButton).toBeVisible();
+    await flowButton.click();
+    await page.waitForTimeout(500);
 
     // 再点击项目按钮切换回代码视图
-    if (await buttons.count() > SIDEBAR_BUTTONS.dashboard) {
-      await buttons.nth(SIDEBAR_BUTTONS.dashboard).click();
-      await page.waitForTimeout(500);
-      
-      await page.screenshot({ path: `${SCREENSHOTS_DIR}/back-to-code-view.png` });
-    }
+    const dashboardButton = getSidebarButton(page, SIDEBAR_IDS.dashboard);
+    await expect(dashboardButton).toBeVisible();
+    await dashboardButton.click();
+    await page.waitForTimeout(500);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/back-to-code-view.png` });
+    
+    // 验证代码视图已激活
+    const codeEditor = page.locator('h3:has-text("代码编辑器")');
+    const isCodeView = await codeEditor.isVisible();
+    console.log('切换回代码视图成功:', isCodeView);
   });
 });
 
 test.describe('文件浏览器面板', () => {
   test('点击文件按钮打开文件浏览器', async ({ page }) => {
-    const buttons = await getSidebarButtons(page);
-    const buttonCount = await buttons.count();
-    console.log(`侧边栏按钮数量: ${buttonCount}`);
-
-    // 点击文件浏览器按钮 (索引 1)
-    if (buttonCount > SIDEBAR_BUTTONS.explorer) {
-      await buttons.nth(SIDEBAR_BUTTONS.explorer).click();
-      await page.waitForTimeout(500);
-      
-      await page.screenshot({ path: `${SCREENSHOTS_DIR}/file-explorer-open.png` });
-      
-      // 验证右侧面板打开
-      const isPanelOpen = await isRightPanelOpen(page);
-      console.log('右侧面板打开:', isPanelOpen);
-      
-      // 如果面板没打开，这可能是预期行为（toggle）
-      if (!isPanelOpen) {
-        console.log('注意: 面板可能已关闭或按钮索引需要调整');
-      }
-      
-      // 验证文件浏览器内容 (空状态)
-      const emptyState = page.locator('text=打开一个项目开始浏览');
-      const isEmpty = await emptyState.isVisible();
-      console.log('显示空项目提示:', isEmpty);
-    }
+    // 使用 data-testid 定位文件浏览器按钮
+    const explorerButton = getSidebarButton(page, SIDEBAR_IDS.explorer);
+    await expect(explorerButton).toBeVisible();
+    
+    await explorerButton.click();
+    await page.waitForTimeout(500);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/file-explorer-open.png` });
+    
+    // 验证右侧面板打开
+    const isPanelOpen = await isRightPanelOpen(page);
+    console.log('右侧面板打开:', isPanelOpen);
+    expect(isPanelOpen).toBe(true);
+    
+    // 验证文件浏览器内容 (空状态)
+    const emptyState = page.locator('text=打开一个项目开始浏览');
+    const isEmpty = await emptyState.isVisible();
+    console.log('显示空项目提示:', isEmpty);
   });
 
   test('文件按钮点击切换面板', async ({ page }) => {
-    const buttons = await getSidebarButtons(page);
-
+    // 使用 data-testid 定位文件浏览器按钮
+    const explorerButton = getSidebarButton(page, SIDEBAR_IDS.explorer);
+    await expect(explorerButton).toBeVisible();
+    
     // 第一次点击打开
-    if (await buttons.count() > SIDEBAR_BUTTONS.explorer) {
-      await buttons.nth(SIDEBAR_BUTTONS.explorer).click();
-      await page.waitForTimeout(300);
-      
-      const panelOpenFirst = await isRightPanelOpen(page);
-      console.log('第一次点击后面板状态:', panelOpenFirst);
+    await explorerButton.click();
+    await page.waitForTimeout(300);
+    
+    const panelOpenFirst = await isRightPanelOpen(page);
+    console.log('第一次点击后面板状态:', panelOpenFirst);
 
-      // 点击文件标签切换到文件视图
-      const fileTab = page.locator('button:has-text("文件")');
-      if (await fileTab.isVisible()) {
-        await fileTab.click();
-        await page.waitForTimeout(300);
-        await page.screenshot({ path: `${SCREENSHOTS_DIR}/file-tab-active.png` });
-      }
+    // 点击文件标签切换到文件视图 - 使用更精确的选择器避免与菜单项冲突
+    // 面板标签在 flex-col 容器内，菜单项在 menuitem role 中
+    const fileTab = page.locator('[role="tablist"] button:has-text("文件"), .flex-col button:has-text("文件")').first();
+    if (await fileTab.isVisible()) {
+      await fileTab.click();
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: `${SCREENSHOTS_DIR}/file-tab-active.png` });
     }
   });
 
   test('右侧面板标签切换', async ({ page }) => {
-    // 先打开右侧面板 (通过大纲按钮)
-    const buttons = await getSidebarButtons(page);
-    if (await buttons.count() > SIDEBAR_BUTTONS.outline) {
-      await buttons.nth(SIDEBAR_BUTTONS.outline).click();
-      await page.waitForTimeout(500);
-    }
+    // 使用 data-testid 定位大纲按钮打开右侧面板
+    const outlineButton = getSidebarButton(page, SIDEBAR_IDS.outline);
+    await expect(outlineButton).toBeVisible();
+    await outlineButton.click();
+    await page.waitForTimeout(500);
 
-    // 测试各个标签切换
+    // 测试各个标签切换 - 使用更精确的选择器
+    // 面板标签在底部面板区域的 flex-col 容器中，避免与菜单项冲突
     const tabs = ['大纲', '详情', 'IR', '文件'];
     for (const tab of tabs) {
-      const tabButton = page.locator(`button:has-text("${tab}")`);
-      if (await tabButton.isVisible()) {
+      // 优先匹配面板底部的标签按钮，使用 flex-col 容器特征
+      const tabButton = page.locator(`.flex-col button:has-text("${tab}")`).first();
+      if (await tabButton.isVisible({ timeout: 1000 }).catch(() => false)) {
         await tabButton.click();
         await page.waitForTimeout(300);
         console.log(`切换到 ${tab} 标签`);
         await page.screenshot({ path: `${SCREENSHOTS_DIR}/tab-${tab}.png` });
+      } else {
+        console.log(`标签 ${tab} 不可见，跳过`);
       }
     }
   });
@@ -199,80 +199,67 @@ test.describe('文件浏览器面板', () => {
 
 test.describe('大纲面板', () => {
   test('点击大纲按钮打开大纲面板', async ({ page }) => {
-    const buttons = await getSidebarButtons(page);
-    const buttonCount = await buttons.count();
-    console.log(`侧边栏按钮数量: ${buttonCount}`);
-
-    // 点击大纲按钮 (索引 2)
-    if (buttonCount > SIDEBAR_BUTTONS.outline) {
-      await buttons.nth(SIDEBAR_BUTTONS.outline).click();
-      await page.waitForTimeout(500);
-      
-      await page.screenshot({ path: `${SCREENSHOTS_DIR}/outline-panel-open.png` });
-      
-      // 验证右侧面板打开
-      const isPanelOpen = await isRightPanelOpen(page);
-      console.log('右侧面板打开:', isPanelOpen);
-      
-      if (isPanelOpen) {
-        // 验证大纲面板内容
-        const outlineHeader = page.locator('text=大纲');
-        expect(await outlineHeader.first().isVisible()).toBe(true);
-      } else {
-        console.log('注意: 面板可能已关闭或按钮索引需要调整');
-      }
-    }
+    // 使用 data-testid 定位大纲按钮
+    const outlineButton = getSidebarButton(page, SIDEBAR_IDS.outline);
+    await expect(outlineButton).toBeVisible();
+    
+    await outlineButton.click();
+    await page.waitForTimeout(500);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/outline-panel-open.png` });
+    
+    // 验证右侧面板打开
+    const isPanelOpen = await isRightPanelOpen(page);
+    console.log('右侧面板打开:', isPanelOpen);
+    expect(isPanelOpen).toBe(true);
+    
+    // 验证大纲面板内容
+    const outlineHeader = page.locator('text=大纲');
+    expect(await outlineHeader.first().isVisible()).toBe(true);
   });
 
   test('大纲面板显示空状态提示', async ({ page }) => {
-    const buttons = await getSidebarButtons(page);
-
-    // 打开大纲面板
-    if (await buttons.count() > SIDEBAR_BUTTONS.outline) {
-      await buttons.nth(SIDEBAR_BUTTONS.outline).click();
-      await page.waitForTimeout(500);
-      
-      // 切换到大纲标签
-      const outlineTab = page.locator('button:has-text("大纲")').first();
-      if (await outlineTab.isVisible()) {
-        await outlineTab.click();
-        await page.waitForTimeout(300);
-      }
-      
-      // 验证空状态提示
-      const emptyMessage = page.locator('text=打开文件查看大纲');
-      const hasEmptyMessage = await emptyMessage.isVisible();
-      console.log('显示空文件提示:', hasEmptyMessage);
-      
-      await page.screenshot({ path: `${SCREENSHOTS_DIR}/outline-empty-state.png` });
+    // 使用 data-testid 定位大纲按钮
+    const outlineButton = getSidebarButton(page, SIDEBAR_IDS.outline);
+    await expect(outlineButton).toBeVisible();
+    await outlineButton.click();
+    await page.waitForTimeout(500);
+    
+    // 切换到大纲标签
+    const outlineTab = page.locator('button:has-text("大纲")').first();
+    if (await outlineTab.isVisible()) {
+      await outlineTab.click();
+      await page.waitForTimeout(300);
     }
+    
+    // 验证空状态提示
+    const emptyMessage = page.locator('text=打开文件查看大纲');
+    const hasEmptyMessage = await emptyMessage.isVisible();
+    console.log('显示空文件提示:', hasEmptyMessage);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/outline-empty-state.png` });
   });
 
   test('大纲面板有搜索输入框', async ({ page }) => {
-    const buttons = await getSidebarButtons(page);
-
-    // 打开大纲面板
-    if (await buttons.count() > SIDEBAR_BUTTONS.outline) {
-      await buttons.nth(SIDEBAR_BUTTONS.outline).click();
-      await page.waitForTimeout(500);
-      
-      // 切换到大纲标签
-      const outlineTab = page.locator('button:has-text("大纲")').first();
-      if (await outlineTab.isVisible()) {
-        await outlineTab.click();
-        await page.waitForTimeout(300);
-      }
-      
-      // 验证搜索输入框
-      const searchInput = page.locator('input[placeholder*="搜索符号"]');
-      const hasSearchInput = await searchInput.isVisible();
-      console.log('大纲面板有搜索输入框:', hasSearchInput);
-      
-      // 如果搜索输入框不可见，记录但不失败
-      if (!hasSearchInput) {
-        console.log('注意: 搜索输入框不可见，可能面板未正确打开');
-      }
+    // 使用 data-testid 定位大纲按钮
+    const outlineButton = getSidebarButton(page, SIDEBAR_IDS.outline);
+    await expect(outlineButton).toBeVisible();
+    await outlineButton.click();
+    await page.waitForTimeout(500);
+    
+    // 切换到大纲标签
+    const outlineTab = page.locator('button:has-text("大纲")').first();
+    if (await outlineTab.isVisible()) {
+      await outlineTab.click();
+      await page.waitForTimeout(300);
     }
+    
+    // 使用 data-testid 验证搜索输入框
+    const searchInput = page.locator('[data-testid="outline-search"]');
+    await expect(searchInput).toBeVisible();
+    console.log('大纲面板有搜索输入框: true');
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/outline-search-input.png` });
   });
 });
 
@@ -297,7 +284,7 @@ test.describe('键盘快捷键', () => {
   test('Cmd/Ctrl + B 切换侧边栏', async ({ page }) => {
     // 获取侧边栏初始状态
     const sidebar = page.locator('aside').first();
-    const initialWidth = await sidebar.evaluate((el) => el.offsetWidth);
+    const initialWidth = await sidebar.evaluate((el) => (el as HTMLElement).offsetWidth);
     console.log('侧边栏初始宽度:', initialWidth);
 
     // 按下 Cmd+B
@@ -305,7 +292,7 @@ test.describe('键盘快捷键', () => {
     await page.waitForTimeout(500);
 
     // 验证侧边栏状态变化
-    const newWidth = await sidebar.evaluate((el) => el.offsetWidth);
+    const newWidth = await sidebar.evaluate((el) => (el as HTMLElement).offsetWidth);
     console.log('侧边栏新宽度:', newWidth);
     
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/sidebar-toggled.png` });
@@ -326,40 +313,33 @@ test.describe('键盘快捷键', () => {
 
 test.describe('UI 元素可访问性', () => {
   test('侧边栏按钮应该有 tooltip', async ({ page }) => {
-    const buttons = await getSidebarButtons(page);
-    const buttonCount = await buttons.count();
-
-    // 测试悬停显示 tooltip
-    for (let i = 0; i < Math.min(buttonCount, 6); i++) {
-      const button = buttons.nth(i);
-      await button.hover();
-      await page.waitForTimeout(200);
+    // 测试悬停显示 tooltip - 使用 data-testid
+    const buttonIds = Object.values(SIDEBAR_IDS).slice(0, 6);
+    
+    for (const id of buttonIds) {
+      const button = getSidebarButton(page, id);
+      if (await button.isVisible()) {
+        await button.hover();
+        await page.waitForTimeout(200);
+      }
     }
     
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/sidebar-tooltips.png` });
   });
 
-  test('检查侧边栏按钮缺少 accessible name (待修复)', async ({ page }) => {
-    const buttons = await getSidebarButtons(page);
-    const buttonCount = await buttons.count();
-
-    const buttonsWithoutName: number[] = [];
-    for (let i = 0; i < buttonCount; i++) {
-      const button = buttons.nth(i);
-      const name = await button.getAttribute('aria-label');
-      const textContent = await button.textContent();
+  test('所有侧边栏按钮都有 aria-label', async ({ page }) => {
+    // 验证所有导航按钮都有 aria-label
+    const navButtonIds = ['dashboard', 'explorer', 'outline', 'flow', 'search', 'command'];
+    
+    for (const id of navButtonIds) {
+      const button = getSidebarButton(page, id);
+      await expect(button).toBeVisible();
       
-      if (!name && (!textContent || textContent.trim() === '')) {
-        buttonsWithoutName.push(i);
-      }
+      const ariaLabel = await button.getAttribute('aria-label');
+      console.log(`按钮 ${id} 的 aria-label: ${ariaLabel}`);
+      expect(ariaLabel).toBeTruthy();
     }
     
-    console.log('缺少 accessible name 的按钮索引:', buttonsWithoutName);
-    console.log('建议: 为侧边栏按钮添加 aria-label 属性');
-    
-    // 这是一个警告，不是失败 - 记录问题
-    if (buttonsWithoutName.length > 0) {
-      console.warn(`警告: ${buttonsWithoutName.length} 个按钮缺少 accessible name`);
-    }
+    console.log('所有侧边栏按钮都有 aria-label ✓');
   });
 });

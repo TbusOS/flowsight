@@ -222,6 +222,7 @@ export function OutlinePanel({ className, items: propItems }: OutlinePanelProps)
           <input
             type="text"
             placeholder="搜索符号..."
+            data-testid="outline-search"
             className="w-full h-7 px-2 pl-7 text-xs bg-[var(--bg-tertiary)] border border-[var(--border-light)] rounded-md text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
           />
           <FileCode className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--text-muted)]" />

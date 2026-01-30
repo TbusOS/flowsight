@@ -156,7 +156,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         {/* Content Area */}
         <main id="main-content" className="flex flex-1 flex-col overflow-hidden">
           {/* View Area */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden" data-view-mode={viewMode}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={viewMode}
