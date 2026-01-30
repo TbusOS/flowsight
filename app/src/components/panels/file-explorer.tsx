@@ -15,6 +15,8 @@ import {
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAnalysisStore } from "../../store/analysisStore"
+import { useSetAtom } from "jotai"
+import { currentFileAtom } from "../../lib/atoms/layout-atoms"
 
 // 文件节点类型
 interface FileNode {
@@ -157,6 +159,7 @@ function FileTreeNode({
 
 export function FileExplorer({ className, onFileSelect }: FileExplorerProps) {
   const currentProject = useAnalysisStore((state) => state.currentProject)
+  const setCurrentFile = useSetAtom(currentFileAtom)
   const [files, setFiles] = React.useState<FileNode[]>([])
   const [loading, setLoading] = React.useState(false)
   const [expandedPaths, setExpandedPaths] = React.useState<Set<string>>(new Set())
@@ -207,9 +210,10 @@ export function FileExplorer({ className, onFileSelect }: FileExplorerProps) {
   const handleSelect = React.useCallback(
     (path: string) => {
       setSelectedPath(path)
+      setCurrentFile(path)  // 在代码编辑器中打开文件
       onFileSelect?.(path)
     },
-    [onFileSelect]
+    [onFileSelect, setCurrentFile]
   )
 
   // 没有项目时显示空状态

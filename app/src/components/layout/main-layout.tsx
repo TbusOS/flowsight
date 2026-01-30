@@ -12,6 +12,7 @@ import { OutlinePanel } from "../../components/panels/outline-panel"
 import { NodeDetailPanel } from "../../components/panels/node-detail-panel"
 import { FileExplorer } from "../../components/panels/file-explorer"
 import { CodeEditor } from "../../components/panels/code-editor"
+import { FlowView } from "../../components/panels/flow-view"
 import {
   sidebarOpenAtom,
   bottomPanelOpenAtom,
@@ -21,6 +22,7 @@ import {
   rightPanelWidthAtom,
   commandMenuOpenAtom,
   currentFileAtom,
+  viewModeAtom,
 } from "../../lib/atoms/layout-atoms"
 import {
   LayoutDashboard,
@@ -37,23 +39,7 @@ import {
   Folder,
 } from "lucide-react"
 
-// CodeView 组件已移至 CodeEditor
-
-function FlowView() {
-  return (
-    <div className="flex h-full w-full items-center justify-center bg-[var(--bg-primary)]">
-      <div className="text-center">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent)]/10">
-          <svg className="h-6 w-6 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </div>
-        <h3 className="mb-2 text-sm font-medium text-[var(--text-primary)]">执行流视图</h3>
-        <p className="text-xs text-[var(--text-muted)]">加载代码后显示执行流程</p>
-      </div>
-    </div>
-  )
-}
+// CodeView 和 FlowView 组件已移至独立文件
 
 function TerminalPanel() {
   return (
@@ -95,6 +81,9 @@ export function MainLayout({ children }: MainLayoutProps) {
   
   // 当前打开的文件 (使用 Jotai 原子)
   const [currentFile, setCurrentFile] = useAtom(currentFileAtom)
+  
+  // 视图模式
+  const viewMode = useAtomValue(viewModeAtom)
   
   // 处理文件选择
   const handleFileSelect = React.useCallback((path: string) => {
@@ -176,7 +165,11 @@ export function MainLayout({ children }: MainLayoutProps) {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                {children || <CodeEditor filePath={currentFile} onClose={() => setCurrentFile(null)} />}
+                {children || (
+                  viewMode === "flow" 
+                    ? <FlowView /> 
+                    : <CodeEditor filePath={currentFile} onClose={() => setCurrentFile(null)} />
+                )}
               </motion.div>
             </AnimatePresence>
           </div>
