@@ -37,7 +37,7 @@ import { cn } from "../../lib/utils"
 import { open as openDialog } from "@tauri-apps/plugin-dialog"
 import { invoke } from "@tauri-apps/api/core"
 import { useSetAtom } from "jotai"
-import { rightPanelOpenAtom, rightPanelTabAtom } from "../../lib/atoms/layout-atoms"
+import { rightPanelOpenAtom, rightPanelTabAtom, currentFileAtom } from "../../lib/atoms/layout-atoms"
 
 interface CommandMenuProps {
   open: boolean
@@ -47,6 +47,7 @@ interface CommandMenuProps {
 export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const setRightPanelOpen = useSetAtom(rightPanelOpenAtom)
   const setRightPanelTab = useSetAtom(rightPanelTabAtom)
+  const setCurrentFile = useSetAtom(currentFileAtom)
 
   // 打开文件浏览器面板
   const handleOpenExplorer = () => {
@@ -92,9 +93,10 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
         ],
       })
       if (selected && typeof selected === 'string') {
-        // 调用后端分析文件
-        await invoke('analyze_file', { path: selected })
+        // 在代码编辑器中打开文件
+        setCurrentFile(selected)
         onOpenChange(false)
+        console.log('打开文件:', selected)
       }
     } catch (e) {
       console.error('打开文件失败:', e)

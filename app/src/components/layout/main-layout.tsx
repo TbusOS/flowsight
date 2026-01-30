@@ -11,6 +11,7 @@ import { CommandMenu } from "../../components/ui/command"
 import { OutlinePanel } from "../../components/panels/outline-panel"
 import { NodeDetailPanel } from "../../components/panels/node-detail-panel"
 import { FileExplorer } from "../../components/panels/file-explorer"
+import { CodeEditor } from "../../components/panels/code-editor"
 import {
   sidebarOpenAtom,
   bottomPanelOpenAtom,
@@ -19,6 +20,7 @@ import {
   rightPanelTabAtom,
   rightPanelWidthAtom,
   commandMenuOpenAtom,
+  currentFileAtom,
 } from "../../lib/atoms/layout-atoms"
 import {
   LayoutDashboard,
@@ -35,22 +37,7 @@ import {
   Folder,
 } from "lucide-react"
 
-// Placeholder components for different views
-function CodeView() {
-  return (
-    <div className="flex h-full w-full items-center justify-center bg-[var(--bg-primary)]">
-      <div className="text-center">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent)]/10">
-          <svg className="h-6 w-6 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-          </svg>
-        </div>
-        <h3 className="mb-2 text-sm font-medium text-[var(--text-primary)]">代码编辑器</h3>
-        <p className="text-xs text-[var(--text-muted)]">选择一个文件开始编辑</p>
-      </div>
-    </div>
-  )
-}
+// CodeView 组件已移至 CodeEditor
 
 function FlowView() {
   return (
@@ -106,15 +93,14 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [rightPanelTab, setRightPanelTab] = useAtom(rightPanelTabAtom)
   const rightPanelWidth = useAtomValue(rightPanelWidthAtom)
   
-  // 当前打开的文件
-  const [currentFile, setCurrentFile] = React.useState<string | null>(null)
+  // 当前打开的文件 (使用 Jotai 原子)
+  const [currentFile, setCurrentFile] = useAtom(currentFileAtom)
   
   // 处理文件选择
   const handleFileSelect = React.useCallback((path: string) => {
     console.log('选择文件:', path)
     setCurrentFile(path)
-    // TODO: 在代码编辑器中打开文件
-  }, [])
+  }, [setCurrentFile])
 
   // Keyboard shortcuts
   React.useEffect(() => {
@@ -190,7 +176,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                {children || <CodeView />}
+                {children || <CodeEditor filePath={currentFile} onClose={() => setCurrentFile(null)} />}
               </motion.div>
             </AnimatePresence>
           </div>

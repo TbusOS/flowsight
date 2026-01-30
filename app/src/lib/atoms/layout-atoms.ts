@@ -23,6 +23,9 @@ export const commandMenuOpenAtom = atom(false)
 // 当前视图模式
 export const viewModeAtom = atom<"code" | "flow" | "split">("code")
 
+// 当前打开的文件路径
+export const currentFileAtom = atom<string | null>(null)
+
 // ============================================================================
 // Theme Atoms - 主题状态管理
 // ============================================================================
