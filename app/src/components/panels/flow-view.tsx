@@ -101,8 +101,8 @@ export function FlowView({ className }: FlowViewProps) {
           edge_type: string
         }>
       }>("build_execution_flow", {
-        path: currentFile,
-        entryFunction,
+        file_path: currentFile,
+        entry_function: entryFunction,
         options: { max_depth: 5, expand_async: true },
       })
 

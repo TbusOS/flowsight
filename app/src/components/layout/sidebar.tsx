@@ -188,6 +188,8 @@ function SidebarButton({ item, isActive, onClick }: SidebarButtonProps) {
         <Button
           ref={buttonRef}
           variant="ghost"
+          aria-label={item.label}
+          data-testid={`sidebar-${item.id}`}
           className={cn(
             "group relative flex h-9 w-9 items-center justify-center rounded-md transition-all duration-100",
             isActive

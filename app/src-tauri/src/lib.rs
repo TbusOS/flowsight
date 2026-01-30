@@ -39,6 +39,7 @@ pub fn run() {
             commands::delete_file_or_dir,
             // Phase 2: ExecutionFlow API
             commands::build_execution_flow,
+            commands::build_execution_flow_tree,
             commands::get_entry_points,
             commands::get_async_bindings,
             // AI Inference Commands

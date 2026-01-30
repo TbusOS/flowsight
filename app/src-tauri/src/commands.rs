@@ -729,17 +729,76 @@ pub struct ExecutionFlowOptions {
     pub expand_async: Option<bool>,
 }
 
+/// Flattened execution flow for frontend visualization (ReactFlow compatible)
+#[derive(Debug, Serialize)]
+pub struct FlatExecutionFlow {
+    /// Entry function name
+    pub entry_function: String,
+    /// Flat list of nodes
+    pub nodes: Vec<FlowGraphNode>,
+    /// Flat list of edges
+    pub edges: Vec<FlowGraphEdge>,
+    /// Analysis metadata
+    pub analysis_info: FlowAnalysisInfo,
+}
+
+/// Node in the flat graph structure
+#[derive(Debug, Serialize)]
+pub struct FlowGraphNode {
+    /// Unique node ID
+    pub id: String,
+    /// Display label
+    pub label: String,
+    /// Node type: "entry", "function", "async", "callback", "kernel", "separator"
+    pub node_type: String,
+    /// Source line number (0 if unknown)
+    pub line: u32,
+    /// Optional description
+    pub description: Option<String>,
+    /// Execution context
+    pub context: Option<String>,
+    /// Can this function sleep?
+    pub can_sleep: Option<bool>,
+    /// Is this a kernel internal function?
+    pub is_kernel: bool,
+}
+
+/// Edge in the flat graph structure
+#[derive(Debug, Clone, Serialize)]
+pub struct FlowGraphEdge {
+    /// Source node ID
+    pub source: String,
+    /// Target node ID
+    pub target: String,
+    /// Edge type: "sync", "async"
+    pub edge_type: String,
+    /// Optional label for the edge
+    pub label: Option<String>,
+}
+
+/// Simplified analysis info for frontend
+#[derive(Debug, Serialize)]
+pub struct FlowAnalysisInfo {
+    pub source_file: Option<String>,
+    pub total_nodes: usize,
+    pub total_edges: usize,
+    pub async_boundaries: usize,
+    pub warnings: Vec<String>,
+}
+
 /// Build an ExecutionFlow for a specific function
 /// 
 /// This command uses the new FlowBuilder to construct a complete
 /// ExecutionFlow with async boundaries, confidence levels, and
 /// knowledge base injection.
+/// 
+/// Returns a flattened structure suitable for ReactFlow visualization.
 #[tauri::command]
 pub async fn build_execution_flow(
     file_path: String,
     entry_function: String,
     options: Option<ExecutionFlowOptions>,
-) -> Result<ExecutionFlow, String> {
+) -> Result<FlatExecutionFlow, String> {
     let path = PathBuf::from(&file_path);
     
     // Parse file
@@ -751,7 +810,7 @@ pub async fn build_execution_flow(
     
     // Run analysis to get async bindings and function info
     let mut analyzer = Analyzer::new();
-    let analysis = analyzer
+    let _analysis = analyzer
         .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
     
@@ -781,10 +840,175 @@ pub async fn build_execution_flow(
         expand_async: opts.and_then(|o| o.expand_async).unwrap_or(true),
     };
     
-    // Build execution flow
+    // Build execution flow (tree structure)
     let mut flow = builder.build(&entry_function, &build_opts);
     
     // Update source file in analysis info
+    flow.analysis_info.source_file = Some(file_path);
+    
+    // Convert to flat structure for frontend
+    let flat_flow = flatten_execution_flow(&flow);
+    
+    Ok(flat_flow)
+}
+
+/// Convert tree-structured ExecutionFlow to flat nodes/edges for ReactFlow
+fn flatten_execution_flow(flow: &ExecutionFlow) -> FlatExecutionFlow {
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    
+    // Recursively flatten the tree
+    flatten_node(&flow.root, &mut nodes, &mut edges, &mut visited, None, false);
+    
+    // Collect warnings as strings
+    let warnings: Vec<String> = flow.analysis_info.warnings
+        .iter()
+        .map(|w| w.message.clone())
+        .collect();
+    
+    FlatExecutionFlow {
+        entry_function: flow.entry_function.clone(),
+        nodes,
+        edges: edges.clone(),
+        analysis_info: FlowAnalysisInfo {
+            source_file: flow.analysis_info.source_file.clone(),
+            total_nodes: flow.analysis_info.total_nodes,
+            total_edges: edges.len(),
+            async_boundaries: flow.async_boundaries.len(),
+            warnings,
+        },
+    }
+}
+
+/// Recursively flatten a FlowNode into nodes and edges
+fn flatten_node(
+    node: &flowsight_core::FlowNode,
+    nodes: &mut Vec<FlowGraphNode>,
+    edges: &mut Vec<FlowGraphEdge>,
+    visited: &mut std::collections::HashSet<String>,
+    parent_id: Option<&str>,
+    is_async_edge: bool,
+) {
+    // Avoid duplicates
+    if visited.contains(&node.id) {
+        // Still add edge if there's a parent
+        if let Some(parent) = parent_id {
+            edges.push(FlowGraphEdge {
+                source: parent.to_string(),
+                target: node.id.clone(),
+                edge_type: if is_async_edge { "async" } else { "sync" }.to_string(),
+                label: None,
+            });
+        }
+        return;
+    }
+    visited.insert(node.id.clone());
+    
+    // Determine node type string
+    let node_type = match &node.node_type {
+        flowsight_core::FlowNodeType::EntryPoint => "entry",
+        flowsight_core::FlowNodeType::Function => "function",
+        flowsight_core::FlowNodeType::AsyncCallback { .. } => "async",
+        flowsight_core::FlowNodeType::KernelApi => "kernel",
+        flowsight_core::FlowNodeType::External => "external",
+        flowsight_core::FlowNodeType::Separator { .. } => "separator",
+        flowsight_core::FlowNodeType::Branch { .. } => "branch",
+    };
+    
+    // Determine execution context string
+    let context = node.execution_context.as_ref().map(|ctx| {
+        match ctx {
+            flowsight_core::ExecutionContext::Process => "Process Context",
+            flowsight_core::ExecutionContext::SoftIrq => "SoftIRQ Context",
+            flowsight_core::ExecutionContext::HardIrq => "HardIRQ Context",
+            flowsight_core::ExecutionContext::Unknown => "Unknown Context",
+        }.to_string()
+    });
+    
+    // Create the node
+    let graph_node = FlowGraphNode {
+        id: node.id.clone(),
+        label: node.display_name.clone(),
+        node_type: node_type.to_string(),
+        line: node.location.as_ref().map(|l| l.line).unwrap_or(0),
+        description: node.description.clone(),
+        context,
+        can_sleep: node.can_sleep,
+        is_kernel: node.is_kernel_internal,
+    };
+    nodes.push(graph_node);
+    
+    // Add edge from parent
+    if let Some(parent) = parent_id {
+        edges.push(FlowGraphEdge {
+            source: parent.to_string(),
+            target: node.id.clone(),
+            edge_type: if is_async_edge { "async" } else { "sync" }.to_string(),
+            label: None,
+        });
+    }
+    
+    // Process children
+    let mut next_is_async = false;
+    for child in &node.children {
+        // Check if this is a separator indicating async boundary
+        if matches!(child.node_type, flowsight_core::FlowNodeType::Separator { .. }) {
+            next_is_async = true;
+            // Still add the separator node
+            flatten_node(child, nodes, edges, visited, Some(&node.id), false);
+        } else {
+            flatten_node(child, nodes, edges, visited, Some(&node.id), next_is_async);
+            next_is_async = false;
+        }
+    }
+}
+
+/// Get the raw tree-structured ExecutionFlow (for advanced use cases)
+#[tauri::command]
+pub async fn build_execution_flow_tree(
+    file_path: String,
+    entry_function: String,
+    options: Option<ExecutionFlowOptions>,
+) -> Result<ExecutionFlow, String> {
+    let path = PathBuf::from(&file_path);
+    
+    // Parse file
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
+    
+    // Read source for analysis
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    
+    // Run analysis
+    let mut analyzer = Analyzer::new();
+    let _analysis = analyzer
+        .analyze(&source, &mut parse_result)
+        .map_err(|e| e.to_string())?;
+    
+    // Build FlowBuilder and register functions
+    let mut builder = FlowBuilder::new();
+    builder.extract_async_bindings(&source);
+    
+    for (name, func) in &parse_result.functions {
+        builder.register_function(BuilderFunctionInfo {
+            name: name.clone(),
+            location: func.location.clone(),
+            calls: func.calls.clone(),
+            is_kernel: func.attributes.contains(&"__init".to_string()) 
+                || func.attributes.contains(&"__exit".to_string())
+                || name.starts_with("__"),
+        });
+    }
+    
+    let opts = options.as_ref();
+    let build_opts = BuildOptions {
+        max_depth: opts.and_then(|o| o.max_depth).unwrap_or(50),
+        include_kernel_chains: opts.and_then(|o| o.include_kernel_chains).unwrap_or(true),
+        expand_async: opts.and_then(|o| o.expand_async).unwrap_or(true),
+    };
+    
+    let mut flow = builder.build(&entry_function, &build_opts);
     flow.analysis_info.source_file = Some(file_path);
     
     Ok(flow)

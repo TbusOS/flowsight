@@ -1,0 +1,94 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - link "跳转到主内容" [ref=e3] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - img [ref=e9]
+          - generic [ref=e11]: FlowSight
+        - menubar [ref=e12]:
+          - menuitem "文件" [ref=e13] [cursor=pointer]
+          - menuitem "视图" [ref=e14] [cursor=pointer]
+          - menuitem "命令" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]:
+        - button "深色" [ref=e18]:
+          - generic [ref=e20]: 深色
+          - img [ref=e21]
+        - button "搜索 ⌘ K" [ref=e23]:
+          - img
+          - generic [ref=e24]: 搜索
+          - generic:
+            - generic: ⌘
+            - text: K
+        - button [ref=e25]:
+          - img
+        - button [ref=e26]:
+          - img
+        - generic [ref=e27]:
+          - button [ref=e28]:
+            - img
+          - button [ref=e29]:
+            - img
+    - generic [ref=e30]:
+      - complementary [ref=e31]:
+        - generic [ref=e32]:
+          - img [ref=e35]
+          - navigation [ref=e38]:
+            - button [ref=e41]:
+              - img
+            - button [ref=e44]:
+              - img
+            - button [ref=e47]:
+              - img
+            - generic [ref=e48]:
+              - button [active] [ref=e50]:
+                - img
+              - generic:
+                - generic:
+                  - generic: 执行流
+            - button [ref=e54]:
+              - img
+            - button [ref=e57]:
+              - img
+          - navigation [ref=e58]:
+            - button [ref=e61]:
+              - img
+      - main [ref=e63]:
+        - generic [ref=e67]:
+          - img [ref=e68]
+          - heading "执行流视图" [level=3] [ref=e70]
+          - paragraph [ref=e71]: 打开项目后查看执行流
+        - generic [ref=e78]:
+          - generic [ref=e79]:
+            - paragraph [ref=e80]: $ flow analyze --project demo
+            - paragraph [ref=e81]: Loading project...
+            - paragraph [ref=e82]: Found 42 functions, 156 calls
+            - paragraph [ref=e83]: Analysis complete in 1.2s
+          - generic [ref=e85]: $
+    - contentinfo [ref=e87]:
+      - generic [ref=e88]:
+        - button "终端" [ref=e89]:
+          - img [ref=e90]
+          - generic [ref=e92]: 终端
+        - button "问题" [ref=e93]:
+          - img [ref=e94]
+          - generic [ref=e96]: 问题
+        - button "输出" [ref=e97]:
+          - img [ref=e98]
+          - generic [ref=e100]: 输出
+      - generic [ref=e101]:
+        - generic [ref=e102]:
+          - img [ref=e103]
+          - generic [ref=e107]: main
+        - generic [ref=e108]:
+          - img [ref=e109]
+          - generic [ref=e113]: 已连接
+        - generic [ref=e114]:
+          - generic [ref=e115]: Ln 1, Col 1
+          - generic [ref=e116]: UTF-8
+          - generic [ref=e117]: C
+```
