@@ -11,6 +11,7 @@ import { CommandMenu } from "../../components/ui/command"
 import { OutlinePanel } from "../../components/panels/outline-panel"
 import { NodeDetailPanel } from "../../components/panels/node-detail-panel"
 import { FileExplorer } from "../../components/panels/file-explorer"
+import { SearchPanel } from "../../components/panels/search-panel"
 import { CodeEditor } from "../../components/panels/code-editor"
 import { FlowView } from "../../components/panels/flow-view"
 import {
@@ -135,6 +136,8 @@ export function MainLayout({ children }: MainLayoutProps) {
         )
       case "explorer":
         return <FileExplorer onFileSelect={handleFileSelect} />
+      case "search":
+        return <SearchPanel onResultSelect={(result) => handleFileSelect(result.file_path)} />
       default:
         return <OutlinePanel />
     }
@@ -240,6 +243,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                   { id: "detail", label: "详情", icon: BarChart3, iconClass: "h-4 w-4" },
                   { id: "llvm-ir", label: "IR", icon: Cpu, iconClass: "h-4 w-4" },
                   { id: "explorer", label: "文件", icon: Folder, iconClass: "h-4 w-4" },
+                  { id: "search", label: "搜索", icon: Search, iconClass: "h-4 w-4" },
                 ].map((tab) => {
                   const Icon = tab.icon
                   return (

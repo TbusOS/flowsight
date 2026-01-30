@@ -4,7 +4,7 @@ mod commands;
 
 pub use commands::{
     AnalysisResult, AsyncBindingInfo, EntryPointInfo, FileNode, FunctionDetail, FunctionInfo,
-    FunctionLocation, IndexStats, ProjectInfo, SearchResult,
+    FunctionLocation, IndexStats, ProjectInfo, SearchOptions, SearchResult,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

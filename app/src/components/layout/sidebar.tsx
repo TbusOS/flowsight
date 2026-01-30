@@ -29,7 +29,7 @@ interface NavItem {
   icon: React.ElementType
   label: string
   shortcut?: string
-  panelTab?: "outline" | "detail" | "llvm-ir" | "explorer"
+  panelTab?: "outline" | "detail" | "llvm-ir" | "explorer" | "search"
 }
 
 const navItems: NavItem[] = [
@@ -37,7 +37,7 @@ const navItems: NavItem[] = [
   { id: "explorer", icon: FolderOpen, label: "文件", panelTab: "explorer" },
   { id: "outline", icon: FileCode, label: "大纲", panelTab: "outline" },
   { id: "flow", icon: Zap, label: "执行流" },
-  { id: "search", icon: Search, label: "搜索" },
+  { id: "search", icon: Search, label: "搜索", panelTab: "search" },
   { id: "command", icon: Command, label: "命令", shortcut: "K" },
 ]
 

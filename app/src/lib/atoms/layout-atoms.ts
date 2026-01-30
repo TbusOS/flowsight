@@ -10,7 +10,7 @@ export const sidebarWidthAtom = atom(80)  // 图标栏宽度
 
 // 右侧面板状态
 export const rightPanelOpenAtom = atom(false)
-export const rightPanelTabAtom = atom<"outline" | "detail" | "llvm-ir" | "explorer">("outline")
+export const rightPanelTabAtom = atom<"outline" | "detail" | "llvm-ir" | "explorer" | "search">("outline")
 export const rightPanelWidthAtom = atom(280)
 
 // 底部面板状态

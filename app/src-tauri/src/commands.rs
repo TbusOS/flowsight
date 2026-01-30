@@ -108,14 +108,44 @@ pub struct ProjectInfo {
     pub indexed: bool,
 }
 
-/// Search result
+/// Search result (enhanced version)
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchResult {
     pub name: String,
-    pub kind: String, // "function" or "struct"
-    pub file: Option<String>,
-    pub line: Option<u32>,
-    pub is_callback: bool,
+    pub kind: String, // "function", "struct", "macro", "variable", "typedef"
+    pub file_path: String,
+    pub line: u32,
+    pub preview: String,       // Code snippet preview
+    pub match_score: u32,      // 0-100 match score
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_callback: Option<bool>,
+}
+
+/// Search options for filtering
+#[derive(Debug, Deserialize, Default)]
+pub struct SearchOptions {
+    /// Project path (optional, uses current indexed project if not specified)
+    pub project_path: Option<String>,
+    /// Include functions in search
+    #[serde(default = "default_true")]
+    pub include_functions: bool,
+    /// Include structs in search
+    #[serde(default = "default_true")]
+    pub include_structs: bool,
+    /// Include macros in search
+    #[serde(default)]
+    pub include_macros: bool,
+    /// Maximum number of results
+    #[serde(default = "default_max_results")]
+    pub max_results: usize,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_max_results() -> usize {
+    50
 }
 
 /// Open a project directory - returns immediately, indexing happens in background
@@ -232,43 +262,183 @@ fn index_project_background(project_path: PathBuf, app_handle: tauri::AppHandle)
 }
 
 /// Search for symbols in the index
+/// 
+/// Enhanced search with options:
+/// - `query`: Search query string
+/// - `options`: Optional search options (filters, max results)
+/// 
+/// Returns results sorted by match score (highest first)
 #[tauri::command]
-pub async fn search_symbols(query: String) -> Result<Vec<SearchResult>, String> {
+pub async fn search_symbols(
+    query: String,
+    options: Option<SearchOptions>,
+) -> Result<Vec<SearchResult>, String> {
     let index = INDEX.lock().map_err(|e| e.to_string())?;
     let query_lower = query.to_lowercase();
+    let opts = options.unwrap_or_default();
+    
+    let max_results = if opts.max_results == 0 { 50 } else { opts.max_results };
 
     let mut results = Vec::new();
 
     // Search functions
-    for (name, func) in &index.functions {
-        if name.to_lowercase().contains(&query_lower) {
-            results.push(SearchResult {
-                name: name.clone(),
-                kind: "function".into(),
-                file: func.location.as_ref().map(|l| l.file.clone()),
-                line: func.location.as_ref().map(|l| l.line),
-                is_callback: func.is_callback,
-            });
+    if opts.include_functions {
+        for (name, func) in &index.functions {
+            if let Some(score) = calculate_match_score(name, &query, &query_lower) {
+                let file_path = func.location.as_ref()
+                    .map(|l| l.file.clone())
+                    .unwrap_or_default();
+                let line = func.location.as_ref().map(|l| l.line).unwrap_or(0);
+                
+                // Generate preview: function signature
+                let preview = generate_function_preview(func);
+                
+                results.push(SearchResult {
+                    name: name.clone(),
+                    kind: "function".into(),
+                    file_path,
+                    line,
+                    preview,
+                    match_score: score,
+                    is_callback: Some(func.is_callback),
+                });
+            }
         }
     }
 
     // Search structs
-    for (name, st) in &index.structs {
-        if name.to_lowercase().contains(&query_lower) {
-            results.push(SearchResult {
-                name: name.clone(),
-                kind: "struct".into(),
-                file: st.location.as_ref().map(|l| l.file.clone()),
-                line: st.location.as_ref().map(|l| l.line),
-                is_callback: false,
-            });
+    if opts.include_structs {
+        for (name, st) in &index.structs {
+            if let Some(score) = calculate_match_score(name, &query, &query_lower) {
+                let file_path = st.location.as_ref()
+                    .map(|l| l.file.clone())
+                    .unwrap_or_default();
+                let line = st.location.as_ref().map(|l| l.line).unwrap_or(0);
+                
+                // Generate preview: struct with field count
+                let preview = generate_struct_preview(st);
+                
+                results.push(SearchResult {
+                    name: name.clone(),
+                    kind: "struct".into(),
+                    file_path,
+                    line,
+                    preview,
+                    match_score: score,
+                    is_callback: None,
+                });
+            }
         }
     }
 
+    // Sort by match score (highest first), then by name
+    results.sort_by(|a, b| {
+        b.match_score.cmp(&a.match_score)
+            .then_with(|| a.name.len().cmp(&b.name.len()))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
     // Limit results
-    results.truncate(50);
+    results.truncate(max_results);
 
     Ok(results)
+}
+
+/// Calculate match score (0-100) for a symbol name against query
+/// Returns None if no match
+fn calculate_match_score(name: &str, query: &str, query_lower: &str) -> Option<u32> {
+    let name_lower = name.to_lowercase();
+    
+    // Exact match = 100
+    if name == query {
+        return Some(100);
+    }
+    
+    // Case-insensitive exact match = 95
+    if name_lower == *query_lower {
+        return Some(95);
+    }
+    
+    // Starts with query = 90
+    if name_lower.starts_with(query_lower) {
+        return Some(90);
+    }
+    
+    // Ends with query = 80
+    if name_lower.ends_with(query_lower) {
+        return Some(80);
+    }
+    
+    // Contains query = 70 - penalty for distance from start
+    if let Some(pos) = name_lower.find(query_lower) {
+        let distance_penalty = (pos as u32).min(20);
+        return Some(70 - distance_penalty);
+    }
+    
+    // Fuzzy match: all query chars appear in order
+    if fuzzy_match(&name_lower, query_lower) {
+        return Some(40);
+    }
+    
+    None
+}
+
+/// Check if all characters of query appear in name in order (fuzzy match)
+fn fuzzy_match(name: &str, query: &str) -> bool {
+    let mut name_chars = name.chars().peekable();
+    
+    for qc in query.chars() {
+        loop {
+            match name_chars.next() {
+                Some(nc) if nc == qc => break,
+                Some(_) => continue,
+                None => return false,
+            }
+        }
+    }
+    
+    true
+}
+
+/// Generate preview string for a function
+fn generate_function_preview(func: &flowsight_core::FunctionDef) -> String {
+    let params: Vec<String> = func.params
+        .iter()
+        .map(|p| {
+            if p.name.is_empty() {
+                p.type_name.clone()
+            } else {
+                format!("{} {}", p.type_name, p.name)
+            }
+        })
+        .collect();
+    
+    let params_str = if params.is_empty() {
+        "void".to_string()
+    } else if params.len() > 3 {
+        format!("{}, ...", params[..2].join(", "))
+    } else {
+        params.join(", ")
+    };
+    
+    format!("{} {}({})", func.return_type, func.name, params_str)
+}
+
+/// Generate preview string for a struct
+fn generate_struct_preview(st: &flowsight_core::StructDef) -> String {
+    let field_count = st.fields.len();
+    
+    if field_count == 0 {
+        format!("struct {} {{ }}", st.name)
+    } else if field_count <= 2 {
+        let fields: Vec<String> = st.fields
+            .iter()
+            .map(|f| format!("{} {}", f.type_name, f.name))
+            .collect();
+        format!("struct {} {{ {} }}", st.name, fields.join("; "))
+    } else {
+        format!("struct {} {{ ... {} fields }}", st.name, field_count)
+    }
 }
 
 /// Get index statistics
