@@ -70,7 +70,9 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
         title: "选择项目目录",
       })
       if (selected && typeof selected === 'string') {
-        await invoke('open_project', { path: selected })
+        // 使用 store 的 openProject 方法
+        const { openProject } = await import('../../store/analysisStore').then(m => m.useAnalysisStore.getState())
+        await openProject(selected)
         console.log('项目已打开:', selected)
       }
     } catch (error) {
@@ -87,7 +89,9 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
         title: "打开文件夹",
       })
       if (selected && typeof selected === 'string') {
-        await invoke('open_project', { path: selected })
+        // 使用 store 的 openProject 方法
+        const { openProject } = await import('../../store/analysisStore').then(m => m.useAnalysisStore.getState())
+        await openProject(selected)
         console.log('文件夹已打开:', selected)
       }
     } catch (error) {
@@ -107,7 +111,9 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
         title: "打开文件",
       })
       if (selected && typeof selected === 'string') {
-        await invoke('analyze_file', { path: selected })
+        // 使用 store 的 analyzeFile 方法
+        const { analyzeFile } = await import('../../store/analysisStore').then(m => m.useAnalysisStore.getState())
+        await analyzeFile(selected)
         console.log('文件已打开:', selected)
       }
     } catch (error) {

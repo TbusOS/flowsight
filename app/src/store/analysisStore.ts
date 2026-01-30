@@ -43,8 +43,29 @@ interface ExecutionFlowOptions {
   expand_async?: boolean
 }
 
+// 项目信息
+interface ProjectInfo {
+  path: string
+  files_count: number
+  functions_count: number
+  structs_count: number
+  indexed: boolean
+}
+
+// 索引进度
+interface IndexProgress {
+  phase: 'scanning' | 'parsing' | 'indexing' | 'complete' | 'error'
+  current: number
+  total: number
+  message: string
+}
+
 // 分析状态
 interface AnalysisState {
+  // 项目状态
+  currentProject: ProjectInfo | null
+  indexProgress: IndexProgress | null
+  
   // 分析结果
   result: AnalysisResult | null
   selectedFunction: string | null
@@ -60,6 +81,11 @@ interface AnalysisState {
   asyncBindings: AsyncBindingInfo[]
   selectedEntryPoint: string | null
   executionFlowLoading: boolean
+
+  // 项目 Actions
+  setCurrentProject: (project: ProjectInfo | null) => void
+  setIndexProgress: (progress: IndexProgress | null) => void
+  openProject: (path: string) => Promise<void>
 
   // Actions
   setResult: (result: AnalysisResult | null) => void
@@ -96,6 +122,10 @@ interface AnalysisState {
 }
 
 export const useAnalysisStore = create<AnalysisState>((set, get) => ({
+  // 项目状态
+  currentProject: null,
+  indexProgress: null,
+  
   // 初始状态
   result: null,
   selectedFunction: null,
@@ -111,6 +141,23 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   asyncBindings: [],
   selectedEntryPoint: null,
   executionFlowLoading: false,
+
+  // 项目 Actions
+  setCurrentProject: (project) => set({ currentProject: project }),
+  setIndexProgress: (progress) => set({ indexProgress: progress }),
+  
+  openProject: async (path) => {
+    set({ loading: true, indexProgress: { phase: 'scanning', current: 0, total: 0, message: '正在扫描文件...' } })
+    try {
+      const project = await invoke<ProjectInfo>('open_project', { path })
+      set({ currentProject: project })
+    } catch (error) {
+      console.error('打开项目失败:', error)
+      set({ indexProgress: { phase: 'error', current: 0, total: 0, message: String(error) } })
+    } finally {
+      set({ loading: false })
+    }
+  },
 
   // 基本 Actions
   setResult: (result) => set({ result }),

@@ -2,9 +2,11 @@
 
 import * as React from "react"
 import { Provider as JotaiProvider, useAtom } from "jotai"
+import { listen } from "@tauri-apps/api/event"
 import { MainLayout } from "./components/layout"
 import { cn } from "./lib/utils"
 import { initThemeAtom } from "./lib/atoms/layout-atoms"
+import { useAnalysisStore } from "./store/analysisStore"
 
 // ============================================================================
 // Theme Initializer Component
@@ -21,6 +23,59 @@ function ThemeInitializer() {
 }
 
 // ============================================================================
+// Tauri Event Listener Component
+// ============================================================================
+
+function TauriEventListener() {
+  const setIndexProgress = useAnalysisStore((state) => state.setIndexProgress)
+  const setCurrentProject = useAnalysisStore((state) => state.setCurrentProject)
+
+  React.useEffect(() => {
+    // 监听索引进度事件
+    const unlistenProgress = listen<{
+      phase: string
+      current: number
+      total: number
+      message: string
+    }>("index-progress", (event) => {
+      const { phase, current, total, message } = event.payload
+      setIndexProgress({
+        phase: phase as 'scanning' | 'parsing' | 'indexing' | 'complete' | 'error',
+        current,
+        total,
+        message,
+      })
+      
+      // 索引完成时更新项目信息
+      if (phase === 'complete') {
+        console.log('索引完成:', message)
+      }
+    })
+
+    // 监听索引完成事件
+    const unlistenComplete = listen<{
+      path: string
+      files_count: number
+      functions_count: number
+      structs_count: number
+    }>("index-complete", (event) => {
+      setCurrentProject({
+        ...event.payload,
+        indexed: true,
+      })
+      setIndexProgress(null)
+    })
+
+    return () => {
+      unlistenProgress.then((fn) => fn())
+      unlistenComplete.then((fn) => fn())
+    }
+  }, [setIndexProgress, setCurrentProject])
+
+  return null
+}
+
+// ============================================================================
 // New FlowSight App - Minimal Design with shadcn/ui
 // ============================================================================
 
@@ -28,6 +83,7 @@ export function App() {
   return (
     <JotaiProvider>
       <ThemeInitializer />
+      <TauriEventListener />
       {/* Skip Link for keyboard users */}
       <a
         href="#main-content"
