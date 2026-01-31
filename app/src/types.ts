@@ -103,6 +103,29 @@ export interface FunctionDetail {
   params: { name: string; type_name: string }[]
 }
 
+// 局部变量信息
+export interface LocalVarInfo {
+  name: string
+  type_name: string
+}
+
+// 扩展函数详情（从文件解析）
+export interface FunctionDetailExt {
+  name: string
+  return_type: string
+  params: { name: string; type_name: string }[]
+  file: string
+  line: number
+  end_line: number
+  is_callback: boolean
+  callback_context: string | null
+  calls: string[]
+  called_by: string[]
+  local_variables: LocalVarInfo[]
+  complexity: number
+  doc_comment: string | null
+}
+
 // 文件节点
 export interface FileNode {
   name: string

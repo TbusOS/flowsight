@@ -13,6 +13,7 @@ import {
   AnalysisResult,
   FlowTreeNode,
   FunctionDetail,
+  FunctionDetailExt,
   SearchResult,
   ExecutionFlow,
   AsyncBoundary,
@@ -108,6 +109,7 @@ interface AnalysisState {
   getFunctions: (path: string) => Promise<OutlineItem[]>
   searchSymbols: (query: string) => Promise<SearchResult[]>
   getFunctionDetail: (funcName: string, path: string) => Promise<FunctionDetail | null>
+  getFunctionDetailFromFile: (filePath: string, functionName: string) => Promise<FunctionDetailExt | null>
   
   // Phase 2 操作
   buildExecutionFlow: (path: string, entryFunction: string, options?: ExecutionFlowOptions) => Promise<ExecutionFlow | null>
@@ -296,6 +298,20 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       calls: [],
       called_by: [],
       params: [],
+    }
+  },
+
+  // 从文件获取函数详情（扩展版本）
+  getFunctionDetailFromFile: async (filePath, functionName) => {
+    try {
+      const result = await invoke<FunctionDetailExt | null>('get_function_detail_from_file', {
+        file_path: filePath,
+        function_name: functionName,
+      })
+      return result
+    } catch (e) {
+      console.error('获取函数详情失败:', e)
+      return null
     }
   },
 

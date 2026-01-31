@@ -3,8 +3,9 @@
 mod commands;
 
 pub use commands::{
-    AnalysisResult, AsyncBindingInfo, EntryPointInfo, FileNode, FunctionDetail, FunctionInfo,
-    FunctionLocation, IndexStats, ProjectInfo, SearchOptions, SearchResult,
+    AnalysisResult, AsyncBindingInfo, EntryPointInfo, FileNode, FunctionDetail, FunctionDetailExt,
+    FunctionInfo, FunctionLocation, IndexStats, LocalVarInfo, ParamInfo, ProjectInfo,
+    SearchOptions, SearchResult,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -46,6 +47,8 @@ pub fn run() {
             commands::explain_function,
             commands::get_context_annotation,
             commands::translate_condition,
+            // Extended Function Detail API
+            commands::get_function_detail_from_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

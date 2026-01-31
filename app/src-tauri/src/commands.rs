@@ -482,6 +482,31 @@ pub struct ParamInfo {
     pub type_name: String,
 }
 
+/// Local variable information
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LocalVarInfo {
+    pub name: String,
+    pub type_name: String,
+}
+
+/// Extended function detail from file parsing
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FunctionDetailExt {
+    pub name: String,
+    pub return_type: String,
+    pub params: Vec<ParamInfo>,
+    pub file: String,
+    pub line: u32,
+    pub end_line: u32,
+    pub is_callback: bool,
+    pub callback_context: Option<String>,
+    pub calls: Vec<String>,
+    pub called_by: Vec<String>,
+    pub local_variables: Vec<LocalVarInfo>,
+    pub complexity: u32,
+    pub doc_comment: Option<String>,
+}
+
 /// Get function detail from index
 #[tauri::command]
 pub async fn get_function_detail(name: String) -> Result<Option<FunctionDetail>, String> {
@@ -1589,4 +1614,270 @@ fn detect_can_sleep(code: &str) -> Option<bool> {
         return Some(true);
     }
     None
+}
+
+// ============================================================
+// Extended Function Detail API
+// ============================================================
+
+/// Get detailed function information from file
+/// 
+/// This command parses the file directly and extracts comprehensive
+/// function information including local variables, complexity, and doc comments.
+#[tauri::command]
+pub async fn get_function_detail_from_file(
+    file_path: String,
+    function_name: String,
+) -> Result<Option<FunctionDetailExt>, String> {
+    let path = PathBuf::from(&file_path);
+    
+    // Read source file
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    
+    // Parse file
+    let parser = get_parser();
+    let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
+    
+    // Run analysis to get async info
+    let mut analyzer = Analyzer::new();
+    let _ = analyzer
+        .analyze(&source, &mut parse_result)
+        .map_err(|e| e.to_string())?;
+    
+    // Find the target function
+    let func = match parse_result.functions.get(&function_name) {
+        Some(f) => f,
+        None => return Ok(None),
+    };
+    
+    // Extract function code for additional analysis
+    let (func_code, start_line, end_line) = extract_function_code_with_lines(&source, &function_name)
+        .unwrap_or((String::new(), func.location.as_ref().map(|l| l.line).unwrap_or(0), 0));
+    
+    // Calculate end_line if not found
+    let end_line = if end_line > 0 {
+        end_line
+    } else {
+        start_line + count_lines(&func_code)
+    };
+    
+    // Find called_by - functions in this file that call our target function
+    let called_by: Vec<String> = parse_result
+        .functions
+        .iter()
+        .filter(|(name, f)| *name != &function_name && f.calls.contains(&function_name))
+        .map(|(name, _)| name.clone())
+        .collect();
+    
+    // Extract local variables from function body
+    let local_variables = extract_local_variables(&func_code);
+    
+    // Calculate cyclomatic complexity
+    let complexity = calculate_complexity(&func_code);
+    
+    // Extract doc comment
+    let doc_comment = extract_doc_comment(&source, start_line);
+    
+    Ok(Some(FunctionDetailExt {
+        name: func.name.clone(),
+        return_type: func.return_type.clone(),
+        params: func
+            .params
+            .iter()
+            .map(|p| ParamInfo {
+                name: p.name.clone(),
+                type_name: p.type_name.clone(),
+            })
+            .collect(),
+        file: file_path,
+        line: start_line,
+        end_line,
+        is_callback: func.is_callback,
+        callback_context: func.callback_context.clone(),
+        calls: func.calls.clone(),
+        called_by,
+        local_variables,
+        complexity,
+        doc_comment,
+    }))
+}
+
+/// Extract function code with start and end line numbers
+fn extract_function_code_with_lines(source: &str, function_name: &str) -> Option<(String, u32, u32)> {
+    let pattern = format!(r"(?s)(\w+\s+)?{}\s*\([^)]*\)\s*\{{", regex::escape(function_name));
+    let re = regex::Regex::new(&pattern).ok()?;
+    
+    if let Some(mat) = re.find(source) {
+        let start = mat.start();
+        let mut brace_count = 0;
+        let mut end = start;
+        
+        for (i, c) in source[start..].char_indices() {
+            match c {
+                '{' => brace_count += 1,
+                '}' => {
+                    brace_count -= 1;
+                    if brace_count == 0 {
+                        end = start + i + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        // Calculate line numbers
+        let start_line = source[..start].lines().count() as u32 + 1;
+        let end_line = source[..end].lines().count() as u32;
+        
+        return Some((source[start..end].to_string(), start_line, end_line));
+    }
+    
+    None
+}
+
+/// Count lines in a string
+fn count_lines(s: &str) -> u32 {
+    s.lines().count() as u32
+}
+
+/// Extract local variables from function code
+fn extract_local_variables(func_code: &str) -> Vec<LocalVarInfo> {
+    let mut vars = Vec::new();
+    
+    // Pattern for common variable declarations
+    // Matches: type name; or type name = ...; or type *name; etc.
+    let re = regex::Regex::new(
+        r"(?m)^\s*((?:const\s+|static\s+|volatile\s+|unsigned\s+|signed\s+|long\s+|short\s+)*(?:int|char|void|bool|size_t|ssize_t|u8|u16|u32|u64|s8|s16|s32|s64|__[a-z0-9_]+|struct\s+\w+))\s*(\**)(\w+)\s*(?:=|;|\[)"
+    ).ok();
+    
+    if let Some(re) = re {
+        for cap in re.captures_iter(func_code) {
+            if let (Some(type_match), Some(ptr_match), Some(name_match)) = (cap.get(1), cap.get(2), cap.get(3)) {
+                let type_name = format!("{}{}", type_match.as_str().trim(), ptr_match.as_str());
+                let name = name_match.as_str().to_string();
+                
+                // Skip common non-variable patterns
+                if !["if", "while", "for", "switch", "return", "goto", "sizeof", "typeof"].contains(&name.as_str()) {
+                    vars.push(LocalVarInfo { name, type_name });
+                }
+            }
+        }
+    }
+    
+    vars
+}
+
+/// Calculate cyclomatic complexity (McCabe)
+/// Complexity = E - N + 2P = decision points + 1
+fn calculate_complexity(func_code: &str) -> u32 {
+    let mut complexity: u32 = 1; // Base complexity
+    
+    // Count decision points
+    let decision_patterns = [
+        r"\bif\s*\(",      // if statements
+        r"\belse\s+if\b",  // else if (don't double count)
+        r"\bwhile\s*\(",   // while loops
+        r"\bfor\s*\(",     // for loops
+        r"\bcase\s+",      // case labels
+        r"\bdefault\s*:",  // default label
+        r"\bcatch\s*\(",   // catch blocks (if any)
+        r"\?\s*[^:]+:",    // ternary operators
+        r"\|\|",           // logical OR (short-circuit)
+        r"&&",             // logical AND (short-circuit)
+    ];
+    
+    for pattern in &decision_patterns {
+        if let Ok(re) = regex::Regex::new(pattern) {
+            complexity += re.find_iter(func_code).count() as u32;
+        }
+    }
+    
+    // Note: else if is already handled by the pattern list
+    // The "\belse\s+if\b" pattern counts it once, and "\bif\s*\(" 
+    // doesn't match "else if" due to the word boundary
+    
+    complexity
+}
+
+/// Extract documentation comment before a function
+fn extract_doc_comment(source: &str, func_start_line: u32) -> Option<String> {
+    if func_start_line == 0 {
+        return None;
+    }
+    
+    let lines: Vec<&str> = source.lines().collect();
+    let start_idx = (func_start_line as usize).saturating_sub(1);
+    
+    if start_idx == 0 {
+        return None;
+    }
+    
+    let mut comment_lines = Vec::new();
+    let mut in_block_comment = false;
+    
+    // Scan backwards from function to find comment
+    for i in (0..start_idx).rev() {
+        let line = lines.get(i)?.trim();
+        
+        // Check for end of block comment (scanning backwards)
+        if line.ends_with("*/") {
+            in_block_comment = true;
+            let content = line.trim_end_matches("*/").trim();
+            if !content.is_empty() {
+                comment_lines.push(content.to_string());
+            }
+            continue;
+        }
+        
+        if in_block_comment {
+            // Check for start of block comment
+            if line.starts_with("/*") || line.starts_with("/**") {
+                let content = line.trim_start_matches("/**").trim_start_matches("/*").trim();
+                if !content.is_empty() {
+                    comment_lines.push(content.to_string());
+                }
+                break;
+            }
+            
+            // Middle line of block comment
+            let content = line.trim_start_matches('*').trim();
+            comment_lines.push(content.to_string());
+            continue;
+        }
+        
+        // Single line comment
+        if line.starts_with("//") {
+            let content = line.trim_start_matches('/').trim();
+            comment_lines.push(content.to_string());
+            continue;
+        }
+        
+        // Non-comment, non-empty line - stop scanning
+        if !line.is_empty() {
+            break;
+        }
+    }
+    
+    if comment_lines.is_empty() {
+        return None;
+    }
+    
+    // Reverse since we scanned backwards
+    comment_lines.reverse();
+    
+    // Filter out empty lines at start/end and join
+    let result: Vec<&str> = comment_lines
+        .iter()
+        .map(|s| s.as_str())
+        .skip_while(|s| s.is_empty())
+        .collect();
+    
+    let result: String = result.join("\n").trim().to_string();
+    
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
