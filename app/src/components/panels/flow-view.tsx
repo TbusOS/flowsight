@@ -18,8 +18,15 @@ import "@xyflow/react/dist/style.css"
 import { invoke } from "../../lib/tauri-api"
 import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check, Search, Filter, X } from "lucide-react"
 import { cn } from "../../lib/utils"
-import { useAtomValue, useSetAtom } from "jotai"
-import { currentFileAtom, setSelectedNodeAtom, selectedEntryFunctionAtom, type SelectedNodeDetail } from "../../lib/atoms/layout-atoms"
+import { useAtomValue, useSetAtom, useAtom } from "jotai"
+import { 
+  currentFileAtom, 
+  setSelectedNodeAtom, 
+  selectedEntryFunctionAtom, 
+  rightPanelOpenAtom, 
+  rightPanelTabAtom,
+  type SelectedNodeDetail 
+} from "../../lib/atoms/layout-atoms"
 import { useAnalysisStore } from "../../store/analysisStore"
 
 // 自定义节点类型
@@ -75,6 +82,8 @@ export function FlowView({ className }: FlowViewProps) {
   const selectedEntryFunction = useAtomValue(selectedEntryFunctionAtom)
   const currentProject = useAnalysisStore((state) => state.currentProject)
   const setSelectedNode = useSetAtom(setSelectedNodeAtom)
+  const setRightPanelOpen = useSetAtom(rightPanelOpenAtom)
+  const setRightPanelTab = useSetAtom(rightPanelTabAtom)
   const getFunctionDetail = useAnalysisStore((state) => state.getFunctionDetail)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FunctionNodeData>>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -110,10 +119,14 @@ export function FlowView({ className }: FlowViewProps) {
     detectEntryPoints()
   }, [currentFile])
 
-  // 处理节点点击 - 更新选中节点详情
+  // 处理节点点击 - 更新选中节点详情并打开详情面板
   const handleNodeClick = React.useCallback(async (_: React.MouseEvent, node: Node<FunctionNodeData>) => {
     const funcName = node.data.label
     setSelectedFunction(funcName)
+
+    // 自动打开右侧详情面板
+    setRightPanelOpen(true)
+    setRightPanelTab("detail")
 
     // 获取详细信息并更新 atom
     if (currentFile) {
@@ -153,7 +166,7 @@ export function FlowView({ className }: FlowViewProps) {
         })
       }
     }
-  }, [currentFile, getFunctionDetail, setSelectedNode])
+  }, [currentFile, getFunctionDetail, setSelectedNode, setRightPanelOpen, setRightPanelTab])
 
   // 导出状态
   const [copied, setCopied] = React.useState(false)
