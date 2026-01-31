@@ -35,6 +35,31 @@ interface FunctionNodeData extends Record<string, unknown> {
   type: "entry" | "function" | "async" | "callback"
   line?: number
   isCallback?: boolean
+  // 新增字段
+  context?: "workqueue" | "timer" | "irq" | "tasklet" | "softirq" | "process" | null
+  childCount?: number
+  isExpanded?: boolean
+  depth?: number
+}
+
+// 获取上下文标签样式和文本
+function getContextInfo(context: FunctionNodeData["context"]) {
+  switch (context) {
+    case "workqueue":
+      return { label: "WQ", color: "bg-purple-500/80 text-white", title: "WorkQueue 上下文" }
+    case "timer":
+      return { label: "TM", color: "bg-orange-500/80 text-white", title: "Timer 上下文" }
+    case "irq":
+      return { label: "IRQ", color: "bg-red-500/80 text-white", title: "中断上下文" }
+    case "tasklet":
+      return { label: "TL", color: "bg-pink-500/80 text-white", title: "Tasklet 上下文" }
+    case "softirq":
+      return { label: "SI", color: "bg-rose-500/80 text-white", title: "SoftIRQ 上下文" }
+    case "process":
+      return { label: "P", color: "bg-green-500/80 text-white", title: "进程上下文" }
+    default:
+      return null
+  }
 }
 
 // 自定义函数节点组件
@@ -52,18 +77,45 @@ function FunctionNode({ data }: { data: FunctionNodeData }) {
     }
   }
 
+  const contextInfo = getContextInfo(data.context)
+
   return (
     <div
       className={cn(
-        "px-3 py-2 rounded-lg border-2 shadow-lg min-w-[120px] text-center",
+        "px-3 py-2 rounded-lg border-2 shadow-lg min-w-[120px] text-center relative",
         getNodeStyle()
       )}
     >
       <Handle type="target" position={Position.Top} className="!bg-[var(--accent)]" />
+      
+      {/* 执行上下文标签 */}
+      {contextInfo && (
+        <div 
+          className={cn(
+            "absolute -top-2 -right-2 px-1.5 py-0.5 rounded text-[9px] font-bold",
+            contextInfo.color
+          )}
+          title={contextInfo.title}
+        >
+          {contextInfo.label}
+        </div>
+      )}
+      
+      {/* 函数名 */}
       <div className="text-xs font-medium">{data.label}</div>
+      
+      {/* 行号 */}
       {data.line && (
         <div className="text-[10px] opacity-60 mt-0.5">行 {data.line}</div>
       )}
+      
+      {/* 子节点数量指示器 */}
+      {data.childCount && data.childCount > 0 && (
+        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full bg-[var(--bg-secondary)] border border-[var(--border-light)] text-[9px] text-[var(--text-muted)]">
+          {data.isExpanded ? "−" : "+"} {data.childCount}
+        </div>
+      )}
+      
       <Handle type="source" position={Position.Bottom} className="!bg-[var(--accent)]" />
     </div>
   )
@@ -317,6 +369,31 @@ export function FlowView({ className }: FlowViewProps) {
         options: { max_depth: 5, expand_async: true },
       })
 
+      // 推断执行上下文
+      const inferContext = (nodeType: string, label: string): FunctionNodeData["context"] => {
+        // 基于节点类型推断
+        if (nodeType === "async") {
+          if (label.includes("work") || label.includes("queue")) return "workqueue"
+          if (label.includes("timer") || label.includes("timeout")) return "timer"
+          if (label.includes("tasklet")) return "tasklet"
+          if (label.includes("softirq") || label.includes("soft_irq")) return "softirq"
+          return "workqueue" // 默认异步为 workqueue
+        }
+        if (nodeType === "callback") {
+          if (label.includes("irq") || label.includes("interrupt") || label.includes("handler")) return "irq"
+          if (label.includes("timer")) return "timer"
+          return null
+        }
+        return "process" // 普通函数默认在进程上下文
+      }
+
+      // 计算子节点数量
+      const childCounts = new Map<string, number>()
+      flow.edges.forEach(edge => {
+        const count = childCounts.get(edge.source) || 0
+        childCounts.set(edge.source, count + 1)
+      })
+
       // 转换为 React Flow 格式
       const flowNodes: Node<FunctionNodeData>[] = flow.nodes.map((node, index) => ({
         id: node.id,
@@ -326,6 +403,9 @@ export function FlowView({ className }: FlowViewProps) {
           label: node.label,
           type: node.node_type as FunctionNodeData["type"],
           line: node.line,
+          context: inferContext(node.node_type, node.label),
+          childCount: childCounts.get(node.id) || 0,
+          isExpanded: true,
         },
       }))
 
@@ -607,6 +687,45 @@ export function FlowView({ className }: FlowViewProps) {
           <span className="text-[10px] text-[var(--text-muted)]">
             {filteredNodes.length}/{nodes.length} 个节点
           </span>
+        </div>
+      )}
+
+      {/* 图例面板 */}
+      {nodes.length > 0 && (
+        <div className="flex items-center gap-3 px-3 py-1.5 border-b border-[var(--border-subtle)] bg-[var(--bg-tertiary)]/50 overflow-x-auto">
+          <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">图例:</span>
+          {/* 节点类型图例 */}
+          <div className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm bg-[var(--accent)]" />
+            <span className="text-[10px] text-[var(--text-muted)]">入口</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm bg-purple-500/50 border border-purple-500" />
+            <span className="text-[10px] text-[var(--text-muted)]">异步</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm bg-amber-500/50 border border-amber-500" />
+            <span className="text-[10px] text-[var(--text-muted)]">回调</span>
+          </div>
+          {/* 分隔 */}
+          <div className="w-px h-3 bg-[var(--border-subtle)]" />
+          {/* 上下文标签图例 */}
+          <div className="flex items-center gap-1">
+            <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-purple-500/80 text-white">WQ</span>
+            <span className="text-[10px] text-[var(--text-muted)]">WorkQueue</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-orange-500/80 text-white">TM</span>
+            <span className="text-[10px] text-[var(--text-muted)]">Timer</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-red-500/80 text-white">IRQ</span>
+            <span className="text-[10px] text-[var(--text-muted)]">中断</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-green-500/80 text-white">P</span>
+            <span className="text-[10px] text-[var(--text-muted)]">进程</span>
+          </div>
         </div>
       )}
 
