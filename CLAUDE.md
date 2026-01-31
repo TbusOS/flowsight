@@ -147,10 +147,15 @@ flowsight/
 5. 发现 Bug 自动分配给 Debug-Dev
 6. **测试通过后立即提交并推送 GitHub** ← 重要!
 
-> ⚠️ **Git 推送规则（强制）**:
+> ⚠️ **Git 规则（强制）**:
 > - 每完成一个功能或修复，必须 `git commit` + `git push`
 > - 不允许累积超过 5 个未推送的提交
 > - 每次会话结束前必须推送所有提交
+> - 首次提交前配置用户信息（避免警告）:
+>   ```bash
+>   git config user.name "FlowSight"
+>   git config user.email "flowsight@example.com"
+>   ```
 
 ### 快速开始
 
