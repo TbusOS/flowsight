@@ -595,6 +595,36 @@ cd app && pnpm tauri dev
 - "验证功能", "功能测试"
 - "浏览器测试", "自动化测试"
 
+### ⚠️ 重要：真实后端测试（必须！）
+
+**2024-01 发现的严重问题**：
+- Mock 测试全部通过，但实际功能不工作
+- 前后端参数命名不匹配（camelCase vs snake_case）
+- 测试 Agent 和评审 Agent 都没发现问题
+
+**根因**：只有 Mock 测试，没有真实后端集成测试！
+
+#### 测试层级（全部必须运行）
+
+| 层级 | 命令 | 验证什么 |
+|------|------|----------|
+| **1. 真实后端** | `cd app && npx tsx tests/integration/real-backend-test.ts` | Rust 后端真实解析 |
+| **2. 契约验证** | Playwright Mock 测试 | 参数命名正确性 |
+| **3. UI 功能** | `npx playwright test tests/desktop/functional-tests.spec.ts` | UI 交互 |
+
+#### 真实后端测试（最重要！）
+
+```bash
+# 编译 CLI
+cargo build --package flowsight-cli
+
+# 运行真实后端测试 - 使用真实 Linux 内核代码
+cd app && npx tsx tests/integration/real-backend-test.ts
+```
+
+**测试内核**: `/Users/sky/linux-kernel/linux`
+**优先架构**: ARM32
+
 ### Playwright 桌面自动化测试 (推荐)
 
 测试框架位置: `app/tests/desktop/`
