@@ -172,7 +172,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [currentFile, setCurrentFile] = useAtom(currentFileAtom)
   
   // 视图模式
-  const viewMode = useAtomValue(viewModeAtom)
+  const [viewMode, setViewMode] = useAtom(viewModeAtom)
   
   // 处理文件选择
   const handleFileSelect = React.useCallback((path: string) => {
@@ -185,6 +185,11 @@ export function MainLayout({ children }: MainLayoutProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd+K or Ctrl+K - Open command palette
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault()
+        setCommandMenuOpen(true)
+      }
+      // F1 - Also open command palette
+      if (e.key === "F1") {
         e.preventDefault()
         setCommandMenuOpen(true)
       }
@@ -208,11 +213,38 @@ export function MainLayout({ children }: MainLayoutProps) {
         e.preventDefault()
         setLeftPanelOpen(prev => !prev)
       }
+      // Cmd+1 - Switch to code view
+      if ((e.metaKey || e.ctrlKey) && e.key === "1") {
+        e.preventDefault()
+        setViewMode("code")
+      }
+      // Cmd+2 - Switch to flow view
+      if ((e.metaKey || e.ctrlKey) && e.key === "2") {
+        e.preventDefault()
+        setViewMode("flow")
+      }
+      // Cmd+3 - Switch to split view
+      if ((e.metaKey || e.ctrlKey) && e.key === "3") {
+        e.preventDefault()
+        setViewMode("split")
+      }
+      // Cmd+Shift+O - Open outline panel
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "o") {
+        e.preventDefault()
+        setRightPanelOpen(true)
+        setRightPanelTab("outline")
+      }
+      // Cmd+Shift+D - Open detail panel
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "d") {
+        e.preventDefault()
+        setRightPanelOpen(true)
+        setRightPanelTab("detail")
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [setSidebarOpen, setLeftPanelOpen, setRightPanelOpen, setBottomPanelOpen, setCommandMenuOpen])
+  }, [setSidebarOpen, setLeftPanelOpen, setRightPanelOpen, setBottomPanelOpen, setCommandMenuOpen, setViewMode, setRightPanelTab])
 
   // Render right panel based on tab
   const renderRightPanel = () => {

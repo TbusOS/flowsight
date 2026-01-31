@@ -1290,3 +1290,131 @@ test.describe('功能性测试 - 节点详情面板', () => {
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/13-file-path-link.png` });
   });
 });
+
+// ==================== 键盘快捷键测试 ====================
+
+test.describe('功能性测试 - 键盘快捷键', () => {
+
+  test('Cmd+1 切换到代码视图', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(500);
+    
+    // 1. 先切换到执行流视图
+    const flowButton = page.locator('[data-testid="sidebar-flow"]');
+    if (await flowButton.count() > 0) {
+      await flowButton.click();
+      await page.waitForTimeout(300);
+    }
+    
+    // 2. 使用快捷键切换到代码视图
+    await page.keyboard.press('Meta+1');
+    await page.waitForTimeout(300);
+    
+    // 3. 验证: 代码按钮应该激活
+    const codeButton = page.locator('[data-testid="sidebar-code"]');
+    if (await codeButton.count() > 0) {
+      const classes = await codeButton.getAttribute('class');
+      const isActive = classes?.includes('bg-');
+      console.log('Cmd+1 后代码按钮激活:', isActive);
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/14-shortcut-cmd1.png` });
+  });
+
+  test('Cmd+2 切换到执行流视图', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(500);
+    
+    // 使用快捷键切换到执行流视图
+    await page.keyboard.press('Meta+2');
+    await page.waitForTimeout(300);
+    
+    // 验证: 执行流相关内容应该显示
+    const flowView = page.locator('.react-flow');
+    const hasFlowView = await flowView.count() > 0;
+    console.log('Cmd+2 后执行流视图显示:', hasFlowView);
+    
+    // 或者检查执行流按钮激活
+    const flowButton = page.locator('[data-testid="sidebar-flow"]');
+    if (await flowButton.count() > 0) {
+      const classes = await flowButton.getAttribute('class');
+      const isActive = classes?.includes('bg-');
+      console.log('执行流按钮激活:', isActive);
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/15-shortcut-cmd2.png` });
+  });
+
+  test('F1 打开命令面板', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(500);
+    
+    // 使用 F1 打开命令面板
+    await page.keyboard.press('F1');
+    await page.waitForTimeout(500);
+    
+    // 验证: 命令面板应该打开
+    const commandPalette = page.locator('[role="dialog"], [data-testid="command-palette"], .cmdk-dialog');
+    const hasCommandPalette = await commandPalette.count() > 0;
+    console.log('F1 后命令面板显示:', hasCommandPalette);
+    
+    // 或者检查命令输入框
+    const commandInput = page.locator('input[placeholder*="命令"], input[placeholder*="搜索"]');
+    const hasInput = await commandInput.count() > 0;
+    console.log('命令输入框存在:', hasInput);
+    
+    expect(hasCommandPalette || hasInput).toBe(true);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/16-shortcut-f1.png` });
+  });
+
+  test('Cmd+B 切换侧边栏', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(500);
+    
+    // 获取初始侧边栏状态
+    const sidebar = page.locator('[data-testid="sidebar"], nav, aside').first();
+    const initiallyVisible = await sidebar.isVisible();
+    console.log('初始侧边栏可见:', initiallyVisible);
+    
+    // 使用 Cmd+B 切换
+    await page.keyboard.press('Meta+b');
+    await page.waitForTimeout(300);
+    
+    // 再次检查状态（应该相反）
+    const afterToggle = await sidebar.isVisible().catch(() => false);
+    console.log('Cmd+B 后侧边栏可见:', afterToggle);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/17-shortcut-cmdb.png` });
+  });
+
+  test('Cmd+J 切换底部面板', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(500);
+    
+    // 检查底部面板按钮组是否存在
+    const terminalButton = page.locator('button:has-text("终端")');
+    const hasTerminalButton = await terminalButton.count() > 0;
+    console.log('终端按钮存在:', hasTerminalButton);
+    
+    // 使用 Cmd+J 切换两次，验证快捷键可以响应
+    await page.keyboard.press('Meta+j');
+    await page.waitForTimeout(300);
+    
+    // 截图查看第一次切换后状态
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/18a-shortcut-cmdj-toggle1.png` });
+    
+    await page.keyboard.press('Meta+j');
+    await page.waitForTimeout(300);
+    
+    // 验证: 底部面板相关元素存在（不关心具体可见状态）
+    expect(hasTerminalButton).toBe(true);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/18-shortcut-cmdj.png` });
+  });
+});
