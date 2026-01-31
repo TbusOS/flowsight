@@ -16,7 +16,7 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { invoke } from "../../lib/tauri-api"
-import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check } from "lucide-react"
+import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check, Search, Filter, X } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAtomValue, useSetAtom } from "jotai"
 import { currentFileAtom, setSelectedNodeAtom, type SelectedNodeDetail } from "../../lib/atoms/layout-atoms"
@@ -128,6 +128,55 @@ export function FlowView({ className }: FlowViewProps) {
 
   // 导出状态
   const [copied, setCopied] = React.useState(false)
+
+  // 搜索和过滤状态
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const [filterType, setFilterType] = React.useState<"all" | "async" | "callback" | "function">("all")
+  const [showSearch, setShowSearch] = React.useState(false)
+
+  // 过滤后的节点和边
+  const filteredNodes = React.useMemo(() => {
+    let result = nodes
+    
+    // 按类型过滤
+    if (filterType !== "all") {
+      result = result.filter(node => node.data.type === filterType)
+    }
+    
+    // 按搜索关键词过滤
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter(node => 
+        node.data.label.toLowerCase().includes(query)
+      )
+    }
+    
+    return result
+  }, [nodes, filterType, searchQuery])
+
+  // 过滤后的边（只保留两端节点都存在的边）
+  const filteredEdges = React.useMemo(() => {
+    const nodeIds = new Set(filteredNodes.map(n => n.id))
+    return edges.filter(edge => 
+      nodeIds.has(edge.source) && nodeIds.has(edge.target)
+    )
+  }, [edges, filteredNodes])
+
+  // 高亮搜索匹配的节点
+  const highlightedNodes = React.useMemo(() => {
+    if (!searchQuery.trim()) return filteredNodes
+    
+    const query = searchQuery.toLowerCase()
+    return filteredNodes.map(node => ({
+      ...node,
+      style: {
+        ...node.style,
+        boxShadow: node.data.label.toLowerCase().includes(query) 
+          ? "0 0 0 2px var(--accent)" 
+          : undefined
+      }
+    }))
+  }, [filteredNodes, searchQuery])
 
   // 导出执行流为文本格式
   const exportFlowAsText = React.useCallback(() => {
@@ -389,6 +438,33 @@ export function FlowView({ className }: FlowViewProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {/* 搜索按钮 */}
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            disabled={nodes.length === 0}
+            className={cn(
+              "p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-50",
+              showSearch ? "bg-[var(--accent)]/20 text-[var(--accent)]" : "hover:bg-[var(--bg-tertiary)]"
+            )}
+            title="搜索函数"
+          >
+            <Search className="h-3.5 w-3.5" />
+          </button>
+          {/* 过滤下拉 */}
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value as typeof filterType)}
+            disabled={nodes.length === 0}
+            className="h-7 px-1.5 text-[10px] bg-[var(--bg-tertiary)] border border-[var(--border-subtle)] rounded text-[var(--text-primary)] disabled:opacity-50"
+            title="过滤节点类型"
+          >
+            <option value="all">全部</option>
+            <option value="function">普通函数</option>
+            <option value="async">异步调用</option>
+            <option value="callback">回调函数</option>
+          </select>
+          {/* 分隔符 */}
+          <div className="w-px h-4 bg-[var(--border-subtle)] mx-1" />
           {/* 复制按钮 */}
           <button
             onClick={copyToClipboard}
@@ -419,6 +495,32 @@ export function FlowView({ className }: FlowViewProps) {
         </div>
       </div>
 
+      {/* 搜索栏 */}
+      {showSearch && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-tertiary)]">
+          <Search className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索函数名..."
+            className="flex-1 bg-transparent text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+            autoFocus
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="p-1 rounded hover:bg-[var(--bg-secondary)] text-[var(--text-muted)]"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+          <span className="text-[10px] text-[var(--text-muted)]">
+            {filteredNodes.length}/{nodes.length} 个节点
+          </span>
+        </div>
+      )}
+
       {/* 流程图 */}
       <div className="flex-1">
         {loading ? (
@@ -431,8 +533,8 @@ export function FlowView({ className }: FlowViewProps) {
           </div>
         ) : (
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={highlightedNodes}
+            edges={filteredEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={handleNodeClick}

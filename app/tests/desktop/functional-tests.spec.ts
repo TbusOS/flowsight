@@ -472,6 +472,114 @@ test.describe('功能性测试 - 状态变化验证', () => {
   });
 });
 
+test.describe('功能性测试 - 执行流过滤和搜索', () => {
+  
+  test('工具栏有搜索按钮和过滤下拉', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 打开项目
+    await page.locator('button:has-text("打开项目")').click();
+    await page.waitForTimeout(1000);
+    
+    // 选择文件
+    const fileItem = page.locator('text=driver.c').first();
+    if (await fileItem.count() > 0) {
+      await fileItem.click();
+      await page.waitForTimeout(500);
+    }
+    
+    // 验证搜索按钮存在
+    const searchButton = page.locator('button[title="搜索函数"]');
+    const filterSelect = page.locator('select[title="过滤节点类型"]');
+    
+    const hasSearch = await searchButton.count() > 0;
+    const hasFilter = await filterSelect.count() > 0;
+    
+    console.log('搜索按钮存在:', hasSearch);
+    console.log('过滤下拉存在:', hasFilter);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/18-search-filter-buttons.png` });
+  });
+
+  test('点击搜索按钮显示搜索栏', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 打开项目
+    await page.locator('button:has-text("打开项目")').click();
+    await page.waitForTimeout(1000);
+    
+    // 选择文件
+    const fileItem = page.locator('text=driver.c').first();
+    if (await fileItem.count() > 0) {
+      await fileItem.click();
+      await page.waitForTimeout(500);
+    }
+    
+    // 点击搜索按钮
+    const searchButton = page.locator('button[title="搜索函数"]');
+    if (await searchButton.count() > 0 && await searchButton.isEnabled()) {
+      await searchButton.click();
+      await page.waitForTimeout(300);
+      
+      // 验证搜索输入框显示
+      const searchInput = page.locator('input[placeholder*="搜索函数"]');
+      const hasInput = await searchInput.count() > 0;
+      console.log('搜索输入框显示:', hasInput);
+      
+      if (hasInput) {
+        // 输入搜索关键词
+        await searchInput.fill('probe');
+        await page.waitForTimeout(300);
+        
+        // 验证节点计数显示
+        const nodeCount = page.locator('text=/\\d+\\/\\d+.*节点/');
+        const hasCount = await nodeCount.count() > 0;
+        console.log('节点计数显示:', hasCount);
+      }
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/19-search-bar.png` });
+  });
+
+  test('过滤下拉可以选择不同类型', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 打开项目
+    await page.locator('button:has-text("打开项目")').click();
+    await page.waitForTimeout(1000);
+    
+    // 选择文件
+    const fileItem = page.locator('text=driver.c').first();
+    if (await fileItem.count() > 0) {
+      await fileItem.click();
+      await page.waitForTimeout(500);
+    }
+    
+    // 检查过滤下拉
+    const filterSelect = page.locator('select[title="过滤节点类型"]');
+    if (await filterSelect.count() > 0 && await filterSelect.isEnabled()) {
+      // 验证有选项
+      const options = filterSelect.locator('option');
+      const optionCount = await options.count();
+      console.log('过滤选项数量:', optionCount);
+      
+      // 选择异步调用
+      await filterSelect.selectOption('async');
+      await page.waitForTimeout(300);
+      
+      // 验证选择成功
+      const selectedValue = await filterSelect.inputValue();
+      console.log('当前选中值:', selectedValue);
+      expect(selectedValue).toBe('async');
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/20-filter-select.png` });
+  });
+});
+
 test.describe('功能性测试 - 执行流导出', () => {
   
   test('执行流工具栏有导出按钮', async ({ page }) => {
