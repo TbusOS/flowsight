@@ -80,6 +80,34 @@ export function FlowView({ className }: FlowViewProps) {
   const [loading, setLoading] = React.useState(false)
   const [selectedFunction, setSelectedFunction] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [entryPoints, setEntryPoints] = React.useState<string[]>([])
+
+  // 检测可用的入口点函数
+  React.useEffect(() => {
+    if (!currentFile) {
+      setEntryPoints([])
+      return
+    }
+
+    const detectEntryPoints = async () => {
+      try {
+        // 返回类型是 Vec<EntryPointInfo>，其中 EntryPointInfo = { name, kind, line }
+        const result = await invoke<Array<{ name: string; kind: string; line: number }>>(
+          "get_entry_points",
+          { file_path: currentFile }
+        )
+        console.log("[FlowView] Detected entry points:", result)
+        const entries = result.map(f => f.name)
+        setEntryPoints(entries.length > 0 ? entries : ["main"])
+      } catch (err) {
+        console.warn("[FlowView] Failed to detect entry points:", err)
+        // 默认提供常见入口点
+        setEntryPoints(["main", "probe", "init", "open"])
+      }
+    }
+
+    detectEntryPoints()
+  }, [currentFile])
 
   // 处理节点点击 - 更新选中节点详情
   const handleNodeClick = React.useCallback(async (_: React.MouseEvent, node: Node<FunctionNodeData>) => {
@@ -243,11 +271,18 @@ export function FlowView({ className }: FlowViewProps) {
 
   // 加载执行流
   const loadExecutionFlow = React.useCallback(async (entryFunction: string) => {
-    if (!currentFile) return
+    console.log('[FlowView] loadExecutionFlow called:', { entryFunction, currentFile })
+    
+    if (!currentFile) {
+      console.warn('[FlowView] No file selected, cannot analyze')
+      setError('请先选择一个文件')
+      return
+    }
 
     setLoading(true)
     setError(null)
     try {
+      console.log('[FlowView] Calling build_execution_flow...')
       // 调用后端 build_execution_flow 命令
       const flow = await invoke<{
         entry_function: string
@@ -292,13 +327,17 @@ export function FlowView({ className }: FlowViewProps) {
         },
       }))
 
+      console.log('[FlowView] Flow result:', { nodes: flow.nodes.length, edges: flow.edges.length })
+      
       // 自动布局 - 简单的层级布局
       const layoutNodes = autoLayout(flowNodes, flowEdges)
       setNodes(layoutNodes)
       setEdges(flowEdges)
+      console.log('[FlowView] Flow loaded successfully')
     } catch (err) {
-      console.error("加载执行流失败:", err)
-      setError(String(err))
+      console.error("[FlowView] 加载执行流失败:", err)
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      setError(`分析失败: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -403,20 +442,48 @@ export function FlowView({ className }: FlowViewProps) {
 
         {/* 空状态 */}
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
+          <div className="text-center max-w-sm">
             <Zap className="h-12 w-12 mx-auto mb-4 text-[var(--text-muted)]" />
             <h3 className="text-sm font-medium text-[var(--text-primary)] mb-2">选择入口函数</h3>
             <p className="text-xs text-[var(--text-muted)] mb-4">
-              从大纲面板选择一个函数开始分析
+              从大纲面板选择一个函数，或点击下方按钮开始分析
             </p>
-            {currentFile && (
-              <button
-                onClick={() => loadExecutionFlow("main")}
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs bg-[var(--accent)] text-white rounded-md hover:bg-[var(--accent)]/90"
-              >
-                <Play className="h-3 w-3" />
-                分析 main 函数
-              </button>
+            
+            {/* 错误提示 */}
+            {error && (
+              <div className="mb-4 p-2 rounded bg-red-500/10 border border-red-500/20">
+                <p className="text-xs text-red-400">{error}</p>
+              </div>
+            )}
+            
+            {/* 加载状态 */}
+            {loading && (
+              <div className="mb-4 flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-[var(--accent)]" />
+                <span className="text-xs text-[var(--text-muted)]">正在分析...</span>
+              </div>
+            )}
+            
+            {/* 入口点按钮 */}
+            {currentFile && !loading && (
+              <div className="flex flex-wrap gap-2 justify-center">
+                {entryPoints.map((entry) => (
+                  <button
+                    key={entry}
+                    onClick={() => loadExecutionFlow(entry)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--accent)] text-white rounded-md hover:bg-[var(--accent)]/90"
+                  >
+                    <Play className="h-3 w-3" />
+                    分析 {entry}
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            {!currentFile && (
+              <p className="text-xs text-[var(--text-muted)]">
+                请先在左侧文件浏览器中选择一个文件
+              </p>
             )}
           </div>
         </div>
