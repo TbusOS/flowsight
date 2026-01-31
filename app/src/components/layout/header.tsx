@@ -261,6 +261,7 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
             bottomPanelOpen && bottomPanelTab === "terminal" && "bg-[var(--accent)]/10 text-[var(--accent)]"
           )}
           onClick={handleToggleTerminal}
+          aria-label="切换终端面板"
         >
           <Terminal className="h-3.5 w-3.5" />
         </Button>
@@ -270,6 +271,7 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
           variant="ghost"
           size="icon"
           className="h-7 w-7 rounded-md"
+          aria-label="设置"
         >
           <Settings className="h-3.5 w-3.5" />
         </Button>
@@ -281,6 +283,7 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
             size="icon"
             className="h-6 w-6 rounded-full bg-[var(--bg-tertiary)] hover:bg-[var(--bg-hover)]"
             onClick={onClose}
+            aria-label="关闭窗口"
           >
             <X className="h-3 w-3" />
           </Button>
@@ -289,6 +292,7 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
             size="icon"
             className="h-6 w-6 rounded-full bg-[var(--bg-tertiary)] hover:bg-[var(--bg-hover)]"
             onClick={onToggleMaximize}
+            aria-label={isMaximized ? "还原窗口" : "最大化窗口"}
           >
             {isMaximized ? (
               <Minimize2 className="h-3 w-3" />
