@@ -394,4 +394,77 @@ grep -r "#\[tauri::command\]" app/src-tauri/ -A 5
 
 - 契约验证器: `app/tests/desktop/contract-validator.ts`
 - 功能性测试: `app/tests/desktop/functional-tests.spec.ts`
+- 业务正确性测试: `app/tests/desktop/business-correctness.spec.ts`
+- 真实后端测试: `app/tests/integration/real-backend-test.ts`
 - Tauri API 包装: `app/src/lib/tauri-api.ts`
+
+---
+
+## 🔴 新增：业务正确性评审 (Critical)
+
+> **2024-01 教训**: Mock 测试全部通过，但执行流只显示1个节点
+
+### 必须检查的业务断言
+
+| 功能 | 必须有的断言 | 禁止的断言 |
+|------|-------------|-----------|
+| 执行流分析 | `expect(nodes.length).toBeGreaterThan(1)` | ❌ `expect(flow).toBeVisible()` |
+| 调用关系 | `expect(edges.length).toBeGreaterThan(0)` | ❌ `expect(canvas).toBeDefined()` |
+| 函数列表 | `expect(functions).toContain('expected_name')` | ❌ `expect(list).toBeVisible()` |
+| 索引结果 | `expect(fileCount).toBeGreaterThan(0)` | ❌ `expect(progress).toBeVisible()` |
+
+### 评审检查清单 (业务正确性)
+
+```markdown
+## 业务正确性检查
+
+- [ ] **数量断言**: 是否验证了数据数量（节点数、边数、函数数）？
+- [ ] **内容断言**: 是否验证了具体内容（函数名、返回类型）？
+- [ ] **关系断言**: 是否验证了数据关系（调用边、父子关系）？
+- [ ] **边界测试**: 是否测试了空数据、单项、大量数据？
+- [ ] **错误场景**: 是否测试了参数错误、文件不存在？
+
+## 禁止的测试模式
+
+- ❌ 只检查 `.toBeVisible()` 不检查内容
+- ❌ 只检查 `.toBeDefined()` 不检查数量
+- ❌ Mock 永远返回完美数据
+- ❌ 没有真实后端验证
+```
+
+### 示例：好的测试 vs 差的测试
+
+```typescript
+// ❌ 差：只验证存在性
+test('执行流显示', async () => {
+  await expect(page.locator('.react-flow')).toBeVisible();
+  // 问题：节点可能只有1个，但测试通过了
+});
+
+// ✅ 好：验证业务正确性
+test('执行流分析结果正确', async () => {
+  // 1. 设置真实场景
+  await openFile('gpio-dwapb.c');
+  await clickAnalyze('dwapb_gpio_probe');
+  
+  // 2. 验证节点数量
+  const nodeCount = await page.locator('.react-flow__node').count();
+  expect(nodeCount).toBeGreaterThan(1);  // 必须有多个节点
+  
+  // 3. 验证边数量
+  const edgeCount = await page.locator('.react-flow__edge').count();
+  expect(edgeCount).toBeGreaterThan(0);  // 必须有调用关系
+  
+  // 4. 验证具体内容
+  await expect(page.locator('text=dwapb_gpio_add_port')).toBeVisible();
+});
+```
+
+### 测试层级要求
+
+| 层级 | 必须运行 | 验证内容 |
+|------|---------|---------|
+| 1. 真实后端 | ✅ 必须 | `npx tsx tests/integration/real-backend-test.ts` |
+| 2. 业务正确性 | ✅ 必须 | `npx playwright test business-correctness.spec.ts` |
+| 3. UI 功能 | ✅ 必须 | `npx playwright test functional-tests.spec.ts` |
+| 4. 契约验证 | ✅ 必须 | Mock 参数名检查 |

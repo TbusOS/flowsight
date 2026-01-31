@@ -26,5 +26,11 @@ export default defineConfig({
     },
   ],
 
-  // 不启动服务器，假设已有服务运行
+  // 自动启动 Vite dev server
+  webServer: {
+    command: 'pnpm dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: true,
+    timeout: 120000,
+  },
 });
