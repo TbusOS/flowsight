@@ -356,8 +356,8 @@ test.describe('功能性测试 - 执行流分析', () => {
       await page.waitForTimeout(500);
     }
     
-    // 3. 点击分析按钮
-    const analyzeButton = page.locator('button:has-text("分析")');
+    // 3. 点击第一个分析按钮（可能有多个入口点按钮）
+    const analyzeButton = page.locator('button:has-text("分析")').first();
     if (await analyzeButton.count() > 0) {
       await analyzeButton.click();
       
@@ -631,8 +631,8 @@ test.describe('功能性测试 - 执行流导出', () => {
       await flowButton.click();
       await page.waitForTimeout(500);
       
-      // 点击分析按钮
-      const analyzeButton = page.locator('button:has-text("分析")');
+      // 点击第一个分析按钮
+      const analyzeButton = page.locator('button:has-text("分析")').first();
       if (await analyzeButton.count() > 0) {
         await analyzeButton.click();
         await page.waitForTimeout(1500);
