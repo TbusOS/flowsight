@@ -149,7 +149,16 @@ export async function listen<T>(
   if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
     console.log('[TauriAPI] Using real event.listen:', event);
     const { listen: tauriListen } = await import('@tauri-apps/api/event');
-    return tauriListen(event, handler as any);
+    // Tauri 2.0 的 listen 已经返回 TauriEvent 结构，直接传递
+    return tauriListen(event, (tauriEvent: any) => {
+      // tauriEvent 可能已经是 { payload, event, id } 结构
+      if (tauriEvent && typeof tauriEvent === 'object' && 'payload' in tauriEvent) {
+        handler(tauriEvent as TauriEvent<T>);
+      } else {
+        // 兼容旧版本或直接传递 payload 的情况
+        handler({ payload: tauriEvent as T, event, id: Date.now() });
+      }
+    });
   }
   
   // 非 Tauri 环境

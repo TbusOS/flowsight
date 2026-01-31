@@ -77,13 +77,16 @@ function TerminalPanel() {
   
   // 监听索引进度
   React.useEffect(() => {
-    if (indexProgress) {
-      if (indexProgress.phase === 'complete') {
-        setLogs(prev => [...prev, { type: 'success', message: indexProgress.message, timestamp: new Date() }])
-      } else if (indexProgress.phase === 'error') {
-        setLogs(prev => [...prev, { type: 'error', message: indexProgress.message, timestamp: new Date() }])
+    if (indexProgress && indexProgress.phase && indexProgress.message) {
+      const phase = indexProgress.phase
+      const message = indexProgress.message
+      
+      if (phase === 'complete' || phase === 'done') {
+        setLogs(prev => [...prev, { type: 'success', message, timestamp: new Date() }])
+      } else if (phase === 'error') {
+        setLogs(prev => [...prev, { type: 'error', message, timestamp: new Date() }])
       } else {
-        setLogs(prev => [...prev, { type: 'info', message: `[${indexProgress.phase}] ${indexProgress.message}`, timestamp: new Date() }])
+        setLogs(prev => [...prev, { type: 'info', message: `[${phase}] ${message}`, timestamp: new Date() }])
       }
     }
   }, [indexProgress])

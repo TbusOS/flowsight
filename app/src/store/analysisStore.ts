@@ -55,7 +55,7 @@ interface ProjectInfo {
 
 // 索引进度
 interface IndexProgress {
-  phase: 'scanning' | 'parsing' | 'indexing' | 'complete' | 'error'
+  phase: 'scanning' | 'parsing' | 'indexing' | 'complete' | 'done' | 'error'
   current: number
   total: number
   message: string
