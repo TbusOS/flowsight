@@ -14,6 +14,7 @@ import { FileExplorer } from "../../components/panels/file-explorer"
 import { SearchPanel } from "../../components/panels/search-panel"
 import { CodeEditor } from "../../components/panels/code-editor"
 import { FlowView } from "../../components/panels/flow-view"
+import { useAnalysisStore } from "../../store/analysisStore"
 import {
   sidebarOpenAtom,
   bottomPanelOpenAtom,
@@ -49,20 +50,91 @@ import {
 
 // CodeView 和 FlowView 组件已移至独立文件
 
+// 终端日志条目
+interface LogEntry {
+  type: 'command' | 'info' | 'success' | 'error' | 'warning'
+  message: string
+  timestamp: Date
+}
+
 function TerminalPanel() {
+  const currentProject = useAnalysisStore((state) => state.currentProject)
+  const indexProgress = useAnalysisStore((state) => state.indexProgress)
+  const executionFlow = useAnalysisStore((state) => state.executionFlow)
+  const [logs, setLogs] = React.useState<LogEntry[]>([])
+  
+  // 监听项目状态变化，生成真实日志
+  React.useEffect(() => {
+    if (currentProject) {
+      setLogs(prev => [
+        ...prev,
+        { type: 'command', message: `flowsight open "${currentProject.path}"`, timestamp: new Date() },
+        { type: 'success', message: '项目加载成功', timestamp: new Date() },
+        { type: 'info', message: `发现 ${currentProject.files_count} 个文件, ${currentProject.functions_count} 个函数, ${currentProject.structs_count} 个结构体`, timestamp: new Date() },
+      ])
+    }
+  }, [currentProject?.path])
+  
+  // 监听索引进度
+  React.useEffect(() => {
+    if (indexProgress) {
+      if (indexProgress.phase === 'complete') {
+        setLogs(prev => [...prev, { type: 'success', message: indexProgress.message, timestamp: new Date() }])
+      } else if (indexProgress.phase === 'error') {
+        setLogs(prev => [...prev, { type: 'error', message: indexProgress.message, timestamp: new Date() }])
+      } else {
+        setLogs(prev => [...prev, { type: 'info', message: `[${indexProgress.phase}] ${indexProgress.message}`, timestamp: new Date() }])
+      }
+    }
+  }, [indexProgress])
+  
+  // 监听执行流分析
+  React.useEffect(() => {
+    if (executionFlow) {
+      setLogs(prev => [
+        ...prev,
+        { type: 'command', message: `flowsight analyze "${executionFlow.entry_function}"`, timestamp: new Date() },
+        { type: 'success', message: `分析完成: ${executionFlow.analysis_info?.total_nodes || 0} 个节点, ${executionFlow.analysis_info?.async_calls || 0} 个异步调用`, timestamp: new Date() },
+      ])
+    }
+  }, [executionFlow])
+  
+  // 获取日志样式
+  const getLogStyle = (type: LogEntry['type']) => {
+    switch (type) {
+      case 'command': return 'text-[var(--text-primary)]'
+      case 'success': return 'text-[var(--success)]'
+      case 'error': return 'text-[var(--error)]'
+      case 'warning': return 'text-[var(--warning)]'
+      default: return 'text-[var(--text-secondary)]'
+    }
+  }
+  
   return (
     <div className="h-full w-full bg-[var(--bg-primary)] p-3 font-mono text-[13px] leading-relaxed">
       <div className="flex h-full flex-col">
         <div className="flex-1 overflow-y-auto space-y-1">
-          {/* 命令行 */}
-          <p>
-            <span className="text-[var(--accent)]">$ </span>
-            <span className="text-[var(--text-primary)]">flow analyze --project demo</span>
-          </p>
-          {/* 输出信息 */}
-          <p className="text-[var(--success)]">Loading project...</p>
-          <p className="text-[var(--text-secondary)]">Found 42 functions, 156 calls</p>
-          <p className="text-[var(--success)]">Analysis complete in 1.2s</p>
+          {logs.length === 0 ? (
+            <p className="text-[var(--text-muted)]">FlowSight 终端就绪。打开项目开始分析。</p>
+          ) : (
+            logs.map((log, i) => (
+              <p key={i} className={getLogStyle(log.type)}>
+                {log.type === 'command' ? (
+                  <>
+                    <span className="text-[var(--accent)]">$ </span>
+                    {log.message}
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[var(--text-muted)] text-[10px] mr-2">
+                      {log.timestamp.toLocaleTimeString()}
+                    </span>
+                    {log.message}
+                  </>
+                )}
+              </p>
+            ))
+          )}
         </div>
         {/* 输入提示符 */}
         <div className="mt-3 flex items-center">
