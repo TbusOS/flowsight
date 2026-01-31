@@ -12,10 +12,40 @@ export const sidebarWidthAtom = atom(80)  // 图标栏宽度
 export const leftPanelOpenAtom = atom(true)
 export const leftPanelWidthAtom = atom(240)
 
+// 设置左侧面板宽度（带约束）
+export const setLeftPanelWidthAtom = atom(
+  null,
+  (get, set, width: number) => {
+    const constrainedWidth = Math.max(150, Math.min(500, width))
+    set(leftPanelWidthAtom, constrainedWidth)
+  }
+)
+
 // 右侧面板状态
 export const rightPanelOpenAtom = atom(false)
 export const rightPanelTabAtom = atom<"outline" | "detail" | "llvm-ir" | "explorer" | "search">("outline")
 export const rightPanelWidthAtom = atom(280)
+
+// 设置右侧面板宽度（带约束）
+export const setRightPanelWidthAtom = atom(
+  null,
+  (get, set, width: number) => {
+    const constrainedWidth = Math.max(200, Math.min(500, width))
+    set(rightPanelWidthAtom, constrainedWidth)
+  }
+)
+
+// 底部面板高度
+export const bottomPanelHeightAtom = atom(200)
+
+// 设置底部面板高度（带约束）
+export const setBottomPanelHeightAtom = atom(
+  null,
+  (get, set, height: number) => {
+    const constrainedHeight = Math.max(100, Math.min(400, height))
+    set(bottomPanelHeightAtom, constrainedHeight)
+  }
+)
 
 // 底部面板状态
 export const bottomPanelOpenAtom = atom(true)

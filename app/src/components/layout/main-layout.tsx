@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useAtom, useAtomValue } from "jotai"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "../../lib/utils"
 import { Sidebar } from "./sidebar"
@@ -18,15 +18,20 @@ import {
   sidebarOpenAtom,
   bottomPanelOpenAtom,
   bottomPanelTabAtom,
+  bottomPanelHeightAtom,
+  setBottomPanelHeightAtom,
   leftPanelOpenAtom,
   leftPanelWidthAtom,
+  setLeftPanelWidthAtom,
   rightPanelOpenAtom,
   rightPanelTabAtom,
   rightPanelWidthAtom,
+  setRightPanelWidthAtom,
   commandMenuOpenAtom,
   currentFileAtom,
   viewModeAtom,
 } from "../../lib/atoms/layout-atoms"
+import { ResizableDivider } from "../ui/resizable-divider"
 import {
   LayoutDashboard,
   FolderOpen,
@@ -77,12 +82,16 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useAtom(sidebarOpenAtom)
   const [bottomPanelOpen, setBottomPanelOpen] = useAtom(bottomPanelOpenAtom)
   const [bottomPanelTab, setBottomPanelTab] = useAtom(bottomPanelTabAtom)
+  const bottomPanelHeight = useAtomValue(bottomPanelHeightAtom)
+  const setBottomPanelHeight = useSetAtom(setBottomPanelHeightAtom)
   const [commandMenuOpen, setCommandMenuOpen] = useAtom(commandMenuOpenAtom)
   const [leftPanelOpen, setLeftPanelOpen] = useAtom(leftPanelOpenAtom)
   const leftPanelWidth = useAtomValue(leftPanelWidthAtom)
+  const setLeftPanelWidth = useSetAtom(setLeftPanelWidthAtom)
   const [rightPanelOpen, setRightPanelOpen] = useAtom(rightPanelOpenAtom)
   const [rightPanelTab, setRightPanelTab] = useAtom(rightPanelTabAtom)
   const rightPanelWidth = useAtomValue(rightPanelWidthAtom)
+  const setRightPanelWidth = useSetAtom(setRightPanelWidthAtom)
   
   // 当前打开的文件 (使用 Jotai 原子)
   const [currentFile, setCurrentFile] = useAtom(currentFileAtom)
@@ -167,13 +176,20 @@ export function MainLayout({ children }: MainLayoutProps) {
         <AnimatePresence>
           {leftPanelOpen && (
             <motion.div
-              className="flex h-full flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] overflow-hidden"
+              className="flex h-full bg-[var(--bg-secondary)] overflow-hidden"
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: leftPanelWidth, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
             >
-              <FileExplorer onFileSelect={handleFileSelect} />
+              <div className="flex-1 flex flex-col border-r border-[var(--border-subtle)] overflow-hidden">
+                <FileExplorer onFileSelect={handleFileSelect} />
+              </div>
+              {/* 左侧面板拖拽分隔条 */}
+              <ResizableDivider
+                direction="horizontal"
+                onResize={(delta) => setLeftPanelWidth(leftPanelWidth + delta)}
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -204,41 +220,17 @@ export function MainLayout({ children }: MainLayoutProps) {
             {bottomPanelOpen && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 200, opacity: 1 }}
+                animate={{ height: bottomPanelHeight, opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
                 className="border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
               >
                 <div className="flex h-full flex-col">
                   {/* Resize Handle */}
-                  <div
-                    className="h-1.5 cursor-row-resize hover:bg-[var(--accent)]/30 active:bg-[var(--accent)]/50 flex items-center justify-center transition-colors duration-150"
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      const startY = e.clientY
-                      const startHeight = 200
-
-                      const handleMouseMove = (moveEvent: MouseEvent) => {
-                        const diff = startY - moveEvent.y
-                        const newHeight = Math.max(100, Math.min(400, startHeight + diff))
-                        // Update via CSS or state
-                        const panel = document.getElementById("bottom-panel")
-                        if (panel) {
-                          panel.style.height = `${newHeight}px`
-                        }
-                      }
-
-                      const handleMouseUp = () => {
-                        document.removeEventListener("mousemove", handleMouseMove)
-                        document.removeEventListener("mouseup", handleMouseUp)
-                      }
-
-                      document.addEventListener("mousemove", handleMouseMove)
-                      document.addEventListener("mouseup", handleMouseUp)
-                    }}
-                  >
-                    <div className="h-0.5 w-8 rounded-full bg-[var(--text-muted)] group-hover:bg-[var(--accent)] transition-colors" />
-                  </div>
+                  <ResizableDivider
+                    direction="vertical"
+                    onResize={(delta) => setBottomPanelHeight(bottomPanelHeight - delta)}
+                  />
                   <div id="bottom-panel" className="flex-1 overflow-hidden">
                     {bottomPanelTab === "terminal" && <TerminalPanel />}
                   </div>
@@ -252,14 +244,19 @@ export function MainLayout({ children }: MainLayoutProps) {
         <AnimatePresence>
           {rightPanelOpen && (
             <motion.div
-              className="flex h-full border-l border-[var(--border-subtle)] bg-[var(--bg-secondary)]"
+              className="flex h-full bg-[var(--bg-secondary)]"
               initial={{ width: 0 }}
               animate={{ width: rightPanelWidth }}
               exit={{ width: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
             >
+              {/* 右侧面板拖拽分隔条 */}
+              <ResizableDivider
+                direction="horizontal"
+                onResize={(delta) => setRightPanelWidth(rightPanelWidth - delta)}
+              />
               {/* Right Panel Tabs */}
-              <div className="flex flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-tertiary)]">
+              <div className="flex flex-col border-l border-r border-[var(--border-subtle)] bg-[var(--bg-tertiary)]">
                 {[
                   { id: "outline", label: "大纲", icon: FileText, iconClass: "h-4 w-4" },
                   { id: "detail", label: "详情", icon: BarChart3, iconClass: "h-4 w-4" },
