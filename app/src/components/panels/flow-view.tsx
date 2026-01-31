@@ -16,7 +16,7 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { invoke } from "../../lib/tauri-api"
-import { Loader2, Zap, Play, RefreshCw } from "lucide-react"
+import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAtomValue, useSetAtom } from "jotai"
 import { currentFileAtom, setSelectedNodeAtom, type SelectedNodeDetail } from "../../lib/atoms/layout-atoms"
@@ -125,6 +125,72 @@ export function FlowView({ className }: FlowViewProps) {
       }
     }
   }, [currentFile, getFunctionDetail, setSelectedNode])
+
+  // 导出状态
+  const [copied, setCopied] = React.useState(false)
+
+  // 导出执行流为文本格式
+  const exportFlowAsText = React.useCallback(() => {
+    if (nodes.length === 0) return ""
+    
+    let output = `# 执行流分析结果\n`
+    output += `入口函数: ${selectedFunction || "unknown"}\n`
+    output += `文件: ${currentFile || "unknown"}\n`
+    output += `节点数: ${nodes.length}\n`
+    output += `边数: ${edges.length}\n\n`
+    
+    output += `## 函数调用链\n\n`
+    nodes.forEach((node, i) => {
+      const indent = "  ".repeat(Math.floor(node.position.y / 100))
+      const typeIcon = node.data.type === "async" ? "⚡" : 
+                       node.data.type === "callback" ? "↩" : "→"
+      output += `${indent}${typeIcon} ${node.data.label}`
+      if (node.data.line) output += ` (行 ${node.data.line})`
+      output += "\n"
+    })
+    
+    output += `\n## 调用关系\n\n`
+    edges.forEach(edge => {
+      const sourceNode = nodes.find(n => n.id === edge.source)
+      const targetNode = nodes.find(n => n.id === edge.target)
+      if (sourceNode && targetNode) {
+        const isAsync = edge.animated ? " [异步]" : ""
+        output += `${sourceNode.data.label} → ${targetNode.data.label}${isAsync}\n`
+      }
+    })
+    
+    return output
+  }, [nodes, edges, selectedFunction, currentFile])
+
+  // 复制到剪贴板
+  const copyToClipboard = React.useCallback(async () => {
+    const text = exportFlowAsText()
+    if (!text) return
+    
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error("复制失败:", err)
+    }
+  }, [exportFlowAsText])
+
+  // 下载为文件
+  const downloadAsFile = React.useCallback(() => {
+    const text = exportFlowAsText()
+    if (!text) return
+    
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `execution-flow-${selectedFunction || "analysis"}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [exportFlowAsText, selectedFunction])
 
   // 加载执行流
   const loadExecutionFlow = React.useCallback(async (entryFunction: string) => {
@@ -323,6 +389,25 @@ export function FlowView({ className }: FlowViewProps) {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {/* 复制按钮 */}
+          <button
+            onClick={copyToClipboard}
+            disabled={nodes.length === 0}
+            className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-50"
+            title={copied ? "已复制!" : "复制执行流"}
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+          {/* 下载按钮 */}
+          <button
+            onClick={downloadAsFile}
+            disabled={nodes.length === 0}
+            className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-50"
+            title="导出执行流"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </button>
+          {/* 刷新按钮 */}
           <button
             onClick={() => selectedFunction && loadExecutionFlow(selectedFunction)}
             disabled={loading}

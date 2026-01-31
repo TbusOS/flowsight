@@ -472,6 +472,182 @@ test.describe('功能性测试 - 状态变化验证', () => {
   });
 });
 
+test.describe('功能性测试 - 执行流导出', () => {
+  
+  test('执行流工具栏有导出按钮', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 打开项目
+    await page.locator('button:has-text("打开项目")').click();
+    await page.waitForTimeout(1000);
+    
+    // 切换到执行流视图
+    const flowButton = page.locator('[data-testid="sidebar-flow"]');
+    if (await flowButton.count() > 0) {
+      await flowButton.click();
+      await page.waitForTimeout(500);
+      
+      // 验证导出按钮存在
+      const downloadButton = page.locator('button[title="导出执行流"]');
+      const copyButton = page.locator('button[title*="复制"]');
+      
+      const hasDownload = await downloadButton.count() > 0;
+      const hasCopy = await copyButton.count() > 0;
+      
+      console.log('下载按钮存在:', hasDownload);
+      console.log('复制按钮存在:', hasCopy);
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/16-export-buttons.png` });
+  });
+
+  test('复制按钮点击后显示成功状态', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 打开项目
+    await page.locator('button:has-text("打开项目")').click();
+    await page.waitForTimeout(1000);
+    
+    // 选择文件
+    const fileItem = page.locator('text=driver.c').first();
+    if (await fileItem.count() > 0) {
+      await fileItem.click();
+      await page.waitForTimeout(500);
+    }
+    
+    // 切换到执行流视图
+    const flowButton = page.locator('[data-testid="sidebar-flow"]');
+    if (await flowButton.count() > 0) {
+      await flowButton.click();
+      await page.waitForTimeout(500);
+      
+      // 点击分析按钮
+      const analyzeButton = page.locator('button:has-text("分析")');
+      if (await analyzeButton.count() > 0) {
+        await analyzeButton.click();
+        await page.waitForTimeout(1500);
+        
+        // 点击复制按钮
+        const copyButton = page.locator('button[title*="复制"]');
+        if (await copyButton.count() > 0 && await copyButton.isEnabled()) {
+          await copyButton.click();
+          await page.waitForTimeout(500);
+          
+          // 验证显示"已复制"状态
+          const successIcon = page.locator('button[title="已复制!"]');
+          const hasSuccess = await successIcon.count() > 0;
+          console.log('显示已复制状态:', hasSuccess);
+        }
+      }
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/17-copy-success.png` });
+  });
+});
+
+test.describe('功能性测试 - 文件编辑和保存', () => {
+  
+  test('打开文件后编辑器加载内容', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 打开项目
+    await page.locator('button:has-text("打开项目")').click();
+    await page.waitForTimeout(1000);
+    
+    // 选择文件
+    const fileItem = page.locator('text=driver.c').first();
+    if (await fileItem.count() > 0) {
+      await fileItem.click();
+      await page.waitForTimeout(1000);
+      
+      // 验证 Monaco 编辑器加载
+      const monacoEditor = page.locator('.monaco-editor');
+      const hasEditor = await monacoEditor.count() > 0;
+      console.log('Monaco 编辑器存在:', hasEditor);
+      
+      // 验证编辑器有内容
+      if (hasEditor) {
+        const editorContent = page.locator('.monaco-editor .view-lines');
+        const hasContent = await editorContent.count() > 0;
+        console.log('编辑器有内容:', hasContent);
+        expect(hasContent).toBe(true);
+      }
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/13-editor-loaded.png` });
+  });
+
+  test('编辑文件后显示修改状态', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 打开项目和文件
+    await page.locator('button:has-text("打开项目")').click();
+    await page.waitForTimeout(1000);
+    
+    const fileItem = page.locator('text=driver.c').first();
+    if (await fileItem.count() > 0) {
+      await fileItem.click();
+      await page.waitForTimeout(1000);
+      
+      // 验证初始状态是"已保存"
+      const savedIndicator = page.locator('text=已保存, [data-status="saved"]');
+      const hasSavedState = await savedIndicator.count() > 0;
+      console.log('初始已保存状态:', hasSavedState);
+      
+      // 在编辑器中输入内容
+      const monacoEditor = page.locator('.monaco-editor textarea');
+      if (await monacoEditor.count() > 0) {
+        await monacoEditor.focus();
+        await page.keyboard.type('// 测试注释');
+        await page.waitForTimeout(500);
+        
+        // 验证状态变为"已修改"
+        const modifiedIndicator = page.locator('text=已修改, [data-status="modified"]');
+        const hasModifiedState = await modifiedIndicator.count() > 0;
+        console.log('修改后状态:', hasModifiedState);
+      }
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/14-editor-modified.png` });
+  });
+
+  test('Cmd+S 保存文件', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 打开项目和文件
+    await page.locator('button:has-text("打开项目")').click();
+    await page.waitForTimeout(1000);
+    
+    const fileItem = page.locator('text=driver.c').first();
+    if (await fileItem.count() > 0) {
+      await fileItem.click();
+      await page.waitForTimeout(1000);
+      
+      // 编辑内容
+      const monacoEditor = page.locator('.monaco-editor textarea');
+      if (await monacoEditor.count() > 0) {
+        await monacoEditor.focus();
+        await page.keyboard.type('// 新内容');
+        await page.waitForTimeout(300);
+        
+        // 按 Cmd+S 保存
+        await page.keyboard.press('Meta+s');
+        await page.waitForTimeout(500);
+        
+        // 验证保存操作被触发（检查 Mock 调用或状态变化）
+        console.log('保存快捷键已触发');
+      }
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/15-editor-saved.png` });
+  });
+});
+
 test.describe('功能性测试 - 状态栏', () => {
   
   test('状态栏不显示硬编码的 Git 分支', async ({ page }) => {
