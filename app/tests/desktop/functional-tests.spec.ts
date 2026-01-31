@@ -54,10 +54,72 @@ const EXPECTED_CALLS = {
   'probe': ['init_driver']
 };
 
-// Mock 脚本 - 模拟真实的后端行为
+// Mock 脚本 - 模拟真实的后端行为（带契约验证）
 function generateRealisticMock() {
   return `
 (function() {
+  // =====================================================
+  // 契约定义 - 必须与 Rust 后端完全一致
+  // =====================================================
+  const TAURI_CONTRACTS = {
+    'open_project': {
+      required: ['path'],
+      naming: 'snake_case'
+    },
+    'list_directory': {
+      required: ['path'],
+      naming: 'snake_case'
+    },
+    'read_file': {
+      required: ['path'],
+      naming: 'snake_case'
+    },
+    'write_file': {
+      required: ['path', 'content'],
+      naming: 'snake_case'
+    },
+    'build_execution_flow': {
+      // ⚠️ Tauri 2.0 期望 camelCase
+      required: ['filePath', 'entryFunction'],
+      optional: ['maxDepth', 'expandAsync'],
+      naming: 'camelCase'
+    },
+    'get_entry_points': {
+      required: ['file_path'],
+      naming: 'snake_case'
+    },
+    'get_functions': {
+      required: ['file_path'],
+      naming: 'snake_case'
+    },
+    'get_function_detail_from_file': {
+      required: ['filePath', 'functionName'],
+      naming: 'camelCase'
+    }
+  };
+
+  // 契约验证函数
+  function validateContract(cmd, args) {
+    const contract = TAURI_CONTRACTS[cmd];
+    if (!contract) return { valid: true, errors: [] };
+    
+    const errors = [];
+    const providedKeys = args ? Object.keys(args) : [];
+    
+    // 检查必需参数
+    for (const param of contract.required) {
+      if (!args || !(param in args)) {
+        errors.push(
+          '[契约违规] 命令 "' + cmd + '" 缺少必需参数 "' + param + '"。' +
+          '提供的参数: [' + providedKeys.join(', ') + ']。' +
+          '期望命名风格: ' + contract.naming
+        );
+      }
+    }
+    
+    return { valid: errors.length === 0, errors };
+  }
+
   // 模拟真实的项目状态
   let projectState = {
     isOpen: false,
@@ -97,6 +159,15 @@ function generateRealisticMock() {
     core: {
       invoke: async (cmd, args) => {
         console.log('[RealisticMock] invoke:', cmd, args);
+        
+        // ⚠️ 严格契约验证 - 这是发现 Bug 的关键
+        const validation = validateContract(cmd, args);
+        if (!validation.valid) {
+          for (const err of validation.errors) {
+            console.error(err);
+          }
+          throw new Error(validation.errors[0]);
+        }
         
         switch (cmd) {
           case 'open_project': {
@@ -150,14 +221,24 @@ function generateRealisticMock() {
           }
           
           case 'build_execution_flow': {
-            if (!projectState.selectedFile) {
+            // ⚠️ 使用正确的 camelCase 参数名
+            const filePath = args.filePath;
+            const entryFunction = args.entryFunction;
+            
+            if (!filePath && !projectState.selectedFile) {
               throw new Error('No file selected');
             }
+            
+            const targetFile = filePath || projectState.selectedFile;
+            console.log('[Mock] build_execution_flow:', { filePath, entryFunction, targetFile });
             
             // 模拟分析延迟
             await new Promise(r => setTimeout(r, 500));
             
-            const content = mockFileSystem[projectState.selectedFile];
+            const content = mockFileSystem[targetFile];
+            if (!content) {
+              throw new Error('File not found: ' + targetFile);
+            }
             const functions = analyzeCode(content);
             
             // 构建节点和边
@@ -195,17 +276,22 @@ function generateRealisticMock() {
           }
           
           case 'get_function_detail_from_file': {
-            const nodeName = args.function_name || args.name;
-            const node = projectState.analysisResult?.nodes.find(n => n.data.name === nodeName);
+            // ⚠️ 使用正确的 camelCase 参数名
+            const functionName = args.functionName;
+            const filePath = args.filePath;
+            
+            console.log('[Mock] get_function_detail_from_file:', { functionName, filePath });
+            
+            const node = projectState.analysisResult?.nodes.find(n => n.data.name === functionName);
             if (!node) {
-              throw new Error('Function not found: ' + nodeName);
+              throw new Error('Function not found: ' + functionName);
             }
             return {
               id: node.id,
               name: node.data.name,
               return_type: node.data.return_type,
               params: [{ name: 'dev', type_name: 'struct device *' }],
-              file: projectState.selectedFile,
+              file: filePath || projectState.selectedFile,
               line: node.data.line,
               is_callback: node.data.name.includes('handler'),
               callback_context: null,

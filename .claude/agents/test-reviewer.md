@@ -290,3 +290,108 @@ review_config:
   max_mock_depth: 2
   coverage_threshold: 80%
 ```
+
+---
+
+## 🔴 重要：接口契约验证 (新增)
+
+> **教训**: 2024-01 发现多个 Bug 因为测试没有验证前后端接口契约一致性
+
+### 为什么之前测试没发现 Bug？
+
+#### 案例 1：参数命名不匹配
+
+**前端代码** (错误):
+```typescript
+invoke("build_execution_flow", {
+  file_path: currentFile,    // ❌ snake_case
+  entry_function: "main"     // ❌ snake_case
+})
+```
+
+**Tauri 2.0 期望** (camelCase 反序列化):
+```typescript
+invoke("build_execution_flow", {
+  filePath: currentFile,     // ✅ camelCase
+  entryFunction: "main"      // ✅ camelCase
+})
+```
+
+**Mock 行为** (太宽容):
+```typescript
+case 'build_execution_flow': {
+  // ❌ 不验证参数名，两种都接受
+  const content = mockFileSystem[projectState.selectedFile];
+}
+```
+
+#### 案例 2：事件 phase 值不匹配
+
+**后端发送**: `phase: "done"`
+**前端期望**: `phase: "complete"`
+**Mock**: 没有模拟真实事件流
+
+### 契约验证解决方案
+
+#### 1. 严格 Mock 契约验证
+
+```typescript
+const CONTRACTS = {
+  'build_execution_flow': {
+    required: ['filePath', 'entryFunction'],  // ⚠️ camelCase!
+    optional: ['maxDepth', 'expandAsync']
+  }
+};
+
+// Mock 中添加验证
+function validateContract(cmd, args) {
+  const contract = CONTRACTS[cmd];
+  for (const param of contract.required) {
+    if (!(param in args)) {
+      throw new Error(`[契约违规] 缺少参数 ${param}`);
+    }
+  }
+}
+```
+
+#### 2. 契约定义文件
+
+位置: `app/tests/desktop/contract-validator.ts`
+
+```typescript
+export const TAURI_CONTRACTS = {
+  'build_execution_flow': {
+    required: ['filePath', 'entryFunction'],
+    naming: 'camelCase'
+  },
+  'get_entry_points': {
+    required: ['file_path'],
+    naming: 'snake_case'
+  }
+};
+```
+
+### 评审检查清单 (契约相关)
+
+- [ ] **参数命名检查**: 前端 invoke 参数名与后端 command 定义一致？
+- [ ] **必需参数检查**: 所有 required 参数都提供了？
+- [ ] **事件契约检查**: listen 的事件名和 payload 结构与后端 emit 一致？
+- [ ] **Mock 严格性**: Mock 是否验证参数名？是否拒绝错误参数？
+
+### 自动化契约扫描
+
+```bash
+# 扫描前端 invoke 调用
+grep -r "invoke(" app/src/ --include="*.tsx" --include="*.ts" | grep -v "node_modules"
+
+# 扫描后端 command 定义
+grep -r "#\[tauri::command\]" app/src-tauri/ -A 5
+
+# 对比参数名
+```
+
+### 相关文件
+
+- 契约验证器: `app/tests/desktop/contract-validator.ts`
+- 功能性测试: `app/tests/desktop/functional-tests.spec.ts`
+- Tauri API 包装: `app/src/lib/tauri-api.ts`
