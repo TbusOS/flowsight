@@ -15,8 +15,8 @@ import {
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { Button } from "../ui/button"
-import { useAtomValue } from "jotai"
-import { selectedNodeAtom, type SelectedNodeDetail } from "../../lib/atoms/layout-atoms"
+import { useAtomValue, useSetAtom } from "jotai"
+import { selectedNodeAtom, triggerJumpAtom, type SelectedNodeDetail } from "../../lib/atoms/layout-atoms"
 
 interface NodeDetailPanelProps {
   className?: string
@@ -40,6 +40,19 @@ export function NodeDetailPanel({
   // 从 Jotai atom 获取选中节点，外部传入优先
   const atomDetail = useAtomValue(selectedNodeAtom)
   const detail = externalDetail ?? atomDetail
+  const triggerJump = useSetAtom(triggerJumpAtom)
+
+  // 处理点击位置跳转
+  const handleLocationClick = React.useCallback((filePath: string, line: number) => {
+    console.log('[NodeDetailPanel] Jump to:', filePath, line)
+    // 如果有外部处理函数，优先使用
+    if (onLocationClick) {
+      onLocationClick(filePath, line)
+    } else {
+      // 使用内置跳转功能
+      triggerJump({ filePath, line })
+    }
+  }, [onLocationClick, triggerJump])
 
   if (!detail) {
     return (
@@ -91,12 +104,12 @@ export function NodeDetailPanel({
           </div>
         )}
 
-        {/* 文件位置 */}
+        {/* 文件位置 - 点击跳转到源码 */}
         <div 
           data-testid="detail-file-path"
-          className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] transition-colors"
-          onClick={() => detail.file_path && onLocationClick?.(detail.file_path, detail.line)}
-          title={detail.file_path || '未知位置'}
+          className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] hover:underline transition-colors"
+          onClick={() => detail.file_path && handleLocationClick(detail.file_path, detail.line)}
+          title="点击跳转到源码位置"
         >
           <MapPin className="h-3 w-3 flex-shrink-0" />
           <span className="truncate">{fileName}:{detail.line}</span>

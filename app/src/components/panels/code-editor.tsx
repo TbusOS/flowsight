@@ -6,6 +6,8 @@ import { invoke } from "../../lib/tauri-api"
 import { Loader2, FileCode, X, Save, Check, AlertCircle } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAnalysisStore } from "../../store/analysisStore"
+import { useAtom } from "jotai"
+import { jumpTargetAtom } from "../../lib/atoms/layout-atoms"
 
 // 配置 Monaco 使用本地资源
 loader.config({
@@ -66,6 +68,7 @@ export function CodeEditor({ className, filePath, onClose, readOnly = false }: C
   const [saveError, setSaveError] = React.useState<string | null>(null)
   const editorRef = React.useRef<any>(null)
   const monacoRef = React.useRef<any>(null)
+  const [jumpTarget, setJumpTarget] = useAtom(jumpTargetAtom)
 
   // 加载文件内容
   React.useEffect(() => {
@@ -95,6 +98,43 @@ export function CodeEditor({ className, filePath, onClose, readOnly = false }: C
 
     loadFile()
   }, [filePath])
+
+  // 监听跳转目标，执行行号跳转
+  React.useEffect(() => {
+    if (jumpTarget && jumpTarget.filePath === filePath && editorRef.current) {
+      const editor = editorRef.current
+      const line = jumpTarget.line
+      const column = jumpTarget.column || 1
+      
+      // 跳转到指定行
+      editor.revealLineInCenter(line)
+      editor.setPosition({ lineNumber: line, column })
+      editor.focus()
+      
+      // 高亮当前行
+      if (monacoRef.current) {
+        const decorations = editor.deltaDecorations([], [
+          {
+            range: new monacoRef.current.Range(line, 1, line, 1),
+            options: {
+              isWholeLine: true,
+              className: 'highlight-line',
+              glyphMarginClassName: 'highlight-glyph'
+            }
+          }
+        ])
+        // 2秒后移除高亮
+        setTimeout(() => {
+          editor.deltaDecorations(decorations, [])
+        }, 2000)
+      }
+      
+      console.log('[CodeEditor] Jumped to line:', line)
+      
+      // 清除跳转目标
+      setJumpTarget(null)
+    }
+  }, [jumpTarget, filePath, setJumpTarget])
 
   // 保存文件
   const saveFile = React.useCallback(async () => {

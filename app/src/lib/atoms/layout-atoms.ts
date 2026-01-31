@@ -60,6 +60,27 @@ export const viewModeAtom = atom<"code" | "flow" | "split">("code")
 // 当前打开的文件路径
 export const currentFileAtom = atom<string | null>(null)
 
+// 代码跳转目标（文件路径 + 行号）
+export interface JumpTarget {
+  filePath: string
+  line: number
+  column?: number
+}
+
+export const jumpTargetAtom = atom<JumpTarget | null>(null)
+
+// 触发代码跳转的 action atom
+export const triggerJumpAtom = atom(
+  null,
+  (_get, set, target: JumpTarget) => {
+    set(jumpTargetAtom, target)
+    // 如果目标文件不同，先切换文件
+    set(currentFileAtom, target.filePath)
+    // 切换到代码视图
+    set(viewModeAtom, "code")
+  }
+)
+
 // ============================================================================
 // Theme Atoms - 主题状态管理
 // ============================================================================
