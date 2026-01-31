@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
  * 测试 Tauri WebView 中渲染的 React 组件
  */
 export default defineConfig({
-  testDir: '.',
+  testDir: '..',  // 包含所有测试目录
   timeout: 60000,
   fullyParallel: false,
   retries: 0,

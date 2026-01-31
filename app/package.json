@@ -41,10 +41,12 @@
     "monaco-editor": "^0.55.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-window": "^2.2.6",
     "tailwind-merge": "^3.4.0",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.0",
     "@playwright/test": "^1.57.0",
     "@studio-freight/lenis": "^1.0.42",
     "@tailwindcss/vite": "^4.1.18",
@@ -56,6 +58,7 @@
     "@types/dagre": "^0.7.52",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
+    "@types/react-window": "^2.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.23",
     "clsx": "^2.1.1",
