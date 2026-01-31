@@ -364,9 +364,9 @@ export function FlowView({ className }: FlowViewProps) {
           edge_type: string
         }>
       }>("build_execution_flow", {
-        file_path: currentFile,
-        entry_function: entryFunction,
-        options: { max_depth: 5, expand_async: true },
+        filePath: currentFile,
+        entryFunction: entryFunction,
+        options: { maxDepth: 5, expandAsync: true },
       })
 
       // 推断执行上下文
