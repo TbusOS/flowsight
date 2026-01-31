@@ -25,8 +25,7 @@ import {
   Play,
   Link2,
 } from "lucide-react"
-import { open as openDialog } from "@tauri-apps/plugin-dialog"
-import { invoke } from "@tauri-apps/api/core"
+import { openDialog, invoke } from "../../lib/tauri-api"
 import { cn } from "../../lib/utils"
 import { viewModeAtom, commandMenuOpenAtom, bottomPanelOpenAtom, bottomPanelTabAtom } from "../../lib/atoms/layout-atoms"
 import { Button } from "../ui/button"

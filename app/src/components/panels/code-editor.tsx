@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Editor, { OnMount, loader } from "@monaco-editor/react"
-import { invoke } from "@tauri-apps/api/core"
+import { invoke } from "../../lib/tauri-api"
 import { Loader2, FileCode, X, Save, Check, AlertCircle } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAnalysisStore } from "../../store/analysisStore"

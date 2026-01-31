@@ -15,7 +15,7 @@ import {
   Position,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { invoke } from "@tauri-apps/api/core"
+import { invoke } from "../../lib/tauri-api"
 import { Loader2, Zap, Play, RefreshCw } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAtomValue, useSetAtom } from "jotai"

@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '../lib/tauri-api'
 import {
   AnalysisResult,
   FlowTreeNode,

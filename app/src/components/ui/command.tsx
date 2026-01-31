@@ -34,8 +34,7 @@ import {
   DialogOverlay,
 } from "./dialog"
 import { cn } from "../../lib/utils"
-import { open as openDialog } from "@tauri-apps/plugin-dialog"
-import { invoke } from "@tauri-apps/api/core"
+import { openDialog, invoke } from "../../lib/tauri-api"
 import { useSetAtom } from "jotai"
 import { rightPanelOpenAtom, rightPanelTabAtom, currentFileAtom } from "../../lib/atoms/layout-atoms"
 

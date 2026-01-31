@@ -1,8 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { invoke } from "@tauri-apps/api/core"
-import { open } from "@tauri-apps/plugin-dialog"
+import { invoke, openDialog } from "../../lib/tauri-api"
 import {
   ChevronRight,
   ChevronDown,
@@ -222,7 +221,7 @@ export function FileExplorer({ className, onFileSelect }: FileExplorerProps) {
   // 打开项目对话框
   const handleOpenProject = async () => {
     try {
-      const selected = await open({
+      const selected = await openDialog({
         directory: true,
         multiple: false,
         title: "选择项目目录",

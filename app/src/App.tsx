@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Provider as JotaiProvider, useAtom } from "jotai"
-import { listen } from "@tauri-apps/api/event"
+import { listen } from "./lib/tauri-api"
 import { MainLayout } from "./components/layout"
 import { cn } from "./lib/utils"
 import { initThemeAtom } from "./lib/atoms/layout-atoms"

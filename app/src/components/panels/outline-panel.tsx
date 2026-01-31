@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { invoke } from "@tauri-apps/api/core"
+import { invoke } from "../../lib/tauri-api"
 import {
   FileCode,
   FunctionSquare,

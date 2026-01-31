@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useAtom, useSetAtom } from "jotai"
-import { open } from "@tauri-apps/plugin-dialog"
+import { openDialog } from "../../lib/tauri-api"
 import {
   LayoutDashboard,
   FolderOpen,
@@ -73,7 +73,7 @@ export function Sidebar({ className }: SidebarProps) {
       // 如果没有项目，打开项目选择对话框
       if (!currentProject) {
         try {
-          const selected = await open({
+          const selected = await openDialog({
             directory: true,
             multiple: false,
             title: "选择项目目录",
