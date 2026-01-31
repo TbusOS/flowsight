@@ -8,6 +8,10 @@ import { atom } from "jotai"
 export const sidebarOpenAtom = atom(true)
 export const sidebarWidthAtom = atom(80)  // 图标栏宽度
 
+// 左侧面板状态（文件浏览器）
+export const leftPanelOpenAtom = atom(true)
+export const leftPanelWidthAtom = atom(240)
+
 // 右侧面板状态
 export const rightPanelOpenAtom = atom(false)
 export const rightPanelTabAtom = atom<"outline" | "detail" | "llvm-ir" | "explorer" | "search">("outline")
@@ -139,6 +143,10 @@ export const setSelectedNodeAtom = atom(
 // Helper Atoms - 组合状态
 // ============================================================================
 
+export const isLeftPanelVisibleAtom = atom((get) => {
+  return get(leftPanelOpenAtom)
+})
+
 export const isRightPanelVisibleAtom = atom((get) => {
   return get(rightPanelOpenAtom) && get(rightPanelTabAtom) !== null
 })
@@ -151,6 +159,7 @@ export const isBottomPanelVisibleAtom = atom((get) => {
 export const layoutStateAtom = atom((get) => {
   return {
     sidebarOpen: get(sidebarOpenAtom),
+    leftPanelOpen: get(leftPanelOpenAtom),
     rightPanelOpen: get(rightPanelOpenAtom),
     bottomPanelOpen: get(bottomPanelOpenAtom),
     commandMenuOpen: get(commandMenuOpenAtom),

@@ -18,6 +18,8 @@ import {
   sidebarOpenAtom,
   bottomPanelOpenAtom,
   bottomPanelTabAtom,
+  leftPanelOpenAtom,
+  leftPanelWidthAtom,
   rightPanelOpenAtom,
   rightPanelTabAtom,
   rightPanelWidthAtom,
@@ -76,6 +78,8 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [bottomPanelOpen, setBottomPanelOpen] = useAtom(bottomPanelOpenAtom)
   const [bottomPanelTab, setBottomPanelTab] = useAtom(bottomPanelTabAtom)
   const [commandMenuOpen, setCommandMenuOpen] = useAtom(commandMenuOpenAtom)
+  const [leftPanelOpen, setLeftPanelOpen] = useAtom(leftPanelOpenAtom)
+  const leftPanelWidth = useAtomValue(leftPanelWidthAtom)
   const [rightPanelOpen, setRightPanelOpen] = useAtom(rightPanelOpenAtom)
   const [rightPanelTab, setRightPanelTab] = useAtom(rightPanelTabAtom)
   const rightPanelWidth = useAtomValue(rightPanelWidthAtom)
@@ -115,11 +119,16 @@ export function MainLayout({ children }: MainLayoutProps) {
         e.preventDefault()
         setRightPanelOpen(prev => !prev)
       }
+      // Cmd+E or Ctrl+E - Toggle left panel (file explorer)
+      if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+        e.preventDefault()
+        setLeftPanelOpen(prev => !prev)
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [setSidebarOpen, setRightPanelOpen, setBottomPanelOpen, setCommandMenuOpen])
+  }, [setSidebarOpen, setLeftPanelOpen, setRightPanelOpen, setBottomPanelOpen, setCommandMenuOpen])
 
   // Render right panel based on tab
   const renderRightPanel = () => {
@@ -134,8 +143,6 @@ export function MainLayout({ children }: MainLayoutProps) {
             LLVM IR 面板
           </div>
         )
-      case "explorer":
-        return <FileExplorer onFileSelect={handleFileSelect} />
       case "search":
         return <SearchPanel onResultSelect={(result) => handleFileSelect(result.file_path)} />
       default:
@@ -153,8 +160,23 @@ export function MainLayout({ children }: MainLayoutProps) {
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
+        {/* Left Sidebar (Icon Bar) */}
         <Sidebar />
+
+        {/* Left Panel - File Explorer */}
+        <AnimatePresence>
+          {leftPanelOpen && (
+            <motion.div
+              className="flex h-full flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-secondary)] overflow-hidden"
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: leftPanelWidth, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            >
+              <FileExplorer onFileSelect={handleFileSelect} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Content Area */}
         <main id="main-content" className="flex flex-1 flex-col overflow-hidden">
@@ -242,7 +264,6 @@ export function MainLayout({ children }: MainLayoutProps) {
                   { id: "outline", label: "大纲", icon: FileText, iconClass: "h-4 w-4" },
                   { id: "detail", label: "详情", icon: BarChart3, iconClass: "h-4 w-4" },
                   { id: "llvm-ir", label: "IR", icon: Cpu, iconClass: "h-4 w-4" },
-                  { id: "explorer", label: "文件", icon: Folder, iconClass: "h-4 w-4" },
                   { id: "search", label: "搜索", icon: Search, iconClass: "h-4 w-4" },
                 ].map((tab) => {
                   const Icon = tab.icon

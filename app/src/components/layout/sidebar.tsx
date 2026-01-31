@@ -20,6 +20,7 @@ import {
   sidebarWidthAtom,
   commandMenuOpenAtom,
   viewModeAtom,
+  leftPanelOpenAtom,
   rightPanelOpenAtom,
   rightPanelTabAtom,
 } from "../../lib/atoms/layout-atoms"
@@ -31,12 +32,13 @@ interface NavItem {
   icon: React.ElementType
   label: string
   shortcut?: string
-  panelTab?: "outline" | "detail" | "llvm-ir" | "explorer" | "search"
+  panelTab?: "outline" | "detail" | "llvm-ir" | "search"
+  toggleLeftPanel?: boolean  // 控制左侧面板
 }
 
 const navItems: NavItem[] = [
   { id: "dashboard", icon: LayoutDashboard, label: "项目" },
-  { id: "explorer", icon: FolderOpen, label: "文件", panelTab: "explorer" },
+  { id: "explorer", icon: FolderOpen, label: "文件", shortcut: "E", toggleLeftPanel: true },
   { id: "outline", icon: FileCode, label: "大纲", panelTab: "outline" },
   { id: "flow", icon: Zap, label: "执行流" },
   { id: "search", icon: Search, label: "搜索", panelTab: "search" },
@@ -56,6 +58,7 @@ export function Sidebar({ className }: SidebarProps) {
   const [sidebarWidth, setSidebarWidth] = useAtom(sidebarWidthAtom)
   const setCommandMenuOpen = useSetAtom(commandMenuOpenAtom)
   const [viewMode, setViewMode] = useAtom(viewModeAtom)
+  const [leftPanelOpen, setLeftPanelOpen] = useAtom(leftPanelOpenAtom)
   const [rightPanelOpen, setRightPanelOpen] = useAtom(rightPanelOpenAtom)
   const [rightPanelTab, setRightPanelTab] = useAtom(rightPanelTabAtom)
   const currentProject = useAnalysisStore((state) => state.currentProject)
@@ -84,6 +87,9 @@ export function Sidebar({ className }: SidebarProps) {
       } else {
         setViewMode("code")
       }
+    } else if (item.toggleLeftPanel) {
+      // 切换左侧面板（文件浏览器）
+      setLeftPanelOpen(prev => !prev)
     } else if (item.panelTab) {
       if (rightPanelTab === item.panelTab && rightPanelOpen) {
         setRightPanelOpen(false)
@@ -97,6 +103,7 @@ export function Sidebar({ className }: SidebarProps) {
   const getIsActive = (item: NavItem) => {
     if (item.id === "flow") return viewMode === "flow"
     if (item.id === "dashboard") return viewMode === "code"
+    if (item.toggleLeftPanel) return leftPanelOpen
     if (item.panelTab) return rightPanelOpen && rightPanelTab === item.panelTab
     return false
   }
