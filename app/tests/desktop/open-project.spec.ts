@@ -12,9 +12,14 @@
 import { test, expect } from '@playwright/test';
 import { mkdirSync, existsSync, readFileSync } from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { generateTauriMockScript, setupTauriMock } from '../mocks';
 
 const SCREENSHOTS_DIR = './test-results/flowsight/open-project';
+
+// ES Module 兼容: 获取 __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // 获取 fixtures 绝对路径
 const FIXTURES_PATH = path.resolve(__dirname, '../fixtures/sample-project');
@@ -345,7 +350,7 @@ test.beforeAll(() => {
 });
 
 test.describe('打开项目 - 基本流程', () => {
-  test('通过命令面板打开项目', async ({ page }) => {
+  test('通过文件浏览器打开项目按钮', async ({ page }) => {
     // 注入 Mock 脚本
     const mockScript = generateSampleProjectMockScript({
       projectPath: FIXTURES_PATH,
@@ -356,23 +361,15 @@ test.describe('打开项目 - 基本流程', () => {
     await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
     await page.screenshot({ path: `${SCREENSHOTS_DIR}/01-initial.png` });
     
-    // 打开命令面板
-    await page.keyboard.press('Meta+K');
-    await page.waitForTimeout(500);
+    // 验证左侧面板显示"打开项目"按钮
+    const openProjectButton = page.locator('button:has-text("打开项目")');
+    await expect(openProjectButton).toBeVisible();
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/02-open-project-button.png` });
     
-    // 验证命令面板打开
-    const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible();
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}/02-command-palette.png` });
-    
-    // 查找并点击"打开项目"选项
-    const openProjectOption = page.locator('[role="option"]:has-text("打开项目")');
-    await expect(openProjectOption).toBeVisible();
-    await openProjectOption.click();
-    
-    // 等待项目加载
+    // 点击"打开项目"按钮
+    await openProjectButton.click();
     await page.waitForTimeout(1000);
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}/03-project-opened.png` });
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/03-after-click.png` });
     
     // 验证 Mock 的 dialog.open 被调用
     const dialogCalled = await page.evaluate(async () => {
