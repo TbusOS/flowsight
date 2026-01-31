@@ -16,7 +16,7 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { invoke } from "../../lib/tauri-api"
-import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check, Search, Filter, X } from "lucide-react"
+import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check, Search, Filter, X, GitBranch, AlignLeft, Network } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAtomValue, useSetAtom, useAtom } from "jotai"
 import { 
@@ -223,10 +223,16 @@ export function FlowView({ className }: FlowViewProps) {
   // 导出状态
   const [copied, setCopied] = React.useState(false)
 
+  // 显示模式: graph (流程图), ftrace (ftrace格式), tree (树形)
+  const [displayMode, setDisplayMode] = React.useState<"graph" | "ftrace" | "tree">("graph")
+
   // 搜索和过滤状态
   const [searchQuery, setSearchQuery] = React.useState("")
   const [filterType, setFilterType] = React.useState<"all" | "async" | "callback" | "function">("all")
   const [showSearch, setShowSearch] = React.useState(false)
+
+  // ftrace 格式数据
+  const [ftraceOutput, setFtraceOutput] = React.useState<string>("")
 
   // 过滤后的节点和边
   const filteredNodes = React.useMemo(() => {
@@ -427,6 +433,11 @@ export function FlowView({ className }: FlowViewProps) {
       const layoutNodes = autoLayout(flowNodes, flowEdges)
       setNodes(layoutNodes)
       setEdges(flowEdges)
+      
+      // 生成 ftrace 格式输出
+      const ftrace = generateFtraceOutput(flow.nodes, flow.edges, entryFunction)
+      setFtraceOutput(ftrace)
+      
       console.log('[FlowView] Flow loaded successfully')
     } catch (err) {
       console.error("[FlowView] 加载执行流失败:", err)
@@ -436,6 +447,72 @@ export function FlowView({ className }: FlowViewProps) {
       setLoading(false)
     }
   }, [currentFile, setNodes, setEdges])
+
+  // 生成 ftrace 格式输出
+  const generateFtraceOutput = React.useCallback((
+    flowNodes: Array<{ id: string; label: string; node_type: string; line: number }>,
+    flowEdges: Array<{ source: string; target: string; edge_type: string }>,
+    entry: string
+  ): string => {
+    // 构建邻接表
+    const children = new Map<string, string[]>()
+    flowEdges.forEach(edge => {
+      if (!children.has(edge.source)) children.set(edge.source, [])
+      children.get(edge.source)!.push(edge.target)
+    })
+
+    // 节点ID到节点信息的映射
+    const nodeMap = new Map<string, typeof flowNodes[0]>()
+    flowNodes.forEach(node => nodeMap.set(node.id, node))
+
+    // 找到入口节点
+    const entryNode = flowNodes.find(n => n.label === entry || n.node_type === "entry")
+    if (!entryNode) return "// 未找到入口函数"
+
+    // 递归生成 ftrace 格式
+    const lines: string[] = []
+    const visited = new Set<string>()
+
+    function printNode(nodeId: string, depth: number) {
+      if (visited.has(nodeId)) {
+        return
+      }
+      visited.add(nodeId)
+
+      const node = nodeMap.get(nodeId)
+      if (!node) return
+
+      const indent = "  ".repeat(depth)
+      const cpu = " 0)"
+      const lineNum = node.line ? `L${String(node.line).padStart(3, ' ')}  ` : "      "
+      
+      // 节点类型标记
+      let typeTag = ""
+      if (node.node_type === "kernel" || node.node_type === "external") {
+        typeTag = " [K]"
+      } else if (node.node_type === "async") {
+        typeTag = " [A]"
+      } else if (node.node_type === "callback") {
+        typeTag = " [CB]"
+      }
+
+      const childIds = children.get(nodeId) || []
+      
+      if (childIds.length === 0) {
+        // 叶子节点
+        lines.push(`${cpu}${lineNum}${indent}|${indent}${node.label}();${typeTag}`)
+      } else {
+        // 有子节点的函数
+        lines.push(`${cpu}${lineNum}${indent}|${indent}${node.label}() {${typeTag}`)
+        childIds.forEach(childId => printNode(childId, depth + 1))
+        lines.push(`${cpu}${lineNum}${indent}|${indent}}`)
+      }
+    }
+
+    printNode(entryNode.id, 0)
+
+    return lines.join("\n")
+  }, [])
 
   // 监听从大纲面板选择的入口函数
   React.useEffect(() => {
@@ -634,6 +711,47 @@ export function FlowView({ className }: FlowViewProps) {
           </select>
           {/* 分隔符 */}
           <div className="w-px h-4 bg-[var(--border-subtle)] mx-1" />
+          {/* 显示模式切换 */}
+          <div className="flex items-center bg-[var(--bg-tertiary)] rounded p-0.5">
+            <button
+              onClick={() => setDisplayMode("graph")}
+              className={cn(
+                "p-1 rounded text-[10px]",
+                displayMode === "graph"
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              )}
+              title="流程图视图"
+            >
+              <Network className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setDisplayMode("ftrace")}
+              className={cn(
+                "p-1 rounded text-[10px]",
+                displayMode === "ftrace"
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              )}
+              title="ftrace 格式"
+            >
+              <AlignLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setDisplayMode("tree")}
+              className={cn(
+                "p-1 rounded text-[10px]",
+                displayMode === "tree"
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              )}
+              title="树形视图"
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {/* 分隔符 */}
+          <div className="w-px h-4 bg-[var(--border-subtle)] mx-1" />
           {/* 复制按钮 */}
           <button
             onClick={copyToClipboard}
@@ -729,8 +847,8 @@ export function FlowView({ className }: FlowViewProps) {
         </div>
       )}
 
-      {/* 流程图 */}
-      <div className="flex-1">
+      {/* 内容区域 */}
+      <div className="flex-1 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
@@ -739,7 +857,8 @@ export function FlowView({ className }: FlowViewProps) {
           <div className="flex items-center justify-center h-full">
             <p className="text-xs text-red-400">{error}</p>
           </div>
-        ) : (
+        ) : displayMode === "graph" ? (
+          /* 流程图视图 */
           <ReactFlow
             nodes={highlightedNodes}
             edges={filteredEdges}
@@ -765,8 +884,139 @@ export function FlowView({ className }: FlowViewProps) {
               style={{ opacity: 0.3 }}
             />
           </ReactFlow>
+        ) : displayMode === "ftrace" ? (
+          /* ftrace 格式视图 */
+          <div className="h-full overflow-auto p-4 bg-[#1e1e1e]">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[10px] text-[var(--text-muted)]">
+                ftrace 格式 - 类似 Linux function_graph tracer
+              </span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(ftraceOutput)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }}
+                className="text-[10px] px-2 py-1 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                {copied ? "已复制" : "复制"}
+              </button>
+            </div>
+            <pre className="font-mono text-xs text-green-400 whitespace-pre leading-relaxed">
+              {ftraceOutput || "// 无数据"}
+            </pre>
+          </div>
+        ) : (
+          /* 树形视图 */
+          <div className="h-full overflow-auto p-4">
+            <div className="mb-2 text-[10px] text-[var(--text-muted)]">
+              树形视图 - 调用层次结构
+            </div>
+            <div className="font-mono text-xs">
+              {nodes.length > 0 ? (
+                <TreeView 
+                  nodes={nodes} 
+                  edges={edges} 
+                  onNodeClick={(name) => {
+                    const node = nodes.find(n => n.data.label === name)
+                    if (node) {
+                      handleNodeClick(null as any, node)
+                    }
+                  }}
+                />
+              ) : (
+                <span className="text-[var(--text-muted)]">无数据</span>
+              )}
+            </div>
+          </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// 树形视图组件
+function TreeView({ 
+  nodes, 
+  edges,
+  onNodeClick 
+}: { 
+  nodes: Node<FunctionNodeData>[]
+  edges: Edge[]
+  onNodeClick: (name: string) => void
+}) {
+  // 构建邻接表
+  const children = new Map<string, string[]>()
+  edges.forEach(edge => {
+    if (!children.has(edge.source)) children.set(edge.source, [])
+    children.get(edge.source)!.push(edge.target)
+  })
+
+  // 节点ID到节点的映射
+  const nodeMap = new Map<string, Node<FunctionNodeData>>()
+  nodes.forEach(node => nodeMap.set(node.id, node))
+
+  // 找根节点
+  const parents = new Set<string>()
+  edges.forEach(edge => parents.add(edge.target))
+  const roots = nodes.filter(n => !parents.has(n.id))
+
+  // 递归渲染树
+  const visited = new Set<string>()
+  
+  function renderNode(nodeId: string, depth: number, isLast: boolean, prefix: string): React.ReactNode {
+    if (visited.has(nodeId)) {
+      return null
+    }
+    visited.add(nodeId)
+
+    const node = nodeMap.get(nodeId)
+    if (!node) return null
+
+    const childIds = children.get(nodeId) || []
+    const connector = isLast ? "└── " : "├── "
+    const newPrefix = prefix + (isLast ? "    " : "│   ")
+
+    // 类型标签颜色
+    const typeColors: Record<string, string> = {
+      entry: "text-blue-400",
+      async: "text-purple-400",
+      callback: "text-amber-400",
+      function: "text-[var(--text-primary)]",
+    }
+
+    return (
+      <div key={nodeId}>
+        <div className="flex items-center hover:bg-[var(--bg-tertiary)] rounded px-1 -mx-1 cursor-pointer"
+             onClick={() => onNodeClick(node.data.label)}>
+          <span className="text-[var(--text-muted)] select-none">{prefix}{connector}</span>
+          <span className={typeColors[node.data.type] || "text-[var(--text-primary)]"}>
+            {node.data.label}()
+          </span>
+          {node.data.line && (
+            <span className="text-[var(--text-muted)] ml-2 text-[10px]">
+              L{node.data.line}
+            </span>
+          )}
+          {node.data.type !== "function" && node.data.type !== "entry" && (
+            <span className={cn(
+              "ml-2 text-[9px] px-1 rounded",
+              node.data.type === "async" ? "bg-purple-500/20 text-purple-400" : "bg-amber-500/20 text-amber-400"
+            )}>
+              {node.data.type}
+            </span>
+          )}
+        </div>
+        {childIds.map((childId, i) => 
+          renderNode(childId, depth + 1, i === childIds.length - 1, newPrefix)
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {roots.map((root, i) => renderNode(root.id, 0, i === roots.length - 1, ""))}
     </div>
   )
 }
