@@ -19,7 +19,7 @@ import { invoke } from "../../lib/tauri-api"
 import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check, Search, Filter, X } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAtomValue, useSetAtom } from "jotai"
-import { currentFileAtom, setSelectedNodeAtom, type SelectedNodeDetail } from "../../lib/atoms/layout-atoms"
+import { currentFileAtom, setSelectedNodeAtom, selectedEntryFunctionAtom, type SelectedNodeDetail } from "../../lib/atoms/layout-atoms"
 import { useAnalysisStore } from "../../store/analysisStore"
 
 // 自定义节点类型
@@ -72,6 +72,7 @@ interface FlowViewProps {
 
 export function FlowView({ className }: FlowViewProps) {
   const currentFile = useAtomValue(currentFileAtom)
+  const selectedEntryFunction = useAtomValue(selectedEntryFunctionAtom)
   const currentProject = useAnalysisStore((state) => state.currentProject)
   const setSelectedNode = useSetAtom(setSelectedNodeAtom)
   const getFunctionDetail = useAnalysisStore((state) => state.getFunctionDetail)
@@ -342,6 +343,14 @@ export function FlowView({ className }: FlowViewProps) {
       setLoading(false)
     }
   }, [currentFile, setNodes, setEdges])
+
+  // 监听从大纲面板选择的入口函数
+  React.useEffect(() => {
+    if (selectedEntryFunction && currentFile) {
+      console.log('[FlowView] Entry function selected from outline:', selectedEntryFunction)
+      loadExecutionFlow(selectedEntryFunction)
+    }
+  }, [selectedEntryFunction, currentFile, loadExecutionFlow])
 
   // 简单的自动布局算法
   const autoLayout = (

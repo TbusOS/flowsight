@@ -14,8 +14,8 @@ import {
   Loader2,
 } from "lucide-react"
 import { cn } from "../../lib/utils"
-import { currentFileAtom } from "../../lib/atoms/layout-atoms"
-import { useAtomValue } from "jotai"
+import { currentFileAtom, setEntryFunctionAtom } from "../../lib/atoms/layout-atoms"
+import { useAtomValue, useSetAtom } from "jotai"
 
 // 大纲项类型
 export interface OutlineItem {
@@ -48,9 +48,16 @@ interface OutlinePanelProps {
 
 export function OutlinePanel({ className, items: propItems }: OutlinePanelProps) {
   const currentFile = useAtomValue(currentFileAtom)
+  const setEntryFunction = useSetAtom(setEntryFunctionAtom)
   const [items, setItems] = React.useState<OutlineItem[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+
+  // 处理函数分析（双击触发）
+  const handleAnalyzeFunction = React.useCallback((funcName: string) => {
+    console.log('[OutlinePanel] Analyze function:', funcName)
+    setEntryFunction(funcName)
+  }, [setEntryFunction])
 
   // 当文件变化时加载函数列表
   React.useEffect(() => {
@@ -145,6 +152,12 @@ export function OutlinePanel({ className, items: propItems }: OutlinePanelProps)
           )}
           style={{ paddingLeft: `${8 + depth * 12}px` }}
           onClick={() => setSelectedItem(itemId)}
+          onDoubleClick={() => {
+            if (itemType === "function") {
+              handleAnalyzeFunction(item.name)
+            }
+          }}
+          title={itemType === "function" ? "双击分析执行流" : undefined}
         >
           {/* Expand/Collapse */}
           <div className="w-4 flex items-center justify-center">

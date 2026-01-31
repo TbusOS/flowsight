@@ -170,6 +170,25 @@ export const setSelectedNodeAtom = atom(
 )
 
 // ============================================================================
+// Entry Function Atoms - 入口函数选择状态
+// ============================================================================
+
+// 当前选中的入口函数（用于触发执行流分析）
+export const selectedEntryFunctionAtom = atom<string | null>(null)
+
+// 设置入口函数的 action atom（同时切换到执行流视图）
+export const setEntryFunctionAtom = atom(
+  null,
+  (_get, set, funcName: string | null) => {
+    set(selectedEntryFunctionAtom, funcName)
+    if (funcName) {
+      // 自动切换到执行流视图
+      set(viewModeAtom, "flow")
+    }
+  }
+)
+
+// ============================================================================
 // Helper Atoms - 组合状态
 // ============================================================================
 
