@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { invoke } from "@tauri-apps/api/core"
+import { open } from "@tauri-apps/plugin-dialog"
 import {
   ChevronRight,
   ChevronDown,
@@ -12,6 +13,7 @@ import {
   FileText,
   Loader2,
   RefreshCw,
+  FolderPlus,
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAnalysisStore } from "../../store/analysisStore"
@@ -159,6 +161,7 @@ function FileTreeNode({
 
 export function FileExplorer({ className, onFileSelect }: FileExplorerProps) {
   const currentProject = useAnalysisStore((state) => state.currentProject)
+  const openProject = useAnalysisStore((state) => state.openProject)
   const setCurrentFile = useSetAtom(currentFileAtom)
   const [files, setFiles] = React.useState<FileNode[]>([])
   const [loading, setLoading] = React.useState(false)
@@ -216,6 +219,22 @@ export function FileExplorer({ className, onFileSelect }: FileExplorerProps) {
     [onFileSelect, setCurrentFile]
   )
 
+  // 打开项目对话框
+  const handleOpenProject = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "选择项目目录",
+      })
+      if (selected) {
+        await openProject(selected as string)
+      }
+    } catch (error) {
+      console.error("打开项目失败:", error)
+    }
+  }
+
   // 没有项目时显示空状态
   if (!currentProject) {
     return (
@@ -227,10 +246,17 @@ export function FileExplorer({ className, onFileSelect }: FileExplorerProps) {
         </div>
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
-            <Folder className="h-8 w-8 mx-auto mb-2 text-[var(--text-muted)]" />
-            <p className="text-xs text-[var(--text-muted)]">
+            <Folder className="h-10 w-10 mx-auto mb-3 text-[var(--text-muted)]" />
+            <p className="text-sm text-[var(--text-muted)] mb-4">
               打开一个项目开始浏览
             </p>
+            <button
+              onClick={handleOpenProject}
+              className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent)]/90 transition-colors"
+            >
+              <FolderPlus className="h-4 w-4 mr-2" />
+              打开项目
+            </button>
           </div>
         </div>
       </div>

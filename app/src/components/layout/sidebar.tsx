@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useAtom, useSetAtom } from "jotai"
+import { open } from "@tauri-apps/plugin-dialog"
 import {
   LayoutDashboard,
   FolderOpen,
@@ -22,6 +23,7 @@ import {
   rightPanelOpenAtom,
   rightPanelTabAtom,
 } from "../../lib/atoms/layout-atoms"
+import { useAnalysisStore } from "../../store/analysisStore"
 import { Button } from "../ui/button"
 
 interface NavItem {
@@ -56,14 +58,32 @@ export function Sidebar({ className }: SidebarProps) {
   const [viewMode, setViewMode] = useAtom(viewModeAtom)
   const [rightPanelOpen, setRightPanelOpen] = useAtom(rightPanelOpenAtom)
   const [rightPanelTab, setRightPanelTab] = useAtom(rightPanelTabAtom)
+  const currentProject = useAnalysisStore((state) => state.currentProject)
+  const openProject = useAnalysisStore((state) => state.openProject)
 
-  const handleNavClick = (item: NavItem) => {
+  const handleNavClick = async (item: NavItem) => {
     if (item.id === "command") {
       setCommandMenuOpen(true)
     } else if (item.id === "flow") {
       setViewMode("flow")
     } else if (item.id === "dashboard") {
-      setViewMode("code")
+      // 如果没有项目，打开项目选择对话框
+      if (!currentProject) {
+        try {
+          const selected = await open({
+            directory: true,
+            multiple: false,
+            title: "选择项目目录",
+          })
+          if (selected) {
+            await openProject(selected as string)
+          }
+        } catch (error) {
+          console.error("打开项目失败:", error)
+        }
+      } else {
+        setViewMode("code")
+      }
     } else if (item.panelTab) {
       if (rightPanelTab === item.panelTab && rightPanelOpen) {
         setRightPanelOpen(false)
