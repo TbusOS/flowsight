@@ -129,47 +129,48 @@ test.describe('侧边栏视图切换', () => {
 });
 
 test.describe('文件浏览器面板', () => {
-  test('点击文件按钮打开文件浏览器', async ({ page }) => {
-    // 使用 data-testid 定位文件浏览器按钮
-    const explorerButton = getSidebarButton(page, SIDEBAR_IDS.explorer);
-    await expect(explorerButton).toBeVisible();
+  test('左侧面板默认显示文件浏览器', async ({ page }) => {
+    // 新布局: 文件浏览器在左侧面板，默认打开
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/file-explorer-default.png` });
     
-    await explorerButton.click();
-    await page.waitForTimeout(500);
-    
-    await page.screenshot({ path: `${SCREENSHOTS_DIR}/file-explorer-open.png` });
-    
-    // 验证右侧面板打开
-    const isPanelOpen = await isRightPanelOpen(page);
-    console.log('右侧面板打开:', isPanelOpen);
-    expect(isPanelOpen).toBe(true);
+    // 验证左侧面板默认打开
+    // 左侧面板包含 "资源管理器" 或 "打开一个项目开始浏览"
+    const resourceManager = page.locator('text=资源管理器');
+    const openProjectPrompt = page.locator('text=打开一个项目开始浏览');
+    const isLeftPanelVisible = await resourceManager.isVisible() || await openProjectPrompt.isVisible();
+    console.log('左侧面板默认打开:', isLeftPanelVisible);
+    expect(isLeftPanelVisible).toBe(true);
     
     // 验证文件浏览器内容 (空状态)
     const emptyState = page.locator('text=打开一个项目开始浏览');
     const isEmpty = await emptyState.isVisible();
     console.log('显示空项目提示:', isEmpty);
+    expect(isEmpty).toBe(true);
   });
 
-  test('文件按钮点击切换面板', async ({ page }) => {
+  test('文件按钮点击切换左侧面板', async ({ page }) => {
     // 使用 data-testid 定位文件浏览器按钮
     const explorerButton = getSidebarButton(page, SIDEBAR_IDS.explorer);
     await expect(explorerButton).toBeVisible();
     
-    // 第一次点击打开
+    // 左侧面板默认打开，点击关闭
     await explorerButton.click();
     await page.waitForTimeout(300);
     
-    const panelOpenFirst = await isRightPanelOpen(page);
-    console.log('第一次点击后面板状态:', panelOpenFirst);
-
-    // 点击文件标签切换到文件视图 - 使用更精确的选择器避免与菜单项冲突
-    // 面板标签在 flex-col 容器内，菜单项在 menuitem role 中
-    const fileTab = page.locator('[role="tablist"] button:has-text("文件"), .flex-col button:has-text("文件")').first();
-    if (await fileTab.isVisible()) {
-      await fileTab.click();
-      await page.waitForTimeout(300);
-      await page.screenshot({ path: `${SCREENSHOTS_DIR}/file-tab-active.png` });
-    }
+    // 检查左侧面板是否关闭
+    const resourceManager = page.locator('text=资源管理器');
+    const openProjectPrompt = page.locator('text=打开一个项目开始浏览');
+    const isClosedAfterFirstClick = !(await resourceManager.isVisible() || await openProjectPrompt.isVisible());
+    console.log('第一次点击后左侧面板关闭:', isClosedAfterFirstClick);
+    
+    // 再次点击打开
+    await explorerButton.click();
+    await page.waitForTimeout(300);
+    
+    const isOpenAfterSecondClick = await resourceManager.isVisible() || await openProjectPrompt.isVisible();
+    console.log('第二次点击后左侧面板打开:', isOpenAfterSecondClick);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/file-tab-active.png` });
   });
 
   test('右侧面板标签切换', async ({ page }) => {
@@ -180,8 +181,9 @@ test.describe('文件浏览器面板', () => {
     await page.waitForTimeout(500);
 
     // 测试各个标签切换 - 使用更精确的选择器
-    // 面板标签在底部面板区域的 flex-col 容器中，避免与菜单项冲突
-    const tabs = ['大纲', '详情', 'IR', '文件'];
+    // 面板标签在右侧面板区域的 flex-col 容器中
+    // 注意: "文件"选项已移至左侧面板，不再在右侧面板中
+    const tabs = ['大纲', '详情', 'IR', '搜索'];
     for (const tab of tabs) {
       // 优先匹配面板底部的标签按钮，使用 flex-col 容器特征
       const tabButton = page.locator(`.flex-col button:has-text("${tab}")`).first();
