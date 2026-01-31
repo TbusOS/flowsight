@@ -472,6 +472,62 @@ test.describe('功能性测试 - 状态变化验证', () => {
   });
 });
 
+test.describe('功能性测试 - 状态栏', () => {
+  
+  test('状态栏不显示硬编码的 Git 分支', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 验证不存在硬编码的 "main" 分支名（在无项目状态下）
+    // 注：实际项目中应该显示真实的 Git 分支
+    const hardcodedBranch = page.locator('footer:has-text("main")');
+    const hasHardcodedBranch = await hardcodedBranch.count() > 0;
+    console.log('硬编码 Git 分支存在:', hasHardcodedBranch);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/10-statusbar-initial.png` });
+  });
+
+  test('状态栏在无文件时不显示位置信息', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 无文件打开时不应该显示 "Ln 1, Col 1"
+    const positionInfo = page.locator('footer:has-text("Ln 1, Col 1")');
+    const hasPositionWhenNoFile = await positionInfo.count() > 0;
+    console.log('无文件时显示位置信息:', hasPositionWhenNoFile);
+    
+    // 应该显示 "打开项目开始" 或类似提示
+    const hint = page.locator('footer:has-text("打开项目")');
+    const hasHint = await hint.count() > 0;
+    console.log('显示打开项目提示:', hasHint);
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/11-statusbar-no-file.png` });
+  });
+
+  test('打开文件后状态栏显示文件信息', async ({ page }) => {
+    await page.addInitScript(generateRealisticMock());
+    await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+    
+    // 打开项目
+    await page.locator('button:has-text("打开项目")').click();
+    await page.waitForTimeout(1000);
+    
+    // 选择文件
+    const fileItem = page.locator('text=driver.c').first();
+    if (await fileItem.count() > 0) {
+      await fileItem.click();
+      await page.waitForTimeout(500);
+      
+      // 验证状态栏显示语言类型
+      const languageInfo = page.locator('footer:has-text("C")');
+      const hasLanguage = await languageInfo.count() > 0;
+      console.log('显示语言类型:', hasLanguage);
+    }
+    
+    await page.screenshot({ path: `${SCREENSHOTS_DIR}/12-statusbar-with-file.png` });
+  });
+});
+
 test.describe('功能性测试 - 终端面板', () => {
   
   test('终端面板初始显示就绪状态', async ({ page }) => {

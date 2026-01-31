@@ -12,9 +12,10 @@ import {
   WifiOff,
   Loader2,
   FolderOpen,
+  FileCode,
 } from "lucide-react"
 import { cn } from "../../lib/utils"
-import { bottomPanelOpenAtom, bottomPanelTabAtom } from "../../lib/atoms/layout-atoms"
+import { bottomPanelOpenAtom, bottomPanelTabAtom, currentFileAtom } from "../../lib/atoms/layout-atoms"
 import { useAnalysisStore } from "../../store/analysisStore"
 import { Button } from "../ui/button"
 
@@ -22,13 +23,47 @@ interface StatusBarProps {
   className?: string
 }
 
+// 根据文件扩展名获取语言
+function getLanguageFromPath(path: string | null): string {
+  if (!path) return '-'
+  const ext = path.split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'c': return 'C'
+    case 'h': return 'C Header'
+    case 'cpp': case 'cc': case 'cxx': return 'C++'
+    case 'hpp': case 'hxx': return 'C++ Header'
+    case 'rs': return 'Rust'
+    case 'ts': return 'TypeScript'
+    case 'tsx': return 'TSX'
+    case 'js': return 'JavaScript'
+    case 'jsx': return 'JSX'
+    case 'py': return 'Python'
+    case 'json': return 'JSON'
+    case 'yaml': case 'yml': return 'YAML'
+    case 'md': return 'Markdown'
+    case 'txt': return 'Text'
+    default: return ext?.toUpperCase() || '-'
+  }
+}
+
 export function StatusBar({ className }: StatusBarProps) {
   const bottomPanelOpen = useAtomValue(bottomPanelOpenAtom)
   const bottomPanelTab = useAtomValue(bottomPanelTabAtom)
+  const currentFile = useAtomValue(currentFileAtom)
   
   // 从 store 获取索引进度和项目信息
   const indexProgress = useAnalysisStore((state) => state.indexProgress)
   const currentProject = useAnalysisStore((state) => state.currentProject)
+  
+  // 编辑器状态（未来可以从 Monaco 编辑器获取）
+  const [editorState, setEditorState] = React.useState({
+    line: 1,
+    column: 1,
+    encoding: 'UTF-8',
+  })
+  
+  // 语言类型
+  const language = getLanguageFromPath(currentFile)
 
   const tabs = [
     { id: "terminal", icon: Terminal, label: "终端" },
@@ -91,24 +126,29 @@ export function StatusBar({ className }: StatusBarProps) {
           </div>
         )}
         
-        {/* Git Branch */}
-        <div className="flex items-center gap-1">
-          <GitBranch className="h-3 w-3" />
-          <span>main</span>
-        </div>
+        {/* Current File Info */}
+        {currentFile && (
+          <div className="flex items-center gap-1 text-[var(--text-secondary)]">
+            <FileCode className="h-3 w-3" />
+            <span className="max-w-[100px] truncate">
+              {currentFile.split('/').pop()}
+            </span>
+          </div>
+        )}
 
-        {/* Connection Status */}
-        <div className="flex items-center gap-1">
-          <Wifi className="h-3 w-3" />
-          <span>已连接</span>
-        </div>
-
-        {/* Position Info */}
-        <div className="flex items-center gap-2">
-          <span>Ln 1, Col 1</span>
-          <span>UTF-8</span>
-          <span>C</span>
-        </div>
+        {/* Position Info - 只在有文件打开时显示 */}
+        {currentFile && (
+          <div className="flex items-center gap-2">
+            <span>Ln {editorState.line}, Col {editorState.column}</span>
+            <span>{editorState.encoding}</span>
+            <span>{language}</span>
+          </div>
+        )}
+        
+        {/* 无文件打开时的提示 */}
+        {!currentFile && !currentProject && (
+          <span className="text-[var(--text-muted)]">打开项目开始</span>
+        )}
       </div>
     </footer>
   )
