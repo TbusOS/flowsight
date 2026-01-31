@@ -29,6 +29,7 @@ function ThemeInitializer() {
 function TauriEventListener() {
   const setIndexProgress = useAnalysisStore((state) => state.setIndexProgress)
   const setCurrentProject = useAnalysisStore((state) => state.setCurrentProject)
+  const currentProject = useAnalysisStore((state) => state.currentProject)
 
   React.useEffect(() => {
     // 监听索引进度事件
@@ -37,40 +38,40 @@ function TauriEventListener() {
       current: number
       total: number
       message: string
+      files?: number
+      functions?: number
+      structs?: number
     }>("index-progress", (event) => {
-      const { phase, current, total, message } = event.payload
+      const { phase, current, total, message, files, functions, structs } = event.payload
+      
+      // 更新索引进度
       setIndexProgress({
-        phase: phase as 'scanning' | 'parsing' | 'indexing' | 'complete' | 'error',
+        phase: phase as 'scanning' | 'parsing' | 'indexing' | 'complete' | 'done' | 'error',
         current,
         total,
         message,
       })
       
-      // 索引完成时更新项目信息
-      if (phase === 'complete') {
-        console.log('索引完成:', message)
+      // 索引完成时更新项目信息（后端发送 phase="done"）
+      if (phase === 'done' || phase === 'complete') {
+        console.log('索引完成:', message, { files, functions, structs })
+        // 从事件中提取统计信息
+        if (files !== undefined || functions !== undefined) {
+          setCurrentProject({
+            path: currentProject?.path || '',
+            files_count: files || total || currentProject?.files_count || 0,
+            functions_count: functions || currentProject?.functions_count || 0,
+            structs_count: structs || currentProject?.structs_count || 0,
+            indexed: true,
+          })
+        }
       }
-    })
-
-    // 监听索引完成事件
-    const unlistenComplete = listen<{
-      path: string
-      files_count: number
-      functions_count: number
-      structs_count: number
-    }>("index-complete", (event) => {
-      setCurrentProject({
-        ...event.payload,
-        indexed: true,
-      })
-      setIndexProgress(null)
     })
 
     return () => {
       unlistenProgress.then((fn) => fn())
-      unlistenComplete.then((fn) => fn())
     }
-  }, [setIndexProgress, setCurrentProject])
+  }, [setIndexProgress, setCurrentProject, currentProject])
 
   return null
 }
