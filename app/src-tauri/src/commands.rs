@@ -922,6 +922,7 @@ pub async fn execute_scenario(
 
 /// Options for building ExecutionFlow
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecutionFlowOptions {
     /// Maximum depth to traverse
     pub max_depth: Option<usize>,

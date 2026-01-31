@@ -61,10 +61,11 @@ export const TAURI_CONTRACTS: TauriCommandContract[] = [
       // ⚠️ Tauri 2.0 使用 camelCase 参数名进行反序列化
       { name: 'filePath', type: 'string', required: true, naming: 'camelCase' },
       { name: 'entryFunction', type: 'string', required: true, naming: 'camelCase' },
-      { name: 'maxDepth', type: 'number', required: false, naming: 'camelCase' },
-      { name: 'expandAsync', type: 'boolean', required: false, naming: 'camelCase' }
+      // options 对象内部字段也需要 camelCase
+      // options: { maxDepth, expandAsync, includeKernelChains }
+      { name: 'options', type: 'object', required: false, naming: 'camelCase' }
     ],
-    returnType: 'ExecutionFlow'
+    returnType: 'FlatExecutionFlow'
   },
   {
     name: 'get_entry_points',
