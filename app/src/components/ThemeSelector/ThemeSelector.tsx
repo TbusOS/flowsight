@@ -36,6 +36,10 @@ export function ThemeSelector() {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
+        aria-label={`当前主题: ${themeInfo.label}，点击切换主题`}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        data-testid="theme-toggle"
         className={cn(
           "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md",
           "text-xs font-medium text-[var(--text-secondary)]",
@@ -64,6 +68,9 @@ export function ThemeSelector() {
           />
           <div className="absolute right-0 top-full mt-1 z-50">
             <div
+              role="listbox"
+              aria-label="主题选择"
+              data-testid="theme-menu"
               className={cn(
                 "min-w-[160px] rounded-lg border border-[var(--border-light)]",
                 "bg-[var(--bg-secondary)] shadow-xl py-1.5"
@@ -75,6 +82,9 @@ export function ThemeSelector() {
               {themes.map((t) => (
                 <button
                   key={t}
+                  role="option"
+                  aria-selected={theme === t}
+                  data-testid={`theme-option-${t}`}
                   onClick={() => handleThemeChange(t)}
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2",
