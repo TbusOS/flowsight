@@ -128,7 +128,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
               <CommandGroup heading="文件操作">
                 <CommandItem 
                   onSelect={handleOpenProject}
-                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
                 >
                   <FolderOpen className="mr-2 h-4 w-4" />
                   <span>打开项目</span>
@@ -136,7 +136,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 </CommandItem>
                 <CommandItem 
                   onSelect={handleOpenFile}
-                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
                 >
                   <FileText className="mr-2 h-4 w-4" />
                   <span>打开文件</span>
@@ -145,17 +145,17 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
               </CommandGroup>
               <CommandSeparator className="my-2 -mx-2 h-px bg-[var(--border-light)]" />
               <CommandGroup heading="快速操作">
-                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
+                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
                   <Layout className="mr-2 h-4 w-4" />
                   <span>切换侧边栏</span>
                   <kbd className="ml-auto text-xs text-[var(--text-muted)]">⌘B</kbd>
                 </CommandItem>
-                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
+                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
                   <Terminal className="mr-2 h-4 w-4" />
                   <span>切换终端</span>
                   <kbd className="ml-auto text-xs text-[var(--text-muted)]">⌘J</kbd>
                 </CommandItem>
-                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
+                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
                   <Settings className="mr-2 h-4 w-4" />
                   <span>打开设置</span>
                   <kbd className="ml-auto text-xs text-[var(--text-muted)]">⌘,</kbd>
@@ -163,24 +163,24 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
               </CommandGroup>
               <CommandSeparator className="my-2 -mx-2 h-px bg-[var(--border-light)]" />
               <CommandGroup heading="视图">
-                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
+                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
                   <File className="mr-2 h-4 w-4" />
                   <span>代码视图</span>
                 </CommandItem>
-                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
+                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
                   <Zap className="mr-2 h-4 w-4" />
                   <span>执行流视图</span>
                 </CommandItem>
                 <CommandItem 
                   onSelect={handleOpenOutline}
-                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
                 >
                   <BookOpen className="mr-2 h-4 w-4" />
                   <span>大纲视图</span>
                 </CommandItem>
                 <CommandItem 
                   onSelect={handleOpenExplorer}
-                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100"
                 >
                   <Folder className="mr-2 h-4 w-4" />
                   <span>文件浏览器</span>
@@ -189,12 +189,12 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
               </CommandGroup>
               <CommandSeparator className="my-2 -mx-2 h-px bg-[var(--border-light)]" />
               <CommandGroup heading="命令">
-                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
+                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
                   <CommandIcon className="mr-2 h-4 w-4" />
                   <span>运行分析</span>
                   <kbd className="ml-auto text-xs text-[var(--text-muted)]">⌘⇧A</kbd>
                 </CommandItem>
-                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-2.5 gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
+                <CommandItem className="relative flex cursor-pointer select-none items-center rounded-md px-3 py-3 min-h-[28px] gap-2 text-sm outline-none aria-selected:bg-[var(--bg-tertiary)] aria-selected:text-[var(--text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-100">
                   <Code className="mr-2 h-4 w-4" />
                   <span>查找函数引用</span>
                   <kbd className="ml-auto text-xs text-[var(--text-muted)]">⌘⇧F</kbd>

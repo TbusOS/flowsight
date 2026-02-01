@@ -251,7 +251,7 @@ export function FileExplorer({ className, onFileSelect }: FileExplorerProps) {
             </p>
             <button
               onClick={handleOpenProject}
-              className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent)]/90 transition-colors"
+              className="inline-flex items-center justify-center px-4 py-3 min-h-[32px] rounded-md bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent)]/90 transition-colors"
             >
               <FolderPlus className="h-4 w-4 mr-2" />
               打开项目
