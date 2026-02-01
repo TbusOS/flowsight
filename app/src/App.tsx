@@ -29,7 +29,18 @@ function ThemeInitializer() {
 function TauriEventListener() {
   const setIndexProgress = useAnalysisStore((state) => state.setIndexProgress)
   const setCurrentProject = useAnalysisStore((state) => state.setCurrentProject)
-  const currentProject = useAnalysisStore((state) => state.currentProject)
+  // 使用 ref 来获取最新的 currentProject，避免闭包陈旧问题
+  const currentProjectRef = React.useRef(useAnalysisStore.getState().currentProject)
+
+  // 订阅 store 变化更新 ref
+  React.useEffect(() => {
+    const unsubscribe = useAnalysisStore.subscribe(
+      (state) => {
+        currentProjectRef.current = state.currentProject
+      }
+    )
+    return unsubscribe
+  }, [])
 
   React.useEffect(() => {
     // 监听索引进度事件
@@ -43,6 +54,7 @@ function TauriEventListener() {
       structs?: number
     }>("index-progress", (event) => {
       const { phase, current, total, message, files, functions, structs } = event.payload
+      const currentProject = currentProjectRef.current
       
       // 更新索引进度
       setIndexProgress({
@@ -54,14 +66,14 @@ function TauriEventListener() {
       
       // 索引完成时更新项目信息（后端发送 phase="done"）
       if (phase === 'done' || phase === 'complete') {
-        console.log('索引完成:', message, { files, functions, structs })
+        console.log('索引完成:', message, { files, functions, structs, currentPath: currentProject?.path })
         // 从事件中提取统计信息
         if (files !== undefined || functions !== undefined) {
           setCurrentProject({
             path: currentProject?.path || '',
-            files_count: files || total || currentProject?.files_count || 0,
-            functions_count: functions || currentProject?.functions_count || 0,
-            structs_count: structs || currentProject?.structs_count || 0,
+            files_count: files ?? total ?? 0,
+            functions_count: functions ?? 0,
+            structs_count: structs ?? 0,
             indexed: true,
           })
         }
@@ -71,7 +83,7 @@ function TauriEventListener() {
     return () => {
       unlistenProgress.then((fn) => fn())
     }
-  }, [setIndexProgress, setCurrentProject, currentProject])
+  }, [setIndexProgress, setCurrentProject])
 
   return null
 }

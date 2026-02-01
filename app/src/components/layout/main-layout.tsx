@@ -66,18 +66,36 @@ function TerminalPanel() {
   const indexProgress = useAnalysisStore((state) => state.indexProgress)
   const executionFlow = useAnalysisStore((state) => state.executionFlow)
   const [logs, setLogs] = React.useState<LogEntry[]>([])
+  const [lastProjectPath, setLastProjectPath] = React.useState<string | null>(null)
   
-  // 监听项目状态变化，生成真实日志
+  // 监听项目路径变化 - 仅在打开新项目时添加打开日志
   React.useEffect(() => {
-    if (currentProject) {
+    if (currentProject && currentProject.path !== lastProjectPath) {
+      setLastProjectPath(currentProject.path)
       setLogs(prev => [
         ...prev,
         { type: 'command', message: `flowsight open "${currentProject.path}"`, timestamp: new Date() },
-        { type: 'success', message: '项目加载成功', timestamp: new Date() },
-        { type: 'info', message: `发现 ${currentProject.files_count} 个文件, ${currentProject.functions_count} 个函数, ${currentProject.structs_count} 个结构体`, timestamp: new Date() },
       ])
     }
-  }, [currentProject?.path])
+  }, [currentProject?.path, lastProjectPath])
+  
+  // 监听索引完成 - 更新统计信息
+  React.useEffect(() => {
+    if (currentProject?.indexed && currentProject.files_count > 0) {
+      setLogs(prev => {
+        // 避免重复添加相同的统计日志
+        const lastLog = prev[prev.length - 1]
+        if (lastLog?.message?.includes(`发现 ${currentProject.files_count} 个文件`)) {
+          return prev
+        }
+        return [
+          ...prev,
+          { type: 'success', message: '项目加载成功', timestamp: new Date() },
+          { type: 'info', message: `发现 ${currentProject.files_count} 个文件, ${currentProject.functions_count} 个函数, ${currentProject.structs_count} 个结构体`, timestamp: new Date() },
+        ]
+      })
+    }
+  }, [currentProject?.indexed, currentProject?.files_count, currentProject?.functions_count, currentProject?.structs_count])
   
   // 监听索引进度
   React.useEffect(() => {
