@@ -1,0 +1,330 @@
+name: DeskPilot Tests
+
+on:
+  push:
+    branches: [main, shadcn-ui]
+  pull_request:
+    branches: [main, shadcn-ui]
+  workflow_dispatch:
+
+# 强制要求：PR 必须通过此检查才能合并
+# 在 GitHub 仓库设置中添加 Branch Protection Rule:
+# Settings > Branches > Add rule > Require status checks
+# 勾选 "deskpilot-test" 和 "deskpilot-visual-check"
+
+env:
+  CARGO_TERM_COLOR: always
+  CDP_PORT: 9222
+
+jobs:
+  # ==========================================================================
+  # Job 1: 基础功能测试 (必须通过)
+  # ==========================================================================
+  deskpilot-test:
+    name: DeskPilot Tests (Required)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+
+      - name: Install app dependencies
+        working-directory: ./app
+        run: pnpm install --frozen-lockfile
+
+      - name: Install DeskPilot dependencies
+        working-directory: ./packages/desktop-test
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Rust workspace
+        run: cargo build --workspace --release
+
+      - name: Build frontend
+        working-directory: ./app
+        run: pnpm build
+
+      - name: Start Tauri app with debug port
+        working-directory: ./app
+        run: |
+          # Start Tauri dev server in background
+          WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:$CDP_PORT pnpm tauri dev &
+          APP_PID=$!
+          echo "APP_PID=$APP_PID" >> $GITHUB_ENV
+          
+          # Wait for app to be ready
+          echo "Waiting for app to start..."
+          for i in {1..60}; do
+            if curl -s http://localhost:$CDP_PORT > /dev/null 2>&1; then
+              echo "App is ready on port $CDP_PORT"
+              break
+            fi
+            sleep 2
+          done
+          
+          # Give extra time for full load
+          sleep 5
+
+      - name: Run DeskPilot Basic Tests
+        working-directory: ./packages/desktop-test
+        run: |
+          npx tsx examples/flowsight-tests.ts
+        env:
+          CDP_PORT: ${{ env.CDP_PORT }}
+          TEST_TIMEOUT: 60000
+          USE_VLM: false  # Disable VLM for CI (no API key)
+
+      - name: Run DeskPilot Full Feature Tests
+        working-directory: ./packages/desktop-test
+        run: |
+          npx tsx examples/full-feature-tests.ts
+        env:
+          CDP_PORT: ${{ env.CDP_PORT }}
+          TEST_TIMEOUT: 90000
+          USE_VLM: false
+          UPDATE_BASELINES: true
+
+      - name: Run IDE Comprehensive Tests
+        working-directory: ./packages/desktop-test
+        run: |
+          npx tsx examples/ide-comprehensive-tests.ts
+        env:
+          CDP_PORT: ${{ env.CDP_PORT }}
+          TEST_TIMEOUT: 120000
+          USE_VLM: false
+
+      - name: Stop app
+        if: always()
+        run: |
+          if [ -n "$APP_PID" ]; then
+            kill $APP_PID || true
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deskpilot-results
+          path: |
+            packages/desktop-test/test-results/
+            packages/desktop-test/baselines/
+          retention-days: 7
+
+  # ==========================================================================
+  # Job 2: VLM 视觉检查 (PR 必须通过)
+  # ==========================================================================
+  deskpilot-visual-check:
+    name: Visual Check (Required for PR)
+    runs-on: macos-latest
+    needs: deskpilot-test
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+            target/
+            ~/.pnpm-store
+          key: ${{ runner.os }}-visual-${{ hashFiles('**/Cargo.lock', '**/pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        run: |
+          cd packages/desktop-test && pnpm install --frozen-lockfile
+          cd ../.. && cd app && pnpm install --frozen-lockfile
+
+      - name: Build and start app
+        working-directory: ./app
+        run: |
+          cargo build --workspace --release
+          pnpm build
+          WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9222 pnpm tauri dev &
+          echo "Waiting for app..."
+          for i in {1..60}; do
+            if curl -s http://localhost:9222 > /dev/null 2>&1; then
+              echo "App ready!"
+              break
+            fi
+            sleep 2
+          done
+          sleep 5
+
+      - name: Run VLM Visual Checks
+        working-directory: ./packages/desktop-test
+        run: |
+          npx tsx examples/pr-visual-check.ts
+        env:
+          CDP_PORT: 9222
+          USE_VLM: true
+          # CI 环境没有 Cursor，需要用 API Key
+          USE_API_KEY: true
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+
+      - name: Comment on PR with Visual Report
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportPath = 'packages/desktop-test/test-results/vlm-report.md';
+            
+            let comment = '## 🔍 DeskPilot Visual Check\n\n';
+            
+            if (fs.existsSync(reportPath)) {
+              const report = fs.readFileSync(reportPath, 'utf8');
+              comment += report;
+            } else {
+              comment += '⚠️ Visual check report not generated.\n';
+            }
+            
+            // 查找并更新现有评论，或创建新评论
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(c => 
+              c.user.type === 'Bot' && 
+              c.body.includes('DeskPilot Visual Check')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment,
+              });
+            }
+
+      - name: Upload visual check results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-check-${{ github.event.pull_request.number }}
+          path: |
+            packages/desktop-test/test-results/
+          retention-days: 14
+
+      - name: Fail if visual issues found
+        working-directory: ./packages/desktop-test
+        run: |
+          if [ -f "test-results/visual-check-failed" ]; then
+            echo "❌ Visual check failed! See report above."
+            exit 1
+          fi
+
+  # ==========================================================================
+  # Job 3: 完整 VLM 测试 (push 时运行)
+  # ==========================================================================
+  deskpilot-vlm-full:
+    name: Full VLM Tests
+    runs-on: macos-latest
+    needs: deskpilot-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: |
+          cd packages/desktop-test && pnpm install --frozen-lockfile
+          cd ../.. && cd app && pnpm install --frozen-lockfile
+
+      - name: Build and start app
+        working-directory: ./app
+        run: |
+          cargo build --workspace --release
+          pnpm build
+          WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9222 pnpm tauri dev &
+          sleep 30
+
+      - name: Run Full VLM Tests
+        working-directory: ./packages/desktop-test
+        run: |
+          npx tsx examples/full-feature-tests.ts
+        env:
+          CDP_PORT: 9222
+          USE_VLM: true
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload VLM test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vlm-full-results
+          path: packages/desktop-test/test-results/
+          retention-days: 7
