@@ -241,26 +241,51 @@ flowsight/
 | 🎨 前端开发 | UI-Dev | React 组件、可视化、交互 | `.claude/agents/ui-dev.md` |
 | 🧪 单元测试 | Unit-Tester | Rust 单元测试、集成测试 | `.claude/agents/unit-tester.md` |
 | 🖥️ E2E 测试 | E2E-Tester | 端到端测试、UI 测试 | `.claude/agents/e2e-tester.md` |
+| 👁️ VLM 测试 | VLM-Tester | AI 视觉测试、布局检查 | `.claude/agents/vlm-tester.md` |
 | 🔧 问题修复 | Debug-Dev | Bug 定位、快速修复 | `.claude/agents/debug-dev.md` |
+| 🔄 CI 监控 | CI-Monitor | CI 状态监控、失败分析 | `.claude/agents/ci-monitor.md` |
+| 📝 测试评审 | Test-Reviewer | 测试质量评审 | `.claude/agents/test-reviewer.md` |
 
 #### 协作流程
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  开发阶段                                                         │
-│  ═════════                                                        │
-│  Rust-Dev ──┐                                                     │
-│             ├──► 功能完成 ──► Unit-Tester ──┐                     │
-│  UI-Dev ────┘                              │                      │
-│                           E2E-Tester ──────┤                      │
-│                                            │                      │
-│                                            ▼                      │
-│  修复阶段                      发现 Bug ──► Debug-Dev             │
-│  ═════════                                   │                    │
-│                                             ▼                     │
-│                               修复完成 ──► 请求重测               │
-└──────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│  开发阶段                                                               │
+│  ═════════                                                              │
+│  Rust-Dev ──┐                                                           │
+│             ├──► 功能完成 ──► Unit-Tester ──┐                           │
+│  UI-Dev ────┘                               │                           │
+│                                             ▼                           │
+│                              ┌─► E2E-Tester ──┐                         │
+│                              │                │                         │
+│                              └─► VLM-Tester ──┤──► 测试通过 ──► 合并    │
+│                                               │                         │
+│                                               ▼                         │
+│  修复阶段                          发现 Bug ──► Debug-Dev               │
+│  ═════════                                       │                      │
+│                                                  ▼                      │
+│                                    修复完成 ──► 请求重测                │
+│                                                                         │
+│  监控阶段                                                               │
+│  ═════════                                                              │
+│  CI-Monitor ──► CI 失败 ──► 分析原因 ──► 分派给对应 Agent               │
+│              ─► CI 通过 ──► 生成报告                                    │
+│                                                                         │
+│  评审阶段                                                               │
+│  ═════════                                                              │
+│  Test-Reviewer ──► 评审测试质量 ──► 提出改进建议                        │
+└────────────────────────────────────────────────────────────────────────┘
 ```
+
+#### 自动化触发规则
+
+| 触发事件 | 自动动作 |
+|----------|----------|
+| PR 创建/更新 | CI-Monitor 监控 → VLM-Tester 视觉检查 |
+| 代码提交 | Unit-Tester + E2E-Tester 自动测试 |
+| CI 失败 | CI-Monitor 分析 → 分派给对应 Agent |
+| 测试通过 | 自动 Git commit + push |
+| 功能完成 | Test-Reviewer 评审测试质量 |
 
 #### 使用方式
 
@@ -298,7 +323,14 @@ Debug → 测试: ✅ @Unit-Tester 已修复，请重测
 
 #### 测试反馈规则 (强制执行)
 
+> **⚠️ 重要规则**: 查看 [.claude/rules/test-data-correctness.md](.claude/rules/test-data-correctness.md) 了解数据正确性测试要求
+
 **E2E-Tester 和 Unit-Tester 必须遵守以下规则：**
+
+0. **数据正确性验证（最重要！）**：
+   - 每个 UI 测试必须验证数据**实际显示**，不仅仅是元素存在
+   - 空状态必须有明确提示，不允许空白页面
+   - 参见详细规则：`.claude/rules/test-data-correctness.md`
 
 1. **测试覆盖不足时**：
    - 必须向 UI-Dev 或 Rust-Dev 提出需求，要求开发新的测试工具/功能
