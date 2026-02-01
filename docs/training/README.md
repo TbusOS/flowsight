@@ -1,100 +1,72 @@
-# FlowSight AI 模型训练文档
+# FlowSight AI 训练文档
 
-> 本目录包含 AI 模型训练相关的完整文档。
+> 训练专用 AI 模型，辅助 FlowSight 生成函数执行流
 
-## 文档列表
+## 训练方案对比
 
-### 🆕 本地训练方案（推荐）
+| 方案 | 硬件要求 | 模型大小 | 训练时间 | 推荐度 |
+|------|----------|----------|----------|--------|
+| **本地 MLX** | MacBook M3 24GB | 7B (量化) | 2-6 小时 | ⭐⭐⭐ 推荐 |
+| 云端 GPU | A100 40GB | 6.7B | 30-60 分钟 | 可选 |
 
-#### [local-mlx/](local-mlx/) - MacBook M 系列本地训练
-在 Apple Silicon Mac 上使用 MLX 框架训练，无需云 GPU：
-- [快速开始](local-mlx/QUICK-START.md) - 10 分钟上手
-- [完整计划](local-mlx/MLX-LORA-TRAINING-PLAN.md) - 详细训练方案
+## 推荐方案：本地 MLX 训练
 
-| 方案 | 硬件要求 | 训练时间 | 成本 |
-|------|----------|----------|------|
-| **本地 MLX** | MacBook M3 24GB | 2-8 小时 | 免费 |
-| 云端 GPU | A100 40-80GB | 15-30 小时 | ¥200-500 |
+在 Apple Silicon Mac 上使用 MLX 框架训练，无需云 GPU。
 
----
+📂 **[local-mlx/](local-mlx/README.md)**
 
-### 云端训练方案
+| 文档 | 说明 |
+|------|------|
+| [README.md](local-mlx/README.md) | 方案概述 |
+| [TUTORIAL.md](local-mlx/TUTORIAL.md) | **🎓 手把手教程**（新手必看） |
+| [MLX-LORA-TRAINING-PLAN.md](local-mlx/MLX-LORA-TRAINING-PLAN.md) | 完整训练计划 |
+| [QUICK-START.md](local-mlx/QUICK-START.md) | 命令速查 |
+| [KERNEL-COVERAGE-PLAN.md](local-mlx/KERNEL-COVERAGE-PLAN.md) | Linux 内核覆盖计划 |
 
-### 1. [AI-TRAINING-GUIDE.md](AI-TRAINING-GUIDE.md)
-AI 模型训练指南，提供完整的模型训练步骤：
-- 环境准备（云 GPU 租用）
-- 数据准备格式和收集脚本
-- 模型微调（全参数 + QLoRA）
-- 知识蒸馏（6.7B → 1.3B）
-- 模型量化（GGUF）
-- 测试验证
-- 部署集成
+### 快速开始
 
-### 2. [TRAINING-DATA-PLAN.md](TRAINING-DATA-PLAN.md)
-训练数据完整计划，包含：
-- 总体目标（70,000 样本）
-- 训练策略与迭代计划
-- 覆盖范围（5 个 Phase）
-- 数据规模估算
-- 分阶段实施计划
-- 成本预算
-
-## 快速开始
-
-### Step 1: 准备数据
 ```bash
-# 生成训练数据
-python scripts/collect_data.py --output data/train.jsonl
+# 1. 安装依赖
+pip install mlx mlx-lm
+
+# 2. 下载模型
+mlx_lm.convert --hf-path codellama/CodeLlama-7b-hf -q
+
+# 3. 准备数据
+python scripts/training/generate_data.py
+
+# 4. 开始训练
+python scripts/training/train.py
 ```
 
-### Step 2: 训练模型
-```bash
-# 全参数微调（需要 A100 80GB）
-python scripts/train_full.py
+## 可选方案：云端 GPU 训练
 
-# 或 QLoRA 微调（A100 40GB 可用）
-python scripts/train_qlora.py
-```
+使用 A100 等高性能 GPU 进行全量训练。
 
-### Step 3: 知识蒸馏
-```bash
-python scripts/distill.py
-```
+📂 **[cloud-training/](cloud-training/)**
 
-### Step 4: 模型量化
-```bash
-# 转换为 GGUF 格式
-python convert.py ./flowsight-code-1.3b --outtype f16 --outfile flowsight-code-1.3b.gguf
+| 文档 | 说明 |
+|------|------|
+| [AI-TRAINING-GUIDE.md](cloud-training/AI-TRAINING-GUIDE.md) | 云端训练指南 |
+| [TRAINING-DATA-PLAN.md](cloud-training/TRAINING-DATA-PLAN.md) | 训练数据规划 |
 
-# 量化为 INT4
-./quantize flowsight-code-1.3b.gguf flowsight-code-1.3b-q4_k_m.gguf q4_k_m
-```
+## 训练数据
 
-## 训练流程概览
+训练数据生成脚本位于 `scripts/training/`:
 
 ```
-基础模型: DeepSeek-Coder-6.7B
-    │
-    ├── 微调 (A100 80GB, ~20h)
-    │       │
-    │       └──→ FlowSight-Linux-6.7B
-    │               │
-    │               ├── 知识蒸馏 (A100 40GB, ~10h)
-    │               │       │
-    │               │       └──→ FlowSight-Linux-1.3B
-    │               │               │
-    │               │               ├── GGUF 量化 (本地)
-    │               │               │       │
-    │               │               │       └──→ FlowSight-Linux-1.3B.gguf (~0.8GB)
-    │               │               │
-    │               │               └── 嵌入 IDE
-    │               │
-    │               └── 自学习 (用户反馈)
+scripts/training/
+├── generate_data.py   # 生成训练数据
+├── train.py           # 训练脚本
+└── test.py            # 测试脚本
 ```
 
-## 相关文档
+## 模型用途
 
-- [docs/design/TECHNICAL-DESIGN.md](../design/TECHNICAL-DESIGN.md) - 技术架构设计
-- [docs/design/PROJECT-PLAN-V2.md](../design/PROJECT-PLAN-V2.md) - 项目实施计划
-- [docs/architecture/LOCAL-AI-DESIGN.md](../architecture/LOCAL-AI-DESIGN.md) - 本地 AI 设计
-- [docs/architecture/AI-MODEL-SELECTION.md](../architecture/AI-MODEL-SELECTION.md) - AI 模型选择
+训练后的模型用于：
+
+1. **格式化输出** - 将分析结果转为 Mermaid 图、表格
+2. **自然语言解释** - 用中文解释代码功能
+3. **模式建议** - 帮助识别未知的内核模式
+
+**注意**：核心分析不依赖 AI，基于知识库的模式匹配保证 100% 准确。

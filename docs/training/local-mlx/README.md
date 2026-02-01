@@ -21,6 +21,7 @@
 | [TUTORIAL.md](TUTORIAL.md) | **🎓 手把手教程**（新手必看） |
 | [MLX-LORA-TRAINING-PLAN.md](MLX-LORA-TRAINING-PLAN.md) | 完整训练计划（技术参考） |
 | [QUICK-START.md](QUICK-START.md) | 快速开始指南（命令速查） |
+| [KERNEL-COVERAGE-PLAN.md](KERNEL-COVERAGE-PLAN.md) | Linux 内核全覆盖计划（知识库扩展） |
 
 ## 为什么选择 MLX？
 
