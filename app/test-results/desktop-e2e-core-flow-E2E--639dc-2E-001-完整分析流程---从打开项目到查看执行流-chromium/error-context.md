@@ -1,0 +1,84 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - link "跳转到主内容" [ref=e3] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - img [ref=e9]
+          - generic [ref=e11]: FlowSight
+        - menubar [ref=e12]:
+          - menuitem "文件" [ref=e13] [cursor=pointer]
+          - menuitem "视图" [ref=e14] [cursor=pointer]
+          - menuitem "命令" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]:
+        - 'button "当前主题: 深色，点击切换主题" [ref=e18]':
+          - generic [ref=e20]: 深色
+          - img [ref=e21]
+        - button "搜索 ⌘ K" [ref=e23]:
+          - img
+          - generic [ref=e24]: 搜索
+          - generic:
+            - generic: ⌘
+            - text: K
+        - button "切换终端面板" [ref=e25]:
+          - img
+        - button "设置" [ref=e26]:
+          - img
+        - generic [ref=e27]:
+          - button "关闭窗口" [ref=e28]:
+            - img
+          - button "最大化窗口" [ref=e29]:
+            - img
+    - generic [ref=e30]:
+      - complementary [ref=e31]:
+        - generic [ref=e32]:
+          - img [ref=e35]
+          - navigation [ref=e38]:
+            - button "项目" [ref=e41]:
+              - img
+            - button "文件" [ref=e45]:
+              - img
+            - button "大纲" [ref=e49]:
+              - img
+            - button "执行流" [ref=e52]:
+              - img
+            - button "搜索" [ref=e55]:
+              - img
+            - button "命令" [ref=e58]:
+              - img
+          - navigation [ref=e59]:
+            - button "设置" [ref=e62]:
+              - img
+      - generic [ref=e66]:
+        - generic [ref=e68]: 资源管理器
+        - generic [ref=e70]:
+          - img [ref=e71]
+          - paragraph [ref=e73]: 打开一个项目开始浏览
+          - button "打开项目" [active] [ref=e74]:
+            - img [ref=e75]
+            - text: 打开项目
+      - main [ref=e79]:
+        - generic [ref=e83]:
+          - img [ref=e85]
+          - heading "代码编辑器" [level=3] [ref=e90]
+          - paragraph [ref=e91]: 选择一个文件开始编辑
+        - generic [ref=e98]:
+          - paragraph [ref=e100]: FlowSight 终端就绪。打开项目开始分析。
+          - generic [ref=e102]: $
+    - contentinfo [ref=e104]:
+      - generic [ref=e105]:
+        - button "终端" [ref=e106]:
+          - img [ref=e107]
+          - generic [ref=e109]: 终端
+        - button "问题" [ref=e110]:
+          - img [ref=e111]
+          - generic [ref=e113]: 问题
+        - button "输出" [ref=e114]:
+          - img [ref=e115]
+          - generic [ref=e117]: 输出
+      - generic [ref=e119]: 打开项目开始
+```
