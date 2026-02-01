@@ -151,11 +151,20 @@ flowsight/
 > - 每完成一个功能或修复，必须 `git commit` + `git push`
 > - 不允许累积超过 5 个未推送的提交
 > - 每次会话结束前必须推送所有提交
-> - 首次提交前配置用户信息（避免警告）:
->   ```bash
->   git config user.name "FlowSight"
->   git config user.email "flowsight@example.com"
->   ```
+> - **隐私保护（必须！）**:
+>   - **禁止**在 commit 中暴露真实邮箱地址
+>   - **禁止**使用 `@xxxxx.local` 等自动生成的邮箱
+>   - 首次提交前**必须**配置匿名用户信息:
+>     ```bash
+>     git config user.name "FlowSight"
+>     git config user.email ""
+>     ```
+>   - DeskPilot 仓库使用:
+>     ```bash
+>     git config user.name "DeskPilot"
+>     git config user.email ""
+>     ```
+>   - 如果发现已提交包含邮箱，立即用 `git filter-branch` 清除并 force push
 
 ### 快速开始
 
