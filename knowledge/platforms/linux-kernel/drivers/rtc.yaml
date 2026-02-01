@@ -1,0 +1,169 @@
+# RTC Driver Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/rtc.html
+
+rtc_device:
+  description: "Real Time Clock Driver"
+  header: "linux/rtc.h"
+  icon: "🕐"
+
+  registration:
+    - pattern: 'rtc_device_register\s*\(\s*(?P<name>[^,]+)\s*,\s*[^,]+,\s*&(?P<ops>\w+)\s*,\s*[^)]+\s*\)'
+      description: "注册 RTC 设备 (旧 API)"
+    - pattern: 'devm_rtc_device_register\s*\([^,]+,\s*(?P<name>[^,]+)\s*,\s*&(?P<ops>\w+)\s*,\s*[^)]+\s*\)'
+      description: "注册 RTC 设备 (资源管理)"
+    - pattern: 'devm_rtc_allocate_device\s*\([^)]+\)'
+      description: "分配 RTC 设备"
+    - pattern: 'devm_rtc_register_device\s*\([^)]+\)'
+      description: "注册已分配的 RTC 设备"
+    - pattern: 'rtc_device_unregister\s*\([^)]+\)'
+      description: "注销 RTC 设备"
+
+  structure:
+    - pattern: 'static const struct rtc_class_ops\s+(?P<name>\w+)\s*=\s*\{'
+      description: "RTC 操作结构体"
+
+  callbacks:
+    read_time:
+      pattern: '\.read_time\s*=\s*(?P<handler>\w+)'
+      description: "读取当前时间"
+      signature: "int (*)(struct device *, struct rtc_time *)"
+      context: "process"
+      can_sleep: true
+
+    set_time:
+      pattern: '\.set_time\s*=\s*(?P<handler>\w+)'
+      description: "设置当前时间"
+      signature: "int (*)(struct device *, struct rtc_time *)"
+      context: "process"
+      can_sleep: true
+
+    read_alarm:
+      pattern: '\.read_alarm\s*=\s*(?P<handler>\w+)'
+      description: "读取闹钟设置"
+      signature: "int (*)(struct device *, struct rtc_wkalrm *)"
+
+    set_alarm:
+      pattern: '\.set_alarm\s*=\s*(?P<handler>\w+)'
+      description: "设置闹钟"
+      signature: "int (*)(struct device *, struct rtc_wkalrm *)"
+
+    alarm_irq_enable:
+      pattern: '\.alarm_irq_enable\s*=\s*(?P<handler>\w+)'
+      description: "启用/禁用闹钟中断"
+      signature: "int (*)(struct device *, unsigned int)"
+
+    read_offset:
+      pattern: '\.read_offset\s*=\s*(?P<handler>\w+)'
+      description: "读取时钟偏移"
+      signature: "int (*)(struct device *, long *)"
+
+    set_offset:
+      pattern: '\.set_offset\s*=\s*(?P<handler>\w+)'
+      description: "设置时钟偏移"
+      signature: "int (*)(struct device *, long)"
+
+
+rtc_interrupt:
+  description: "RTC Interrupt Handling"
+  header: "linux/rtc.h"
+
+  notification:
+    - pattern: 'rtc_update_irq\s*\([^,]+,\s*(?P<num>\d+)\s*,\s*(?P<events>[^)]+)\s*\)'
+      description: "通知 RTC 事件"
+
+  events:
+    - "RTC_IRQF - 中断标志"
+    - "RTC_PF - 周期中断"
+    - "RTC_AF - 闹钟中断"
+    - "RTC_UF - 更新中断"
+
+
+rtc_helpers:
+  description: "RTC Helper Functions"
+  header: "linux/rtc.h"
+
+  conversion:
+    - pattern: 'rtc_tm_to_time64\s*\([^)]+\)'
+      description: "rtc_time 转 time64_t"
+    - pattern: 'rtc_time64_to_tm\s*\([^)]+\)'
+      description: "time64_t 转 rtc_time"
+    - pattern: 'rtc_valid_tm\s*\([^)]+\)'
+      description: "验证 rtc_time 是否有效"
+    - pattern: 'rtc_tm_to_ktime\s*\([^)]+\)'
+      description: "rtc_time 转 ktime_t"
+
+
+examples:
+  - description: "RTC 驱动示例"
+    code: |
+      static int my_rtc_read_time(struct device *dev, struct rtc_time *tm)
+      {
+          struct my_rtc *priv = dev_get_drvdata(dev);
+          u32 sec, min, hour, day, mon, year;
+
+          sec = readl(priv->base + RTC_SEC);
+          min = readl(priv->base + RTC_MIN);
+          hour = readl(priv->base + RTC_HOUR);
+          day = readl(priv->base + RTC_DAY);
+          mon = readl(priv->base + RTC_MON);
+          year = readl(priv->base + RTC_YEAR);
+
+          tm->tm_sec = bcd2bin(sec);
+          tm->tm_min = bcd2bin(min);
+          tm->tm_hour = bcd2bin(hour);
+          tm->tm_mday = bcd2bin(day);
+          tm->tm_mon = bcd2bin(mon) - 1;
+          tm->tm_year = bcd2bin(year) + 100;
+
+          return 0;
+      }
+
+      static int my_rtc_set_time(struct device *dev, struct rtc_time *tm)
+      {
+          struct my_rtc *priv = dev_get_drvdata(dev);
+
+          writel(bin2bcd(tm->tm_sec), priv->base + RTC_SEC);
+          writel(bin2bcd(tm->tm_min), priv->base + RTC_MIN);
+          writel(bin2bcd(tm->tm_hour), priv->base + RTC_HOUR);
+          writel(bin2bcd(tm->tm_mday), priv->base + RTC_DAY);
+          writel(bin2bcd(tm->tm_mon + 1), priv->base + RTC_MON);
+          writel(bin2bcd(tm->tm_year - 100), priv->base + RTC_YEAR);
+
+          return 0;
+      }
+
+      static int my_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
+      {
+          struct my_rtc *priv = dev_get_drvdata(dev);
+          struct rtc_time *tm = &alrm->time;
+
+          writel(bin2bcd(tm->tm_sec), priv->base + RTC_ALM_SEC);
+          writel(bin2bcd(tm->tm_min), priv->base + RTC_ALM_MIN);
+          writel(bin2bcd(tm->tm_hour), priv->base + RTC_ALM_HOUR);
+
+          if (alrm->enabled)
+              writel(ALM_EN, priv->base + RTC_CTRL);
+
+          return 0;
+      }
+
+      static irqreturn_t my_rtc_irq(int irq, void *dev_id)
+      {
+          struct my_rtc *priv = dev_id;
+          u32 status = readl(priv->base + RTC_STATUS);
+
+          if (status & ALM_INT) {
+              rtc_update_irq(priv->rtc, 1, RTC_IRQF | RTC_AF);
+              writel(ALM_INT, priv->base + RTC_STATUS);
+          }
+
+          return IRQ_HANDLED;
+      }
+
+      static const struct rtc_class_ops my_rtc_ops = {
+          .read_time = my_rtc_read_time,
+          .set_time = my_rtc_set_time,
+          .read_alarm = my_rtc_read_alarm,
+          .set_alarm = my_rtc_set_alarm,
+          .alarm_irq_enable = my_rtc_alarm_irq_enable,
+      };

@@ -1,0 +1,372 @@
+# TTY/Serial Driver Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/serial/
+
+# ============================================================
+# UART DRIVER
+# ============================================================
+
+uart_driver:
+  description: "UART/Serial Port Driver Framework"
+  header: "linux/serial_core.h"
+  icon: "📟"
+
+  registration:
+    - pattern: 'uart_register_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注册 UART 驱动"
+    - pattern: 'uart_unregister_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注销 UART 驱动"
+    - pattern: 'uart_add_one_port\s*\(\s*&(?P<driver>\w+)\s*,\s*&(?P<port>\w+)\s*\)'
+      description: "添加 UART 端口"
+    - pattern: 'uart_remove_one_port\s*\(\s*&(?P<driver>\w+)\s*,\s*&(?P<port>\w+)\s*\)'
+      description: "移除 UART 端口"
+
+  driver_structure:
+    - pattern: 'static struct uart_driver\s+(?P<name>\w+)\s*=\s*\{'
+      description: "UART 驱动结构体"
+
+  port_structure:
+    - pattern: 'static struct uart_port\s+(?P<name>\w+)\s*'
+      description: "UART 端口结构体"
+
+
+# ============================================================
+# UART PORT OPERATIONS
+# ============================================================
+
+uart_ops:
+  description: "UART Port Operations"
+  header: "linux/serial_core.h"
+
+  structure:
+    - pattern: 'static const struct uart_ops\s+(?P<name>\w+)\s*=\s*\{'
+      description: "UART 操作结构体"
+
+  callbacks:
+    tx_empty:
+      pattern: '\.tx_empty\s*=\s*(?P<handler>\w+)'
+      description: "检查发送缓冲区是否为空"
+      signature: "unsigned int (*)(struct uart_port *)"
+      context: "atomic"
+
+    set_mctrl:
+      pattern: '\.set_mctrl\s*=\s*(?P<handler>\w+)'
+      description: "设置调制解调器控制信号"
+      signature: "void (*)(struct uart_port *, unsigned int)"
+
+    get_mctrl:
+      pattern: '\.get_mctrl\s*=\s*(?P<handler>\w+)'
+      description: "获取调制解调器控制信号"
+      signature: "unsigned int (*)(struct uart_port *)"
+
+    stop_tx:
+      pattern: '\.stop_tx\s*=\s*(?P<handler>\w+)'
+      description: "停止发送"
+      signature: "void (*)(struct uart_port *)"
+      context: "atomic"
+
+    start_tx:
+      pattern: '\.start_tx\s*=\s*(?P<handler>\w+)'
+      description: "开始发送"
+      signature: "void (*)(struct uart_port *)"
+      context: "atomic"
+
+    stop_rx:
+      pattern: '\.stop_rx\s*=\s*(?P<handler>\w+)'
+      description: "停止接收"
+      signature: "void (*)(struct uart_port *)"
+
+    enable_ms:
+      pattern: '\.enable_ms\s*=\s*(?P<handler>\w+)'
+      description: "启用调制解调器状态中断"
+      signature: "void (*)(struct uart_port *)"
+
+    break_ctl:
+      pattern: '\.break_ctl\s*=\s*(?P<handler>\w+)'
+      description: "控制 break 信号"
+      signature: "void (*)(struct uart_port *, int)"
+
+    startup:
+      pattern: '\.startup\s*=\s*(?P<handler>\w+)'
+      description: "启动端口 (打开时调用)"
+      signature: "int (*)(struct uart_port *)"
+      context: "process"
+      can_sleep: true
+
+    shutdown:
+      pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
+      description: "关闭端口 (关闭时调用)"
+      signature: "void (*)(struct uart_port *)"
+      context: "process"
+      can_sleep: true
+
+    set_termios:
+      pattern: '\.set_termios\s*=\s*(?P<handler>\w+)'
+      description: "设置终端属性"
+      signature: "void (*)(struct uart_port *, struct ktermios *, struct ktermios *)"
+
+    type:
+      pattern: '\.type\s*=\s*(?P<handler>\w+)'
+      description: "返回端口类型字符串"
+      signature: "const char *(*)(struct uart_port *)"
+
+    release_port:
+      pattern: '\.release_port\s*=\s*(?P<handler>\w+)'
+      description: "释放端口资源"
+      signature: "void (*)(struct uart_port *)"
+
+    request_port:
+      pattern: '\.request_port\s*=\s*(?P<handler>\w+)'
+      description: "请求端口资源"
+      signature: "int (*)(struct uart_port *)"
+
+    config_port:
+      pattern: '\.config_port\s*=\s*(?P<handler>\w+)'
+      description: "配置端口"
+      signature: "void (*)(struct uart_port *, int)"
+
+    verify_port:
+      pattern: '\.verify_port\s*=\s*(?P<handler>\w+)'
+      description: "验证端口配置"
+      signature: "int (*)(struct uart_port *, struct serial_struct *)"
+
+
+# ============================================================
+# UART INTERRUPT HANDLING
+# ============================================================
+
+uart_interrupt:
+  description: "UART Interrupt Handling"
+  header: "linux/serial_core.h"
+
+  rx_handling:
+    - pattern: 'uart_insert_char\s*\([^)]+\)'
+      description: "插入接收字符到缓冲区"
+    - pattern: 'tty_insert_flip_char\s*\([^)]+\)'
+      description: "插入字符到 flip 缓冲区"
+    - pattern: 'tty_flip_buffer_push\s*\([^)]+\)'
+      description: "推送 flip 缓冲区到 TTY 层"
+
+  tx_handling:
+    - pattern: 'uart_circ_empty\s*\([^)]+\)'
+      description: "检查发送循环缓冲区是否为空"
+    - pattern: 'uart_circ_chars_pending\s*\([^)]+\)'
+      description: "获取待发送字符数"
+    - pattern: 'uart_write_wakeup\s*\([^)]+\)'
+      description: "唤醒等待发送的进程"
+
+  status:
+    - pattern: 'uart_handle_cts_change\s*\([^)]+\)'
+      description: "处理 CTS 变化"
+    - pattern: 'uart_handle_dcd_change\s*\([^)]+\)'
+      description: "处理 DCD 变化"
+
+
+# ============================================================
+# TTY DRIVER
+# ============================================================
+
+tty_driver:
+  description: "TTY Driver Framework"
+  header: "linux/tty_driver.h"
+  icon: "⌨️"
+
+  registration:
+    - pattern: 'tty_register_driver\s*\(\s*(?P<driver>[^)]+)\s*\)'
+      description: "注册 TTY 驱动"
+    - pattern: 'tty_unregister_driver\s*\(\s*(?P<driver>[^)]+)\s*\)'
+      description: "注销 TTY 驱动"
+    - pattern: 'alloc_tty_driver\s*\(\s*(?P<lines>\d+)\s*\)'
+      description: "分配 TTY 驱动"
+
+  structure:
+    - pattern: 'static struct tty_operations\s+(?P<name>\w+)\s*=\s*\{'
+      description: "TTY 操作结构体"
+
+  callbacks:
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      description: "打开 TTY 设备"
+      signature: "int (*)(struct tty_struct *, struct file *)"
+      context: "process"
+
+    close:
+      pattern: '\.close\s*=\s*(?P<handler>\w+)'
+      description: "关闭 TTY 设备"
+      signature: "void (*)(struct tty_struct *, struct file *)"
+      context: "process"
+
+    write:
+      pattern: '\.write\s*=\s*(?P<handler>\w+)'
+      description: "写入数据"
+      signature: "int (*)(struct tty_struct *, const unsigned char *, int)"
+
+    write_room:
+      pattern: '\.write_room\s*=\s*(?P<handler>\w+)'
+      description: "返回可写入字节数"
+      signature: "int (*)(struct tty_struct *)"
+
+    chars_in_buffer:
+      pattern: '\.chars_in_buffer\s*=\s*(?P<handler>\w+)'
+      description: "返回缓冲区中字符数"
+      signature: "int (*)(struct tty_struct *)"
+
+    ioctl:
+      pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
+      description: "I/O 控制"
+      signature: "int (*)(struct tty_struct *, unsigned int, unsigned long)"
+
+    set_termios:
+      pattern: '\.set_termios\s*=\s*(?P<handler>\w+)'
+      description: "设置终端属性"
+      signature: "void (*)(struct tty_struct *, struct ktermios *)"
+
+    throttle:
+      pattern: '\.throttle\s*=\s*(?P<handler>\w+)'
+      description: "节流 (停止发送数据到 TTY)"
+      signature: "void (*)(struct tty_struct *)"
+
+    unthrottle:
+      pattern: '\.unthrottle\s*=\s*(?P<handler>\w+)'
+      description: "解除节流"
+      signature: "void (*)(struct tty_struct *)"
+
+    hangup:
+      pattern: '\.hangup\s*=\s*(?P<handler>\w+)'
+      description: "挂断"
+      signature: "void (*)(struct tty_struct *)"
+
+
+# ============================================================
+# TTY PORT
+# ============================================================
+
+tty_port:
+  description: "TTY Port Helper"
+  header: "linux/tty_port.h"
+
+  operations:
+    - pattern: 'tty_port_init\s*\([^)]+\)'
+      description: "初始化 TTY 端口"
+    - pattern: 'tty_port_destroy\s*\([^)]+\)'
+      description: "销毁 TTY 端口"
+    - pattern: 'tty_port_register_device\s*\([^)]+\)'
+      description: "注册端口设备"
+    - pattern: 'tty_port_open\s*\([^)]+\)'
+      description: "打开端口"
+    - pattern: 'tty_port_close\s*\([^)]+\)'
+      description: "关闭端口"
+    - pattern: 'tty_port_hangup\s*\([^)]+\)'
+      description: "端口挂断"
+
+  port_ops:
+    - pattern: 'static const struct tty_port_operations\s+(?P<name>\w+)\s*=\s*\{'
+      description: "TTY 端口操作结构体"
+
+  callbacks:
+    carrier_raised:
+      pattern: '\.carrier_raised\s*=\s*(?P<handler>\w+)'
+      description: "检查载波是否存在"
+
+    dtr_rts:
+      pattern: '\.dtr_rts\s*=\s*(?P<handler>\w+)'
+      description: "设置 DTR/RTS"
+
+    shutdown:
+      pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
+      description: "关闭硬件"
+
+    activate:
+      pattern: '\.activate\s*=\s*(?P<handler>\w+)'
+      description: "激活硬件"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单 UART 驱动"
+    code: |
+      static unsigned int my_tx_empty(struct uart_port *port)
+      {
+          struct my_uart *priv = port->private_data;
+          return (readl(priv->base + SR) & TX_EMPTY) ? TIOCSER_TEMT : 0;
+      }
+
+      static void my_start_tx(struct uart_port *port)
+      {
+          struct my_uart *priv = port->private_data;
+          writel(TX_IRQ_EN, priv->base + IER);
+      }
+
+      static void my_stop_tx(struct uart_port *port)
+      {
+          struct my_uart *priv = port->private_data;
+          writel(0, priv->base + IER);
+      }
+
+      static int my_startup(struct uart_port *port)
+      {
+          struct my_uart *priv = port->private_data;
+          int ret;
+
+          ret = request_irq(port->irq, my_irq_handler,
+                           0, "my_uart", port);
+          if (ret)
+              return ret;
+
+          /* 启用 UART */
+          writel(UART_EN, priv->base + CR);
+          return 0;
+      }
+
+      static void my_shutdown(struct uart_port *port)
+      {
+          struct my_uart *priv = port->private_data;
+
+          /* 禁用 UART */
+          writel(0, priv->base + CR);
+          free_irq(port->irq, port);
+      }
+
+      static irqreturn_t my_irq_handler(int irq, void *dev_id)
+      {
+          struct uart_port *port = dev_id;
+          struct my_uart *priv = port->private_data;
+          unsigned int status = readl(priv->base + SR);
+
+          if (status & RX_READY) {
+              /* 接收数据 */
+              unsigned char ch = readl(priv->base + RDR);
+              uart_insert_char(port, status, 0, ch, TTY_NORMAL);
+              tty_flip_buffer_push(&port->state->port);
+          }
+
+          if (status & TX_EMPTY) {
+              /* 发送数据 */
+              struct circ_buf *xmit = &port->state->xmit;
+              if (uart_circ_empty(xmit)) {
+                  my_stop_tx(port);
+              } else {
+                  writel(xmit->buf[xmit->tail], priv->base + TDR);
+                  xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+                  port->icount.tx++;
+              }
+          }
+
+          return IRQ_HANDLED;
+      }
+
+      static const struct uart_ops my_uart_ops = {
+          .tx_empty = my_tx_empty,
+          .set_mctrl = my_set_mctrl,
+          .get_mctrl = my_get_mctrl,
+          .stop_tx = my_stop_tx,
+          .start_tx = my_start_tx,
+          .stop_rx = my_stop_rx,
+          .startup = my_startup,
+          .shutdown = my_shutdown,
+          .set_termios = my_set_termios,
+          .type = my_type,
+          .config_port = my_config_port,
+      };
