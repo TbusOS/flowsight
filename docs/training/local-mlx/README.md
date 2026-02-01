@@ -18,8 +18,9 @@
 
 | 文档 | 说明 |
 |------|------|
-| [MLX-LORA-TRAINING-PLAN.md](MLX-LORA-TRAINING-PLAN.md) | **完整训练计划**（推荐先读） |
-| [QUICK-START.md](QUICK-START.md) | 快速开始指南 |
+| [TUTORIAL.md](TUTORIAL.md) | **🎓 手把手教程**（新手必看） |
+| [MLX-LORA-TRAINING-PLAN.md](MLX-LORA-TRAINING-PLAN.md) | 完整训练计划（技术参考） |
+| [QUICK-START.md](QUICK-START.md) | 快速开始指南（命令速查） |
 
 ## 为什么选择 MLX？
 

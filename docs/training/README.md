@@ -4,6 +4,22 @@
 
 ## 文档列表
 
+### 🆕 本地训练方案（推荐）
+
+#### [local-mlx/](local-mlx/) - MacBook M 系列本地训练
+在 Apple Silicon Mac 上使用 MLX 框架训练，无需云 GPU：
+- [快速开始](local-mlx/QUICK-START.md) - 10 分钟上手
+- [完整计划](local-mlx/MLX-LORA-TRAINING-PLAN.md) - 详细训练方案
+
+| 方案 | 硬件要求 | 训练时间 | 成本 |
+|------|----------|----------|------|
+| **本地 MLX** | MacBook M3 24GB | 2-8 小时 | 免费 |
+| 云端 GPU | A100 40-80GB | 15-30 小时 | ¥200-500 |
+
+---
+
+### 云端训练方案
+
 ### 1. [AI-TRAINING-GUIDE.md](AI-TRAINING-GUIDE.md)
 AI 模型训练指南，提供完整的模型训练步骤：
 - 环境准备（云 GPU 租用）

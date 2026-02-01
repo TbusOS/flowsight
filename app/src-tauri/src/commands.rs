@@ -1992,6 +1992,10 @@ pub async fn generate_llvm_ir(file_path: String) -> Result<LlvmIrResult, String>
     
     // Compile to LLVM IR
     // Use -emit-llvm -S to get text IR (.ll file)
+    // Note: Full kernel compilation requires kconfig, generated headers, etc.
+    // We use minimal flags to extract function structure without full compilation.
+    let kernel_base = "/Users/sky/linux-kernel/linux";
+    
     let output = Command::new(clang)
         .args([
             "-emit-llvm",
@@ -2000,10 +2004,21 @@ pub async fn generate_llvm_ir(file_path: String) -> Result<LlvmIrResult, String>
             "-g",           // Debug info for source locations
             "-fno-discard-value-names",  // Preserve variable names
             "-Wno-everything",  // Suppress warnings for kernel code
-            "-I", "/Users/sky/linux-kernel/linux/include",  // Add kernel includes
-            "-I", "/Users/sky/linux-kernel/linux/arch/arm/include",
+            "-nostdinc",    // Don't use standard includes
+            "-isystem", "/opt/homebrew/opt/llvm/lib/clang/19/include",  // Clang builtins only
+            // Kernel include paths (order matters!)
+            "-I", &format!("{}/arch/x86/include", kernel_base),
+            "-I", &format!("{}/arch/x86/include/generated", kernel_base),
+            "-I", &format!("{}/include", kernel_base),
+            "-I", &format!("{}/arch/x86/include/uapi", kernel_base),
+            "-I", &format!("{}/include/uapi", kernel_base),
+            "-I", &format!("{}/include/generated/uapi", kernel_base),
+            // Kernel defines
             "-D", "__KERNEL__",
             "-D", "MODULE",
+            "-D", "CONFIG_X86_64",
+            "-D", "__x86_64__",
+            // Output
             "-o", ir_file.to_str().unwrap(),
             file_path.as_str(),
         ])
