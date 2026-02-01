@@ -423,4 +423,73 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     const { executionFlow } = get()
     return executionFlow?.async_boundaries || []
   },
+  
+  // ========================================================================
+  // Flow Formatting API (AI-assisted)
+  // ========================================================================
+  
+  // 格式化执行流
+  formatExecutionFlow: async (path: string, entryFunction: string, format: 'mermaid' | 'markdown' | 'ascii' | 'json') => {
+    try {
+      const result = await invoke<{
+        format: string
+        content: string
+        entry_function: string
+        summary: string
+      }>('format_execution_flow', {
+        filePath: path,
+        entryFunction,
+        options: {
+          format,
+          include_kernel_internal: true,
+          max_depth: 10,
+        },
+      })
+      return result
+    } catch (e) {
+      console.error('格式化执行流失败:', e)
+      return null
+    }
+  },
+  
+  // 获取执行流展示数据
+  getFlowDisplayData: async (path: string, entryFunction: string) => {
+    try {
+      const result = await invoke<{
+        entry_function: string
+        summary: string
+        mermaid_diagram: string
+        nodes: Array<{
+          id: string
+          name: string
+          display_name: string
+          node_type: string
+          context: string | null
+          can_sleep: boolean | null
+          description: string | null
+          depth: number
+          children_count: number
+        }>
+        async_patterns: Array<{
+          mechanism: string
+          trigger: string
+          handler: string
+          description: string
+        }>
+        stats: {
+          total_nodes: number
+          direct_calls: number
+          indirect_calls: number
+          async_calls: number
+        }
+      }>('get_flow_display_data', {
+        filePath: path,
+        entryFunction,
+      })
+      return result
+    } catch (e) {
+      console.error('获取执行流展示数据失败:', e)
+      return null
+    }
+  },
 }))

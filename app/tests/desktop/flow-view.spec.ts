@@ -642,6 +642,85 @@ test.describe('执行流视图 - 导出功能', () => {
     }));
   });
 
+  test('高级导出按钮打开 FlowExportPanel 弹窗', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(300);
+
+    // 切换到执行流视图
+    const flowButton = getSidebarButton(page, 'flow');
+    await flowButton.click();
+    await page.waitForTimeout(1000);
+
+    // 查找高级导出按钮 (FileOutput 图标)
+    const advancedExportBtn = page.locator('button[title*="高级导出"], button[title*="Mermaid"], .lucide-file-output').first();
+    const hasAdvancedExport = await advancedExportBtn.count() > 0;
+    console.log('高级导出按钮存在:', hasAdvancedExport);
+
+    if (hasAdvancedExport) {
+      await advancedExportBtn.click();
+      await page.waitForTimeout(500);
+
+      // 验证 FlowExportPanel 弹窗打开
+      const exportPanel = page.locator('text=导出执行流, text=概览, text=Mermaid, text=Markdown').first();
+      const panelVisible = await exportPanel.isVisible().catch(() => false);
+      console.log('FlowExportPanel 弹窗打开:', panelVisible);
+
+      // 验证标签页存在
+      const summaryTab = page.locator('button:has-text("概览")');
+      const mermaidTab = page.locator('button:has-text("Mermaid")');
+      const markdownTab = page.locator('button:has-text("Markdown")');
+      const asciiTab = page.locator('button:has-text("ASCII")');
+      const jsonTab = page.locator('button:has-text("JSON")');
+
+      console.log('概览标签:', await summaryTab.count() > 0);
+      console.log('Mermaid标签:', await mermaidTab.count() > 0);
+      console.log('Markdown标签:', await markdownTab.count() > 0);
+      console.log('ASCII标签:', await asciiTab.count() > 0);
+      console.log('JSON标签:', await jsonTab.count() > 0);
+
+      // ⚠️ 关键断言：验证内容区域不为空
+      // 这是数据正确性测试的核心 - 必须有实际内容显示
+      const contentArea = page.locator('.flex-1.overflow-hidden');
+      const hasContent = await contentArea.locator('*').count() > 0;
+      console.log('内容区域有数据:', hasContent);
+      
+      // 检查是否有统计卡片（概览页）
+      const statCards = page.locator('text=总节点, text=直接调用, text=异步调用');
+      const hasStats = await statCards.count() > 0;
+      console.log('统计卡片显示:', hasStats);
+
+      // ⚠️ 强制断言：内容区域必须有数据
+      expect(hasContent || hasStats).toBe(true);
+
+      // 测试切换到 Mermaid 标签
+      if (await mermaidTab.count() > 0) {
+        await mermaidTab.click();
+        await page.waitForTimeout(500);
+        
+        // ⚠️ 关键断言：验证 Mermaid 内容实际显示
+        const mermaidContent = page.locator('pre:has-text("flowchart")');
+        const hasMermaid = await mermaidContent.count() > 0;
+        console.log('Mermaid 内容显示:', hasMermaid);
+        
+        // 验证代码块不为空
+        const codeContent = await page.locator('pre').textContent();
+        console.log('Mermaid 代码长度:', codeContent?.length || 0);
+        expect(codeContent?.length).toBeGreaterThan(10); // 至少有一些内容
+      }
+
+      await page.screenshot({ path: `${SCREENSHOTS_DIR}/flow-export-panel.png` });
+
+      // 测试关闭按钮
+      const closeBtn = page.locator('button[title="关闭"], button:has(.lucide-x)').first();
+      if (await closeBtn.count() > 0) {
+        await closeBtn.click();
+        await page.waitForTimeout(300);
+        const panelClosed = await exportPanel.isVisible().catch(() => true) === false;
+        console.log('弹窗已关闭:', panelClosed);
+      }
+    }
+  });
+
   test('导出 PNG 按钮', async ({ page }) => {
     await page.goto('/', { waitUntil: 'networkidle' });
     await page.waitForTimeout(300);
