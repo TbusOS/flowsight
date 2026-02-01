@@ -244,11 +244,38 @@ export function MainLayout({ children }: MainLayoutProps) {
         setRightPanelOpen(true)
         setRightPanelTab("detail")
       }
+      // Cmd+` - Toggle terminal (alternative)
+      if ((e.metaKey || e.ctrlKey) && e.key === "`") {
+        e.preventDefault()
+        setBottomPanelOpen(prev => !prev)
+        if (!bottomPanelOpen) {
+          setBottomPanelTab("terminal")
+        }
+      }
+      // Cmd+W - Close current file
+      if ((e.metaKey || e.ctrlKey) && e.key === "w" && !e.shiftKey) {
+        e.preventDefault()
+        if (currentFile) {
+          setCurrentFile(null)
+        }
+      }
+      // Cmd+Shift+F - Open search panel
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "f") {
+        e.preventDefault()
+        setLeftPanelOpen(true)
+        // Focus search input
+      }
+      // Escape - Close panels/dialogs
+      if (e.key === "Escape") {
+        if (commandMenuOpen) {
+          setCommandMenuOpen(false)
+        }
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [setSidebarOpen, setLeftPanelOpen, setRightPanelOpen, setBottomPanelOpen, setCommandMenuOpen, setViewMode, setRightPanelTab])
+  }, [setSidebarOpen, setLeftPanelOpen, setRightPanelOpen, setBottomPanelOpen, setBottomPanelTab, bottomPanelOpen, setCommandMenuOpen, commandMenuOpen, setViewMode, setRightPanelTab, currentFile, setCurrentFile])
 
   // Render right panel based on tab
   const renderRightPanel = () => {
