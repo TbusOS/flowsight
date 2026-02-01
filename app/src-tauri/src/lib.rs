@@ -3,9 +3,9 @@
 mod commands;
 
 pub use commands::{
-    AnalysisResult, AsyncBindingInfo, EntryPointInfo, FileNode, FunctionDetail, FunctionDetailExt,
-    FunctionInfo, FunctionLocation, IndexStats, LocalVarInfo, ParamInfo, ProjectInfo,
-    SearchOptions, SearchResult,
+    AnalysisResult, AsyncBindingInfo, EntryPointInfo, FileNode, FormatOptions, FormattedFlow,
+    FunctionDetail, FunctionDetailExt, FunctionInfo, FunctionLocation, IndexStats, LocalVarInfo,
+    ParamInfo, ProjectInfo, SearchOptions, SearchResult,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -44,6 +44,9 @@ pub fn run() {
             commands::build_execution_flow_tree,
             commands::get_entry_points,
             commands::get_async_bindings,
+            // Flow Formatting Commands (AI-assisted)
+            commands::format_execution_flow,
+            commands::get_flow_display_data,
             // AI Inference Commands
             commands::explain_function,
             commands::get_context_annotation,

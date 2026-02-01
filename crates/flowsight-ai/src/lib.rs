@@ -37,10 +37,12 @@
 pub mod model;
 pub mod translator;
 pub mod explainer;
+pub mod formatter;
 
 pub use model::{LocalModel, ModelMetadata, ModelRepository};
 pub use translator::{ConditionTranslator, TranslationResult};
 pub use explainer::{BusinessExplainer, ExecutionContextAnnotator};
+pub use formatter::{FlowFormatter, DisplayFlowData, DisplayNode, DisplayAsyncPattern, DisplayStats, OutputFormat};
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

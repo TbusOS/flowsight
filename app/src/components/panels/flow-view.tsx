@@ -16,7 +16,7 @@ import {
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { invoke } from "../../lib/tauri-api"
-import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check, Search, Filter, X, GitBranch, AlignLeft, Network } from "lucide-react"
+import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check, Search, Filter, X, GitBranch, AlignLeft, Network, FileOutput } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAtomValue, useSetAtom, useAtom } from "jotai"
 import { 
@@ -28,6 +28,7 @@ import {
   type SelectedNodeDetail 
 } from "../../lib/atoms/layout-atoms"
 import { useAnalysisStore } from "../../store/analysisStore"
+import { FlowExportPanel } from "../FlowExportPanel"
 
 // 自定义节点类型
 interface FunctionNodeData extends Record<string, unknown> {
@@ -222,6 +223,7 @@ export function FlowView({ className }: FlowViewProps) {
 
   // 导出状态
   const [copied, setCopied] = React.useState(false)
+  const [showExportPanel, setShowExportPanel] = React.useState(false)
 
   // 显示模式: graph (流程图), ftrace (ftrace格式), tree (树形)
   const [displayMode, setDisplayMode] = React.useState<"graph" | "ftrace" | "tree">("graph")
@@ -770,6 +772,15 @@ export function FlowView({ className }: FlowViewProps) {
           >
             <Download className="h-3.5 w-3.5" />
           </button>
+          {/* 高级导出按钮 */}
+          <button
+            onClick={() => setShowExportPanel(true)}
+            disabled={nodes.length === 0}
+            className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-50"
+            title="高级导出 (Mermaid/Markdown/JSON)"
+          >
+            <FileOutput className="h-3.5 w-3.5" />
+          </button>
           {/* 刷新按钮 */}
           <button
             onClick={() => selectedFunction && loadExecutionFlow(selectedFunction)}
@@ -931,6 +942,19 @@ export function FlowView({ className }: FlowViewProps) {
           </div>
         )}
       </div>
+
+      {/* 高级导出面板弹窗 */}
+      {showExportPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-[800px] max-w-[90vw] h-[600px] max-h-[80vh] rounded-lg shadow-xl overflow-hidden">
+            <FlowExportPanel
+              filePath={currentFile}
+              entryFunction={selectedFunction}
+              onClose={() => setShowExportPanel(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

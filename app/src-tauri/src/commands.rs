@@ -1,5 +1,6 @@
 //! Tauri Commands
 
+use flowsight_ai;
 use flowsight_analysis::flow_builder::{BuildOptions, FlowBuilder, FunctionInfo as BuilderFunctionInfo};
 use flowsight_analysis::Analyzer;
 use flowsight_core::ExecutionFlow;
@@ -1215,6 +1216,111 @@ pub async fn build_execution_flow_tree(
     flow.analysis_info.source_file = Some(file_path);
     
     Ok(flow)
+}
+
+// ============================================================================
+// 执行流格式化命令 (AI 辅助)
+// ============================================================================
+
+/// 格式化选项
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FormatOptions {
+    /// 输出格式: "mermaid", "markdown", "ascii", "json"
+    pub format: String,
+    /// 是否包含内核内部节点
+    pub include_kernel_internal: Option<bool>,
+    /// 最大显示深度
+    pub max_depth: Option<usize>,
+}
+
+/// 格式化后的执行流数据
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FormattedFlow {
+    /// 格式类型
+    pub format: String,
+    /// 格式化后的内容
+    pub content: String,
+    /// 入口函数
+    pub entry_function: String,
+    /// 摘要
+    pub summary: String,
+}
+
+/// 将执行流格式化为指定格式
+#[tauri::command]
+pub async fn format_execution_flow(
+    file_path: String,
+    entry_function: String,
+    options: FormatOptions,
+) -> Result<FormattedFlow, String> {
+    use flowsight_ai::FlowFormatter;
+    
+    // 先构建执行流
+    let flow = build_execution_flow_tree(file_path, entry_function.clone(), None).await?;
+    
+    // 创建格式化器
+    let mut formatter = FlowFormatter::new();
+    
+    if let Some(include) = options.include_kernel_internal {
+        formatter = formatter.with_kernel_internal(include);
+    }
+    
+    if let Some(depth) = options.max_depth {
+        formatter = formatter.with_max_depth(depth);
+    }
+    
+    // 根据格式生成输出
+    let (content, summary) = match options.format.as_str() {
+        "mermaid" => {
+            let mermaid = formatter.to_mermaid(&flow);
+            let display = formatter.to_display_json(&flow);
+            (mermaid, display.summary)
+        }
+        "markdown" => {
+            let markdown = formatter.to_markdown_table(&flow);
+            let display = formatter.to_display_json(&flow);
+            (markdown, display.summary)
+        }
+        "ascii" => {
+            let ascii = formatter.to_ascii_tree(&flow);
+            let display = formatter.to_display_json(&flow);
+            (ascii, display.summary)
+        }
+        "json" => {
+            let display = formatter.to_display_json(&flow);
+            let json = serde_json::to_string_pretty(&display)
+                .map_err(|e| e.to_string())?;
+            (json, display.summary)
+        }
+        _ => {
+            return Err(format!("Unsupported format: {}", options.format));
+        }
+    };
+    
+    Ok(FormattedFlow {
+        format: options.format,
+        content,
+        entry_function,
+        summary,
+    })
+}
+
+/// 获取执行流的展示数据 (用于前端渲染)
+#[tauri::command]
+pub async fn get_flow_display_data(
+    file_path: String,
+    entry_function: String,
+) -> Result<flowsight_ai::DisplayFlowData, String> {
+    use flowsight_ai::FlowFormatter;
+    
+    // 构建执行流
+    let flow = build_execution_flow_tree(file_path, entry_function, None).await?;
+    
+    // 生成展示数据
+    let formatter = FlowFormatter::new();
+    let display_data = formatter.to_display_json(&flow);
+    
+    Ok(display_data)
 }
 
 /// Get list of entry points (callbacks, module init/exit) for a file
