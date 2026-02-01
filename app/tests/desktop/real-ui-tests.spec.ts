@@ -55,7 +55,7 @@ test.describe('CRITICAL: 核心功能测试', () => {
     // 问题：目前函数需要双击才触发分析，单击无反应
     
     // 1. 确保右侧面板打开（大纲）
-    await page.keyboard.press('Meta+\\\\');
+    await page.keyboard.press('Meta+Backslash');
     await page.waitForTimeout(300);
     
     // 2. 切换到大纲标签
@@ -92,7 +92,7 @@ test.describe('CRITICAL: 核心功能测试', () => {
 
   test('CRITICAL-002: 函数双击必须触发执行流分析', async ({ page }) => {
     // 确保右侧面板打开
-    await page.keyboard.press('Meta+\\\\');
+    await page.keyboard.press('Meta+Backslash');
     await page.waitForTimeout(300);
     
     // 找到函数项
@@ -117,18 +117,20 @@ test.describe('CRITICAL: 核心功能测试', () => {
   test('CRITICAL-003: 终端必须正确显示统计（非零）', async ({ page }) => {
     // 这是那个著名的 "0 个文件" bug 的测试
     
-    // 注意：这个测试需要先打开一个项目
-    // 如果没有项目打开，终端应该显示提示信息而不是错误的统计
+    // 找到底部面板区域 - 包含终端输出
+    const bottomPanel = page.locator('[class*="terminal"], [class*="console"], [class*="output"], [class*="bottom"]').first();
     
-    const terminal = page.locator('[data-testid="terminal"], .terminal-panel, text=/flowsight/');
+    // 等待页面稳定
+    await page.waitForTimeout(1000);
     
-    // 如果终端显示了统计信息
-    const terminalText = await terminal.textContent() || '';
+    // 获取整个页面的文本内容
+    const pageText = await page.textContent('body') || '';
     
-    if (terminalText.includes('发现')) {
+    // 如果页面显示了统计信息
+    if (pageText.includes('发现')) {
       // 不能全是 0
-      const hasAllZeros = /发现\s*0\s*个文件[,，]\s*0\s*个函数[,，]\s*0\s*个/.test(terminalText);
-      expect(hasAllZeros).toBe(false);
+      const hasAllZeros = /发现\s*0\s*个文件[,，]\s*0\s*个函数[,，]\s*0\s*个/.test(pageText);
+      expect(hasAllZeros, '不应该显示全零统计').toBe(false);
     }
     
     // 截图作为证据
@@ -318,7 +320,7 @@ test.describe('交互: 用户操作响应', () => {
       { keys: 'Meta+b', expect: 'sidebar toggles', action: 'toggle' },
       { keys: 'Meta+e', expect: 'file explorer toggles', action: 'toggle' },
       { keys: 'Meta+j', expect: 'bottom panel toggles', action: 'toggle' },
-      { keys: 'Meta+\\\\', expect: 'right panel toggles', action: 'toggle' },
+      { keys: 'Meta+Backslash', expect: 'right panel toggles', action: 'toggle' },
       { keys: 'Meta+1', expect: 'code view', action: 'view' },
       { keys: 'Meta+2', expect: 'flow view', action: 'view' },
     ];
@@ -352,7 +354,7 @@ test.describe('交互: 用户操作响应', () => {
 
   test('交互-002: 右侧大纲面板函数列表可点击', async ({ page }) => {
     // 打开右侧面板
-    await page.keyboard.press('Meta+\\\\');
+    await page.keyboard.press('Meta+Backslash');
     await page.waitForTimeout(500);
     
     // 找到大纲中的函数
@@ -468,7 +470,7 @@ test.describe('回归: 已修复问题不能复现', () => {
     // Bug: LLVM IR 面板只显示占位符文本
     
     // 打开右侧面板
-    await page.keyboard.press('Meta+\\\\');
+    await page.keyboard.press('Meta+Backslash');
     await page.waitForTimeout(300);
     
     // 切换到 IR 标签

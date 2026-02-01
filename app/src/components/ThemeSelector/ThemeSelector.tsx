@@ -41,8 +41,8 @@ export function ThemeSelector() {
         aria-haspopup="listbox"
         data-testid="theme-toggle"
         className={cn(
-          "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md",
-          "text-xs font-medium text-[var(--text-secondary)]",
+          "flex items-center gap-2 px-3 py-2 rounded-md min-h-[28px]",
+          "text-[13px] font-medium text-[var(--text-secondary)]",
           "hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]",
           "transition-all duration-150"
         )}

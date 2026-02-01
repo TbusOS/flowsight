@@ -146,18 +146,19 @@ export function OutlinePanel({ className, items: propItems }: OutlinePanelProps)
       <div key={itemId}>
         <div
           className={cn(
-            "group flex items-center gap-1.5 px-3 py-1.5 cursor-pointer transition-colors rounded-md mx-2",
-            isSelected && "bg-[var(--bg-tertiary)]",
+            "group flex items-center gap-1.5 px-3 py-2 cursor-pointer transition-colors rounded-md mx-2 min-h-[28px]",
+            isSelected && "bg-[var(--bg-tertiary)] ring-1 ring-[var(--accent)]/30",
             !isSelected && "hover:bg-[var(--bg-hover)]"
           )}
           style={{ paddingLeft: `${8 + depth * 12}px` }}
-          onClick={() => setSelectedItem(itemId)}
-          onDoubleClick={() => {
+          onClick={() => {
+            setSelectedItem(itemId)
+            // 单击函数即触发分析 - 更直观的交互
             if (itemType === "function") {
               handleAnalyzeFunction(item.name)
             }
           }}
-          title={itemType === "function" ? "双击分析执行流" : undefined}
+          title={itemType === "function" ? "点击分析执行流" : undefined}
         >
           {/* Expand/Collapse */}
           <div className="w-4 flex items-center justify-center">

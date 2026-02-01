@@ -74,24 +74,24 @@ export function StatusBar({ className }: StatusBarProps) {
   return (
     <footer
       className={cn(
-        "flex h-6 items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 text-xs text-[var(--text-muted)]",
+        "flex h-7 items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] px-3 text-xs text-[var(--text-muted)]",
         className
       )}
     >
-      {/* Left: Panel Tabs */}
+      {/* Left: Panel Tabs - WCAG 触摸目标至少 24px */}
       <div className="flex items-center gap-1">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             className={cn(
-              "flex items-center gap-1.5 rounded px-2 py-0.5 transition-colors",
+              "flex items-center gap-1.5 rounded px-3 py-1.5 min-h-[24px] transition-colors",
               bottomPanelOpen && bottomPanelTab === tab.id
                 ? "bg-[var(--bg-tertiary)] text-[var(--text-primary)]"
                 : "hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-secondary)]"
             )}
           >
-            <tab.icon className="h-3 w-3" />
-            <span>{tab.label}</span>
+            <tab.icon className="h-3.5 w-3.5" />
+            <span className="text-[12px]">{tab.label}</span>
           </button>
         ))}
       </div>

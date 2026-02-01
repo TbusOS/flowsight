@@ -39,8 +39,9 @@ interface HeaderProps {
 }
 
 // macOS 风格菜单样式 - 更宽敞的行间距和列间距
+// WCAG 要求触摸目标至少 24px 高度
 const menuContentClass = "min-w-[240px] rounded-lg border border-[var(--border-light)] bg-[var(--bg-secondary)]/95 backdrop-blur-xl py-2 shadow-2xl animate-in fade-in-0 zoom-in-95"
-const menuItemClass = "relative flex cursor-pointer select-none items-center rounded-md mx-2 px-4 py-[10px] text-[13px] text-[var(--text-primary)] outline-none hover:bg-[var(--accent)] hover:text-white focus:bg-[var(--accent)] focus:text-white transition-colors"
+const menuItemClass = "relative flex cursor-pointer select-none items-center rounded-md mx-2 px-4 py-3 min-h-[32px] text-[13px] text-[var(--text-primary)] outline-none hover:bg-[var(--accent)] hover:text-white focus:bg-[var(--accent)] focus:text-white transition-colors"
 const menuIconClass = "h-4 w-4 mr-3.5 opacity-70"
 const menuShortcutClass = "ml-auto pl-8 text-[12px] tracking-wide text-[var(--text-muted)] group-hover:text-white/70"
 const menuSeparatorClass = "my-2 mx-3 h-px bg-[var(--border-light)]"
@@ -242,13 +243,13 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 gap-1.5 rounded-md bg-[var(--bg-tertiary)] px-2 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          className="h-8 gap-1.5 rounded-md bg-[var(--bg-tertiary)] px-3 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           onClick={() => setCommandMenuOpen(true)}
         >
-          <Command className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline text-[12px]">搜索</span>
-          <kbd className="pointer-events-none inline-flex h-4 select-none items-center gap-0.5 rounded border border-[var(--border-light)] bg-[var(--bg-secondary)] px-1 font-mono text-[10px] font-medium">
-            <span className="text-[10px]">⌘</span>K
+          <Command className="h-4 w-4" />
+          <span className="hidden sm:inline text-[13px]">搜索</span>
+          <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-0.5 rounded border border-[var(--border-light)] bg-[var(--bg-secondary)] px-1.5 font-mono text-[12px] font-medium">
+            <span className="text-[12px]">⌘</span>K
           </kbd>
         </Button>
 
@@ -257,47 +258,47 @@ export function Header({ className, isMaximized, onToggleMaximize, onClose }: He
           variant="ghost"
           size="icon"
           className={cn(
-            "h-7 w-7 rounded-md",
+            "h-8 w-8 rounded-md",
             bottomPanelOpen && bottomPanelTab === "terminal" && "bg-[var(--accent)]/10 text-[var(--accent)]"
           )}
           onClick={handleToggleTerminal}
           aria-label="切换终端面板"
         >
-          <Terminal className="h-3.5 w-3.5" />
+          <Terminal className="h-4 w-4" />
         </Button>
 
         {/* Settings */}
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 rounded-md"
+          className="h-8 w-8 rounded-md"
           aria-label="设置"
         >
-          <Settings className="h-3.5 w-3.5" />
+          <Settings className="h-4 w-4" />
         </Button>
 
         {/* Window Controls (macOS style) */}
-        <div className="ml-1.5 hidden md:flex items-center gap-1.5">
+        <div className="ml-1.5 hidden md:flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 rounded-full bg-[var(--bg-tertiary)] hover:bg-[var(--bg-hover)]"
+            className="h-7 w-7 rounded-full bg-[var(--bg-tertiary)] hover:bg-[var(--bg-hover)]"
             onClick={onClose}
             aria-label="关闭窗口"
           >
-            <X className="h-3 w-3" />
+            <X className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 rounded-full bg-[var(--bg-tertiary)] hover:bg-[var(--bg-hover)]"
+            className="h-7 w-7 rounded-full bg-[var(--bg-tertiary)] hover:bg-[var(--bg-hover)]"
             onClick={onToggleMaximize}
             aria-label={isMaximized ? "还原窗口" : "最大化窗口"}
           >
             {isMaximized ? (
-              <Minimize2 className="h-3 w-3" />
+              <Minimize2 className="h-3.5 w-3.5" />
             ) : (
-              <Maximize2 className="h-3 w-3" />
+              <Maximize2 className="h-3.5 w-3.5" />
             )}
           </Button>
         </div>
