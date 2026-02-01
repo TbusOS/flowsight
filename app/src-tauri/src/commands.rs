@@ -9,7 +9,7 @@ use flowsight_parser::parallel::ParallelParser;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::RwLock;
 use tauri::Emitter;
 use walkdir::WalkDir;
 
@@ -102,8 +102,8 @@ pub async fn write_file(path: String, content: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Global index state
-static INDEX: Lazy<Mutex<SymbolIndex>> = Lazy::new(|| Mutex::new(SymbolIndex::new()));
+/// Global index state - 使用 RwLock 优化并发读取性能
+static INDEX: Lazy<RwLock<SymbolIndex>> = Lazy::new(|| RwLock::new(SymbolIndex::new()));
 
 /// Project information
 #[derive(Debug, Serialize, Deserialize)]
@@ -166,7 +166,7 @@ pub async fn open_project(path: String, app_handle: tauri::AppHandle) -> Result<
 
     // Clear previous index
     {
-        let mut index = INDEX.lock().map_err(|e| e.to_string())?;
+        let mut index = INDEX.write().map_err(|e| e.to_string())?;
         *index = SymbolIndex::new();
     }
 
@@ -235,7 +235,7 @@ fn index_project_background(project_path: PathBuf, app_handle: tauri::AppHandle)
     }));
 
     // Build index
-    if let Ok(mut index) = INDEX.lock() {
+    if let Ok(mut index) = INDEX.write() {
         for (i, (file, result)) in results.iter().enumerate() {
             if let Ok(parse_result) = result {
                 for (_, func) in &parse_result.functions {
@@ -280,7 +280,7 @@ pub async fn search_symbols(
     query: String,
     options: Option<SearchOptions>,
 ) -> Result<Vec<SearchResult>, String> {
-    let index = INDEX.lock().map_err(|e| e.to_string())?;
+    let index = INDEX.read().map_err(|e| e.to_string())?;
     let query_lower = query.to_lowercase();
     let opts = options.unwrap_or_default();
     
@@ -451,7 +451,7 @@ fn generate_struct_preview(st: &flowsight_core::StructDef) -> String {
 /// Get index statistics
 #[tauri::command]
 pub async fn get_index_stats() -> Result<IndexStats, String> {
-    let index = INDEX.lock().map_err(|e| e.to_string())?;
+    let index = INDEX.read().map_err(|e| e.to_string())?;
     let stats = index.stats();
 
     Ok(IndexStats {
@@ -517,7 +517,7 @@ pub struct FunctionDetailExt {
 /// Get function detail from index
 #[tauri::command]
 pub async fn get_function_detail(name: String) -> Result<Option<FunctionDetail>, String> {
-    let index = INDEX.lock().map_err(|e| e.to_string())?;
+    let index = INDEX.read().map_err(|e| e.to_string())?;
 
     if let Some(func) = index.get_function(&name) {
         Ok(Some(FunctionDetail {
@@ -760,7 +760,7 @@ pub async fn get_function_callers(
     function_name: String,
     _project_path: Option<String>,
 ) -> Result<std::collections::HashMap<String, Vec<CallerInfo>>, String> {
-    let index = INDEX.lock().map_err(|e| e.to_string())?;
+    let index = INDEX.read().map_err(|e| e.to_string())?;
     
     let mut callers = Vec::new();
     
