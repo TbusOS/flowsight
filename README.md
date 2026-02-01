@@ -250,11 +250,21 @@ pnpm tauri build
 
 | 文档 | 描述 |
 |------|------|
-| [项目计划](docs/design/PROJECT-PLAN.md) | 完整的项目规划和路线图 |
-| [用户指南](docs/user-guide/README.md) | 使用教程 (开发中) |
+| [API 参考](docs/api/tauri-commands.md) | Tauri 命令 API 文档 |
+| [变更日志](CHANGELOG.md) | 版本更新记录 |
+| [用户指南](docs/user-guide/README.md) | 使用教程 |
 | [开发者指南](docs/developer/README.md) | 开发与贡献指南 |
 | [架构设计](docs/architecture/README.md) | 技术架构文档 |
-| [国际化](docs/developer/I18N.md) | 多语言支持与翻译贡献 |
+
+## 🆕 v0.2.0 新功能
+
+| 功能 | 描述 |
+|------|------|
+| 📤 **执行流导出** | 支持 Mermaid、表格、文本、AI 格式化导出 |
+| 🎨 **主题系统** | 6 个低饱和度主题选择 |
+| 🔬 **LLVM IR 查看** | 查看函数的 LLVM IR 中间表示 |
+| 🤖 **VLM 视觉测试** | AI 驱动的 UI 视觉断言 |
+| 👥 **12 Agent 协作** | 完整的多智能体开发团队 |
 
 ---
 
