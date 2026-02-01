@@ -1,26 +1,35 @@
 # FlowSight 任务看板
 
-> 自动更新 | 最后更新: 2026-01-29
+> 自动更新 | 最后更新: 2026-02-01
 
-## 当前迭代: Phase 2 - Tauri 命令集成
+## 当前迭代: Phase 3 - 质量与发布准备
 
 ### 📋 待开发 (Backlog)
 
 | ID | 任务 | 负责人 | 优先级 |
 |----|------|--------|--------|
 | T-014 | 本地 AI 模型下载集成 | 🦀 Rust-Dev | P3 |
+| T-020 | 性能基准测试套件 | ⚡ Performance-Tester | P2 |
+| T-021 | 安全扫描自动化 | 🔒 Security-Reviewer | P2 |
+| T-022 | API 文档完善 | 📖 Doc-Writer | P2 |
+| T-023 | v0.2.0 发布准备 | 🚀 Release-Manager | P1 |
 
 ### 🔄 开发中 (In Progress)
 
 | ID | 任务 | 负责人 | 进度 | 开始时间 |
 |----|------|--------|------|---------|
-| - | - | - | - | - |
+| T-015 | FlowExportPanel 功能完善 | 🎨 UI-Dev | 80% | 2026-01-31 |
+| T-016 | DeskPilot 测试框架完善 | 🖥️ E2E-Tester | 90% | 2026-01-31 |
+| T-017 | VLM 视觉断言集成 | 👁️ VLM-Tester | 100% | 2026-01-31 |
+| T-018 | CI 工作流配置 | 🔄 CI-Monitor | 100% | 2026-01-31 |
+| T-019 | Agent 协作系统完善 | 📝 Test-Reviewer | 100% | 2026-02-01 |
 
 ### 🧪 待测试 (Testing)
 
 | ID | 任务 | 测试人 | 类型 |
 |----|------|--------|------|
-| - | - | - | - |
+| T-015 | FlowExportPanel | 🖥️ E2E-Tester | E2E |
+| T-016 | DeskPilot 框架 | 👁️ VLM-Tester | VLM |
 
 ### 🐛 Bug 修复 (Fixing)
 
@@ -28,7 +37,7 @@
 |--------|------|--------|--------|
 | - | - | - | - |
 
-### ✅ 已完成 (Done) - Phase 1 & 2
+### ✅ 已完成 (Done) - Phase 1 & 2 & 3
 
 | ID | 任务 | 完成时间 |
 |----|------|---------|
@@ -43,56 +52,95 @@
 | T-011 | 命令面板: 打开项目/文件功能 | 2026-01-29 |
 | T-012 | ARM32 内核分析 E2E 测试 | 2026-01-29 |
 | T-010 | AI 推断模块集成 (Tauri 命令) | 2026-01-29 |
+| T-017 | VLM 视觉断言集成 | 2026-02-01 |
+| T-018 | CI 工作流配置 | 2026-02-01 |
+| T-019 | Agent 协作系统 (12 个 Agents) | 2026-02-01 |
 
 ---
 
 ## 统计
 
-- 待开发: 1
-- 开发中: 0
-- 待测试: 0
+- 待开发: 5
+- 开发中: 2
+- 待测试: 2
 - Bug 修复中: 0
-- 已完成: 11
+- 已完成: 14
 
 ---
 
-## 当前工作
+## 团队状态
 
-### 🦀 Rust-Dev 已完成:
-- ✅ T-006: Tauri 命令 build_execution_flow
-- ✅ T-009: ARM32 知识库扩展
-- ✅ T-010: AI 推断模块 Tauri 命令
+### 🦀 Rust-Dev
+- 状态: 待命
+- 下一任务: T-014 本地 AI 模型下载集成
 
-### 🎨 UI-Dev 已完成:
-- ✅ T-007: 前端 ExecutionFlow 状态管理
-- ✅ T-008: FlowView 与新 API 集成
-- ✅ T-011: 命令面板打开项目/文件功能
+### 🎨 UI-Dev
+- 状态: 开发中
+- 当前: T-015 FlowExportPanel 功能完善
 
-### 🧪 Unit-Tester 待命:
-- 等待测试任务
+### 🧪 Unit-Tester
+- 状态: 待命
+- 等待: 新模块测试任务
 
-### 🖥️ E2E-Tester 已完成:
-- ✅ Playwright 桌面测试: 23/23 通过 (最新)
-  - UI Components (4/4) ✅
-  - Command Palette (5/5) ✅
-  - Layout Structure (2/2) ✅
-  - Color System (2/2) ✅
-  - Navigation (1/1) ✅
-  - Interactive Tests (2/2) ✅
-  - ARM32 Kernel Analysis (5/5) ✅
-  - ARM32 Kernel File Paths (2/2) ✅
+### 🖥️ E2E-Tester
+- 状态: 开发中
+- 当前: T-016 DeskPilot 测试框架完善
 
-### 🔧 Debug-Dev 待命:
+### 👁️ VLM-Tester
+- 状态: ✅ 完成
+- 完成: T-017 VLM 视觉断言集成
+
+### 🔧 Debug-Dev
+- 状态: 待命
 - 无待处理 Bug
+
+### 🔄 CI-Monitor
+- 状态: ✅ 完成
+- 完成: T-018 CI 工作流配置
+
+### 📝 Test-Reviewer
+- 状态: ✅ 完成
+- 完成: T-019 Agent 协作系统
+
+### ⚡ Performance-Tester
+- 状态: 待命
+- 下一任务: T-020 性能基准测试
+
+### 🔒 Security-Reviewer
+- 状态: 待命
+- 下一任务: T-021 安全扫描
+
+### 📖 Doc-Writer
+- 状态: 待命
+- 下一任务: T-022 API 文档完善
+
+### 🚀 Release-Manager
+- 状态: 待命
+- 下一任务: T-023 v0.2.0 发布准备
 
 ---
 
 ## 下一步工作
 
-| ID | 任务 | 优先级 | 描述 |
+### 立即执行 (P1)
+
+| ID | 任务 | 负责人 | 描述 |
 |----|------|--------|------|
-| T-010 | AI 推断模块集成 | P3 | 集成 AI 代码解释功能 |
-| T-013 | 真实内核文件分析测试 | P2 | 在桌面应用中打开 ARM32 文件测试 |
+| T-023 | v0.2.0 发布准备 | 🚀 Release-Manager | 准备发布检查清单 |
+
+### 本周完成 (P2)
+
+| ID | 任务 | 负责人 | 描述 |
+|----|------|--------|------|
+| T-020 | 性能基准测试 | ⚡ Performance-Tester | 创建 Rust/前端基准测试 |
+| T-021 | 安全扫描 | 🔒 Security-Reviewer | cargo audit + pnpm audit |
+| T-022 | API 文档 | 📖 Doc-Writer | 更新 Tauri 命令文档 |
+
+### 后续 (P3)
+
+| ID | 任务 | 负责人 | 描述 |
+|----|------|--------|------|
+| T-014 | 本地 AI 模型 | 🦀 Rust-Dev | MLX 模型下载集成 |
 
 ---
 
