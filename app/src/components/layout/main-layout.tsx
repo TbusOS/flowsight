@@ -7,14 +7,18 @@ import { cn } from "../../lib/utils"
 import { Sidebar } from "./sidebar"
 import { Header } from "./header"
 import { StatusBar } from "./status-bar"
-import { CommandMenu } from "../../components/ui/command"
 import { OutlinePanel } from "../../components/panels/outline-panel"
 import { NodeDetailPanel } from "../../components/panels/node-detail-panel"
 import { FileExplorer } from "../../components/panels/file-explorer"
-import { SearchPanel } from "../../components/panels/search-panel"
-import { CodeEditor } from "../../components/panels/code-editor"
-import { FlowView } from "../../components/panels/flow-view"
 import { useAnalysisStore } from "../../store/analysisStore"
+import { ErrorBoundary, LocalErrorBoundary } from "../ErrorBoundary/ErrorBoundary"
+import { FlowViewSkeleton, EditorSkeleton, SearchResultSkeleton } from "../Skeleton/Skeleton"
+
+// 代码分割 - 懒加载重量级组件
+const CommandMenu = React.lazy(() => import("../../components/ui/command").then(m => ({ default: m.CommandMenu })))
+const SearchPanel = React.lazy(() => import("../../components/panels/search-panel").then(m => ({ default: m.SearchPanel })))
+const CodeEditor = React.lazy(() => import("../../components/panels/code-editor").then(m => ({ default: m.CodeEditor })))
+const FlowView = React.lazy(() => import("../../components/panels/flow-view").then(m => ({ default: m.FlowView })))
 import {
   sidebarOpenAtom,
   bottomPanelOpenAtom,
@@ -260,7 +264,13 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
         )
       case "search":
-        return <SearchPanel onResultSelect={(result) => handleFileSelect(result.file_path)} />
+        return (
+          <React.Suspense fallback={<SearchResultSkeleton />}>
+            <LocalErrorBoundary name="搜索面板">
+              <SearchPanel onResultSelect={(result) => handleFileSelect(result.file_path)} />
+            </LocalErrorBoundary>
+          </React.Suspense>
+        )
       default:
         return <OutlinePanel />
     }
@@ -269,7 +279,9 @@ export function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="flex h-screen w-full flex-col bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {/* Command Menu */}
-      <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
+      <React.Suspense fallback={null}>
+        <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
+      </React.Suspense>
 
       {/* Header */}
       <Header />
@@ -315,8 +327,20 @@ export function MainLayout({ children }: MainLayoutProps) {
               >
                 {children || (
                   viewMode === "flow" 
-                    ? <FlowView /> 
-                    : <CodeEditor filePath={currentFile} onClose={() => setCurrentFile(null)} />
+                    ? (
+                      <React.Suspense fallback={<FlowViewSkeleton />}>
+                        <LocalErrorBoundary name="执行流视图">
+                          <FlowView />
+                        </LocalErrorBoundary>
+                      </React.Suspense>
+                    )
+                    : (
+                      <React.Suspense fallback={<EditorSkeleton />}>
+                        <LocalErrorBoundary name="代码编辑器">
+                          <CodeEditor filePath={currentFile} onClose={() => setCurrentFile(null)} />
+                        </LocalErrorBoundary>
+                      </React.Suspense>
+                    )
                 )}
               </motion.div>
             </AnimatePresence>
