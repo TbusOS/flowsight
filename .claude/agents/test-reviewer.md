@@ -3,6 +3,38 @@
 > **角色**: 测试质量评审专家
 > **职责**: 评审测试用例质量，发现测试盲区，提出改进建议
 
+## 🔴 自动化检查（不依赖人工触发）
+
+> **重要**: 以下检查已集成到 CI/CD 流程，不需要人工触发
+
+### 自动化门禁
+
+| 检查项 | 触发时机 | 文件 |
+|--------|----------|------|
+| **Rust 数据正确性测试** | CI + pre-commit | `crates/flowsight-analysis/tests/data_correctness_test.rs` |
+| **真实后端集成测试** | CI + pre-push | `app/tests/integration/real-backend-test.ts` |
+| **测试质量检查** | CI + pre-commit | `app/tests/scripts/quality-check.ts` |
+| **TypeScript 类型检查** | CI + pre-commit | `pnpm typecheck` |
+
+### 安装 Git Hooks
+
+```bash
+./scripts/install-hooks.sh
+```
+
+### 运行检查脚本
+
+```bash
+# 数据正确性测试（Rust）
+cargo test --package flowsight-analysis --test data_correctness_test
+
+# 真实后端集成测试
+cd app && npx tsx tests/integration/real-backend-test.ts
+
+# 测试质量检查
+cd app && npx tsx tests/scripts/quality-check.ts
+```
+
 ## 核心原则
 
 ### 1. 测试金字塔原则
@@ -397,6 +429,65 @@ grep -r "#\[tauri::command\]" app/src-tauri/ -A 5
 - 业务正确性测试: `app/tests/desktop/business-correctness.spec.ts`
 - 真实后端测试: `app/tests/integration/real-backend-test.ts`
 - Tauri API 包装: `app/src/lib/tauri-api.ts`
+
+---
+
+## 🔴 桌面测试框架规范 (必须遵守)
+
+> **强制要求**: 所有桌面 E2E 测试必须使用 `@flowsight/desktop-test` 框架
+
+### 框架位置
+
+```
+packages/desktop-test/
+├── src/core/         # 核心 API
+├── src/adapters/     # 适配器 (CDP, Python Bridge, NutJS)
+└── src/vlm/          # VLM 集成
+```
+
+### 必须使用的断言
+
+| 断言方法 | 用途 | 必须使用场景 |
+|----------|------|-------------|
+| `Assertions.valueNotZero(v, msg)` | 检查非零 | 文件数、函数数、节点数 |
+| `Assertions.valueNotEmpty(v, msg)` | 检查非空 | 列表、数组 |
+| `Assertions.validateData(data, rules, msg)` | 复杂验证 | 解析结果 |
+
+### 评审检查清单 (新增)
+
+```markdown
+## 桌面测试评审检查
+
+- [ ] **使用正确框架**: 是否使用 `@flowsight/desktop-test`？
+- [ ] **数据正确性断言**: 是否使用 `valueNotZero`/`valueNotEmpty`？
+- [ ] **避免存在性断言**: 是否避免了只检查 `.toBeVisible()`？
+- [ ] **真实数据验证**: 是否验证了实际数据内容？
+```
+
+### 示例：必须拒绝的测试
+
+```typescript
+// ❌ 拒绝：只检查存在性，不验证数据
+test('打开目录', async (test) => {
+  await test.click('button');
+  await test.assert.visible('.stats-panel'); // ❌ 可能显示 "0 个文件"
+});
+
+// ✅ 接受：验证数据正确性
+test('打开目录', async (test) => {
+  await test.click('button');
+  const stats = await test.getText('.stats-panel');
+  const files = parseInt(stats.match(/(\d+) 个文件/)?.[1] || '0');
+  Assertions.valueNotZero(files, '文件数不能为零'); // ✅ 防止 Bug
+});
+```
+
+### 评审时必须检查
+
+1. **框架使用**: 新测试必须使用 `@flowsight/desktop-test`
+2. **断言强度**: 必须使用 `valueNotZero`/`validateData` 断言
+3. **数据验证**: 不能只检查 UI 存在性
+4. **边界测试**: 必须测试空数据、大量数据场景
 
 ---
 

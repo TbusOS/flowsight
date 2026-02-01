@@ -83,61 +83,99 @@ test.describe('执行流视图', () => {
 })
 ```
 
-### 2. 桌面自动化测试 (Tauri)
+### 2. 桌面自动化测试 (🔴 必须使用 @flowsight/desktop-test)
 
-```python
-# app/tests/desktop/test_flow_view.py
+> **重要**: 所有桌面测试必须使用 `@flowsight/desktop-test` 框架
 
-import pytest
-from tests.desktop.core import DesktopTestRunner
+```typescript
+// packages/desktop-test/examples/flowsight-tests.ts
 
-class TestFlowView:
-    """执行流视图测试"""
+import { DesktopTest, TestRunner, Assertions } from '@flowsight/desktop-test';
 
-    @pytest.fixture(autouse=True)
-    def setup(self, runner: DesktopTestRunner):
-        self.runner = runner
-        self.runner.launch_app()
+const runner = new TestRunner({
+  name: 'FlowSight E2E Tests',
+  retries: 2,
+});
 
-    def test_app_launches(self):
-        """测试应用启动"""
-        assert self.runner.window_exists()
-        assert self.runner.get_title() == "FlowSight"
+// 测试应用启动
+runner.test('应用启动', async (test: DesktopTest) => {
+  await test.connect();
+  const title = await test.getTitle();
+  test.assert.equal(title, 'FlowSight', '应用标题');
+});
 
-    def test_open_file(self):
-        """测试打开文件"""
-        self.runner.menu_click("File", "Open")
-        self.runner.file_dialog_select("/path/to/test.c")
-        assert self.runner.editor_has_content()
+// 🔴 测试数据正确性 - 防止 "0 文件" Bug
+runner.test('打开目录后显示正确统计', async (test: DesktopTest) => {
+  // 打开 GPIO 驱动目录
+  await test.clickText('打开');
+  await test.type('input', '/path/to/drivers/gpio');
+  await test.click('[data-testid="confirm-btn"]');
+  
+  // 等待扫描完成
+  await test.waitFor('[data-testid="stats-panel"]');
+  
+  // 获取统计数据
+  const statsText = await test.getText('[data-testid="stats-panel"]');
+  const match = statsText.match(/发现 (\d+) 个文件.*?(\d+) 个函数.*?(\d+) 个结构体/);
+  
+  if (match) {
+    const [_, files, functions, structs] = match.map(Number);
+    
+    // 🔴 必须使用数据正确性断言
+    Assertions.valueNotZero(files, '文件数不能为零');
+    Assertions.valueNotZero(functions, '函数数不能为零');
+    
+    // 复杂验证
+    Assertions.validateData(
+      { files, functions, structs },
+      {
+        files: (v) => v > 0,
+        functions: (v) => v > 0,
+      },
+      '解析统计必须有实际数据'
+    );
+  }
+});
 
-    def test_analyze_function(self):
-        """测试分析函数"""
-        self.runner.open_file("/path/to/test.c")
-        self.runner.click_function("my_probe")
+// 测试执行流分析
+runner.test('分析执行流', async (test: DesktopTest) => {
+  await test.click('[data-testid="function-list"] >> text=probe');
+  
+  // 验证执行流面板
+  await test.assert.visible('[data-testid="flow-panel"]');
+  
+  // 验证节点数量 - 不能只有入口节点
+  const nodeCount = await test.evaluate(() => 
+    document.querySelectorAll('.react-flow__node').length
+  );
+  Assertions.valueNotZero(nodeCount - 1, '执行流应有多个节点');
+});
 
-        # 验证执行流面板
-        assert self.runner.panel_visible("flow-panel")
-        assert self.runner.contains_text("usb_register")
-
-    def test_keyboard_shortcuts(self):
-        """测试快捷键"""
-        # Ctrl+P 打开命令面板
-        self.runner.keyboard("ctrl+p")
-        assert self.runner.panel_visible("command-palette")
-
-        # Escape 关闭
-        self.runner.keyboard("escape")
-        assert not self.runner.panel_visible("command-palette")
+// 运行测试
+runner.run();
 ```
 
-### 3. 使用项目已有的桌面测试框架
+### 3. 启动桌面测试
 
 ```bash
-# 运行桌面测试
+# 1. 启动应用（必须启用 CDP）
+cd /path/to/flowsight
+WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9222 cargo tauri dev
+
+# 2. 运行测试
+cd packages/desktop-test
+npx tsx examples/flowsight-tests.ts
+
+# 3. 或使用 VLM 模式（需要 API Key）
+ANTHROPIC_API_KEY=xxx npx tsx examples/flowsight-tests.ts --vlm
+```
+
+### 4. 旧版 Python 测试（已弃用，仅作备用）
+
+```bash
+# 仍可运行旧版测试，但优先使用新框架
 cd app
-python3 -m tests.desktop --smoke        # 冒烟测试
-python3 -m tests.desktop --phase visual # 视觉测试
-python3 -m tests.desktop --full         # 完整测试
+python3 -m tests.desktop --smoke
 ```
 
 ## 测试场景

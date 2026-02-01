@@ -210,6 +210,40 @@ A: 不会。Agent 只有只读权限，无法修改任何文件。
 
 A: 当前版本需要网络连接。未来计划支持 Ollama 本地模型。
 
+## 桌面自动化测试
+
+> **重要**: FlowSight 项目使用 **DeskPilot** (`deskpilot`) 框架进行桌面自动化测试
+>
+> 📦 GitHub: https://github.com/TbusOS/DeskPilot
+
+### 框架位置
+
+```
+packages/desktop-test/
+```
+
+### 启动测试
+
+```bash
+# 1. 启动应用（启用 CDP）
+WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9222 cargo tauri dev
+
+# 2. 运行测试
+cd packages/desktop-test
+npx tsx examples/flowsight-tests.ts
+```
+
+### Agent 协作要求
+
+| Agent | 要求 |
+|-------|------|
+| **E2E-Tester** | 必须使用 DeskPilot (`deskpilot`) 编写测试 |
+| **Test-Reviewer** | 必须检查是否使用了数据正确性断言 |
+| **UI-Dev** | 提交 UI 更改前必须通过桌面测试 |
+| **Debug-Dev** | 修复 Bug 后必须添加回归测试 |
+
+详见: [桌面测试技能](.claude/skills/desktop-test.md)
+
 ## 相关文档
 
 - [安装指南](docs/install.md)

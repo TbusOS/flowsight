@@ -50,6 +50,9 @@ pub fn run() {
             commands::translate_condition,
             // Extended Function Detail API
             commands::get_function_detail_from_file,
+            // LLVM IR Commands
+            commands::generate_llvm_ir,
+            commands::parse_llvm_ir_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

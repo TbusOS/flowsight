@@ -13,6 +13,8 @@ import { FileExplorer } from "../../components/panels/file-explorer"
 import { useAnalysisStore } from "../../store/analysisStore"
 import { ErrorBoundary, LocalErrorBoundary } from "../ErrorBoundary/ErrorBoundary"
 import { FlowViewSkeleton, EditorSkeleton, SearchResultSkeleton } from "../Skeleton/Skeleton"
+import { LlvmIrPanel, LlvmIrParseResult } from "../LlvmIrPanel"
+import { invoke } from "../../lib/tauri-api"
 
 // 代码分割 - 懒加载重量级组件
 const CommandMenu = React.lazy(() => import("../../components/ui/command").then(m => ({ default: m.CommandMenu })))
@@ -67,11 +69,37 @@ function TerminalPanel() {
   const executionFlow = useAnalysisStore((state) => state.executionFlow)
   const [logs, setLogs] = React.useState<LogEntry[]>([])
   const [lastProjectPath, setLastProjectPath] = React.useState<string | null>(null)
+  const lastPhaseRef = React.useRef<string | null>(null)
+  
+  // 翻译索引阶段消息
+  const translatePhase = (phase: string, message: string): string => {
+    const phaseMap: Record<string, string> = {
+      'scanning': '扫描中',
+      'parsing': '解析中',
+      'indexing': '索引中',
+      'done': '完成',
+      'complete': '完成',
+      'error': '错误',
+    }
+    const phaseLabel = phaseMap[phase] || phase
+    
+    // 翻译常见英文消息
+    let translatedMessage = message
+      .replace('Scanning files...', '正在扫描文件...')
+      .replace(/Found (\d+) files\.\.\./, '发现 $1 个文件...')
+      .replace(/Parsing (\d+) files\.\.\./, '正在解析 $1 个文件...')
+      .replace('Building index...', '正在构建索引...')
+      .replace(/Indexed (\d+)\/(\d+)/, '已索引 $1/$2')
+      .replace(/Done! (\d+) files, (\d+) functions/, '完成! $1 个文件, $2 个函数')
+    
+    return `[${phaseLabel}] ${translatedMessage}`
+  }
   
   // 监听项目路径变化 - 仅在打开新项目时添加打开日志
   React.useEffect(() => {
     if (currentProject && currentProject.path !== lastProjectPath) {
       setLastProjectPath(currentProject.path)
+      lastPhaseRef.current = null  // 重置阶段追踪
       setLogs(prev => [
         ...prev,
         { type: 'command', message: `flowsight open "${currentProject.path}"`, timestamp: new Date() },
@@ -84,8 +112,8 @@ function TerminalPanel() {
     if (currentProject?.indexed && currentProject.files_count > 0) {
       setLogs(prev => {
         // 避免重复添加相同的统计日志
-        const lastLog = prev[prev.length - 1]
-        if (lastLog?.message?.includes(`发现 ${currentProject.files_count} 个文件`)) {
+        const hasStats = prev.some(log => log.message?.includes(`发现 ${currentProject.files_count} 个文件`))
+        if (hasStats) {
           return prev
         }
         return [
@@ -97,18 +125,38 @@ function TerminalPanel() {
     }
   }, [currentProject?.indexed, currentProject?.files_count, currentProject?.functions_count, currentProject?.structs_count])
   
-  // 监听索引进度
+  // 监听索引进度 - 改进：避免重复日志，只在阶段变化时添加
   React.useEffect(() => {
     if (indexProgress && indexProgress.phase && indexProgress.message) {
       const phase = indexProgress.phase
       const message = indexProgress.message
       
+      // 避免重复添加相同阶段的日志（除了 done/complete）
+      if (phase !== 'done' && phase !== 'complete' && phase === lastPhaseRef.current) {
+        // 更新同一阶段的最新消息（替换而不是追加）
+        setLogs(prev => {
+          const newLogs = [...prev]
+          // 找到最后一个相同阶段的日志并更新
+          for (let i = newLogs.length - 1; i >= 0; i--) {
+            if (newLogs[i].message?.startsWith(`[${phase === 'scanning' ? '扫描中' : phase === 'parsing' ? '解析中' : phase === 'indexing' ? '索引中' : phase}]`)) {
+              newLogs[i] = { ...newLogs[i], message: translatePhase(phase, message), timestamp: new Date() }
+              return newLogs
+            }
+          }
+          // 如果没找到，添加新日志
+          return [...prev, { type: 'info', message: translatePhase(phase, message), timestamp: new Date() }]
+        })
+        return
+      }
+      
+      lastPhaseRef.current = phase
+      
       if (phase === 'complete' || phase === 'done') {
-        setLogs(prev => [...prev, { type: 'success', message, timestamp: new Date() }])
+        setLogs(prev => [...prev, { type: 'success', message: translatePhase(phase, message), timestamp: new Date() }])
       } else if (phase === 'error') {
-        setLogs(prev => [...prev, { type: 'error', message, timestamp: new Date() }])
+        setLogs(prev => [...prev, { type: 'error', message: translatePhase(phase, message), timestamp: new Date() }])
       } else {
-        setLogs(prev => [...prev, { type: 'info', message: `[${phase}] ${message}`, timestamp: new Date() }])
+        setLogs(prev => [...prev, { type: 'info', message: translatePhase(phase, message), timestamp: new Date() }])
       }
     }
   }, [indexProgress])
@@ -196,11 +244,116 @@ export function MainLayout({ children }: MainLayoutProps) {
   // 视图模式
   const [viewMode, setViewMode] = useAtom(viewModeAtom)
   
+  // LLVM IR 状态
+  const [llvmIrResult, setLlvmIrResult] = React.useState<LlvmIrParseResult | null>(null)
+  const [llvmIrLoading, setLlvmIrLoading] = React.useState(false)
+  const [llvmIrError, setLlvmIrError] = React.useState<string | null>(null)
+  const [selectedLlvmFunction, setSelectedLlvmFunction] = React.useState<string | null>(null)
+  
+  // 生成 LLVM IR
+  const generateLlvmIr = React.useCallback(async (filePath: string) => {
+    // 只处理 C 文件
+    if (!filePath.endsWith('.c') && !filePath.endsWith('.h')) {
+      setLlvmIrResult(null)
+      setLlvmIrError(null)
+      return
+    }
+    
+    setLlvmIrLoading(true)
+    setLlvmIrError(null)
+    
+    try {
+      const result = await invoke<{
+        module_name: string
+        functions: Record<string, {
+          name: string
+          return_type: string
+          parameters: Array<{ name: string; type_str: string }>
+          blocks: Array<{
+            name: string
+            instructions: Array<{
+              opcode: string
+              dest?: string
+              type_str: string
+              operands: string[]
+              location?: { file: string; line: number }
+            }>
+            predecessors: string[]
+            successors: string[]
+            terminator?: {
+              opcode: string
+              dest?: string
+              type_str: string
+              operands: string[]
+              location?: { file: string; line: number }
+            }
+          }>
+          is_callback: boolean
+          callback_context?: string
+        }>
+      }>('generate_llvm_ir', { filePath })
+      
+      // 转换为前端格式
+      const parseResult: LlvmIrParseResult = {
+        moduleName: result.module_name,
+        functions: Object.fromEntries(
+          Object.entries(result.functions).map(([name, func]) => [
+            name,
+            {
+              name: func.name,
+              returnType: func.return_type,
+              parameters: func.parameters.map(p => ({
+                name: p.name,
+                typeStr: p.type_str,
+              })),
+              blocks: func.blocks.map(b => ({
+                name: b.name,
+                instructions: b.instructions.map(i => ({
+                  opcode: i.opcode,
+                  dest: i.dest,
+                  typeStr: i.type_str,
+                  operands: i.operands,
+                  location: i.location,
+                })),
+                predecessors: b.predecessors,
+                successors: b.successors,
+                terminator: b.terminator ? {
+                  opcode: b.terminator.opcode,
+                  dest: b.terminator.dest,
+                  typeStr: b.terminator.type_str,
+                  operands: b.terminator.operands,
+                  location: b.terminator.location,
+                } : undefined,
+              })),
+              isCallback: func.is_callback,
+              callbackContext: func.callback_context,
+            }
+          ])
+        ),
+      }
+      
+      setLlvmIrResult(parseResult)
+      
+      // 自动选择第一个函数
+      const funcNames = Object.keys(parseResult.functions)
+      if (funcNames.length > 0 && !funcNames.includes('__compilation_error__')) {
+        setSelectedLlvmFunction(funcNames[0])
+      }
+    } catch (error) {
+      console.error('生成 LLVM IR 失败:', error)
+      setLlvmIrError(String(error))
+    } finally {
+      setLlvmIrLoading(false)
+    }
+  }, [])
+  
   // 处理文件选择
   const handleFileSelect = React.useCallback((path: string) => {
     console.log('选择文件:', path)
     setCurrentFile(path)
-  }, [setCurrentFile])
+    // 触发 LLVM IR 生成
+    generateLlvmIr(path)
+  }, [setCurrentFile, generateLlvmIr])
 
   // Keyboard shortcuts
   React.useEffect(() => {
@@ -304,8 +457,14 @@ export function MainLayout({ children }: MainLayoutProps) {
         return <NodeDetailPanel />
       case "llvm-ir":
         return (
-          <div className="flex items-center justify-center h-full text-[var(--text-muted)] text-sm">
-            LLVM IR 面板
+          <div className="h-full overflow-hidden">
+            <LlvmIrPanel
+              parseResult={llvmIrResult}
+              selectedFunction={selectedLlvmFunction}
+              loading={llvmIrLoading}
+              error={llvmIrError}
+              onFunctionSelect={setSelectedLlvmFunction}
+            />
           </div>
         )
       case "search":

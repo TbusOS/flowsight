@@ -11,7 +11,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:desktop": "npx tsx tests/desktop/agent-browser/run-tests.ts",
+    "test:desktop:data": "npx tsx tests/desktop/agent-browser/test-data-correctness.ts",
+    "test:integration": "npx tsx tests/integration/real-backend-test.ts",
+    "test:quality": "npx tsx tests/scripts/quality-check.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
@@ -46,6 +50,7 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "agent-browser": "^0.1.0",
     "@axe-core/playwright": "^4.11.0",
     "@playwright/test": "^1.57.0",
     "@studio-freight/lenis": "^1.0.42",

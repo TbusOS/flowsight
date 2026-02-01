@@ -20,6 +20,7 @@ flowsight-analysis = { path = "../../crates/flowsight-analysis" }
 flowsight-knowledge = { path = "../../crates/flowsight-knowledge" }
 flowsight-index = { path = "../../crates/flowsight-index" }
 flowsight-query = { path = "../../crates/flowsight-query" }
+flowsight-llvm = { path = "../../crates/flowsight-llvm" }
 
 tauri = { version = "2", features = [] }
 tauri-plugin-devtools = "2"

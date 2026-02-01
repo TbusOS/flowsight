@@ -10,8 +10,11 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ============================================================================
+  # 🔴 关键：Rust 后端测试（包括数据正确性测试）
+  # ============================================================================
   rust-test:
-    name: Rust Tests
+    name: Rust Tests (Data Correctness)
     runs-on: ubuntu-latest
 
     steps:
@@ -45,16 +48,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Run Rust tests
+      # 🔴 关键测试：数据正确性测试必须通过
+      - name: Run Data Correctness Tests
+        run: |
+          echo "🔴 Running data correctness tests..."
+          cargo test --package flowsight-analysis --test data_correctness_test -- --nocapture
+          echo "✅ Data correctness tests passed"
+
+      - name: Run All Rust Tests
         run: cargo test --workspace --all-targets
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
       - name: Run Clippy
-        run: cargo clippy --workspace
-        continue-on-error: true
+        run: cargo clippy --workspace -- -D warnings
+        continue-on-error: false
 
+  # ============================================================================
+  # Frontend 类型检查和构建
+  # ============================================================================
   frontend-test:
     name: Frontend Tests
     runs-on: ubuntu-latest
@@ -85,10 +98,74 @@ jobs:
       - name: Build
         run: pnpm build
 
-  e2e-test:
-    name: E2E Tests
+  # ============================================================================
+  # 🔴 关键：真实后端集成测试
+  # ============================================================================
+  backend-integration-test:
+    name: Backend Integration Tests
     runs-on: ubuntu-latest
-    needs: frontend-test
+    needs: rust-test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup LLVM
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: llvm-17 llvm-17-dev clang-17
+          version: 1.0
+
+      - name: Configure LLVM
+        run: echo "LLVM_SYS_170_PREFIX=/usr/lib/llvm-17" >> $GITHUB_ENV
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      # 构建 CLI
+      - name: Build CLI
+        run: cargo build --package flowsight-cli --release
+
+      # 🔴 关键测试：真实后端集成测试
+      - name: Run Backend Integration Tests
+        working-directory: app
+        run: |
+          echo "🔴 Running backend integration tests..."
+          npx tsx tests/integration/real-backend-test.ts || exit 1
+          echo "✅ Backend integration tests passed"
+
+  # ============================================================================
+  # E2E 测试（使用 Mock，但必须包含业务正确性断言）
+  # ============================================================================
+  e2e-test:
+    name: E2E Tests (with Business Assertions)
+    runs-on: ubuntu-latest
+    needs: [frontend-test, rust-test]
 
     steps:
       - name: Checkout
@@ -113,24 +190,74 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build app
-        run: |
-          cargo build --workspace --release
-          cd app && pnpm build
-
-      - name: Build Tauri
-        uses: tauri-apps/tauri-action@v0
-        with:
-          projectPath: app
-          args: --release
-
-      - name: Run E2E tests
         working-directory: app
-        run: pnpm run test:e2e
+        run: pnpm build
+
+      # 运行带业务正确性断言的测试
+      - name: Run Business Correctness Tests
+        working-directory: app
+        run: |
+          echo "🔴 Running business correctness tests..."
+          npx playwright test tests/desktop/business-correctness.spec.ts --reporter=list
+          echo "✅ Business correctness tests passed"
+
+      - name: Run Functional Tests
+        working-directory: app
+        run: npx playwright test tests/desktop/functional-tests.spec.ts --reporter=list
+        env:
+          CI: true
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: playwright-report
-          path: app/playwright-report/
+          path: app/test-results/
           retention-days: 7
+
+  # ============================================================================
+  # 测试质量门禁检查
+  # ============================================================================
+  test-quality-gate:
+    name: Test Quality Gate
+    runs-on: ubuntu-latest
+    needs: [rust-test, frontend-test, backend-integration-test, e2e-test]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      # 运行测试质量检查脚本
+      - name: Run Test Quality Check
+        working-directory: app
+        run: |
+          echo "🔍 Running test quality checks..."
+          npx tsx tests/scripts/quality-check.ts || exit 1
+          echo "✅ All quality gates passed"
+
+      - name: Quality Gate Summary
+        run: |
+          echo "## 🎉 All Tests Passed!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Rust Data Correctness | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Integration | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Build | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Business Correctness | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| E2E Functional | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Quality Gate | ✅ Passed |" >> $GITHUB_STEP_SUMMARY

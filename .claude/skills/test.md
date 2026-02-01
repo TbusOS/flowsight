@@ -47,6 +47,24 @@ cargo test -p flowsight-parser
 cd app && pnpm test
 ```
 
+### 🔴 桌面自动化测试 (必须使用)
+
+> **重要**: 桌面 E2E 测试必须使用 `@flowsight/desktop-test` 框架
+
+```bash
+# 1. 启动应用（启用 CDP）
+WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9222 cargo tauri dev
+
+# 2. 运行桌面测试
+cd packages/desktop-test
+npx tsx examples/flowsight-tests.ts
+
+# 3. 或使用 VLM 模式
+ANTHROPIC_API_KEY=xxx npx tsx examples/flowsight-tests.ts
+```
+
+详细用法参见: `/sc:desktop-test`
+
 ## 测试覆盖率
 
 ```bash

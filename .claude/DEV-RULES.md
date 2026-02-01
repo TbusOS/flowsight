@@ -44,6 +44,121 @@
 2. 确保所有测试通过后再提交
 3. **主动测试UI** - 启动 IDE 实际测试 UI 表现，不要只依赖单元测试
 
+## 🔴 桌面自动化测试框架 (必须使用)
+
+> **重要**: FlowSight 项目必须使用 **DeskPilot** 框架进行桌面自动化测试
+
+### 📦 DeskPilot 开源仓库
+
+| 项目 | 地址 |
+|------|------|
+| **GitHub** | https://github.com/TbusOS/DeskPilot |
+| **npm 包名** | `deskpilot` |
+
+### 🔄 同步规则 (必须遵守)
+
+> **重要**: DeskPilot 已开源，任何框架更改必须同步到 GitHub 仓库
+
+1. **修改代码后必须同步**：修改 `packages/desktop-test/` 后，必须同步到 DeskPilot 仓库
+2. **同步命令**：
+   ```bash
+   # 复制更改到 DeskPilot 仓库
+   cp -r packages/desktop-test/* /path/to/DeskPilot/
+   cd /path/to/DeskPilot
+   git add -A && git commit -m "sync: 同步 FlowSight 更改" && git push
+   ```
+3. **保持一致**：FlowSight 本地副本和 DeskPilot 仓库必须保持代码一致
+
+### 框架位置
+
+```
+packages/desktop-test/
+├── src/
+│   ├── core/           # 核心 API
+│   │   ├── desktop-test.ts   # 主 API (混合模式)
+│   │   ├── assertions.ts     # 断言方法 (含数据正确性检查)
+│   │   └── test-runner.ts    # 测试运行器
+│   ├── adapters/       # 适配器
+│   │   ├── cdp-adapter.ts    # CDP/WebView 控制
+│   │   ├── python-bridge.ts  # Python 框架桥接
+│   │   └── nutjs-adapter.ts  # 原生桌面控制
+│   └── vlm/            # VLM 集成
+│       ├── client.ts         # 多 Provider VLM 客户端
+│       └── cost-tracker.ts   # API 成本追踪
+```
+
+### 核心特性
+
+| 特性 | 说明 |
+|------|------|
+| **混合模式** | 确定性优先，VLM 智能回退 |
+| **数据正确性断言** | `Assertions.valueNotZero()` 防止 "0 文件" Bug |
+| **多 VLM Provider** | 支持 Anthropic/OpenAI/豆包 |
+| **成本追踪** | 监控 VLM API 费用 |
+| **Python Bridge** | 复用现有 Python 桌面测试代码 |
+
+### 必须使用的断言方法
+
+```typescript
+import { Assertions } from 'deskpilot';
+
+// 🔴 防止 "0 个文件" Bug - 必须使用
+Assertions.valueNotZero(stats.files, '文件数不能为零');
+Assertions.valueNotZero(stats.functions, '函数数不能为零');
+Assertions.valueNotEmpty(nodeList, '节点列表不能为空');
+
+// 复杂数据验证
+Assertions.validateData(parseResult, {
+  files: (v) => v > 0,
+  functions: (v) => v > 0,
+  structs: (v) => v >= 0,
+}, '解析结果验证失败');
+```
+
+### 启动测试
+
+```bash
+# 1. 启动应用 (启用 CDP)
+WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9222 cargo tauri dev
+
+# 2. 运行测试 (确定性模式)
+cd packages/desktop-test
+npx tsx examples/flowsight-tests.ts
+
+# 3. 使用 Agent 模式 (🔴 自动检测所有 Claude 环境)
+USE_AGENT=true npx tsx examples/flowsight-tests.ts
+```
+
+### 🔴 Agent 模式（自动支持所有 Claude 环境）
+
+框架会**自动检测**并支持以下 Claude 环境，无需手动配置：
+
+| 环境 | 说明 |
+|------|------|
+| Cursor IDE | Cursor 编辑器 |
+| Claude Code CLI | 终端命令行 (如 `claude` 命令) |
+| VSCode Claude | VSCode 的 Claude 插件 |
+| Claude Desktop | Claude 桌面应用 |
+
+```typescript
+// 自动检测当前 Claude 环境
+const test = new DesktopTest({
+  vlm: { provider: 'agent' },  // 或 'auto'
+});
+```
+
+**优势**：
+- ✅ 自动检测 - 无需手动配置
+- ✅ 无需 API Key - 使用当前会话的 Claude 模型
+- ✅ 成本为零 - 不产生额外费用
+
+### Agents 必须遵守
+
+1. **E2E-Tester**: 必须使用 DeskPilot (`deskpilot`) 编写端到端测试
+2. **Test-Reviewer**: 必须检查是否使用了数据正确性断言
+3. **UI-Dev**: 提交 UI 更改前必须通过桌面测试
+4. **Debug-Dev**: 修复 Bug 后必须添加对应的桌面测试用例
+
 ## 交互设计原则
 
 1. **优先级排序**

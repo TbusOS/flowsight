@@ -1889,3 +1889,278 @@ fn extract_doc_comment(source: &str, func_start_line: u32) -> Option<String> {
         Some(result)
     }
 }
+
+// ============================================================
+// LLVM IR Commands
+// ============================================================
+
+/// LLVM IR function for frontend
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LlvmIrFunction {
+    pub name: String,
+    pub return_type: String,
+    pub parameters: Vec<LlvmIrParameter>,
+    pub blocks: Vec<LlvmIrBasicBlock>,
+    pub is_callback: bool,
+    pub callback_context: Option<String>,
+}
+
+/// LLVM IR parameter
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LlvmIrParameter {
+    pub name: String,
+    pub type_str: String,
+}
+
+/// LLVM IR basic block
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LlvmIrBasicBlock {
+    pub name: String,
+    pub instructions: Vec<LlvmIrInstruction>,
+    pub predecessors: Vec<String>,
+    pub successors: Vec<String>,
+    pub terminator: Option<LlvmIrInstruction>,
+}
+
+/// LLVM IR instruction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlvmIrInstruction {
+    pub opcode: String,
+    pub dest: Option<String>,
+    pub type_str: String,
+    pub operands: Vec<String>,
+    pub location: Option<SourceLocation>,
+}
+
+/// Source location
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceLocation {
+    pub file: String,
+    pub line: u32,
+}
+
+/// LLVM IR parse result for frontend
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LlvmIrResult {
+    pub module_name: String,
+    pub functions: std::collections::HashMap<String, LlvmIrFunction>,
+}
+
+/// Generate LLVM IR from a C source file using clang
+/// 
+/// This command compiles a C file to LLVM IR using clang and returns the parsed result.
+/// Requires clang to be installed on the system.
+#[tauri::command]
+pub async fn generate_llvm_ir(file_path: String) -> Result<LlvmIrResult, String> {
+    use std::process::Command;
+    
+    let path = PathBuf::from(&file_path);
+    
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+    
+    // Create temp file for IR output
+    let temp_dir = std::env::temp_dir();
+    let ir_file = temp_dir.join(format!("{}.ll", 
+        path.file_stem().unwrap_or_default().to_string_lossy()));
+    
+    // Find clang - try common paths
+    let clang_paths = [
+        "clang",
+        "/usr/bin/clang",
+        "/usr/local/bin/clang",
+        "/opt/homebrew/bin/clang",
+        "/opt/homebrew/opt/llvm/bin/clang",
+    ];
+    
+    let mut clang_found = None;
+    for clang in &clang_paths {
+        if Command::new(clang)
+            .arg("--version")
+            .output()
+            .is_ok() 
+        {
+            clang_found = Some(*clang);
+            break;
+        }
+    }
+    
+    let clang = clang_found.ok_or_else(|| {
+        "clang not found. Please install LLVM/clang to enable LLVM IR generation.".to_string()
+    })?;
+    
+    // Compile to LLVM IR
+    // Use -emit-llvm -S to get text IR (.ll file)
+    let output = Command::new(clang)
+        .args([
+            "-emit-llvm",
+            "-S",
+            "-O0",          // No optimization to preserve structure
+            "-g",           // Debug info for source locations
+            "-fno-discard-value-names",  // Preserve variable names
+            "-Wno-everything",  // Suppress warnings for kernel code
+            "-I", "/Users/sky/linux-kernel/linux/include",  // Add kernel includes
+            "-I", "/Users/sky/linux-kernel/linux/arch/arm/include",
+            "-D", "__KERNEL__",
+            "-D", "MODULE",
+            "-o", ir_file.to_str().unwrap(),
+            file_path.as_str(),
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run clang: {}", e))?;
+    
+    if !output.status.success() {
+        // Return a mock result with error info when clang fails
+        // This allows the UI to still function
+        return Ok(LlvmIrResult {
+            module_name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+            functions: std::collections::HashMap::from([
+                ("__compilation_error__".to_string(), LlvmIrFunction {
+                    name: "__compilation_error__".to_string(),
+                    return_type: "void".to_string(),
+                    parameters: vec![],
+                    blocks: vec![LlvmIrBasicBlock {
+                        name: "error".to_string(),
+                        instructions: vec![LlvmIrInstruction {
+                            opcode: "error".to_string(),
+                            dest: None,
+                            type_str: "".to_string(),
+                            operands: vec![
+                                format!("Clang compilation failed:\n{}", 
+                                    String::from_utf8_lossy(&output.stderr))
+                            ],
+                            location: None,
+                        }],
+                        predecessors: vec![],
+                        successors: vec![],
+                        terminator: None,
+                    }],
+                    is_callback: false,
+                    callback_context: None,
+                }),
+            ]),
+        });
+    }
+    
+    // Parse the generated IR file
+    let parser = flowsight_llvm::LlvmParser::new();
+    let parse_result = parser.parse_file(&ir_file)
+        .map_err(|e| format!("Failed to parse LLVM IR: {}", e))?;
+    
+    // Convert to frontend format
+    let frontend_result = flowsight_llvm::to_frontend_format(&parse_result);
+    
+    // Clean up temp file
+    let _ = std::fs::remove_file(&ir_file);
+    
+    // Convert to our serializable types
+    let functions: std::collections::HashMap<String, LlvmIrFunction> = frontend_result.functions
+        .into_iter()
+        .map(|(name, func)| {
+            (name, LlvmIrFunction {
+                name: func.name,
+                return_type: func.return_type,
+                parameters: func.parameters.into_iter().map(|p| LlvmIrParameter {
+                    name: p.name,
+                    type_str: p.type_str,
+                }).collect(),
+                blocks: func.blocks.into_iter().map(|b| LlvmIrBasicBlock {
+                    name: b.name,
+                    instructions: b.instructions.into_iter().map(|i| LlvmIrInstruction {
+                        opcode: i.opcode,
+                        dest: i.dest,
+                        type_str: i.type_str,
+                        operands: i.operands,
+                        location: i.location.map(|l| SourceLocation {
+                            file: l.file,
+                            line: l.line,
+                        }),
+                    }).collect(),
+                    predecessors: b.predecessors,
+                    successors: b.successors,
+                    terminator: b.terminator.map(|t| LlvmIrInstruction {
+                        opcode: t.opcode,
+                        dest: t.dest,
+                        type_str: t.type_str,
+                        operands: t.operands,
+                        location: t.location.map(|l| SourceLocation {
+                            file: l.file,
+                            line: l.line,
+                        }),
+                    }),
+                }).collect(),
+                is_callback: func.is_callback,
+                callback_context: func.callback_context,
+            })
+        })
+        .collect();
+    
+    Ok(LlvmIrResult {
+        module_name: frontend_result.module_name,
+        functions,
+    })
+}
+
+/// Parse existing LLVM IR file (.ll or .bc)
+#[tauri::command]
+pub async fn parse_llvm_ir_file(file_path: String) -> Result<LlvmIrResult, String> {
+    let path = PathBuf::from(&file_path);
+    
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+    
+    let parser = flowsight_llvm::LlvmParser::new();
+    let parse_result = parser.parse_file(&path)
+        .map_err(|e| format!("Failed to parse LLVM IR: {}", e))?;
+    
+    let frontend_result = flowsight_llvm::to_frontend_format(&parse_result);
+    
+    // Convert to our serializable types
+    let functions: std::collections::HashMap<String, LlvmIrFunction> = frontend_result.functions
+        .into_iter()
+        .map(|(name, func)| {
+            (name, LlvmIrFunction {
+                name: func.name,
+                return_type: func.return_type,
+                parameters: func.parameters.into_iter().map(|p| LlvmIrParameter {
+                    name: p.name,
+                    type_str: p.type_str,
+                }).collect(),
+                blocks: func.blocks.into_iter().map(|b| LlvmIrBasicBlock {
+                    name: b.name,
+                    instructions: b.instructions.into_iter().map(|i| LlvmIrInstruction {
+                        opcode: i.opcode,
+                        dest: i.dest,
+                        type_str: i.type_str,
+                        operands: i.operands,
+                        location: i.location.map(|l| SourceLocation {
+                            file: l.file,
+                            line: l.line,
+                        }),
+                    }).collect(),
+                    predecessors: b.predecessors,
+                    successors: b.successors,
+                    terminator: b.terminator.map(|t| LlvmIrInstruction {
+                        opcode: t.opcode,
+                        dest: t.dest,
+                        type_str: t.type_str,
+                        operands: t.operands,
+                        location: t.location.map(|l| SourceLocation {
+                            file: l.file,
+                            line: l.line,
+                        }),
+                    }),
+                }).collect(),
+                is_callback: func.is_callback,
+                callback_context: func.callback_context,
+            })
+        })
+        .collect();
+    
+    Ok(LlvmIrResult {
+        module_name: frontend_result.module_name,
+        functions,
+    })
+}
