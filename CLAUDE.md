@@ -245,6 +245,10 @@ flowsight/
 | 🔧 问题修复 | Debug-Dev | Bug 定位、快速修复 | `.claude/agents/debug-dev.md` |
 | 🔄 CI 监控 | CI-Monitor | CI 状态监控、失败分析 | `.claude/agents/ci-monitor.md` |
 | 📝 测试评审 | Test-Reviewer | 测试质量评审 | `.claude/agents/test-reviewer.md` |
+| ⚡ 性能测试 | Performance-Tester | 性能基准、回归检测 | `.claude/agents/performance-tester.md` |
+| 🔒 安全审查 | Security-Reviewer | 漏洞检测、安全审计 | `.claude/agents/security-reviewer.md` |
+| 📖 文档编写 | Doc-Writer | API 文档、用户指南 | `.claude/agents/doc-writer.md` |
+| 🚀 发布管理 | Release-Manager | 版本发布、构建打包 | `.claude/agents/release-manager.md` |
 
 #### 协作流程
 
@@ -274,6 +278,13 @@ flowsight/
 │  评审阶段                                                               │
 │  ═════════                                                              │
 │  Test-Reviewer ──► 评审测试质量 ──► 提出改进建议                        │
+│  Security-Reviewer ──► 安全扫描 ──► 漏洞报告                            │
+│  Performance-Tester ──► 性能基准 ──► 回归检测                           │
+│                                                                         │
+│  发布阶段                                                               │
+│  ═════════                                                              │
+│  Doc-Writer ──► 更新文档 ──► Changelog                                  │
+│  Release-Manager ──► 构建打包 ──► 发布到 GitHub                         │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
