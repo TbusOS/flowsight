@@ -2057,3 +2057,125 @@ body {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
+
+/* ============================================
+   响应式设计 - 移动端和平板适配
+   ============================================ */
+
+/* 平板设备 (768px - 1024px) */
+@media (max-width: 1024px) {
+  /* 隐藏右侧面板 */
+  [data-panel="right"] {
+    display: none !important;
+  }
+  
+  /* 减少左侧面板默认宽度 */
+  [data-panel="left"] {
+    max-width: 200px !important;
+  }
+  
+  /* 减少 header 内边距 */
+  header {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  
+  /* 隐藏 header 中的次要按钮 */
+  header .hidden-tablet {
+    display: none !important;
+  }
+}
+
+/* 移动设备 (< 768px) */
+@media (max-width: 768px) {
+  /* 隐藏侧边栏图标 */
+  [data-sidebar="icon-bar"] {
+    display: none !important;
+  }
+  
+  /* 隐藏左侧面板 */
+  [data-panel="left"] {
+    display: none !important;
+  }
+  
+  /* 主内容区域全宽 */
+  [data-main-content] {
+    width: 100% !important;
+  }
+  
+  /* 减少 header 高度 */
+  header {
+    height: 44px !important;
+  }
+  
+  /* 隐藏菜单栏，只保留 logo */
+  [role="menubar"] {
+    display: none !important;
+  }
+  
+  /* 底部面板调整 */
+  [data-panel="bottom"] {
+    max-height: 40vh !important;
+  }
+  
+  /* 状态栏简化 */
+  [data-testid="status-bar"] {
+    font-size: 10px !important;
+    padding: 2px 8px !important;
+  }
+}
+
+/* 小屏幕手机 (< 480px) */
+@media (max-width: 480px) {
+  /* 进一步简化 UI */
+  header {
+    height: 40px !important;
+  }
+  
+  /* 隐藏所有次要 UI 元素 */
+  .hide-on-mobile {
+    display: none !important;
+  }
+  
+  /* 代码编辑器字体调整 */
+  .monaco-editor {
+    font-size: 12px !important;
+  }
+}
+
+/* 高分辨率屏幕优化 */
+@media (min-width: 1920px) {
+  /* 增加默认面板宽度 */
+  [data-panel="left"] {
+    min-width: 280px;
+  }
+  
+  [data-panel="right"] {
+    min-width: 320px;
+  }
+}
+
+/* 打印样式 */
+@media print {
+  /* 隐藏非内容元素 */
+  header,
+  [data-sidebar],
+  [data-panel="left"],
+  [data-panel="right"],
+  [data-panel="bottom"],
+  [data-testid="status-bar"] {
+    display: none !important;
+  }
+  
+  /* 主内容全宽 */
+  [data-main-content] {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+  
+  /* 使用打印友好的颜色 */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}
