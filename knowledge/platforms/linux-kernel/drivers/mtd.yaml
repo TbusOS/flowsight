@@ -1,0 +1,178 @@
+# MTD (Memory Technology Devices) Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/mtd/
+
+# ============================================================
+# MTD DEVICE
+# ============================================================
+mtd_device:
+  description: "MTD Device Driver"
+  header: "linux/mtd/mtd.h"
+  icon: "💿"
+  registration:
+    - pattern: 'mtd_device_register\s*\(\s*(?P<mtd>\w+)\s*,'
+      description: "注册 MTD 设备"
+    - pattern: 'mtd_device_parse_register\s*\(\s*(?P<mtd>\w+)\s*,'
+      description: "解析分区并注册 MTD 设备"
+  unregistration:
+    - pattern: 'mtd_device_unregister\s*\(\s*(?P<mtd>\w+)\s*\)'
+      description: "注销 MTD 设备"
+  structure:
+    name: "mtd_info"
+    callbacks:
+      _erase:
+        pattern: '\._erase\s*=\s*(?P<handler>\w+)'
+        description: "擦除操作"
+        context: "process"
+        can_sleep: true
+      _read:
+        pattern: '\._read\s*=\s*(?P<handler>\w+)'
+        description: "读取操作"
+        context: "process"
+        can_sleep: true
+      _write:
+        pattern: '\._write\s*=\s*(?P<handler>\w+)'
+        description: "写入操作"
+        context: "process"
+        can_sleep: true
+      _read_oob:
+        pattern: '\._read_oob\s*=\s*(?P<handler>\w+)'
+        description: "读取 OOB 数据"
+        context: "process"
+        can_sleep: true
+      _write_oob:
+        pattern: '\._write_oob\s*=\s*(?P<handler>\w+)'
+        description: "写入 OOB 数据"
+        context: "process"
+        can_sleep: true
+      _sync:
+        pattern: '\._sync\s*=\s*(?P<handler>\w+)'
+        description: "同步操作"
+        context: "process"
+        can_sleep: true
+      _lock:
+        pattern: '\._lock\s*=\s*(?P<handler>\w+)'
+        description: "锁定区域"
+        context: "process"
+        can_sleep: true
+      _unlock:
+        pattern: '\._unlock\s*=\s*(?P<handler>\w+)'
+        description: "解锁区域"
+        context: "process"
+        can_sleep: true
+
+# ============================================================
+# NAND FLASH
+# ============================================================
+nand_chip:
+  description: "NAND Flash Controller"
+  header: "linux/mtd/rawnand.h"
+  icon: "📀"
+  registration:
+    - pattern: 'nand_scan\s*\(\s*(?P<chip>\w+)\s*,\s*(?P<maxchips>\w+)\s*\)'
+      description: "扫描并初始化 NAND"
+    - pattern: 'nand_scan_with_ids\s*\(\s*(?P<chip>\w+)\s*,'
+      description: "使用指定 ID 扫描 NAND"
+  cleanup:
+    - pattern: 'nand_cleanup\s*\(\s*(?P<chip>\w+)\s*\)'
+      description: "清理 NAND 芯片"
+    - pattern: 'nand_release\s*\(\s*(?P<chip>\w+)\s*\)'
+      description: "释放 NAND 芯片（旧 API）"
+  structure:
+    name: "nand_controller_ops"
+    callbacks:
+      attach_chip:
+        pattern: '\.attach_chip\s*=\s*(?P<handler>\w+)'
+        description: "芯片附加回调"
+        context: "process"
+        can_sleep: true
+      exec_op:
+        pattern: '\.exec_op\s*=\s*(?P<handler>\w+)'
+        description: "执行 NAND 操作"
+        context: "process"
+        can_sleep: true
+      setup_interface:
+        pattern: '\.setup_interface\s*=\s*(?P<handler>\w+)'
+        description: "设置接口时序"
+        context: "process"
+        can_sleep: true
+  legacy_callbacks:
+    name: "nand_chip (legacy)"
+    callbacks:
+      cmd_ctrl:
+        pattern: '\.cmd_ctrl\s*=\s*(?P<handler>\w+)'
+        description: "命令/地址控制（旧 API）"
+        deprecated: true
+      select_chip:
+        pattern: '\.select_chip\s*=\s*(?P<handler>\w+)'
+        description: "片选（旧 API）"
+        deprecated: true
+      read_byte:
+        pattern: '\.read_byte\s*=\s*(?P<handler>\w+)'
+        description: "读取字节"
+      write_buf:
+        pattern: '\.write_buf\s*=\s*(?P<handler>\w+)'
+        description: "写入缓冲区"
+      read_buf:
+        pattern: '\.read_buf\s*=\s*(?P<handler>\w+)'
+        description: "读取缓冲区"
+
+# ============================================================
+# SPI NOR FLASH
+# ============================================================
+spi_nor:
+  description: "SPI NOR Flash Driver"
+  header: "linux/mtd/spi-nor.h"
+  icon: "⚡"
+  registration:
+    - pattern: 'spi_nor_scan\s*\(\s*(?P<nor>\w+)\s*,'
+      description: "扫描 SPI NOR Flash"
+  structure:
+    name: "spi_nor_controller_ops"
+    callbacks:
+      prepare:
+        pattern: '\.prepare\s*=\s*(?P<handler>\w+)'
+        description: "准备操作"
+      unprepare:
+        pattern: '\.unprepare\s*=\s*(?P<handler>\w+)'
+        description: "完成操作"
+      read_reg:
+        pattern: '\.read_reg\s*=\s*(?P<handler>\w+)'
+        description: "读取寄存器"
+      write_reg:
+        pattern: '\.write_reg\s*=\s*(?P<handler>\w+)'
+        description: "写入寄存器"
+      read:
+        pattern: '\.read\s*=\s*(?P<handler>\w+)'
+        description: "读取数据"
+      write:
+        pattern: '\.write\s*=\s*(?P<handler>\w+)'
+        description: "写入数据"
+      erase:
+        pattern: '\.erase\s*=\s*(?P<handler>\w+)'
+        description: "擦除"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  mtd_read:
+    description: "MTD Read Operation"
+    chain:
+      - caller: "mtd_read"
+        callee: "mtd->_read"
+        description: "调用底层读取函数"
+  nand_probe:
+    description: "NAND Probe Flow"
+    chain:
+      - caller: "platform_driver.probe"
+        callee: "nand_scan"
+        description: "扫描 NAND"
+      - caller: "nand_scan"
+        callee: "nand_scan_ident"
+        description: "识别 NAND 芯片"
+      - caller: "nand_scan"
+        callee: "nand_scan_tail"
+        description: "完成初始化"
+      - caller: "platform_driver.probe"
+        callee: "mtd_device_register"
+        description: "注册 MTD 设备"

@@ -1,0 +1,140 @@
+# LED Subsystem Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/leds/
+
+# ============================================================
+# LED CLASS DEVICE
+# ============================================================
+led_classdev:
+  description: "LED Class Device"
+  header: "linux/leds.h"
+  icon: "💡"
+  registration:
+    - pattern: 'led_classdev_register\s*\(\s*(?P<parent>\w+)\s*,\s*&(?P<led>\w+)\s*\)'
+      description: "注册 LED 设备"
+    - pattern: 'led_classdev_register_ext\s*\(\s*(?P<parent>\w+)\s*,\s*&(?P<led>\w+)\s*,'
+      description: "扩展注册 LED 设备"
+    - pattern: 'devm_led_classdev_register\s*\(\s*(?P<parent>\w+)\s*,\s*&(?P<led>\w+)\s*\)'
+      description: "托管注册 LED 设备"
+    - pattern: 'devm_led_classdev_register_ext\s*\(\s*(?P<parent>\w+)\s*,'
+      description: "托管扩展注册"
+  unregistration:
+    - pattern: 'led_classdev_unregister\s*\(\s*&(?P<led>\w+)\s*\)'
+      description: "注销 LED 设备"
+  structure:
+    name: "led_classdev"
+    callbacks:
+      brightness_set:
+        pattern: '\.brightness_set\s*=\s*(?P<handler>\w+)'
+        description: "设置亮度（不能睡眠）"
+        context: "any"
+        can_sleep: false
+      brightness_set_blocking:
+        pattern: '\.brightness_set_blocking\s*=\s*(?P<handler>\w+)'
+        description: "设置亮度（可以睡眠）"
+        context: "process"
+        can_sleep: true
+      brightness_get:
+        pattern: '\.brightness_get\s*=\s*(?P<handler>\w+)'
+        description: "获取当前亮度"
+        context: "process"
+        can_sleep: true
+      blink_set:
+        pattern: '\.blink_set\s*=\s*(?P<handler>\w+)'
+        description: "设置闪烁参数"
+        context: "process"
+        can_sleep: true
+      pattern_set:
+        pattern: '\.pattern_set\s*=\s*(?P<handler>\w+)'
+        description: "设置闪烁模式"
+      pattern_clear:
+        pattern: '\.pattern_clear\s*=\s*(?P<handler>\w+)'
+        description: "清除闪烁模式"
+  helpers:
+    - pattern: 'led_set_brightness\s*\(\s*&(?P<led>\w+)\s*,\s*(?P<value>\w+)\s*\)'
+      description: "设置亮度"
+    - pattern: 'led_set_brightness_sync\s*\(\s*&(?P<led>\w+)\s*,\s*(?P<value>\w+)\s*\)'
+      description: "同步设置亮度"
+    - pattern: 'led_blink_set\s*\(\s*&(?P<led>\w+)\s*,'
+      description: "设置闪烁"
+    - pattern: 'led_blink_set_oneshot\s*\(\s*&(?P<led>\w+)\s*,'
+      description: "单次闪烁"
+
+# ============================================================
+# LED TRIGGER
+# ============================================================
+led_trigger:
+  description: "LED Trigger"
+  header: "linux/leds.h"
+  icon: "⚡"
+  registration:
+    - pattern: 'led_trigger_register\s*\(\s*&(?P<trigger>\w+)\s*\)'
+      description: "注册 LED 触发器"
+    - pattern: 'led_trigger_register_simple\s*\('
+      description: "注册简单触发器"
+    - pattern: 'devm_led_trigger_register\s*\(\s*(?P<dev>\w+)\s*,\s*&(?P<trigger>\w+)\s*\)'
+      description: "托管注册触发器"
+  unregistration:
+    - pattern: 'led_trigger_unregister\s*\(\s*&(?P<trigger>\w+)\s*\)'
+      description: "注销触发器"
+    - pattern: 'led_trigger_unregister_simple\s*\(\s*(?P<trigger>\w+)\s*\)'
+      description: "注销简单触发器"
+  structure:
+    name: "led_trigger"
+    callbacks:
+      activate:
+        pattern: '\.activate\s*=\s*(?P<handler>\w+)'
+        description: "激活触发器"
+        context: "process"
+        can_sleep: true
+      deactivate:
+        pattern: '\.deactivate\s*=\s*(?P<handler>\w+)'
+        description: "停用触发器"
+        context: "process"
+        can_sleep: true
+  helpers:
+    - pattern: 'led_trigger_event\s*\(\s*(?P<trigger>\w+)\s*,\s*(?P<event>\w+)\s*\)'
+      description: "触发 LED 事件"
+    - pattern: 'led_trigger_blink\s*\(\s*(?P<trigger>\w+)\s*,'
+      description: "触发 LED 闪烁"
+
+# ============================================================
+# GPIO LED
+# ============================================================
+gpio_led:
+  description: "GPIO-based LED"
+  header: "linux/leds.h"
+  icon: "🔌"
+  patterns:
+    - pattern: 'gpio_led_register_device\s*\('
+      description: "注册 GPIO LED 平台设备"
+    - pattern: 'devm_gpio_leds_register\s*\('
+      description: "托管注册 GPIO LED"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  led_brightness:
+    description: "LED Brightness Setting"
+    chain:
+      - caller: "sysfs write"
+        callee: "led_brightness_store"
+        description: "sysfs 写入"
+      - caller: "led_brightness_store"
+        callee: "led_set_brightness"
+        description: "设置亮度"
+      - caller: "led_set_brightness"
+        callee: "__led_set_brightness"
+        description: "内部设置"
+      - caller: "__led_set_brightness"
+        callee: "led_cdev->brightness_set"
+        description: "调用驱动回调"
+  led_trigger_activate:
+    description: "LED Trigger Activation"
+    chain:
+      - caller: "led_trigger_set"
+        callee: "trigger->activate"
+        description: "激活触发器"
+      - caller: "subsystem event"
+        callee: "led_trigger_event"
+        description: "触发 LED 事件"

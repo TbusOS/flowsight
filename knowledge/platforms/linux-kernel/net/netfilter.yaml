@@ -1,0 +1,196 @@
+# Netfilter Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/networking/netfilter.html
+
+# ============================================================
+# NETFILTER HOOKS
+# ============================================================
+nf_hook:
+  description: "Netfilter Hook Registration"
+  header: "linux/netfilter.h"
+  icon: "🔥"
+  registration:
+    - pattern: 'nf_register_net_hook\s*\(\s*(?P<net>\w+)\s*,\s*&(?P<ops>\w+)\s*\)'
+      description: "注册网络命名空间 hook"
+    - pattern: 'nf_register_net_hooks\s*\(\s*(?P<net>\w+)\s*,\s*(?P<ops>\w+)\s*,\s*(?P<n>\w+)\s*\)'
+      description: "批量注册 hooks"
+  unregistration:
+    - pattern: 'nf_unregister_net_hook\s*\(\s*(?P<net>\w+)\s*,\s*&(?P<ops>\w+)\s*\)'
+      description: "注销 hook"
+    - pattern: 'nf_unregister_net_hooks\s*\(\s*(?P<net>\w+)\s*,\s*(?P<ops>\w+)\s*,\s*(?P<n>\w+)\s*\)'
+      description: "批量注销 hooks"
+  structure:
+    name: "nf_hook_ops"
+    fields:
+      hook:
+        pattern: '\.hook\s*=\s*(?P<handler>\w+)'
+        description: "Hook 处理函数"
+        context: "softirq"
+        can_sleep: false
+      pf:
+        pattern: '\.pf\s*=\s*(?P<protocol>\w+)'
+        description: "协议族 (NFPROTO_IPV4, NFPROTO_IPV6)"
+      hooknum:
+        pattern: '\.hooknum\s*=\s*(?P<hooknum>\w+)'
+        description: "Hook 点 (NF_INET_PRE_ROUTING, etc.)"
+      priority:
+        pattern: '\.priority\s*=\s*(?P<priority>\w+)'
+        description: "优先级"
+  hook_points:
+    - NF_INET_PRE_ROUTING
+    - NF_INET_LOCAL_IN
+    - NF_INET_FORWARD
+    - NF_INET_LOCAL_OUT
+    - NF_INET_POST_ROUTING
+  return_values:
+    - NF_DROP: "丢弃数据包"
+    - NF_ACCEPT: "接受数据包"
+    - NF_STOLEN: "Hook 接管数据包"
+    - NF_QUEUE: "排队到用户空间"
+    - NF_REPEAT: "重新调用 hook"
+
+# ============================================================
+# XTABLES (Legacy iptables)
+# ============================================================
+xt_target:
+  description: "Xtables Target"
+  header: "linux/netfilter/x_tables.h"
+  icon: "🎯"
+  registration:
+    - pattern: 'xt_register_target\s*\(\s*&(?P<target>\w+)\s*\)'
+      description: "注册 target"
+    - pattern: 'xt_register_targets\s*\(\s*(?P<targets>\w+)\s*,\s*(?P<n>\w+)\s*\)'
+      description: "批量注册 targets"
+  structure:
+    name: "xt_target"
+    callbacks:
+      target:
+        pattern: '\.target\s*=\s*(?P<handler>\w+)'
+        description: "Target 处理函数"
+        context: "softirq"
+        can_sleep: false
+      checkentry:
+        pattern: '\.checkentry\s*=\s*(?P<handler>\w+)'
+        description: "检查规则有效性"
+        context: "process"
+        can_sleep: true
+      destroy:
+        pattern: '\.destroy\s*=\s*(?P<handler>\w+)'
+        description: "销毁规则"
+        context: "process"
+        can_sleep: true
+
+xt_match:
+  description: "Xtables Match"
+  header: "linux/netfilter/x_tables.h"
+  icon: "🔍"
+  registration:
+    - pattern: 'xt_register_match\s*\(\s*&(?P<match>\w+)\s*\)'
+      description: "注册 match"
+    - pattern: 'xt_register_matches\s*\(\s*(?P<matches>\w+)\s*,\s*(?P<n>\w+)\s*\)'
+      description: "批量注册 matches"
+  structure:
+    name: "xt_match"
+    callbacks:
+      match:
+        pattern: '\.match\s*=\s*(?P<handler>\w+)'
+        description: "Match 处理函数"
+        context: "softirq"
+        can_sleep: false
+      checkentry:
+        pattern: '\.checkentry\s*=\s*(?P<handler>\w+)'
+        description: "检查规则有效性"
+      destroy:
+        pattern: '\.destroy\s*=\s*(?P<handler>\w+)'
+        description: "销毁规则"
+
+# ============================================================
+# NFTABLES
+# ============================================================
+nft_expr:
+  description: "nftables Expression"
+  header: "net/netfilter/nf_tables.h"
+  icon: "📋"
+  registration:
+    - pattern: 'nft_register_expr\s*\(\s*&(?P<expr>\w+)\s*\)'
+      description: "注册表达式"
+  structure:
+    name: "nft_expr_ops"
+    callbacks:
+      eval:
+        pattern: '\.eval\s*=\s*(?P<handler>\w+)'
+        description: "表达式求值"
+        context: "softirq"
+        can_sleep: false
+      init:
+        pattern: '\.init\s*=\s*(?P<handler>\w+)'
+        description: "初始化表达式"
+        context: "process"
+        can_sleep: true
+      destroy:
+        pattern: '\.destroy\s*=\s*(?P<handler>\w+)'
+        description: "销毁表达式"
+      dump:
+        pattern: '\.dump\s*=\s*(?P<handler>\w+)'
+        description: "导出到 netlink"
+
+# ============================================================
+# CONNECTION TRACKING
+# ============================================================
+nf_conntrack:
+  description: "Connection Tracking"
+  header: "net/netfilter/nf_conntrack.h"
+  icon: "🔗"
+  helpers:
+    - pattern: 'nf_conntrack_alloc\s*\('
+      description: "分配连接跟踪条目"
+    - pattern: 'nf_conntrack_free\s*\(\s*(?P<ct>\w+)\s*\)'
+      description: "释放连接跟踪条目"
+    - pattern: 'nf_ct_get\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<ctinfo>\w+)\s*\)'
+      description: "获取 SKB 的连接跟踪"
+    - pattern: 'nf_ct_put\s*\(\s*(?P<ct>\w+)\s*\)'
+      description: "释放连接跟踪引用"
+  protocol_tracker:
+    pattern: 'nf_conntrack_l4proto_register\s*\(\s*&(?P<proto>\w+)\s*\)'
+    description: "注册 L4 协议跟踪器"
+
+# ============================================================
+# NAT
+# ============================================================
+nf_nat:
+  description: "Network Address Translation"
+  header: "net/netfilter/nf_nat.h"
+  icon: "🔄"
+  helpers:
+    - pattern: 'nf_nat_setup_info\s*\('
+      description: "设置 NAT 信息"
+    - pattern: 'nf_nat_packet\s*\('
+      description: "NAT 数据包处理"
+    - pattern: 'nf_nat_mangle_udp_packet\s*\('
+      description: "修改 UDP 数据包"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  nf_hook_slow:
+    description: "Netfilter Hook Processing"
+    chain:
+      - caller: "NF_HOOK"
+        callee: "nf_hook_slow"
+        description: "慢路径 hook 处理"
+      - caller: "nf_hook_slow"
+        callee: "nf_hook_entry_hookfn"
+        description: "调用注册的 hook"
+        context: "softirq"
+  conntrack_in:
+    description: "Connection Tracking Input"
+    chain:
+      - caller: "nf_conntrack_in"
+        callee: "resolve_normal_ct"
+        description: "解析连接"
+      - caller: "resolve_normal_ct"
+        callee: "nf_conntrack_find_get"
+        description: "查找现有连接"
+      - caller: "resolve_normal_ct"
+        callee: "init_conntrack"
+        description: "创建新连接"

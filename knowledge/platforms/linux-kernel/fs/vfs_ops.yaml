@@ -1,0 +1,280 @@
+# VFS Operations Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/filesystems/vfs.html
+
+# ============================================================
+# FILE OPERATIONS
+# ============================================================
+file_operations:
+  description: "File Operations"
+  header: "linux/fs.h"
+  icon: "📄"
+  structure:
+    name: "file_operations"
+    callbacks:
+      open:
+        pattern: '\.open\s*=\s*(?P<handler>\w+)'
+        description: "打开文件"
+        context: "process"
+        can_sleep: true
+      release:
+        pattern: '\.release\s*=\s*(?P<handler>\w+)'
+        description: "关闭文件"
+        context: "process"
+        can_sleep: true
+      read:
+        pattern: '\.read\s*=\s*(?P<handler>\w+)'
+        description: "读取文件（旧 API）"
+        context: "process"
+        can_sleep: true
+      write:
+        pattern: '\.write\s*=\s*(?P<handler>\w+)'
+        description: "写入文件（旧 API）"
+        context: "process"
+        can_sleep: true
+      read_iter:
+        pattern: '\.read_iter\s*=\s*(?P<handler>\w+)'
+        description: "读取文件（新 API）"
+        context: "process"
+        can_sleep: true
+      write_iter:
+        pattern: '\.write_iter\s*=\s*(?P<handler>\w+)'
+        description: "写入文件（新 API）"
+        context: "process"
+        can_sleep: true
+      llseek:
+        pattern: '\.llseek\s*=\s*(?P<handler>\w+)'
+        description: "定位文件"
+        context: "process"
+        can_sleep: true
+      mmap:
+        pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
+        description: "内存映射"
+        context: "process"
+        can_sleep: true
+      poll:
+        pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+        description: "轮询"
+        context: "process"
+        can_sleep: false
+      unlocked_ioctl:
+        pattern: '\.unlocked_ioctl\s*=\s*(?P<handler>\w+)'
+        description: "IO 控制"
+        context: "process"
+        can_sleep: true
+      compat_ioctl:
+        pattern: '\.compat_ioctl\s*=\s*(?P<handler>\w+)'
+        description: "兼容 IO 控制"
+        context: "process"
+        can_sleep: true
+      fsync:
+        pattern: '\.fsync\s*=\s*(?P<handler>\w+)'
+        description: "同步文件"
+        context: "process"
+        can_sleep: true
+      fasync:
+        pattern: '\.fasync\s*=\s*(?P<handler>\w+)'
+        description: "异步通知"
+        context: "process"
+        can_sleep: true
+      splice_read:
+        pattern: '\.splice_read\s*=\s*(?P<handler>\w+)'
+        description: "零拷贝读取"
+      splice_write:
+        pattern: '\.splice_write\s*=\s*(?P<handler>\w+)'
+        description: "零拷贝写入"
+
+# ============================================================
+# INODE OPERATIONS
+# ============================================================
+inode_operations:
+  description: "Inode Operations"
+  header: "linux/fs.h"
+  icon: "📁"
+  structure:
+    name: "inode_operations"
+    callbacks:
+      lookup:
+        pattern: '\.lookup\s*=\s*(?P<handler>\w+)'
+        description: "查找目录项"
+        context: "process"
+        can_sleep: true
+      create:
+        pattern: '\.create\s*=\s*(?P<handler>\w+)'
+        description: "创建文件"
+        context: "process"
+        can_sleep: true
+      link:
+        pattern: '\.link\s*=\s*(?P<handler>\w+)'
+        description: "创建硬链接"
+        context: "process"
+        can_sleep: true
+      unlink:
+        pattern: '\.unlink\s*=\s*(?P<handler>\w+)'
+        description: "删除文件"
+        context: "process"
+        can_sleep: true
+      symlink:
+        pattern: '\.symlink\s*=\s*(?P<handler>\w+)'
+        description: "创建符号链接"
+        context: "process"
+        can_sleep: true
+      mkdir:
+        pattern: '\.mkdir\s*=\s*(?P<handler>\w+)'
+        description: "创建目录"
+        context: "process"
+        can_sleep: true
+      rmdir:
+        pattern: '\.rmdir\s*=\s*(?P<handler>\w+)'
+        description: "删除目录"
+        context: "process"
+        can_sleep: true
+      rename:
+        pattern: '\.rename\s*=\s*(?P<handler>\w+)'
+        description: "重命名"
+        context: "process"
+        can_sleep: true
+      getattr:
+        pattern: '\.getattr\s*=\s*(?P<handler>\w+)'
+        description: "获取属性"
+        context: "process"
+        can_sleep: true
+      setattr:
+        pattern: '\.setattr\s*=\s*(?P<handler>\w+)'
+        description: "设置属性"
+        context: "process"
+        can_sleep: true
+      permission:
+        pattern: '\.permission\s*=\s*(?P<handler>\w+)'
+        description: "检查权限"
+        context: "process"
+        can_sleep: true
+      listxattr:
+        pattern: '\.listxattr\s*=\s*(?P<handler>\w+)'
+        description: "列出扩展属性"
+
+# ============================================================
+# SUPER BLOCK OPERATIONS
+# ============================================================
+super_operations:
+  description: "Super Block Operations"
+  header: "linux/fs.h"
+  icon: "💿"
+  structure:
+    name: "super_operations"
+    callbacks:
+      alloc_inode:
+        pattern: '\.alloc_inode\s*=\s*(?P<handler>\w+)'
+        description: "分配 inode"
+        context: "process"
+        can_sleep: true
+      destroy_inode:
+        pattern: '\.destroy_inode\s*=\s*(?P<handler>\w+)'
+        description: "销毁 inode"
+        context: "process"
+        can_sleep: true
+      free_inode:
+        pattern: '\.free_inode\s*=\s*(?P<handler>\w+)'
+        description: "释放 inode（RCU 回调）"
+        context: "softirq"
+        can_sleep: false
+      write_inode:
+        pattern: '\.write_inode\s*=\s*(?P<handler>\w+)'
+        description: "写入 inode"
+        context: "process"
+        can_sleep: true
+      drop_inode:
+        pattern: '\.drop_inode\s*=\s*(?P<handler>\w+)'
+        description: "丢弃 inode"
+        context: "process"
+        can_sleep: false
+      evict_inode:
+        pattern: '\.evict_inode\s*=\s*(?P<handler>\w+)'
+        description: "驱逐 inode"
+        context: "process"
+        can_sleep: true
+      put_super:
+        pattern: '\.put_super\s*=\s*(?P<handler>\w+)'
+        description: "释放超级块"
+        context: "process"
+        can_sleep: true
+      sync_fs:
+        pattern: '\.sync_fs\s*=\s*(?P<handler>\w+)'
+        description: "同步文件系统"
+        context: "process"
+        can_sleep: true
+      statfs:
+        pattern: '\.statfs\s*=\s*(?P<handler>\w+)'
+        description: "获取文件系统状态"
+        context: "process"
+        can_sleep: true
+      remount_fs:
+        pattern: '\.remount_fs\s*=\s*(?P<handler>\w+)'
+        description: "重新挂载"
+        context: "process"
+        can_sleep: true
+      show_options:
+        pattern: '\.show_options\s*=\s*(?P<handler>\w+)'
+        description: "显示挂载选项"
+
+# ============================================================
+# FILE SYSTEM TYPE
+# ============================================================
+file_system_type:
+  description: "File System Type"
+  header: "linux/fs.h"
+  icon: "🗄️"
+  registration:
+    - pattern: 'register_filesystem\s*\(\s*&(?P<fs>\w+)\s*\)'
+      description: "注册文件系统"
+    - pattern: 'module_init\s*\(\s*(?P<init>\w+)\s*\)'
+      description: "模块初始化"
+  unregistration:
+    - pattern: 'unregister_filesystem\s*\(\s*&(?P<fs>\w+)\s*\)'
+      description: "注销文件系统"
+  structure:
+    name: "file_system_type"
+    callbacks:
+      init_fs_context:
+        pattern: '\.init_fs_context\s*=\s*(?P<handler>\w+)'
+        description: "初始化挂载上下文（新 API）"
+      mount:
+        pattern: '\.mount\s*=\s*(?P<handler>\w+)'
+        description: "挂载文件系统（旧 API）"
+      kill_sb:
+        pattern: '\.kill_sb\s*=\s*(?P<handler>\w+)'
+        description: "卸载文件系统"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  vfs_read:
+    description: "VFS Read Path"
+    chain:
+      - caller: "ksys_read"
+        callee: "vfs_read"
+        description: "VFS 读取入口"
+      - caller: "vfs_read"
+        callee: "file->f_op->read_iter"
+        description: "调用文件系统读取"
+  vfs_write:
+    description: "VFS Write Path"
+    chain:
+      - caller: "ksys_write"
+        callee: "vfs_write"
+        description: "VFS 写入入口"
+      - caller: "vfs_write"
+        callee: "file->f_op->write_iter"
+        description: "调用文件系统写入"
+  path_lookup:
+    description: "Path Lookup"
+    chain:
+      - caller: "filename_lookup"
+        callee: "path_lookupat"
+        description: "路径查找"
+      - caller: "path_lookupat"
+        callee: "link_path_walk"
+        description: "遍历路径组件"
+      - caller: "link_path_walk"
+        callee: "inode->i_op->lookup"
+        description: "调用文件系统查找"

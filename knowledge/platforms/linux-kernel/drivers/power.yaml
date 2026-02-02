@@ -1,0 +1,117 @@
+# Power Supply Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/power/power_supply_class.html
+
+# ============================================================
+# POWER SUPPLY CLASS
+# ============================================================
+power_supply:
+  description: "Power Supply Class Driver"
+  header: "linux/power_supply.h"
+  icon: "🔋"
+  registration:
+    - pattern: 'power_supply_register\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<desc>\w+)\s*,\s*(?P<cfg>\w+)\s*\)'
+      description: "注册电源设备"
+    - pattern: 'devm_power_supply_register\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "托管注册电源设备"
+  unregistration:
+    - pattern: 'power_supply_unregister\s*\(\s*(?P<psy>\w+)\s*\)'
+      description: "注销电源设备"
+  structure:
+    name: "power_supply_desc"
+    callbacks:
+      get_property:
+        pattern: '\.get_property\s*=\s*(?P<handler>\w+)'
+        description: "获取电源属性"
+        context: "process"
+        can_sleep: true
+      set_property:
+        pattern: '\.set_property\s*=\s*(?P<handler>\w+)'
+        description: "设置电源属性"
+        context: "process"
+        can_sleep: true
+      property_is_writeable:
+        pattern: '\.property_is_writeable\s*=\s*(?P<handler>\w+)'
+        description: "检查属性可写性"
+        context: "process"
+        can_sleep: false
+      external_power_changed:
+        pattern: '\.external_power_changed\s*=\s*(?P<handler>\w+)'
+        description: "外部电源变化通知"
+        context: "workqueue"
+        can_sleep: true
+  helpers:
+    - pattern: 'power_supply_changed\s*\(\s*(?P<psy>\w+)\s*\)'
+      description: "通知电源状态变化"
+    - pattern: 'power_supply_get_drvdata\s*\(\s*(?P<psy>\w+)\s*\)'
+      description: "获取驱动私有数据"
+    - pattern: 'power_supply_get_by_name\s*\('
+      description: "按名称获取电源设备"
+    - pattern: 'power_supply_put\s*\(\s*(?P<psy>\w+)\s*\)'
+      description: "释放电源设备引用"
+  properties:
+    - POWER_SUPPLY_PROP_STATUS
+    - POWER_SUPPLY_PROP_HEALTH
+    - POWER_SUPPLY_PROP_PRESENT
+    - POWER_SUPPLY_PROP_ONLINE
+    - POWER_SUPPLY_PROP_VOLTAGE_NOW
+    - POWER_SUPPLY_PROP_CURRENT_NOW
+    - POWER_SUPPLY_PROP_CAPACITY
+    - POWER_SUPPLY_PROP_TEMP
+
+# ============================================================
+# CHARGER MANAGER
+# ============================================================
+charger_manager:
+  description: "Charger Manager Framework"
+  header: "linux/power/charger-manager.h"
+  icon: "🔌"
+  patterns:
+    - pattern: 'cm_notify_event\s*\(\s*(?P<psy>\w+)\s*,\s*(?P<type>\w+)\s*,'
+      description: "通知充电事件"
+
+# ============================================================
+# BATTERY/FUEL GAUGE
+# ============================================================
+fuel_gauge:
+  description: "Fuel Gauge Interface"
+  header: "linux/power_supply.h"
+  icon: "📊"
+  patterns:
+    - pattern: 'power_supply_get_battery_info\s*\(\s*(?P<psy>\w+)\s*,'
+      description: "获取电池信息"
+    - pattern: 'power_supply_put_battery_info\s*\(\s*(?P<psy>\w+)\s*,'
+      description: "释放电池信息"
+    - pattern: 'power_supply_temp2resist_simple\s*\('
+      description: "温度到电阻转换"
+    - pattern: 'power_supply_ocv2cap_simple\s*\('
+      description: "OCV 到容量转换"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  power_supply_probe:
+    description: "Power Supply Probe Flow"
+    chain:
+      - caller: "platform_driver.probe"
+        callee: "devm_power_supply_register"
+        description: "注册电源设备"
+      - caller: "devm_power_supply_register"
+        callee: "power_supply_register"
+        description: "实际注册"
+      - caller: "power_supply_register"
+        callee: "device_add"
+        description: "添加设备到系统"
+  battery_changed:
+    description: "Battery State Change"
+    chain:
+      - caller: "IRQ handler"
+        callee: "power_supply_changed"
+        description: "通知状态变化"
+      - caller: "power_supply_changed"
+        callee: "power_supply_changed_work"
+        async: true
+        mechanism: "workqueue"
+      - caller: "power_supply_changed_work"
+        callee: "kobject_uevent"
+        description: "发送 uevent 到用户空间"

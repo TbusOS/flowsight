@@ -1,0 +1,249 @@
+# Media Subsystem Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/media/
+
+# ============================================================
+# V4L2 VIDEO DEVICE
+# ============================================================
+video_device:
+  description: "V4L2 Video Device"
+  header: "media/v4l2-dev.h"
+  icon: "📹"
+  registration:
+    - pattern: 'video_register_device\s*\(\s*(?P<vdev>\w+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<nr>\w+)\s*\)'
+      description: "注册视频设备"
+    - pattern: '__video_register_device\s*\('
+      description: "注册视频设备（内部）"
+  unregistration:
+    - pattern: 'video_unregister_device\s*\(\s*(?P<vdev>\w+)\s*\)'
+      description: "注销视频设备"
+  helpers:
+    - pattern: 'video_device_alloc\s*\(\s*\)'
+      description: "分配视频设备"
+    - pattern: 'video_device_release\s*\(\s*(?P<vdev>\w+)\s*\)'
+      description: "释放视频设备"
+    - pattern: 'video_get_drvdata\s*\(\s*(?P<vdev>\w+)\s*\)'
+      description: "获取驱动私有数据"
+    - pattern: 'video_set_drvdata\s*\(\s*(?P<vdev>\w+)\s*,'
+      description: "设置驱动私有数据"
+
+# ============================================================
+# V4L2 FILE OPERATIONS
+# ============================================================
+v4l2_file_operations:
+  description: "V4L2 File Operations"
+  header: "media/v4l2-dev.h"
+  icon: "🎬"
+  structure:
+    name: "v4l2_file_operations"
+    callbacks:
+      open:
+        pattern: '\.open\s*=\s*(?P<handler>\w+)'
+        description: "打开设备"
+        context: "process"
+        can_sleep: true
+      release:
+        pattern: '\.release\s*=\s*(?P<handler>\w+)'
+        description: "关闭设备"
+        context: "process"
+        can_sleep: true
+      read:
+        pattern: '\.read\s*=\s*(?P<handler>\w+)'
+        description: "读取视频帧"
+        context: "process"
+        can_sleep: true
+      write:
+        pattern: '\.write\s*=\s*(?P<handler>\w+)'
+        description: "写入视频帧"
+        context: "process"
+        can_sleep: true
+      poll:
+        pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+        description: "轮询帧就绪"
+        context: "process"
+        can_sleep: false
+      mmap:
+        pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
+        description: "内存映射缓冲区"
+        context: "process"
+        can_sleep: true
+      unlocked_ioctl:
+        pattern: '\.unlocked_ioctl\s*=\s*(?P<handler>\w+)'
+        description: "V4L2 ioctl"
+        context: "process"
+        can_sleep: true
+
+# ============================================================
+# V4L2 IOCTL OPERATIONS
+# ============================================================
+v4l2_ioctl_ops:
+  description: "V4L2 IOCTL Operations"
+  header: "media/v4l2-ioctl.h"
+  icon: "🎛️"
+  structure:
+    name: "v4l2_ioctl_ops"
+    callbacks:
+      # Capability
+      vidioc_querycap:
+        pattern: '\.vidioc_querycap\s*=\s*(?P<handler>\w+)'
+        description: "查询设备能力"
+      # Format
+      vidioc_enum_fmt_vid_cap:
+        pattern: '\.vidioc_enum_fmt_vid_cap\s*=\s*(?P<handler>\w+)'
+        description: "枚举捕获格式"
+      vidioc_g_fmt_vid_cap:
+        pattern: '\.vidioc_g_fmt_vid_cap\s*=\s*(?P<handler>\w+)'
+        description: "获取捕获格式"
+      vidioc_s_fmt_vid_cap:
+        pattern: '\.vidioc_s_fmt_vid_cap\s*=\s*(?P<handler>\w+)'
+        description: "设置捕获格式"
+      vidioc_try_fmt_vid_cap:
+        pattern: '\.vidioc_try_fmt_vid_cap\s*=\s*(?P<handler>\w+)'
+        description: "测试捕获格式"
+      # Buffer
+      vidioc_reqbufs:
+        pattern: '\.vidioc_reqbufs\s*=\s*(?P<handler>\w+)'
+        description: "请求缓冲区"
+      vidioc_querybuf:
+        pattern: '\.vidioc_querybuf\s*=\s*(?P<handler>\w+)'
+        description: "查询缓冲区"
+      vidioc_qbuf:
+        pattern: '\.vidioc_qbuf\s*=\s*(?P<handler>\w+)'
+        description: "入队缓冲区"
+      vidioc_dqbuf:
+        pattern: '\.vidioc_dqbuf\s*=\s*(?P<handler>\w+)'
+        description: "出队缓冲区"
+      # Streaming
+      vidioc_streamon:
+        pattern: '\.vidioc_streamon\s*=\s*(?P<handler>\w+)'
+        description: "开始流"
+      vidioc_streamoff:
+        pattern: '\.vidioc_streamoff\s*=\s*(?P<handler>\w+)'
+        description: "停止流"
+      # Controls
+      vidioc_queryctrl:
+        pattern: '\.vidioc_queryctrl\s*=\s*(?P<handler>\w+)'
+        description: "查询控制"
+      vidioc_g_ctrl:
+        pattern: '\.vidioc_g_ctrl\s*=\s*(?P<handler>\w+)'
+        description: "获取控制值"
+      vidioc_s_ctrl:
+        pattern: '\.vidioc_s_ctrl\s*=\s*(?P<handler>\w+)'
+        description: "设置控制值"
+      # Input/Output
+      vidioc_enum_input:
+        pattern: '\.vidioc_enum_input\s*=\s*(?P<handler>\w+)'
+        description: "枚举输入"
+      vidioc_g_input:
+        pattern: '\.vidioc_g_input\s*=\s*(?P<handler>\w+)'
+        description: "获取当前输入"
+      vidioc_s_input:
+        pattern: '\.vidioc_s_input\s*=\s*(?P<handler>\w+)'
+        description: "设置输入"
+
+# ============================================================
+# V4L2 SUBDEVICE
+# ============================================================
+v4l2_subdev:
+  description: "V4L2 Sub-device"
+  header: "media/v4l2-subdev.h"
+  icon: "🔧"
+  registration:
+    - pattern: 'v4l2_device_register_subdev\s*\(\s*(?P<v4l2_dev>\w+)\s*,\s*(?P<sd>\w+)\s*\)'
+      description: "注册子设备"
+    - pattern: 'v4l2_async_register_subdev\s*\(\s*(?P<sd>\w+)\s*\)'
+      description: "异步注册子设备"
+  structure:
+    name: "v4l2_subdev_ops"
+    inner_ops:
+      core:
+        pattern: '\.core\s*=\s*&(?P<ops>\w+)'
+        description: "核心操作"
+      video:
+        pattern: '\.video\s*=\s*&(?P<ops>\w+)'
+        description: "视频操作"
+      pad:
+        pattern: '\.pad\s*=\s*&(?P<ops>\w+)'
+        description: "Pad 操作"
+
+# ============================================================
+# VIDEOBUF2
+# ============================================================
+vb2_ops:
+  description: "Videobuf2 Operations"
+  header: "media/videobuf2-core.h"
+  icon: "📦"
+  structure:
+    name: "vb2_ops"
+    callbacks:
+      queue_setup:
+        pattern: '\.queue_setup\s*=\s*(?P<handler>\w+)'
+        description: "队列设置"
+        context: "process"
+        can_sleep: true
+      buf_prepare:
+        pattern: '\.buf_prepare\s*=\s*(?P<handler>\w+)'
+        description: "准备缓冲区"
+        context: "process"
+        can_sleep: true
+      buf_queue:
+        pattern: '\.buf_queue\s*=\s*(?P<handler>\w+)'
+        description: "入队缓冲区"
+        context: "process/interrupt"
+        can_sleep: false
+      start_streaming:
+        pattern: '\.start_streaming\s*=\s*(?P<handler>\w+)'
+        description: "开始流"
+        context: "process"
+        can_sleep: true
+      stop_streaming:
+        pattern: '\.stop_streaming\s*=\s*(?P<handler>\w+)'
+        description: "停止流"
+        context: "process"
+        can_sleep: true
+      buf_finish:
+        pattern: '\.buf_finish\s*=\s*(?P<handler>\w+)'
+        description: "完成缓冲区"
+      wait_prepare:
+        pattern: '\.wait_prepare\s*=\s*(?P<handler>\w+)'
+        description: "等待准备"
+      wait_finish:
+        pattern: '\.wait_finish\s*=\s*(?P<handler>\w+)'
+        description: "等待完成"
+  helpers:
+    - pattern: 'vb2_buffer_done\s*\(\s*(?P<vb>\w+)\s*,\s*(?P<state>\w+)\s*\)'
+      description: "标记缓冲区完成"
+    - pattern: 'vb2_queue_init\s*\(\s*(?P<q>\w+)\s*\)'
+      description: "初始化 VB2 队列"
+    - pattern: 'vb2_queue_release\s*\(\s*(?P<q>\w+)\s*\)'
+      description: "释放 VB2 队列"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  v4l2_capture:
+    description: "V4L2 Capture Flow"
+    chain:
+      - caller: "userspace"
+        callee: "VIDIOC_QBUF"
+        description: "入队缓冲区"
+      - caller: "vidioc_qbuf"
+        callee: "vb2_qbuf"
+        description: "VB2 入队"
+      - caller: "vb2_qbuf"
+        callee: "ops->buf_queue"
+        description: "驱动入队回调"
+      - caller: "ISP IRQ"
+        callee: "vb2_buffer_done"
+        context: "hardirq"
+        description: "帧完成中断"
+  v4l2_streaming:
+    description: "V4L2 Streaming Start"
+    chain:
+      - caller: "userspace"
+        callee: "VIDIOC_STREAMON"
+      - caller: "vidioc_streamon"
+        callee: "vb2_streamon"
+      - caller: "vb2_streamon"
+        callee: "ops->start_streaming"
+        description: "启动硬件流"

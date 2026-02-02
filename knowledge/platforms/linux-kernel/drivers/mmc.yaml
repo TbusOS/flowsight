@@ -1,0 +1,169 @@
+# MMC/SD Card Driver Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/mmc/
+
+# ============================================================
+# MMC HOST CONTROLLER
+# ============================================================
+mmc_host:
+  description: "MMC/SD Host Controller Driver"
+  header: "linux/mmc/host.h"
+  icon: "💾"
+  registration:
+    - pattern: 'mmc_add_host\s*\(\s*(?P<host>\w+)\s*\)'
+      description: "注册 MMC 主机控制器"
+    - pattern: 'mmc_alloc_host\s*\(\s*sizeof\s*\([^)]+\)\s*,\s*(?P<dev>[^)]+)\s*\)'
+      description: "分配 MMC 主机结构"
+  unregistration:
+    - pattern: 'mmc_remove_host\s*\(\s*(?P<host>\w+)\s*\)'
+      description: "移除 MMC 主机"
+    - pattern: 'mmc_free_host\s*\(\s*(?P<host>\w+)\s*\)'
+      description: "释放 MMC 主机"
+  structure:
+    name: "mmc_host_ops"
+    callbacks:
+      request:
+        pattern: '\.request\s*=\s*(?P<handler>\w+)'
+        description: "处理 MMC 请求"
+        context: "process/softirq"
+        can_sleep: false
+      set_ios:
+        pattern: '\.set_ios\s*=\s*(?P<handler>\w+)'
+        description: "设置 IO 参数（时钟、总线宽度等）"
+        context: "process"
+        can_sleep: true
+      get_ro:
+        pattern: '\.get_ro\s*=\s*(?P<handler>\w+)'
+        description: "获取写保护状态"
+        context: "process"
+        can_sleep: true
+      get_cd:
+        pattern: '\.get_cd\s*=\s*(?P<handler>\w+)'
+        description: "获取卡检测状态"
+        context: "process"
+        can_sleep: true
+      enable_sdio_irq:
+        pattern: '\.enable_sdio_irq\s*=\s*(?P<handler>\w+)'
+        description: "启用/禁用 SDIO 中断"
+        context: "process"
+        can_sleep: false
+      hw_reset:
+        pattern: '\.hw_reset\s*=\s*(?P<handler>\w+)'
+        description: "硬件复位"
+        context: "process"
+        can_sleep: true
+      card_busy:
+        pattern: '\.card_busy\s*=\s*(?P<handler>\w+)'
+        description: "检查卡是否忙"
+        context: "process"
+        can_sleep: false
+  helpers:
+    - pattern: 'mmc_request_done\s*\(\s*(?P<host>\w+)\s*,\s*(?P<mrq>\w+)\s*\)'
+      description: "MMC 请求完成回调"
+    - pattern: 'mmc_detect_change\s*\(\s*(?P<host>\w+)\s*,\s*(?P<delay>\w+)\s*\)'
+      description: "检测卡插拔变化"
+    - pattern: 'mmc_gpio_get_cd\s*\(\s*(?P<host>\w+)\s*\)'
+      description: "通过 GPIO 获取卡检测"
+    - pattern: 'mmc_gpio_get_ro\s*\(\s*(?P<host>\w+)\s*\)'
+      description: "通过 GPIO 获取写保护"
+
+# ============================================================
+# SDIO DEVICE DRIVER
+# ============================================================
+sdio_driver:
+  description: "SDIO Device Driver"
+  header: "linux/mmc/sdio_func.h"
+  icon: "📡"
+  registration:
+    - pattern: 'sdio_register_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注册 SDIO 驱动"
+    - pattern: 'module_sdio_driver\s*\(\s*(?P<driver>\w+)\s*\)'
+      description: "模块 SDIO 驱动宏"
+  unregistration:
+    - pattern: 'sdio_unregister_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注销 SDIO 驱动"
+  structure:
+    name: "sdio_driver"
+    callbacks:
+      probe:
+        pattern: '\.probe\s*=\s*(?P<handler>\w+)'
+        description: "SDIO 设备探测"
+        context: "process"
+        can_sleep: true
+      remove:
+        pattern: '\.remove\s*=\s*(?P<handler>\w+)'
+        description: "SDIO 设备移除"
+        context: "process"
+        can_sleep: true
+  helpers:
+    - pattern: 'sdio_claim_host\s*\(\s*(?P<func>\w+)\s*\)'
+      description: "获取 SDIO 总线锁"
+    - pattern: 'sdio_release_host\s*\(\s*(?P<func>\w+)\s*\)'
+      description: "释放 SDIO 总线锁"
+    - pattern: 'sdio_enable_func\s*\(\s*(?P<func>\w+)\s*\)'
+      description: "启用 SDIO 功能"
+    - pattern: 'sdio_disable_func\s*\(\s*(?P<func>\w+)\s*\)'
+      description: "禁用 SDIO 功能"
+    - pattern: 'sdio_claim_irq\s*\(\s*(?P<func>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      description: "注册 SDIO 中断处理"
+    - pattern: 'sdio_release_irq\s*\(\s*(?P<func>\w+)\s*\)'
+      description: "释放 SDIO 中断"
+    - pattern: 'sdio_readb\s*\(\s*(?P<func>\w+)\s*,\s*(?P<addr>\w+)\s*,'
+      description: "读取 SDIO 字节"
+    - pattern: 'sdio_writeb\s*\(\s*(?P<func>\w+)\s*,\s*(?P<val>\w+)\s*,\s*(?P<addr>\w+)\s*,'
+      description: "写入 SDIO 字节"
+
+# ============================================================
+# MMC BLOCK DEVICE
+# ============================================================
+mmc_blk:
+  description: "MMC Block Device Layer"
+  header: "linux/mmc/card.h"
+  icon: "📦"
+  patterns:
+    - pattern: 'mmc_blk_issue_rq\s*\('
+      description: "发起块请求"
+    - pattern: 'mmc_start_bkops\s*\('
+      description: "启动后台操作"
+    - pattern: 'mmc_blk_rw_rq_prep\s*\('
+      description: "准备读写请求"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  mmc_probe:
+    description: "MMC Host Controller Probe Flow"
+    chain:
+      - caller: "platform_driver.probe"
+        callee: "mmc_alloc_host"
+        description: "分配主机结构"
+      - caller: "platform_driver.probe"
+        callee: "mmc_add_host"
+        description: "注册主机控制器"
+      - caller: "mmc_add_host"
+        callee: "mmc_start_host"
+        async: true
+        description: "启动主机（异步扫描卡）"
+  mmc_request:
+    description: "MMC Request Processing"
+    chain:
+      - caller: "mmc_start_request"
+        callee: "host->ops->request"
+        description: "调用主机控制器请求处理"
+      - caller: "host->ops->request"
+        callee: "mmc_request_done"
+        async: true
+        description: "请求完成回调（可能在中断上下文）"
+  card_detect:
+    description: "Card Detection Flow"
+    chain:
+      - caller: "GPIO IRQ"
+        callee: "mmc_gpio_cd_irq"
+        context: "hardirq"
+      - caller: "mmc_gpio_cd_irq"
+        callee: "mmc_detect_change"
+        description: "触发卡检测"
+      - caller: "mmc_detect_change"
+        callee: "mmc_rescan"
+        async: true
+        mechanism: "delayed_work"

@@ -1,0 +1,176 @@
+# Crypto Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/crypto/
+
+# ============================================================
+# CRYPTO ALGORITHM REGISTRATION
+# ============================================================
+crypto_alg:
+  description: "Cryptographic Algorithm Driver"
+  header: "linux/crypto.h"
+  icon: "🔐"
+  registration:
+    - pattern: 'crypto_register_alg\s*\(\s*&(?P<alg>\w+)\s*\)'
+      description: "注册加密算法"
+    - pattern: 'crypto_register_algs\s*\(\s*(?P<algs>\w+)\s*,\s*(?P<count>\w+)\s*\)'
+      description: "批量注册加密算法"
+    - pattern: 'crypto_register_skcipher\s*\(\s*&(?P<alg>\w+)\s*\)'
+      description: "注册对称加密算法"
+    - pattern: 'crypto_register_ahash\s*\(\s*&(?P<alg>\w+)\s*\)'
+      description: "注册异步哈希算法"
+    - pattern: 'crypto_register_aead\s*\(\s*&(?P<alg>\w+)\s*\)'
+      description: "注册 AEAD 算法"
+    - pattern: 'crypto_register_rng\s*\(\s*&(?P<alg>\w+)\s*\)'
+      description: "注册随机数生成器"
+  unregistration:
+    - pattern: 'crypto_unregister_alg\s*\(\s*&(?P<alg>\w+)\s*\)'
+      description: "注销加密算法"
+    - pattern: 'crypto_unregister_algs\s*\(\s*(?P<algs>\w+)\s*,\s*(?P<count>\w+)\s*\)'
+      description: "批量注销加密算法"
+
+# ============================================================
+# SKCIPHER (Symmetric Key Cipher)
+# ============================================================
+skcipher:
+  description: "Symmetric Key Cipher"
+  header: "crypto/skcipher.h"
+  icon: "🔑"
+  structure:
+    name: "skcipher_alg"
+    callbacks:
+      setkey:
+        pattern: '\.setkey\s*=\s*(?P<handler>\w+)'
+        description: "设置密钥"
+        context: "process"
+        can_sleep: true
+      encrypt:
+        pattern: '\.encrypt\s*=\s*(?P<handler>\w+)'
+        description: "加密操作"
+        context: "process/softirq"
+        can_sleep: false
+      decrypt:
+        pattern: '\.decrypt\s*=\s*(?P<handler>\w+)'
+        description: "解密操作"
+        context: "process/softirq"
+        can_sleep: false
+      init:
+        pattern: '\.init\s*=\s*(?P<handler>\w+)'
+        description: "初始化上下文"
+      exit:
+        pattern: '\.exit\s*=\s*(?P<handler>\w+)'
+        description: "清理上下文"
+
+# ============================================================
+# AHASH (Async Hash)
+# ============================================================
+ahash:
+  description: "Asynchronous Hash Algorithm"
+  header: "crypto/hash.h"
+  icon: "#️⃣"
+  structure:
+    name: "ahash_alg"
+    callbacks:
+      init:
+        pattern: '\.init\s*=\s*(?P<handler>\w+)'
+        description: "初始化哈希上下文"
+      update:
+        pattern: '\.update\s*=\s*(?P<handler>\w+)'
+        description: "更新哈希数据"
+      final:
+        pattern: '\.final\s*=\s*(?P<handler>\w+)'
+        description: "完成哈希计算"
+      finup:
+        pattern: '\.finup\s*=\s*(?P<handler>\w+)'
+        description: "更新并完成"
+      digest:
+        pattern: '\.digest\s*=\s*(?P<handler>\w+)'
+        description: "一次性哈希"
+      setkey:
+        pattern: '\.setkey\s*=\s*(?P<handler>\w+)'
+        description: "设置 HMAC 密钥"
+      export:
+        pattern: '\.export\s*=\s*(?P<handler>\w+)'
+        description: "导出状态"
+      import:
+        pattern: '\.import\s*=\s*(?P<handler>\w+)'
+        description: "导入状态"
+
+# ============================================================
+# AEAD (Authenticated Encryption with Associated Data)
+# ============================================================
+aead:
+  description: "AEAD Algorithm"
+  header: "crypto/aead.h"
+  icon: "🛡️"
+  structure:
+    name: "aead_alg"
+    callbacks:
+      setkey:
+        pattern: '\.setkey\s*=\s*(?P<handler>\w+)'
+        description: "设置密钥"
+      setauthsize:
+        pattern: '\.setauthsize\s*=\s*(?P<handler>\w+)'
+        description: "设置认证标签大小"
+      encrypt:
+        pattern: '\.encrypt\s*=\s*(?P<handler>\w+)'
+        description: "加密并认证"
+      decrypt:
+        pattern: '\.decrypt\s*=\s*(?P<handler>\w+)'
+        description: "解密并验证"
+
+# ============================================================
+# CRYPTO ENGINE (Hardware Acceleration)
+# ============================================================
+crypto_engine:
+  description: "Crypto Engine for Hardware Accelerators"
+  header: "crypto/engine.h"
+  icon: "⚙️"
+  registration:
+    - pattern: 'crypto_engine_alloc_init\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<rt>\w+)\s*\)'
+      description: "分配并初始化加密引擎"
+    - pattern: 'crypto_engine_alloc_init_and_set\s*\('
+      description: "分配、初始化并配置引擎"
+  helpers:
+    - pattern: 'crypto_engine_start\s*\(\s*(?P<engine>\w+)\s*\)'
+      description: "启动加密引擎"
+    - pattern: 'crypto_engine_stop\s*\(\s*(?P<engine>\w+)\s*\)'
+      description: "停止加密引擎"
+    - pattern: 'crypto_engine_exit\s*\(\s*(?P<engine>\w+)\s*\)'
+      description: "退出加密引擎"
+    - pattern: 'crypto_transfer_skcipher_request_to_engine\s*\('
+      description: "传输 skcipher 请求到引擎"
+    - pattern: 'crypto_transfer_hash_request_to_engine\s*\('
+      description: "传输哈希请求到引擎"
+  callbacks:
+    do_one_request:
+      pattern: '\.do_one_request\s*=\s*(?P<handler>\w+)'
+      description: "处理单个请求"
+      context: "kthread"
+      can_sleep: true
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  crypto_request:
+    description: "Crypto Request Flow"
+    chain:
+      - caller: "crypto_skcipher_encrypt"
+        callee: "alg->encrypt"
+        description: "调用算法加密函数"
+      - caller: "alg->encrypt"
+        callee: "crypto_request_complete"
+        async: true
+        description: "请求完成回调"
+  hw_crypto:
+    description: "Hardware Crypto Engine Flow"
+    chain:
+      - caller: "crypto_transfer_*_request_to_engine"
+        callee: "crypto_pump_requests"
+        description: "泵送请求"
+      - caller: "crypto_pump_requests"
+        callee: "engine->do_one_request"
+        context: "kthread"
+        description: "执行单个请求"
+      - caller: "engine->do_one_request"
+        callee: "crypto_finalize_*_request"
+        description: "完成请求"

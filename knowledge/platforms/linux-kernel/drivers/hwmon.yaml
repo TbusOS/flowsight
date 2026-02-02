@@ -1,0 +1,131 @@
+# Hardware Monitoring Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/hwmon/
+
+# ============================================================
+# HWMON DEVICE
+# ============================================================
+hwmon_device:
+  description: "Hardware Monitoring Device"
+  header: "linux/hwmon.h"
+  icon: "🌡️"
+  registration:
+    - pattern: 'hwmon_device_register_with_info\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "注册 hwmon 设备（推荐）"
+    - pattern: 'devm_hwmon_device_register_with_info\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "托管注册 hwmon 设备"
+    - pattern: 'hwmon_device_register_with_groups\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "带属性组注册（旧 API）"
+    - pattern: 'hwmon_device_register\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "注册 hwmon 设备（旧 API）"
+  unregistration:
+    - pattern: 'hwmon_device_unregister\s*\(\s*(?P<hwmon>\w+)\s*\)'
+      description: "注销 hwmon 设备"
+  structure:
+    name: "hwmon_ops"
+    callbacks:
+      is_visible:
+        pattern: '\.is_visible\s*=\s*(?P<handler>\w+)'
+        description: "检查属性可见性"
+        context: "process"
+        can_sleep: false
+      read:
+        pattern: '\.read\s*=\s*(?P<handler>\w+)'
+        description: "读取传感器值"
+        context: "process"
+        can_sleep: true
+      read_string:
+        pattern: '\.read_string\s*=\s*(?P<handler>\w+)'
+        description: "读取字符串属性"
+        context: "process"
+        can_sleep: true
+      write:
+        pattern: '\.write\s*=\s*(?P<handler>\w+)'
+        description: "写入属性"
+        context: "process"
+        can_sleep: true
+  sensor_types:
+    - hwmon_chip
+    - hwmon_temp
+    - hwmon_in
+    - hwmon_curr
+    - hwmon_power
+    - hwmon_energy
+    - hwmon_humidity
+    - hwmon_fan
+    - hwmon_pwm
+    - hwmon_intrusion
+
+# ============================================================
+# HWMON CHANNEL INFO
+# ============================================================
+hwmon_channel_info:
+  description: "Hardware Monitoring Channel"
+  header: "linux/hwmon.h"
+  icon: "📊"
+  macros:
+    - pattern: 'HWMON_CHANNEL_INFO\s*\(\s*(?P<type>\w+)\s*,'
+      description: "定义 hwmon 通道"
+    - pattern: 'HWMON_T_INPUT'
+      description: "温度输入"
+    - pattern: 'HWMON_T_MAX'
+      description: "温度上限"
+    - pattern: 'HWMON_T_CRIT'
+      description: "临界温度"
+    - pattern: 'HWMON_I_INPUT'
+      description: "电流输入"
+    - pattern: 'HWMON_P_INPUT'
+      description: "功率输入"
+    - pattern: 'HWMON_F_INPUT'
+      description: "风扇转速"
+
+# ============================================================
+# THERMAL HWMON
+# ============================================================
+thermal_hwmon:
+  description: "Thermal Zone Hwmon Interface"
+  header: "linux/thermal.h"
+  icon: "🔥"
+  patterns:
+    - pattern: 'thermal_add_hwmon_sysfs\s*\(\s*(?P<tz>\w+)\s*\)'
+      description: "添加 hwmon sysfs 接口"
+    - pattern: 'thermal_remove_hwmon_sysfs\s*\(\s*(?P<tz>\w+)\s*\)'
+      description: "移除 hwmon sysfs 接口"
+
+# ============================================================
+# REGULATOR HWMON
+# ============================================================
+regulator_hwmon:
+  description: "Regulator Hwmon Interface"
+  header: "linux/regulator/consumer.h"
+  icon: "⚡"
+  patterns:
+    - pattern: 'regulator_get_voltage\s*\(\s*(?P<reg>\w+)\s*\)'
+      description: "获取电压"
+    - pattern: 'regulator_get_current_limit\s*\(\s*(?P<reg>\w+)\s*\)'
+      description: "获取电流限制"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  hwmon_probe:
+    description: "Hwmon Probe Flow"
+    chain:
+      - caller: "platform_driver.probe"
+        callee: "devm_hwmon_device_register_with_info"
+        description: "注册 hwmon 设备"
+      - caller: "devm_hwmon_device_register_with_info"
+        callee: "__hwmon_device_register"
+        description: "实际注册"
+      - caller: "__hwmon_device_register"
+        callee: "device_register"
+        description: "注册到设备模型"
+  hwmon_read:
+    description: "Hwmon Attribute Read"
+    chain:
+      - caller: "sysfs read"
+        callee: "hwmon_attr_show"
+        description: "sysfs 显示函数"
+      - caller: "hwmon_attr_show"
+        callee: "ops->read"
+        description: "调用驱动读取函数"

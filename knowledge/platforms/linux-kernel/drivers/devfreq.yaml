@@ -1,0 +1,131 @@
+# Device Frequency Scaling Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/power/devfreq.html
+
+# ============================================================
+# DEVFREQ DEVICE
+# ============================================================
+devfreq:
+  description: "Device Frequency Scaling"
+  header: "linux/devfreq.h"
+  icon: "📈"
+  registration:
+    - pattern: 'devfreq_add_device\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<profile>\w+)\s*,\s*"(?P<governor>[^"]+)"'
+      description: "添加 devfreq 设备"
+    - pattern: 'devm_devfreq_add_device\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "托管添加 devfreq 设备"
+  removal:
+    - pattern: 'devfreq_remove_device\s*\(\s*(?P<devfreq>\w+)\s*\)'
+      description: "移除 devfreq 设备"
+  structure:
+    name: "devfreq_dev_profile"
+    callbacks:
+      target:
+        pattern: '\.target\s*=\s*(?P<handler>\w+)'
+        description: "设置目标频率"
+        context: "process"
+        can_sleep: true
+      get_dev_status:
+        pattern: '\.get_dev_status\s*=\s*(?P<handler>\w+)'
+        description: "获取设备状态"
+        context: "process"
+        can_sleep: true
+      get_cur_freq:
+        pattern: '\.get_cur_freq\s*=\s*(?P<handler>\w+)'
+        description: "获取当前频率"
+        context: "process"
+        can_sleep: true
+      exit:
+        pattern: '\.exit\s*=\s*(?P<handler>\w+)'
+        description: "退出回调"
+        context: "process"
+        can_sleep: true
+  helpers:
+    - pattern: 'devfreq_monitor_start\s*\(\s*(?P<devfreq>\w+)\s*\)'
+      description: "启动监控"
+    - pattern: 'devfreq_monitor_stop\s*\(\s*(?P<devfreq>\w+)\s*\)'
+      description: "停止监控"
+    - pattern: 'devfreq_update_status\s*\(\s*(?P<devfreq>\w+)\s*,'
+      description: "更新状态"
+    - pattern: 'devfreq_suspend_device\s*\(\s*(?P<devfreq>\w+)\s*\)'
+      description: "挂起设备"
+    - pattern: 'devfreq_resume_device\s*\(\s*(?P<devfreq>\w+)\s*\)'
+      description: "恢复设备"
+
+# ============================================================
+# DEVFREQ GOVERNOR
+# ============================================================
+devfreq_governor:
+  description: "Devfreq Governor"
+  header: "linux/devfreq.h"
+  icon: "👑"
+  registration:
+    - pattern: 'devfreq_add_governor\s*\(\s*&(?P<governor>\w+)\s*\)'
+      description: "添加调频策略"
+  removal:
+    - pattern: 'devfreq_remove_governor\s*\(\s*&(?P<governor>\w+)\s*\)'
+      description: "移除调频策略"
+  structure:
+    name: "devfreq_governor"
+    callbacks:
+      get_target_freq:
+        pattern: '\.get_target_freq\s*=\s*(?P<handler>\w+)'
+        description: "计算目标频率"
+        context: "process"
+        can_sleep: true
+      event_handler:
+        pattern: '\.event_handler\s*=\s*(?P<handler>\w+)'
+        description: "事件处理"
+        context: "process"
+        can_sleep: true
+  builtin_governors:
+    - simple_ondemand
+    - performance
+    - powersave
+    - userspace
+    - passive
+
+# ============================================================
+# DEVFREQ EVENT
+# ============================================================
+devfreq_event:
+  description: "Devfreq Event Device"
+  header: "linux/devfreq-event.h"
+  icon: "📡"
+  registration:
+    - pattern: 'devfreq_event_add_edev\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<desc>\w+)\s*\)'
+      description: "添加事件设备"
+    - pattern: 'devm_devfreq_event_add_edev\s*\('
+      description: "托管添加事件设备"
+  structure:
+    name: "devfreq_event_ops"
+    callbacks:
+      enable:
+        pattern: '\.enable\s*=\s*(?P<handler>\w+)'
+        description: "启用事件"
+      disable:
+        pattern: '\.disable\s*=\s*(?P<handler>\w+)'
+        description: "禁用事件"
+      get_event:
+        pattern: '\.get_event\s*=\s*(?P<handler>\w+)'
+        description: "获取事件数据"
+      set_event:
+        pattern: '\.set_event\s*=\s*(?P<handler>\w+)'
+        description: "设置事件参数"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  devfreq_scaling:
+    description: "Devfreq Scaling Flow"
+    chain:
+      - caller: "devfreq_monitor"
+        callee: "update_devfreq"
+        mechanism: "delayed_work"
+        description: "定时更新"
+      - caller: "update_devfreq"
+        callee: "governor->get_target_freq"
+        description: "计算目标频率"
+      - caller: "update_devfreq"
+        callee: "profile->target"
+        description: "设置硬件频率"

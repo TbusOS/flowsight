@@ -1,0 +1,170 @@
+# CPU Frequency Scaling Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/admin-guide/pm/cpufreq.html
+
+# ============================================================
+# CPUFREQ DRIVER
+# ============================================================
+cpufreq_driver:
+  description: "CPU Frequency Scaling Driver"
+  header: "linux/cpufreq.h"
+  icon: "🏎️"
+  registration:
+    - pattern: 'cpufreq_register_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注册 cpufreq 驱动"
+  unregistration:
+    - pattern: 'cpufreq_unregister_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注销 cpufreq 驱动"
+  structure:
+    name: "cpufreq_driver"
+    callbacks:
+      init:
+        pattern: '\.init\s*=\s*(?P<handler>\w+)'
+        description: "初始化 CPU 策略"
+        context: "process"
+        can_sleep: true
+      exit:
+        pattern: '\.exit\s*=\s*(?P<handler>\w+)'
+        description: "退出 CPU 策略"
+        context: "process"
+        can_sleep: true
+      verify:
+        pattern: '\.verify\s*=\s*(?P<handler>\w+)'
+        description: "验证频率参数"
+        context: "process"
+        can_sleep: false
+      target:
+        pattern: '\.target\s*=\s*(?P<handler>\w+)'
+        description: "设置目标频率（旧 API）"
+        context: "process"
+        can_sleep: true
+      target_index:
+        pattern: '\.target_index\s*=\s*(?P<handler>\w+)'
+        description: "设置频率索引"
+        context: "process"
+        can_sleep: true
+      fast_switch:
+        pattern: '\.fast_switch\s*=\s*(?P<handler>\w+)'
+        description: "快速切换频率（不能睡眠）"
+        context: "any"
+        can_sleep: false
+      get:
+        pattern: '\.get\s*=\s*(?P<handler>\w+)'
+        description: "获取当前频率"
+        context: "process"
+        can_sleep: true
+      suspend:
+        pattern: '\.suspend\s*=\s*(?P<handler>\w+)'
+        description: "挂起回调"
+        context: "process"
+        can_sleep: true
+      resume:
+        pattern: '\.resume\s*=\s*(?P<handler>\w+)'
+        description: "恢复回调"
+        context: "process"
+        can_sleep: true
+      ready:
+        pattern: '\.ready\s*=\s*(?P<handler>\w+)'
+        description: "策略就绪回调"
+      online:
+        pattern: '\.online\s*=\s*(?P<handler>\w+)'
+        description: "CPU 上线回调"
+      offline:
+        pattern: '\.offline\s*=\s*(?P<handler>\w+)'
+        description: "CPU 下线回调"
+      set_boost:
+        pattern: '\.set_boost\s*=\s*(?P<handler>\w+)'
+        description: "设置 Boost 模式"
+  helpers:
+    - pattern: 'cpufreq_freq_transition_begin\s*\('
+      description: "开始频率切换"
+    - pattern: 'cpufreq_freq_transition_end\s*\('
+      description: "结束频率切换"
+    - pattern: 'cpufreq_notify_transition\s*\('
+      description: "通知频率切换"
+
+# ============================================================
+# CPUFREQ GOVERNOR
+# ============================================================
+cpufreq_governor:
+  description: "CPU Frequency Governor"
+  header: "linux/cpufreq.h"
+  icon: "👑"
+  registration:
+    - pattern: 'cpufreq_register_governor\s*\(\s*&(?P<governor>\w+)\s*\)'
+      description: "注册调频策略"
+  unregistration:
+    - pattern: 'cpufreq_unregister_governor\s*\(\s*&(?P<governor>\w+)\s*\)'
+      description: "注销调频策略"
+  structure:
+    name: "cpufreq_governor"
+    callbacks:
+      init:
+        pattern: '\.init\s*=\s*(?P<handler>\w+)'
+        description: "初始化策略"
+      exit:
+        pattern: '\.exit\s*=\s*(?P<handler>\w+)'
+        description: "退出策略"
+      start:
+        pattern: '\.start\s*=\s*(?P<handler>\w+)'
+        description: "启动策略"
+      stop:
+        pattern: '\.stop\s*=\s*(?P<handler>\w+)'
+        description: "停止策略"
+      limits:
+        pattern: '\.limits\s*=\s*(?P<handler>\w+)'
+        description: "限制变化回调"
+  builtin_governors:
+    - performance
+    - powersave
+    - userspace
+    - ondemand
+    - conservative
+    - schedutil
+
+# ============================================================
+# CPUFREQ COOLING
+# ============================================================
+cpufreq_cooling:
+  description: "CPU Frequency Cooling Device"
+  header: "linux/cpu_cooling.h"
+  icon: "❄️"
+  registration:
+    - pattern: 'cpufreq_cooling_register\s*\(\s*(?P<policy>\w+)\s*\)'
+      description: "注册冷却设备"
+    - pattern: 'of_cpufreq_cooling_register\s*\(\s*(?P<policy>\w+)\s*\)'
+      description: "通过设备树注册"
+  unregistration:
+    - pattern: 'cpufreq_cooling_unregister\s*\(\s*(?P<cdev>\w+)\s*\)'
+      description: "注销冷却设备"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  cpufreq_set:
+    description: "CPU Frequency Setting"
+    chain:
+      - caller: "governor/userspace"
+        callee: "__cpufreq_driver_target"
+        description: "设置目标频率"
+      - caller: "__cpufreq_driver_target"
+        callee: "cpufreq_freq_transition_begin"
+        description: "开始切换通知"
+      - caller: "__cpufreq_driver_target"
+        callee: "driver->target_index"
+        description: "调用驱动设置频率"
+      - caller: "__cpufreq_driver_target"
+        callee: "cpufreq_freq_transition_end"
+        description: "结束切换通知"
+  cpufreq_init:
+    description: "CPUFreq Policy Init"
+    chain:
+      - caller: "cpufreq_online"
+        callee: "cpufreq_driver->init"
+        description: "驱动初始化"
+      - caller: "cpufreq_online"
+        callee: "cpufreq_init_policy"
+        description: "初始化策略"
+      - caller: "cpufreq_init_policy"
+        callee: "cpufreq_set_policy"
+        description: "设置调频策略"

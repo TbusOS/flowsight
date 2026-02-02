@@ -1,0 +1,195 @@
+# Socket Layer Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/networking/
+
+# ============================================================
+# SOCKET OPERATIONS
+# ============================================================
+socket_ops:
+  description: "Socket Protocol Operations"
+  header: "linux/net.h"
+  icon: "🔗"
+  structure:
+    name: "proto_ops"
+    callbacks:
+      release:
+        pattern: '\.release\s*=\s*(?P<handler>\w+)'
+        description: "关闭套接字"
+        context: "process"
+        can_sleep: true
+      bind:
+        pattern: '\.bind\s*=\s*(?P<handler>\w+)'
+        description: "绑定地址"
+        context: "process"
+        can_sleep: true
+      connect:
+        pattern: '\.connect\s*=\s*(?P<handler>\w+)'
+        description: "连接远端"
+        context: "process"
+        can_sleep: true
+      accept:
+        pattern: '\.accept\s*=\s*(?P<handler>\w+)'
+        description: "接受连接"
+        context: "process"
+        can_sleep: true
+      listen:
+        pattern: '\.listen\s*=\s*(?P<handler>\w+)'
+        description: "监听连接"
+        context: "process"
+        can_sleep: true
+      sendmsg:
+        pattern: '\.sendmsg\s*=\s*(?P<handler>\w+)'
+        description: "发送消息"
+        context: "process"
+        can_sleep: true
+      recvmsg:
+        pattern: '\.recvmsg\s*=\s*(?P<handler>\w+)'
+        description: "接收消息"
+        context: "process"
+        can_sleep: true
+      poll:
+        pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+        description: "轮询事件"
+        context: "process"
+        can_sleep: false
+      ioctl:
+        pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
+        description: "IO 控制"
+        context: "process"
+        can_sleep: true
+      setsockopt:
+        pattern: '\.setsockopt\s*=\s*(?P<handler>\w+)'
+        description: "设置套接字选项"
+        context: "process"
+        can_sleep: true
+      getsockopt:
+        pattern: '\.getsockopt\s*=\s*(?P<handler>\w+)'
+        description: "获取套接字选项"
+        context: "process"
+        can_sleep: true
+      mmap:
+        pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
+        description: "内存映射"
+        context: "process"
+        can_sleep: true
+
+# ============================================================
+# PROTOCOL HANDLER
+# ============================================================
+net_protocol:
+  description: "Network Protocol Handler"
+  header: "linux/netdevice.h"
+  icon: "📡"
+  registration:
+    - pattern: 'inet_add_protocol\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<num>\w+)\s*\)'
+      description: "注册 IPv4 协议"
+    - pattern: 'inet6_add_protocol\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<num>\w+)\s*\)'
+      description: "注册 IPv6 协议"
+    - pattern: 'proto_register\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<alloc>\w+)\s*\)'
+      description: "注册套接字协议"
+    - pattern: 'sock_register\s*\(\s*&(?P<family>\w+)\s*\)'
+      description: "注册套接字族"
+  structure:
+    name: "net_protocol"
+    callbacks:
+      handler:
+        pattern: '\.handler\s*=\s*(?P<handler>\w+)'
+        description: "协议处理函数"
+        context: "softirq"
+        can_sleep: false
+      err_handler:
+        pattern: '\.err_handler\s*=\s*(?P<handler>\w+)'
+        description: "错误处理函数"
+        context: "softirq"
+        can_sleep: false
+
+# ============================================================
+# SOCKET FAMILY
+# ============================================================
+net_proto_family:
+  description: "Socket Family"
+  header: "linux/net.h"
+  icon: "👨‍👩‍👧‍👦"
+  registration:
+    - pattern: 'sock_register\s*\(\s*&(?P<family>\w+)\s*\)'
+      description: "注册套接字族"
+  structure:
+    name: "net_proto_family"
+    callbacks:
+      create:
+        pattern: '\.create\s*=\s*(?P<handler>\w+)'
+        description: "创建套接字"
+        context: "process"
+        can_sleep: true
+
+# ============================================================
+# SK_BUFF OPERATIONS
+# ============================================================
+skb_ops:
+  description: "Socket Buffer Operations"
+  header: "linux/skbuff.h"
+  icon: "📦"
+  allocation:
+    - pattern: 'alloc_skb\s*\(\s*(?P<size>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配 SKB"
+    - pattern: 'dev_alloc_skb\s*\(\s*(?P<size>\w+)\s*\)'
+      description: "为设备分配 SKB"
+    - pattern: 'netdev_alloc_skb\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "为网络设备分配 SKB"
+    - pattern: 'napi_alloc_skb\s*\(\s*(?P<napi>\w+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "NAPI 分配 SKB"
+  free:
+    - pattern: 'kfree_skb\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "释放 SKB"
+    - pattern: 'dev_kfree_skb\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "设备释放 SKB"
+    - pattern: 'consume_skb\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "消费 SKB（正常路径）"
+    - pattern: 'dev_consume_skb_any\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "任意上下文消费 SKB"
+  manipulation:
+    - pattern: 'skb_put\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
+      description: "扩展数据尾部"
+    - pattern: 'skb_push\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
+      description: "扩展数据头部"
+    - pattern: 'skb_pull\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
+      description: "移除数据头部"
+    - pattern: 'skb_reserve\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
+      description: "预留头部空间"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  socket_create:
+    description: "Socket Creation"
+    chain:
+      - caller: "sys_socket"
+        callee: "__sock_create"
+        description: "创建套接字"
+      - caller: "__sock_create"
+        callee: "pf->create"
+        description: "调用协议族创建函数"
+  packet_receive:
+    description: "Packet Receive Path"
+    chain:
+      - caller: "netif_receive_skb"
+        callee: "__netif_receive_skb_core"
+        context: "softirq"
+      - caller: "__netif_receive_skb_core"
+        callee: "deliver_skb"
+        description: "分发到协议处理"
+      - caller: "deliver_skb"
+        callee: "pt_prev->func"
+        description: "协议处理函数"
+  tcp_send:
+    description: "TCP Send Path"
+    chain:
+      - caller: "tcp_sendmsg"
+        callee: "tcp_push"
+        description: "推送数据"
+      - caller: "tcp_push"
+        callee: "tcp_write_xmit"
+        description: "发送数据"
+      - caller: "tcp_write_xmit"
+        callee: "ip_queue_xmit"
+        description: "IP 层发送"
