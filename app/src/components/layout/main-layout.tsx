@@ -21,6 +21,7 @@ const CommandMenu = React.lazy(() => import("../../components/ui/command").then(
 const SearchPanel = React.lazy(() => import("../../components/panels/search-panel").then(m => ({ default: m.SearchPanel })))
 const CodeEditor = React.lazy(() => import("../../components/panels/code-editor").then(m => ({ default: m.CodeEditor })))
 const FlowView = React.lazy(() => import("../../components/panels/flow-view").then(m => ({ default: m.FlowView })))
+const KeyboardShortcuts = React.lazy(() => import("../../components/KeyboardShortcuts/KeyboardShortcuts").then(m => ({ default: m.KeyboardShortcuts })))
 import {
   sidebarOpenAtom,
   bottomPanelOpenAtom,
@@ -230,6 +231,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const bottomPanelHeight = useAtomValue(bottomPanelHeightAtom)
   const setBottomPanelHeight = useSetAtom(setBottomPanelHeightAtom)
   const [commandMenuOpen, setCommandMenuOpen] = useAtom(commandMenuOpenAtom)
+  const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = React.useState(false)
   const [leftPanelOpen, setLeftPanelOpen] = useAtom(leftPanelOpenAtom)
   const leftPanelWidth = useAtomValue(leftPanelWidthAtom)
   const setLeftPanelWidth = useSetAtom(setLeftPanelWidthAtom)
@@ -368,6 +370,11 @@ export function MainLayout({ children }: MainLayoutProps) {
         e.preventDefault()
         setCommandMenuOpen(true)
       }
+      // ? - Open keyboard shortcuts help
+      if (e.key === "?" && !commandMenuOpen) {
+        e.preventDefault()
+        setKeyboardShortcutsOpen(true)
+      }
       // Cmd+B or Ctrl+B - Toggle sidebar
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault()
@@ -484,7 +491,19 @@ export function MainLayout({ children }: MainLayoutProps) {
     <div className="flex h-screen w-full flex-col bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {/* Command Menu */}
       <React.Suspense fallback={null}>
-        <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
+        <CommandMenu 
+          open={commandMenuOpen} 
+          onOpenChange={setCommandMenuOpen}
+          onShowKeyboardShortcuts={() => setKeyboardShortcutsOpen(true)}
+        />
+      </React.Suspense>
+      
+      {/* Keyboard Shortcuts */}
+      <React.Suspense fallback={null}>
+        <KeyboardShortcuts 
+          isOpen={keyboardShortcutsOpen} 
+          onClose={() => setKeyboardShortcutsOpen(false)} 
+        />
       </React.Suspense>
 
       {/* Header */}
