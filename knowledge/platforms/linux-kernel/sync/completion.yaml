@@ -86,7 +86,7 @@ completion:
 
   use_cases:
     - description: "模块卸载时等待所有操作完成"
-      pattern: |
+      code: |
         void module_cleanup(void) {
             complete_all(&cleanup_done);
         }
@@ -97,7 +97,7 @@ completion:
         }
 
     - description: "异步操作完成通知"
-      pattern: |
+      code: |
         int async_operation(struct completion *done) {
             /* 提交异步工作 */
             queue_work(wq, &async_work);
@@ -109,7 +109,7 @@ completion:
         }
 
     - description: "线程池同步"
-      pattern: |
+      code: |
         for (i = 0; i < num_workers; i++)
             wake_up_process(worker_threads[i]);
 

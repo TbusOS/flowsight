@@ -19,7 +19,7 @@ kthread:
 
   bind_patterns:
     # kthread_run - 创建并启动线程
-    - pattern: 'kthread_run\s*\(\s*(?P<handler>\w+)\s*,\s*(?P<data>[^,)]+)\s*,\s*(?P<name_format>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+    - pattern: "kthread_run\\s*\\(\\s*(?P<handler>\\w+)\\s*,\\s*(?P<data>[^,)]+)\\s*,\\s*(?P<name_format>[\"'][^\"']*[\"'])\\s*(?:,\\s*(?P<args>[^)]+))?\\s*\\)"
       handler_capture: "handler"
       extra_captures:
         - name: "data"
@@ -30,7 +30,7 @@ kthread:
           description: "格式化参数"
 
     # kthread_create - 创建线程 (不启动)
-    - pattern: 'kthread_create\s*\(\s*(?P<handler>\w+)\s*,\s*(?P<data>[^,)]+)\s*,\s*(?P<name_format>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+    - pattern: "kthread_create\\s*\\(\\s*(?P<handler>\\w+)\\s*,\\s*(?P<data>[^,)]+)\\s*,\\s*(?P<name_format>[\"'][^\"']*[\"'])\\s*(?:,\\s*(?P<args>[^)]+))?\\s*\\)"
       handler_capture: "handler"
       extra_captures:
         - name: "data"

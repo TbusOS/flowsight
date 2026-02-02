@@ -19,7 +19,7 @@ irq_handler:
 
   bind_patterns:
     # request_irq - 标准中断请求
-    - pattern: 'request_irq\s*\(\s*(?P<irq>\d+|\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*,\s*(?P<dev_id>[^)]+)\s*\)'
+    - pattern: "request_irq\\s*\\(\\s*(?P<irq>\\d+|\\w+)\\s*,\\s*(?P<handler>\\w+)\\s*,\\s*(?P<flags>\\w+)\\s*,\\s*(?P<name>[\"'][\\w\\s\\-]+[\"'])\\s*,\\s*(?P<dev_id>[^)]+)\\s*\\)"
       handler_capture: "handler"
       extra_captures:
         - name: "irq"
@@ -32,12 +32,12 @@ irq_handler:
           description: "设备 ID (传递给中断处理函数)"
 
     # request_irq 简化形式
-    - pattern: 'request_irq\s*\(\s*(?P<irq>\d+|\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*\)'
+    - pattern: "request_irq\\s*\\(\\s*(?P<irq>\\d+|\\w+)\\s*,\\s*(?P<handler>\\w+)\\s*,\\s*(?P<flags>\\w+)\\s*,\\s*(?P<name>[\"'][\\w\\s\\-]+[\"'])\\s*\\)"
       handler_capture: "handler"
       description: "无 dev_id 的 request_irq"
 
     # devm_request_irq - 资源管理版本
-    - pattern: 'devm_request_irq\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<irq>\d+|\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*,\s*(?P<dev_id>[^)]+)\s*\)'
+    - pattern: "devm_request_irq\\s*\\(\\s*(?P<dev>[^,]+)\\s*,\\s*(?P<irq>\\d+|\\w+)\\s*,\\s*(?P<handler>\\w+)\\s*,\\s*(?P<flags>\\w+)\\s*,\\s*(?P<name>[\"'][\\w\\s\\-]+[\"'])\\s*,\\s*(?P<dev_id>[^)]+)\\s*\\)"
       handler_capture: "handler"
       extra_captures:
         - name: "dev"

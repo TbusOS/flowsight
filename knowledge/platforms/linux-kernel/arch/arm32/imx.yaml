@@ -18,7 +18,7 @@ imx_clk:
 
   bind_patterns:
     # imx_clk_hw_gate - 门控时钟
-    - pattern: 'imx_clk_hw_gate\s*\(\s*(?P<name>["\'][\w\-]+["\'])\s*,\s*(?P<parent>["\'][\w\-]+["\'])\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<bit>\d+)\s*\)'
+    - pattern: "imx_clk_hw_gate\\s*\\(\\s*(?P<name>[\"'][\\w\\-]+[\"'])\\s*,\\s*(?P<parent>[\"'][\\w\\-]+[\"'])\\s*,\\s*(?P<reg>[^,]+)\\s*,\\s*(?P<bit>\\d+)\\s*\\)"
       description: "注册门控时钟"
       extra_captures:
         - name: "name"
@@ -31,11 +31,11 @@ imx_clk:
           description: "控制位"
 
     # imx_clk_hw_pll - PLL 时钟
-    - pattern: 'imx_clk_hw_pll(?:v[123])?\s*\(\s*(?P<name>["\'][\w\-]+["\'])\s*,\s*(?P<parent>["\'][\w\-]+["\'])\s*,\s*(?P<base>[^)]+)\s*\)'
+    - pattern: "imx_clk_hw_pll(?:v[123])?\\s*\\(\\s*(?P<name>[\"'][\\w\\-]+[\"'])\\s*,\\s*(?P<parent>[\"'][\\w\\-]+[\"'])\\s*,\\s*(?P<base>[^)]+)\\s*\\)"
       description: "注册 PLL 时钟"
 
     # imx_clk_hw_mux - 多路选择时钟
-    - pattern: 'imx_clk_hw_mux\s*\(\s*(?P<name>["\'][\w\-]+["\'])\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<shift>\d+)\s*,\s*(?P<width>\d+)\s*,\s*(?P<parents>[^)]+)\s*\)'
+    - pattern: "imx_clk_hw_mux\\s*\\(\\s*(?P<name>[\"'][\\w\\-]+[\"'])\\s*,\\s*(?P<reg>[^,]+)\\s*,\\s*(?P<shift>\\d+)\\s*,\\s*(?P<width>\\d+)\\s*,\\s*(?P<parents>[^)]+)\\s*\\)"
       description: "注册 MUX 时钟"
 
     # imx_clk_hw_divider - 分频时钟

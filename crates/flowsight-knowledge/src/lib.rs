@@ -30,6 +30,9 @@
 
 pub mod matcher;
 
+#[cfg(test)]
+mod tests;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;

@@ -261,6 +261,7 @@ asoc_component:
     - pattern: 'struct snd_soc_component_driver\s*\{[^}]+\}'
       description: "组件驱动结构"
 
+  callbacks:
     # probe
     probe:
       pattern: '\.probe\s*=\s*(?P<handler>\w+)'

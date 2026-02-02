@@ -278,7 +278,7 @@ lock_stats:
       description: "锁统计操作"
 
     # lockdep - 锁依赖检查
-    - pattern: 'lockdep_init_map\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<key>[^)]+)\s*,\s*(?P< subclass>\w+)\s*\)'
+    - pattern: 'lockdep_init_map\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<key>[^)]+)\s*,\s*(?P<subclass>\w+)\s*\)'
       variable_capture: "lock"
       description: "初始化锁依赖映射"
 

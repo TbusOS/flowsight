@@ -130,7 +130,7 @@ platform_device:
 
   bind_patterns:
     # platform_device_alloc - 分配设备
-    - pattern: 'platform_device_alloc\s*\(\s*(?P<name>["\']?[\w\-]+["\']?)\s*,\s*(?P<id>\w+)\s*\)'
+    - pattern: "platform_device_alloc\\s*\\(\\s*(?P<name>[\"']?[\\w\\-]+[\"']?)\\s*,\\s*(?P<id>\\w+)\\s*\\)"
       variable_capture: "name"
       description: "分配 platform device"
 

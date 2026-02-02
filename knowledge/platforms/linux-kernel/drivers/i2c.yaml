@@ -185,7 +185,7 @@ i2c_device_id:
       description: "I2C 设备 ID 表"
 
     # 单个 ID 条目
-    - pattern: '\{\s*(?P<name>["\']?[\w\-]+["\']?)\s*,\s*(?P<driver_data>\w+)\s*\}'
+    - pattern: "\\{\\s*(?P<name>[\"']?[\\w\\-]+[\"']?)\\s*,\\s*(?P<driver_data>\\w+)\\s*\\}"
       extra_captures:
         - name: "name"
           description: "设备名称"

@@ -199,7 +199,7 @@ spi_transfer:
 
   transfer_structure:
     - pattern: 'struct spi_transfer\s*\{[^}]+\}'
-    description: "SPI 传输结构"
+      description: "SPI 传输结构"
 
   transfer_fields:
     - name: "tx_buf"
@@ -232,7 +232,7 @@ spi_transfer:
 
   message_structure:
     - pattern: 'struct spi_message\s*\{[^}]+\}'
-    description: "SPI 消息结构"
+      description: "SPI 消息结构"
 
   message_operations:
     - pattern: 'spi_message_init\s*\(\s*(?P<msg>[^)]+)\s*\)'

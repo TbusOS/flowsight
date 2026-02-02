@@ -382,7 +382,7 @@ input_poll:
       handler_capture: "handler"
       description: "轮询回调"
 
-    # poll_interval
+  poll_interval:
     - pattern: '\.poll_interval\s*=\s*(?P<interval>\d+)'
       description: "轮询间隔"
 
@@ -456,6 +456,7 @@ input_ff:
       handler_capture: "handler"
       description: "播放力反馈效果"
 
+  effect_types:
     # 效果类型
     FF_RUMBLE:
       pattern: 'FF_RUMBLE'

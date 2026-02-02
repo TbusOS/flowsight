@@ -58,7 +58,7 @@ gic:
     - pattern: 'gic_of_init\s*\(\s*(?P<node>[^,]+)\s*,\s*(?P<parent>[^)]*)\s*\)'
       description: "GIC 设备树初始化"
 
-    - pattern: 'IRQCHIP_DECLARE\s*\(\s*(?P<name>\w+)\s*,\s*(?P<compat>["\'][\w,\-]+["\'])\s*,\s*(?P<init>\w+)\s*\)'
+    - pattern: "IRQCHIP_DECLARE\\s*\\(\\s*(?P<name>\\w+)\\s*,\\s*(?P<compat>[\"'][\\w,\\-]+[\"'])\\s*,\\s*(?P<init>\\w+)\\s*\\)"
       handler_capture: "init"
       description: "中断芯片声明"
 

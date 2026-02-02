@@ -315,7 +315,7 @@ disk_geometry:
       description: "磁盘几何结构"
 
     # set_capacity - 设置容量
-    - pattern: 'set_capacity\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P< sectors>\w+)\s*\)'
+    - pattern: 'set_capacity\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<sectors>\w+)\s*\)'
       variable_capture: "disk"
       description: "设置磁盘容量"
 

@@ -32,7 +32,7 @@ netdev_ops:
     - pattern: 'alloc_netdev\s*\(\s*(?P<size>\d+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<setup>\w+)\s*\)'
       description: "分配通用网络设备"
 
-    - pattern: 'alloc_etherdev(sizeof.*\)'
+    - pattern: 'alloc_etherdev\s*\(\s*sizeof[^)]*\)'
       description: "分配以太网设备 (带私有数据)"
 
     # 注册/注销网络设备
