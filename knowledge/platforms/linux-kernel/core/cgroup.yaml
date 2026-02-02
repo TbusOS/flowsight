@@ -1,5 +1,6 @@
 # Linux Cgroup (Control Groups) Knowledge Base
 # Reference: https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html
+# Kernel source: kernel/cgroup/, mm/memcontrol.c, block/blk-cgroup.c
 
 # ============================================================
 # CGROUP V2 CORE
@@ -9,35 +10,194 @@ cgroup_v2:
   description: "Control Groups v2"
   header: "linux/cgroup.h"
   icon: "📦"
+  kernel_version: "4.5+ (完整支持)"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   hierarchy:
-    - "/sys/fs/cgroup/"
-    - "统一层级 (unified hierarchy)"
+    mount_point: "/sys/fs/cgroup/"
+    type: "cgroup2"
+    feature: "统一层级 (unified hierarchy)"
+
+  vs_v1:
+    - feature: "层级结构"
+      v1: "每个控制器独立层级"
+      v2: "单一统一层级"
+    - feature: "线程粒度"
+      v1: "不支持"
+      v2: "threaded cgroup"
+    - feature: "资源分配"
+      v1: "控制器特定"
+      v2: "统一的资源分配模型"
+    - feature: "delegation"
+      v1: "有限支持"
+      v2: "完整支持用户空间委托"
 
   core_files:
-    - "cgroup.controllers"
-    - "cgroup.subtree_control"
-    - "cgroup.events"
-    - "cgroup.type"
-    - "cgroup.procs"
-    - "cgroup.threads"
-    - "cgroup.freeze"
+    - name: "cgroup.controllers"
+      description: "可用的控制器列表"
+      access: "read-only"
+    - name: "cgroup.subtree_control"
+      description: "启用子树控制器"
+      access: "read-write"
+      format: "+controller 或 -controller"
+    - name: "cgroup.events"
+      description: "事件通知文件"
+      access: "read-only"
+      events:
+        - "populated - 是否有进程"
+        - "frozen - 是否冻结"
+    - name: "cgroup.type"
+      description: "cgroup 类型"
+      access: "read-write"
+      values:
+        - "domain - 普通域 cgroup"
+        - "domain threaded - 线程域"
+        - "domain invalid - 无效"
+        - "threaded - 线程 cgroup"
+    - name: "cgroup.procs"
+      description: "进程列表 (TGID)"
+      access: "read-write"
+    - name: "cgroup.threads"
+      description: "线程列表 (TID)"
+      access: "read-write"
+    - name: "cgroup.freeze"
+      description: "冻结/解冻 cgroup"
+      access: "read-write"
+      values: ["0 - 运行", "1 - 冻结"]
+    - name: "cgroup.max.descendants"
+      description: "最大子 cgroup 数"
+      access: "read-write"
+    - name: "cgroup.max.depth"
+      description: "最大嵌套深度"
+      access: "read-write"
+    - name: "cgroup.stat"
+      description: "cgroup 统计信息"
+      access: "read-only"
+    - name: "cgroup.kill"
+      description: "杀死所有进程"
+      access: "write-only"
 
   controllers:
     - name: "cpu"
       description: "CPU 调度控制"
+      interface_prefix: "cpu."
     - name: "memory"
       description: "内存控制"
+      interface_prefix: "memory."
     - name: "io"
       description: "块 I/O 控制"
+      interface_prefix: "io."
     - name: "pids"
       description: "进程数限制"
+      interface_prefix: "pids."
     - name: "cpuset"
       description: "CPU 和内存节点绑定"
+      interface_prefix: "cpuset."
     - name: "rdma"
       description: "RDMA 资源控制"
+      interface_prefix: "rdma."
     - name: "hugetlb"
       description: "大页内存控制"
+      interface_prefix: "hugetlb."
+    - name: "misc"
+      description: "杂项资源控制"
+      interface_prefix: "misc."
+
+  threaded_cgroup:
+    description: "线程粒度 cgroup"
+    features:
+      - "允许线程级别的资源控制"
+      - "域 cgroup 可转换为 threaded 模式"
+      - "threaded cgroup 只能包含线程"
+    threaded_controllers:
+      - "cpu"
+      - "cpuset"
+      - "perf_event"
+    non_threaded_controllers:
+      - "memory"
+      - "io"
+      - "pids"
+
+  delegation:
+    description: "cgroup 委托给非特权用户"
+    files_to_delegate:
+      - "cgroup.procs"
+      - "cgroup.threads"
+      - "cgroup.subtree_control"
+    requirements:
+      - "目录所有权或 DAC/MAC 权限"
+      - "必须设置 nsdelegate 挂载选项 (可选)"
+
+  kernel_functions:
+    - pattern: 'cgroup_init\s*\('
+      description: "cgroup 初始化"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_setup_root\s*\('
+      description: "设置 cgroup 根"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_create\s*\('
+      description: "创建 cgroup"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_destroy_locked\s*\('
+      description: "销毁 cgroup"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_migrate\s*\('
+      description: "进程迁移"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_attach_task\s*\('
+      description: "附加任务"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_procs_write\s*\('
+      description: "写入 cgroup.procs"
+      file: "kernel/cgroup/cgroup.c"
+
+  call_chains:
+    cgroup_create_chain:
+      description: "创建 cgroup 调用链"
+      trigger: "mkdir /sys/fs/cgroup/xxx"
+      chain:
+        - function: "kernfs_iop_mkdir"
+          file: "fs/kernfs/dir.c"
+          description: "kernfs mkdir 操作"
+        - function: "cgroup_mkdir"
+          file: "kernel/cgroup/cgroup.c"
+          description: "cgroup mkdir"
+        - function: "cgroup_create"
+          file: "kernel/cgroup/cgroup.c"
+          description: "创建 cgroup 结构"
+        - function: "css_create"
+          file: "kernel/cgroup/cgroup.c"
+          description: "创建控制器状态"
+        - function: "ss->css_alloc"
+          file: "各控制器"
+          description: "分配控制器特定状态"
+          is_user_entry: true
+
+    cgroup_attach_chain:
+      description: "进程附加 cgroup 调用链"
+      trigger: "echo PID > /sys/fs/cgroup/xxx/cgroup.procs"
+      chain:
+        - function: "cgroup_procs_write"
+          file: "kernel/cgroup/cgroup.c"
+          description: "写入处理"
+        - function: "__cgroup_procs_write"
+          file: "kernel/cgroup/cgroup.c"
+          description: "内部写入"
+        - function: "cgroup_attach_task"
+          file: "kernel/cgroup/cgroup.c"
+          description: "附加任务"
+        - function: "cgroup_migrate"
+          file: "kernel/cgroup/cgroup.c"
+          description: "迁移任务"
+        - function: "ss->attach"
+          file: "各控制器"
+          description: "控制器 attach 回调"
+          is_user_entry: true
 
 # ============================================================
 # CGROUP SUBSYSTEM
@@ -47,51 +207,277 @@ cgroup_subsys:
   description: "Cgroup Subsystem Framework"
   header: "include/linux/cgroup-defs.h"
   icon: "🔧"
+  kernel_version: "2.6.24+"
+  source_file: "kernel/cgroup/cgroup.c"
 
   registration:
-    pattern: 'CGROUP_SUBSYS\s*\(\s*(?P<name>\w+)\s*,\s*(?P<subsys>\w+)\s*\)'
-    description: "定义 cgroup 子系统"
+    pattern: 'SUBSYS\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义 cgroup 子系统 (cgroup_subsys.h)"
+    file: "include/linux/cgroup_subsys.h"
 
   subsys_structure:
-    pattern: 'struct cgroup_subsys\s+(?P<name>\w+)_cgrp_subsys'
+    pattern: 'struct cgroup_subsys\s+(?P<name>\w+)_cgrp_subsys\s*=\s*\{'
     description: "Cgroup 子系统结构体"
+
+  structure_fields:
+    cgroup_subsys:
+      description: "cgroup 子系统结构体"
+      file: "include/linux/cgroup-defs.h"
+      fields:
+        - name: "css_alloc"
+          type: "struct cgroup_subsys_state *(*)(struct cgroup_subsys_state *)"
+          description: "分配控制器状态"
+        - name: "css_online"
+          type: "int (*)(struct cgroup_subsys_state *)"
+          description: "控制器上线"
+        - name: "css_offline"
+          type: "void (*)(struct cgroup_subsys_state *)"
+          description: "控制器下线"
+        - name: "css_released"
+          type: "void (*)(struct cgroup_subsys_state *)"
+          description: "控制器释放"
+        - name: "css_free"
+          type: "void (*)(struct cgroup_subsys_state *)"
+          description: "释放控制器状态"
+        - name: "css_reset"
+          type: "void (*)(struct cgroup_subsys_state *)"
+          description: "重置控制器状态"
+        - name: "css_rstat_flush"
+          type: "void (*)(struct cgroup_subsys_state *, int)"
+          description: "刷新 rstat"
+        - name: "css_extra_stat_show"
+          type: "int (*)(struct seq_file *, struct cgroup_subsys_state *)"
+          description: "显示额外统计"
+        - name: "can_attach"
+          type: "int (*)(struct cgroup_taskset *)"
+          description: "检查是否可附加"
+        - name: "cancel_attach"
+          type: "void (*)(struct cgroup_taskset *)"
+          description: "取消附加"
+        - name: "attach"
+          type: "void (*)(struct cgroup_taskset *)"
+          description: "执行附加"
+        - name: "post_attach"
+          type: "void (*)(void)"
+          description: "附加后回调"
+        - name: "fork"
+          type: "void (*)(struct task_struct *)"
+          description: "fork 时回调"
+        - name: "exit"
+          type: "void (*)(struct task_struct *)"
+          description: "exit 时回调"
+        - name: "release"
+          type: "void (*)(struct task_struct *)"
+          description: "release 时回调"
+        - name: "bind"
+          type: "void (*)(struct cgroup_subsys_state *)"
+          description: "绑定到层级"
+
+    cgroup_subsys_state:
+      description: "控制器状态结构体 (css)"
+      file: "include/linux/cgroup-defs.h"
+      fields:
+        - name: "cgroup"
+          type: "struct cgroup *"
+          description: "所属 cgroup"
+        - name: "ss"
+          type: "struct cgroup_subsys *"
+          description: "所属子系统"
+        - name: "refcnt"
+          type: "struct percpu_ref"
+          description: "引用计数"
+        - name: "sibling"
+          type: "struct list_head"
+          description: "兄弟链表"
+        - name: "children"
+          type: "struct list_head"
+          description: "子节点链表"
+        - name: "parent"
+          type: "struct cgroup_subsys_state *"
+          description: "父 css"
+        - name: "id"
+          type: "int"
+          description: "css ID"
+        - name: "flags"
+          type: "unsigned int"
+          description: "标志"
+        - name: "serial_nr"
+          type: "u64"
+          description: "序列号"
+        - name: "destroy_work"
+          type: "struct work_struct"
+          description: "销毁工作"
+        - name: "rstat_cpu"
+          type: "struct cgroup_rstat_cpu __percpu *"
+          description: "per-CPU 统计"
 
   callbacks:
     css_alloc:
       pattern: '\.css_alloc\s*=\s*(?P<handler>\w+)'
-      description: "分配子系统状态"
+      description: "分配控制器状态 - 创建 cgroup 时调用"
+      signature: "struct cgroup_subsys_state *(*css_alloc)(struct cgroup_subsys_state *parent_css)"
       context: "process"
       can_sleep: true
+      trigger: "mkdir cgroup 目录"
+      return_value:
+        success: "新分配的 css 指针"
+        failure: "ERR_PTR(-ERRNO)"
+      typical_actions:
+        - "分配控制器私有结构体"
+        - "初始化默认值"
+        - "继承父 cgroup 设置"
 
     css_online:
       pattern: '\.css_online\s*=\s*(?P<handler>\w+)'
-      description: "子系统上线"
+      description: "控制器上线 - css 变为活跃"
+      signature: "int (*css_online)(struct cgroup_subsys_state *css)"
       context: "process"
+      can_sleep: true
+      trigger: "css_alloc 成功后"
+      return_value:
+        success: "0"
+        failure: "负错误码"
+      typical_actions:
+        - "注册到全局数据结构"
+        - "启动监控"
 
     css_offline:
       pattern: '\.css_offline\s*=\s*(?P<handler>\w+)'
-      description: "子系统下线"
+      description: "控制器下线 - css 变为非活跃"
+      signature: "void (*css_offline)(struct cgroup_subsys_state *css)"
       context: "process"
+      can_sleep: true
+      trigger: "rmdir cgroup 目录"
+      typical_actions:
+        - "从全局数据结构注销"
+        - "停止监控"
+        - "取消挂起的操作"
+
+    css_released:
+      pattern: '\.css_released\s*=\s*(?P<handler>\w+)'
+      description: "css 引用计数归零"
+      signature: "void (*css_released)(struct cgroup_subsys_state *css)"
+      context: "可能是工作队列"
+      can_sleep: true
+      trigger: "最后一个引用释放"
 
     css_free:
       pattern: '\.css_free\s*=\s*(?P<handler>\w+)'
-      description: "释放子系统状态"
-      context: "可能是 RCU 回调"
+      description: "释放控制器状态"
+      signature: "void (*css_free)(struct cgroup_subsys_state *css)"
+      context: "可能是 RCU 回调或工作队列"
+      can_sleep: false
+      trigger: "css_released 后或 RCU 宽限期后"
+      typical_actions:
+        - "释放私有结构体内存"
+
+    can_attach:
+      pattern: '\.can_attach\s*=\s*(?P<handler>\w+)'
+      description: "检查任务是否可以附加"
+      signature: "int (*can_attach)(struct cgroup_taskset *tset)"
+      context: "process"
+      can_sleep: true
+      trigger: "写入 cgroup.procs 之前"
+      return_value:
+        success: "0 - 允许附加"
+        failure: "-EBUSY, -EINVAL 等"
+
+    cancel_attach:
+      pattern: '\.cancel_attach\s*=\s*(?P<handler>\w+)'
+      description: "取消附加操作"
+      signature: "void (*cancel_attach)(struct cgroup_taskset *tset)"
+      context: "process"
+      trigger: "附加失败时"
 
     attach:
       pattern: '\.attach\s*=\s*(?P<handler>\w+)'
-      description: "进程附加到 cgroup"
+      description: "执行任务附加"
+      signature: "void (*attach)(struct cgroup_taskset *tset)"
       context: "process"
+      can_sleep: true
+      trigger: "can_attach 成功后"
+      typical_actions:
+        - "更新任务的控制器状态"
+        - "调整资源配额"
+
+    post_attach:
+      pattern: '\.post_attach\s*=\s*(?P<handler>\w+)'
+      description: "附加后回调"
+      signature: "void (*post_attach)(void)"
+      context: "process"
+      trigger: "所有控制器 attach 完成后"
 
     fork:
       pattern: '\.fork\s*=\s*(?P<handler>\w+)'
       description: "fork 时回调"
+      signature: "void (*fork)(struct task_struct *task)"
       context: "process"
+      trigger: "新任务创建后"
+      typical_actions:
+        - "初始化任务的控制器状态"
+        - "增加计数器"
 
     exit:
       pattern: '\.exit\s*=\s*(?P<handler>\w+)'
       description: "进程退出回调"
+      signature: "void (*exit)(struct task_struct *task)"
       context: "process"
+      trigger: "任务退出时"
+      typical_actions:
+        - "清理任务状态"
+        - "减少计数器"
+
+    release:
+      pattern: '\.release\s*=\s*(?P<handler>\w+)'
+      description: "任务完全释放回调"
+      signature: "void (*release)(struct task_struct *task)"
+      context: "process"
+      trigger: "任务结构体释放前"
+
+  kernel_functions:
+    - pattern: 'css_get\s*\(\s*(?P<css>[^)]+)\s*\)'
+      description: "增加 css 引用计数"
+      file: "include/linux/cgroup.h"
+    - pattern: 'css_put\s*\(\s*(?P<css>[^)]+)\s*\)'
+      description: "减少 css 引用计数"
+      file: "include/linux/cgroup.h"
+    - pattern: 'css_tryget_online\s*\('
+      description: "尝试获取在线 css"
+      file: "include/linux/cgroup.h"
+    - pattern: 'cgroup_taskset_for_each\s*\('
+      description: "遍历任务集"
+      file: "include/linux/cgroup.h"
+    - pattern: 'cgroup_taskset_first\s*\('
+      description: "获取任务集第一个任务"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'task_css\s*\(\s*(?P<task>[^,]+)\s*,\s*(?P<ss_id>[^)]+)\s*\)'
+      description: "获取任务的 css"
+      file: "include/linux/cgroup.h"
+    - pattern: 'css_for_each_descendant_pre\s*\('
+      description: "前序遍历 css 后代"
+      file: "include/linux/cgroup.h"
+    - pattern: 'css_for_each_child\s*\('
+      description: "遍历 css 子节点"
+      file: "include/linux/cgroup.h"
+
+  call_chains:
+    css_lifecycle:
+      description: "css 生命周期"
+      trigger: "cgroup 创建和销毁"
+      chain:
+        - function: "css_alloc"
+          description: "分配 css"
+        - function: "css_online"
+          description: "css 上线"
+        - function: "(cgroup 活跃期)"
+          description: "进程附加/分离"
+        - function: "css_offline"
+          description: "css 下线 (rmdir)"
+        - function: "css_released"
+          description: "引用计数归零"
+        - function: "css_free"
+          description: "释放 css"
+          is_user_entry: true
 
 # ============================================================
 # MEMORY CGROUP
@@ -99,37 +485,349 @@ cgroup_subsys:
 
 memcg:
   description: "Memory Cgroup Controller"
-  header: "mm/memcontrol.c"
+  header: "include/linux/memcontrol.h"
   icon: "🧠"
+  kernel_version: "2.6.25+"
+  source_file: "mm/memcontrol.c"
+
+  context:
+    type: "varies"
+    notes: "charge 路径可能是进程或软中断上下文"
 
   interface_files:
-    - "memory.current"
-    - "memory.min"
-    - "memory.low"
-    - "memory.high"
-    - "memory.max"
-    - "memory.swap.current"
-    - "memory.swap.max"
-    - "memory.stat"
-    - "memory.events"
-    - "memory.oom.group"
+    memory_current:
+      name: "memory.current"
+      description: "当前内存使用量 (字节)"
+      access: "read-only"
+    memory_min:
+      name: "memory.min"
+      description: "硬保证最小内存 (不会被回收)"
+      access: "read-write"
+      default: "0"
+    memory_low:
+      name: "memory.low"
+      description: "软保证最小内存 (尽量不回收)"
+      access: "read-write"
+      default: "0"
+    memory_high:
+      name: "memory.high"
+      description: "高水位线 (超过时触发节流和回收)"
+      access: "read-write"
+      default: "max"
+    memory_max:
+      name: "memory.max"
+      description: "硬限制 (超过时触发 OOM)"
+      access: "read-write"
+      default: "max"
+    memory_swap_current:
+      name: "memory.swap.current"
+      description: "当前 swap 使用量"
+      access: "read-only"
+    memory_swap_high:
+      name: "memory.swap.high"
+      description: "swap 高水位线"
+      access: "read-write"
+    memory_swap_max:
+      name: "memory.swap.max"
+      description: "swap 硬限制"
+      access: "read-write"
+      default: "max"
+    memory_stat:
+      name: "memory.stat"
+      description: "详细内存统计"
+      access: "read-only"
+      metrics:
+        - "anon - 匿名内存"
+        - "file - 文件缓存"
+        - "kernel - 内核内存"
+        - "kernel_stack - 内核栈"
+        - "pagetables - 页表"
+        - "percpu - per-CPU 分配"
+        - "sock - 套接字缓冲区"
+        - "shmem - 共享内存/tmpfs"
+        - "file_mapped - 映射文件"
+        - "file_dirty - 脏页"
+        - "file_writeback - 回写中"
+        - "swapcached - swap 缓存"
+        - "anon_thp - 透明大页"
+        - "file_thp - 文件透明大页"
+        - "inactive_anon - 不活跃匿名"
+        - "active_anon - 活跃匿名"
+        - "inactive_file - 不活跃文件"
+        - "active_file - 活跃文件"
+        - "unevictable - 不可驱逐"
+        - "slab_reclaimable - 可回收 slab"
+        - "slab_unreclaimable - 不可回收 slab"
+        - "pgfault - 缺页次数"
+        - "pgmajfault - 主缺页次数"
+    memory_events:
+      name: "memory.events"
+      description: "事件计数器"
+      access: "read-only"
+      events:
+        - "low - 达到 memory.low"
+        - "high - 达到 memory.high"
+        - "max - 达到 memory.max"
+        - "oom - OOM 触发次数"
+        - "oom_kill - OOM 杀死次数"
+        - "oom_group_kill - 组 OOM 杀死次数"
+    memory_events_local:
+      name: "memory.events.local"
+      description: "本地事件计数器 (不含子 cgroup)"
+      access: "read-only"
+    memory_oom_group:
+      name: "memory.oom.group"
+      description: "OOM 时杀死整个 cgroup"
+      access: "read-write"
+      values: ["0 - 禁用", "1 - 启用"]
+    memory_pressure:
+      name: "memory.pressure"
+      description: "内存压力信息 (PSI)"
+      access: "read-only"
+    memory_peak:
+      name: "memory.peak"
+      description: "历史最高内存使用量"
+      access: "read-only"
+    memory_reclaim:
+      name: "memory.reclaim"
+      description: "主动回收内存"
+      access: "write-only"
+      format: "echo bytes > memory.reclaim"
+    memory_numa_stat:
+      name: "memory.numa_stat"
+      description: "NUMA 节点统计"
+      access: "read-only"
+
+  data_structures:
+    mem_cgroup:
+      description: "内存 cgroup 结构体"
+      file: "include/linux/memcontrol.h"
+      fields:
+        - name: "css"
+          type: "struct cgroup_subsys_state"
+          description: "cgroup 子系统状态"
+        - name: "memory"
+          type: "struct page_counter"
+          description: "内存计数器"
+        - name: "swap"
+          type: "struct page_counter"
+          description: "swap 计数器"
+        - name: "memsw"
+          type: "struct page_counter"
+          description: "内存+swap 计数器 (v1)"
+        - name: "kmem"
+          type: "struct page_counter"
+          description: "内核内存计数器"
+        - name: "tcpmem"
+          type: "struct page_counter"
+          description: "TCP 内存计数器"
+        - name: "high"
+          type: "unsigned long"
+          description: "高水位线"
+        - name: "soft_limit"
+          type: "unsigned long"
+          description: "软限制 (v1)"
+        - name: "vmpressure"
+          type: "struct vmpressure"
+          description: "虚拟内存压力"
+        - name: "oom_lock"
+          type: "bool"
+          description: "OOM 锁"
+        - name: "under_oom"
+          type: "int"
+          description: "OOM 中标志"
+        - name: "oom_kill_disable"
+          type: "int"
+          description: "禁用 OOM killer"
+        - name: "oom_group"
+          type: "bool"
+          description: "组 OOM 模式"
+        - name: "vmstats"
+          type: "struct memcg_vmstats_percpu __percpu *"
+          description: "per-CPU 统计"
+        - name: "cgwb_list"
+          type: "struct list_head"
+          description: "cgroup writeback 链表"
+        - name: "deferred_split_queue"
+          type: "struct deferred_split"
+          description: "延迟分割队列"
+        - name: "objcg"
+          type: "struct obj_cgroup *"
+          description: "对象 cgroup"
+        - name: "nodeinfo"
+          type: "struct mem_cgroup_per_node *[]"
+          description: "per-node 信息"
+
+    page_counter:
+      description: "页计数器"
+      file: "include/linux/page_counter.h"
+      fields:
+        - name: "usage"
+          type: "atomic_long_t"
+          description: "当前使用量"
+        - name: "min"
+          type: "unsigned long"
+          description: "最小值"
+        - name: "low"
+          type: "unsigned long"
+          description: "低水位"
+        - name: "high"
+          type: "unsigned long"
+          description: "高水位"
+        - name: "max"
+          type: "unsigned long"
+          description: "最大值"
+        - name: "emin"
+          type: "atomic_long_t"
+          description: "有效最小值"
+        - name: "elow"
+          type: "atomic_long_t"
+          description: "有效低水位"
+        - name: "parent"
+          type: "struct page_counter *"
+          description: "父计数器"
 
   kernel_functions:
     charge:
-      - pattern: 'mem_cgroup_charge\s*\('
-        description: "内存计费"
-      - pattern: 'mem_cgroup_uncharge\s*\('
-        description: "取消内存计费"
+      - pattern: 'mem_cgroup_charge\s*\(\s*(?P<folio>[^,]+)\s*,'
+        description: "对 folio 进行内存计费"
+        file: "mm/memcontrol.c"
+        context: "process"
+        can_sleep: true
+      - pattern: 'mem_cgroup_uncharge\s*\(\s*(?P<folio>[^)]+)\s*\)'
+        description: "取消 folio 内存计费"
+        file: "mm/memcontrol.c"
+      - pattern: '__mem_cgroup_charge\s*\('
+        description: "内部 charge 实现"
+        file: "mm/memcontrol.c"
+      - pattern: 'try_charge\s*\('
+        description: "尝试 charge (可能触发回收)"
+        file: "mm/memcontrol.c"
+        can_sleep: true
+      - pattern: 'try_charge_memcg\s*\('
+        description: "对特定 memcg 尝试 charge"
+        file: "mm/memcontrol.c"
+      - pattern: 'charge_memcg\s*\('
+        description: "实际执行 charge"
+        file: "mm/memcontrol.c"
+
+    reclaim:
+      - pattern: 'mem_cgroup_soft_limit_reclaim\s*\('
+        description: "软限制回收"
+        file: "mm/memcontrol.c"
+      - pattern: 'mem_cgroup_shrink_node\s*\('
+        description: "收缩 node 内存"
+        file: "mm/vmscan.c"
+      - pattern: 'mem_cgroup_scan_tasks\s*\('
+        description: "扫描 memcg 任务"
+        file: "mm/memcontrol.c"
+      - pattern: 'memcg_reclaim\s*\('
+        description: "memcg 回收入口"
+        file: "mm/vmscan.c"
 
     oom:
       - pattern: 'mem_cgroup_oom_synchronize\s*\('
-        description: "OOM 同步"
+        description: "OOM 同步 (等待 OOM 处理完成)"
+        file: "mm/memcontrol.c"
       - pattern: 'mem_cgroup_out_of_memory\s*\('
-        description: "触发 OOM"
+        description: "触发 memcg OOM"
+        file: "mm/memcontrol.c"
+      - pattern: 'mem_cgroup_oom_trylock\s*\('
+        description: "尝试获取 OOM 锁"
+        file: "mm/memcontrol.c"
+      - pattern: 'mem_cgroup_oom_unlock\s*\('
+        description: "释放 OOM 锁"
+        file: "mm/memcontrol.c"
+      - pattern: 'memcg_memory_event\s*\('
+        description: "触发内存事件"
+        file: "mm/memcontrol.c"
 
-    reclaim:
-      - pattern: 'mem_cgroup_try_charge\s*\('
-        description: "尝试计费（可能触发回收）"
+    helper:
+      - pattern: 'mem_cgroup_from_task\s*\('
+        description: "从任务获取 memcg"
+        file: "include/linux/memcontrol.h"
+      - pattern: 'get_mem_cgroup_from_mm\s*\('
+        description: "从 mm 获取 memcg"
+        file: "mm/memcontrol.c"
+      - pattern: 'folio_memcg\s*\('
+        description: "获取 folio 的 memcg"
+        file: "include/linux/memcontrol.h"
+      - pattern: 'mem_cgroup_css_online\s*\('
+        description: "memcg css_online 回调"
+        file: "mm/memcontrol.c"
+      - pattern: 'mem_cgroup_css_offline\s*\('
+        description: "memcg css_offline 回调"
+        file: "mm/memcontrol.c"
+      - pattern: 'mem_cgroup_css_alloc\s*\('
+        description: "memcg css_alloc 回调"
+        file: "mm/memcontrol.c"
+      - pattern: 'mem_cgroup_css_free\s*\('
+        description: "memcg css_free 回调"
+        file: "mm/memcontrol.c"
+
+  call_chains:
+    charge_chain:
+      description: "内存 charge 调用链"
+      trigger: "页面分配 (缺页, mmap 等)"
+      chain:
+        - function: "handle_mm_fault"
+          file: "mm/memory.c"
+          description: "缺页处理"
+        - function: "do_anonymous_page"
+          file: "mm/memory.c"
+          description: "匿名页分配"
+        - function: "vma_alloc_folio"
+          file: "mm/mempolicy.c"
+          description: "分配 folio"
+        - function: "mem_cgroup_charge"
+          file: "mm/memcontrol.c"
+          description: "memcg charge"
+        - function: "try_charge_memcg"
+          file: "mm/memcontrol.c"
+          description: "尝试 charge"
+        - function: "try_to_free_mem_cgroup_pages"
+          file: "mm/vmscan.c"
+          description: "达到限制时回收"
+          context: "may trigger OOM"
+        - function: "mem_cgroup_out_of_memory"
+          file: "mm/memcontrol.c"
+          description: "OOM 处理"
+          is_user_entry: true
+
+    oom_chain:
+      description: "memcg OOM 调用链"
+      trigger: "内存超过 memory.max 且无法回收"
+      chain:
+        - function: "try_charge_memcg"
+          file: "mm/memcontrol.c"
+          description: "charge 失败"
+        - function: "mem_cgroup_oom"
+          file: "mm/memcontrol.c"
+          description: "触发 OOM"
+        - function: "mem_cgroup_out_of_memory"
+          file: "mm/memcontrol.c"
+          description: "选择 OOM victim"
+        - function: "out_of_memory"
+          file: "mm/oom_kill.c"
+          description: "OOM killer"
+        - function: "select_bad_process"
+          file: "mm/oom_kill.c"
+          description: "选择进程"
+        - function: "oom_kill_process"
+          file: "mm/oom_kill.c"
+          description: "杀死进程"
+          is_user_entry: true
+
+  hierarchy_behavior:
+    description: "层级行为"
+    features:
+      - "usage 累计包含所有子 cgroup"
+      - "limits 层级独立但受祖先影响"
+      - "OOM 优先杀死超限的 cgroup"
+    protection:
+      memory_min: "硬保护 - 不参与回收"
+      memory_low: "软保护 - 低优先级回收"
+      effective_protection: "有效保护 = min(自身, 可用兄弟额度)"
 
 # ============================================================
 # CPU CGROUP
@@ -139,23 +837,187 @@ cpucg:
   description: "CPU Cgroup Controller"
   header: "kernel/sched/core.c"
   icon: "⚡"
+  kernel_version: "2.6.24+"
+  source_file: "kernel/sched/fair.c, kernel/sched/core.c"
+
+  context:
+    type: "varies"
+    notes: "调度器上下文"
 
   interface_files:
-    - "cpu.weight"
-    - "cpu.weight.nice"
-    - "cpu.max"
-    - "cpu.pressure"
-    - "cpu.stat"
+    cpu_weight:
+      name: "cpu.weight"
+      description: "CPU 权重 (1-10000)"
+      access: "read-write"
+      default: "100"
+      formula: "cpu_share = weight / sum_of_weights * available_cpu"
+    cpu_weight_nice:
+      name: "cpu.weight.nice"
+      description: "nice 值风格的权重 (-20 到 19)"
+      access: "read-write"
+      mapping: "nice_to_weight 转换"
+    cpu_max:
+      name: "cpu.max"
+      description: "CPU 带宽限制"
+      access: "read-write"
+      format: "$MAX $PERIOD (微秒)"
+      default: "max 100000"
+      example: "50000 100000 = 50% CPU"
+    cpu_pressure:
+      name: "cpu.pressure"
+      description: "CPU 压力信息 (PSI)"
+      access: "read-only"
+    cpu_stat:
+      name: "cpu.stat"
+      description: "CPU 统计"
+      access: "read-only"
+      metrics:
+        - "usage_usec - 总 CPU 时间"
+        - "user_usec - 用户态 CPU 时间"
+        - "system_usec - 内核态 CPU 时间"
+        - "nr_periods - 带宽周期数"
+        - "nr_throttled - 被限制次数"
+        - "throttled_usec - 被限制总时间"
+        - "nr_bursts - burst 次数"
+        - "burst_usec - burst 总时间"
+    cpu_max_burst:
+      name: "cpu.max.burst"
+      description: "允许的 burst 额度"
+      access: "read-write"
+      default: "0"
+    cpu_idle:
+      name: "cpu.idle"
+      description: "空闲调度策略"
+      access: "read-write"
+      values: ["0 - 正常", "1 - 空闲优先级"]
 
   bandwidth_control:
-    - "cpu.max 格式: $MAX $PERIOD"
-    - "quota/period 限制 CPU 时间"
+    description: "CFS 带宽控制"
+    mechanism:
+      - "每个周期 (period) 分配固定配额 (quota)"
+      - "quota 用完后任务被限制直到下一周期"
+      - "支持 burst 借用未使用配额"
+    period_range: "1ms - 1000ms (默认 100ms)"
+    quota_range: "1ms - 不限 ('max' 表示无限制)"
 
-  kernel_integration:
-    - pattern: 'cfs_bandwidth_usage_exceeded\s*\('
-      description: "带宽超限检查"
+  kernel_functions:
+    - pattern: 'cpu_cgroup_css_alloc\s*\('
+      description: "分配 CPU cgroup 状态"
+      file: "kernel/sched/core.c"
+    - pattern: 'cpu_cgroup_attach\s*\('
+      description: "任务附加到 CPU cgroup"
+      file: "kernel/sched/core.c"
     - pattern: 'tg_set_cfs_bandwidth\s*\('
       description: "设置 CFS 带宽"
+      file: "kernel/sched/fair.c"
+    - pattern: 'tg_set_cfs_quota\s*\('
+      description: "设置 CFS 配额"
+      file: "kernel/sched/fair.c"
+    - pattern: 'tg_set_cfs_period\s*\('
+      description: "设置 CFS 周期"
+      file: "kernel/sched/fair.c"
+    - pattern: 'cfs_bandwidth_usage_exceeded\s*\('
+      description: "带宽超限检查"
+      file: "kernel/sched/fair.c"
+    - pattern: 'throttle_cfs_rq\s*\('
+      description: "限制 CFS 运行队列"
+      file: "kernel/sched/fair.c"
+    - pattern: 'unthrottle_cfs_rq\s*\('
+      description: "解除 CFS 限制"
+      file: "kernel/sched/fair.c"
+    - pattern: 'account_cfs_rq_runtime\s*\('
+      description: "记录运行时间"
+      file: "kernel/sched/fair.c"
+    - pattern: 'sched_cfs_period_timer\s*\('
+      description: "CFS 周期定时器"
+      file: "kernel/sched/fair.c"
+    - pattern: 'sched_cfs_slack_timer\s*\('
+      description: "CFS slack 定时器"
+      file: "kernel/sched/fair.c"
+
+  data_structures:
+    task_group:
+      description: "任务组 (CPU cgroup)"
+      file: "kernel/sched/sched.h"
+      fields:
+        - name: "css"
+          type: "struct cgroup_subsys_state"
+          description: "cgroup 子系统状态"
+        - name: "se"
+          type: "struct sched_entity **"
+          description: "per-CPU 调度实体"
+        - name: "cfs_rq"
+          type: "struct cfs_rq **"
+          description: "per-CPU CFS 运行队列"
+        - name: "shares"
+          type: "unsigned long"
+          description: "CPU 份额"
+        - name: "cfs_bandwidth"
+          type: "struct cfs_bandwidth"
+          description: "CFS 带宽控制"
+        - name: "uclamp"
+          type: "struct uclamp_se[]"
+          description: "utilization clamp"
+
+    cfs_bandwidth:
+      description: "CFS 带宽结构"
+      file: "kernel/sched/sched.h"
+      fields:
+        - name: "lock"
+          type: "raw_spinlock_t"
+          description: "保护锁"
+        - name: "period"
+          type: "ktime_t"
+          description: "周期"
+        - name: "quota"
+          type: "s64"
+          description: "配额"
+        - name: "runtime"
+          type: "s64"
+          description: "剩余运行时间"
+        - name: "burst"
+          type: "s64"
+          description: "burst 额度"
+        - name: "runtime_expires"
+          type: "s64"
+          description: "运行时间过期时间"
+        - name: "nr_periods"
+          type: "int"
+          description: "周期计数"
+        - name: "nr_throttled"
+          type: "int"
+          description: "限制次数"
+        - name: "throttled_time"
+          type: "u64"
+          description: "限制总时间"
+        - name: "period_timer"
+          type: "struct hrtimer"
+          description: "周期定时器"
+        - name: "slack_timer"
+          type: "struct hrtimer"
+          description: "slack 定时器"
+
+  call_chains:
+    throttle_chain:
+      description: "CPU 带宽限制调用链"
+      trigger: "任务用完 CPU 配额"
+      chain:
+        - function: "put_prev_task_fair"
+          file: "kernel/sched/fair.c"
+          description: "任务让出 CPU"
+        - function: "account_cfs_rq_runtime"
+          file: "kernel/sched/fair.c"
+          description: "记录运行时间"
+        - function: "cfs_rq_throttled"
+          file: "kernel/sched/fair.c"
+          description: "检查是否限制"
+        - function: "throttle_cfs_rq"
+          file: "kernel/sched/fair.c"
+          description: "执行限制"
+        - function: "dequeue_task_fair"
+          file: "kernel/sched/fair.c"
+          description: "从运行队列移除"
+          is_user_entry: true
 
 # ============================================================
 # IO CGROUP
@@ -163,27 +1025,222 @@ cpucg:
 
 iocg:
   description: "IO Cgroup Controller"
-  header: "block/blk-iocost.c"
+  header: "include/linux/blk-cgroup.h"
   icon: "💾"
+  kernel_version: "2.6.25+ (v1), 4.10+ (v2)"
+  source_files:
+    - "block/blk-cgroup.c"
+    - "block/blk-throttle.c"
+    - "block/blk-iocost.c"
+
+  context:
+    type: "varies"
+    notes: "可能在块层软中断或进程上下文"
 
   interface_files:
-    - "io.max"
-    - "io.weight"
-    - "io.stat"
-    - "io.pressure"
-    - "io.latency"
+    io_stat:
+      name: "io.stat"
+      description: "IO 统计"
+      access: "read-only"
+      format: "$MAJOR:$MINOR rbytes=X wbytes=X rios=X wios=X dbytes=X dios=X"
+      metrics:
+        - "rbytes - 读字节数"
+        - "wbytes - 写字节数"
+        - "rios - 读 IO 次数"
+        - "wios - 写 IO 次数"
+        - "dbytes - 丢弃字节数"
+        - "dios - 丢弃 IO 次数"
+    io_weight:
+      name: "io.weight"
+      description: "IO 权重 (1-10000)"
+      access: "read-write"
+      default: "100"
+      format: "default $WEIGHT 或 $MAJOR:$MINOR $WEIGHT"
+    io_max:
+      name: "io.max"
+      description: "IO 带宽限制"
+      access: "read-write"
+      format: "$MAJOR:$MINOR rbps=X wbps=X riops=X wiops=X"
+      example: "8:0 rbps=1048576 wbps=1048576 riops=100 wiops=100"
+      parameters:
+        - "rbps - 读带宽限制 (bytes/s)"
+        - "wbps - 写带宽限制 (bytes/s)"
+        - "riops - 读 IOPS 限制"
+        - "wiops - 写 IOPS 限制"
+    io_latency:
+      name: "io.latency"
+      description: "IO 延迟目标"
+      access: "read-write"
+      format: "$MAJOR:$MINOR target=X (微秒)"
+    io_pressure:
+      name: "io.pressure"
+      description: "IO 压力信息 (PSI)"
+      access: "read-only"
+    io_prio_class:
+      name: "io.prio.class"
+      description: "IO 优先级类"
+      access: "read-write"
+      values:
+        - "none - 不设置"
+        - "rt - 实时"
+        - "be - best effort"
+        - "idle - 空闲"
+    io_cost_qos:
+      name: "io.cost.qos"
+      description: "iocost QoS 参数"
+      access: "read-write"
+    io_cost_model:
+      name: "io.cost.model"
+      description: "iocost 设备模型参数"
+      access: "read-write"
 
   models:
-    - name: "blk-iocost"
-      description: "IO 成本模型"
-    - name: "blk-throttle"
-      description: "IO 带宽限制"
+    blk_throttle:
+      name: "blk-throttle"
+      description: "IO 带宽限制 (硬限制)"
+      mechanism: "令牌桶算法"
+      interface: "io.max"
+      features:
+        - "精确的带宽/IOPS 限制"
+        - "per-设备配置"
+        - "层级支持"
+    blk_iocost:
+      name: "blk-iocost"
+      description: "IO 成本模型 (比例权重)"
+      mechanism: "基于 IO 成本的权重分配"
+      interface: "io.weight, io.cost.*"
+      features:
+        - "根据设备特性估算 IO 成本"
+        - "比例权重分配"
+        - "QoS 保证"
+        - "自动设备校准"
+    iolatency:
+      name: "io-latency"
+      description: "IO 延迟控制器"
+      mechanism: "延迟目标保护"
+      interface: "io.latency"
+      features:
+        - "延迟目标设置"
+        - "自动限流保护低延迟 cgroup"
+
+  data_structures:
+    blkcg:
+      description: "块 cgroup 结构"
+      file: "include/linux/blk-cgroup.h"
+      fields:
+        - name: "css"
+          type: "struct cgroup_subsys_state"
+          description: "cgroup 子系统状态"
+        - name: "blkg_tree"
+          type: "struct xarray"
+          description: "块组设备树"
+        - name: "blkg_hint"
+          type: "struct blkcg_gq *"
+          description: "块组缓存"
+        - name: "cpd"
+          type: "struct blkcg_policy_data *[]"
+          description: "策略数据"
+        - name: "cgwb_list"
+          type: "struct list_head"
+          description: "cgroup writeback 链表"
+
+    blkcg_gq:
+      description: "块 cgroup 组 (per-device)"
+      file: "include/linux/blk-cgroup.h"
+      fields:
+        - name: "q"
+          type: "struct request_queue *"
+          description: "请求队列"
+        - name: "blkcg"
+          type: "struct blkcg *"
+          description: "所属块 cgroup"
+        - name: "pd"
+          type: "struct blkg_policy_data *[]"
+          description: "策略数据"
+        - name: "refcnt"
+          type: "struct percpu_ref"
+          description: "引用计数"
+        - name: "iostat"
+          type: "struct blkg_iostat_set"
+          description: "IO 统计"
+        - name: "parent"
+          type: "struct blkcg_gq *"
+          description: "父 blkg"
+
+    throtl_grp:
+      description: "throttle 组"
+      file: "block/blk-throttle.h"
+      fields:
+        - name: "pd"
+          type: "struct blkg_policy_data"
+          description: "策略数据"
+        - name: "bps"
+          type: "uint64_t[]"
+          description: "读写带宽限制"
+        - name: "iops"
+          type: "unsigned int[]"
+          description: "读写 IOPS 限制"
+        - name: "bytes_disp"
+          type: "uint64_t[]"
+          description: "已调度字节"
+        - name: "io_disp"
+          type: "unsigned int[]"
+          description: "已调度 IO"
 
   kernel_functions:
     - pattern: 'blkcg_css_alloc\s*\('
       description: "分配块 cgroup 状态"
+      file: "block/blk-cgroup.c"
+    - pattern: 'blkcg_css_online\s*\('
+      description: "块 cgroup 上线"
+      file: "block/blk-cgroup.c"
+    - pattern: 'blkcg_css_offline\s*\('
+      description: "块 cgroup 下线"
+      file: "block/blk-cgroup.c"
     - pattern: 'blkcg_policy_register\s*\('
       description: "注册块 cgroup 策略"
+      file: "block/blk-cgroup.c"
+    - pattern: 'blkg_lookup\s*\('
+      description: "查找块组"
+      file: "include/linux/blk-cgroup.h"
+    - pattern: 'blkg_lookup_create\s*\('
+      description: "查找或创建块组"
+      file: "block/blk-cgroup.c"
+    - pattern: 'blk_throtl_bio\s*\('
+      description: "bio throttle 入口"
+      file: "block/blk-throttle.c"
+    - pattern: 'throtl_charge_bio\s*\('
+      description: "对 bio 计费"
+      file: "block/blk-throttle.c"
+    - pattern: 'ioc_weight_write\s*\('
+      description: "写入 io.weight"
+      file: "block/blk-iocost.c"
+    - pattern: 'ioc_qos_write\s*\('
+      description: "写入 io.cost.qos"
+      file: "block/blk-iocost.c"
+
+  call_chains:
+    throttle_chain:
+      description: "IO throttle 调用链"
+      trigger: "提交 bio 超过限制"
+      chain:
+        - function: "submit_bio"
+          file: "block/blk-core.c"
+          description: "提交 bio"
+        - function: "__submit_bio"
+          file: "block/blk-core.c"
+          description: "内部提交"
+        - function: "blk_throtl_bio"
+          file: "block/blk-throttle.c"
+          description: "throttle 检查"
+        - function: "throtl_charge_bio"
+          file: "block/blk-throttle.c"
+          description: "计费"
+        - function: "blk_throtl_dispatch_work_fn"
+          file: "block/blk-throttle.c"
+          description: "延迟调度工作"
+          context: "workqueue"
+          is_user_entry: true
 
 # ============================================================
 # PIDS CGROUP
@@ -193,15 +1250,97 @@ pidscg:
   description: "PIDs Cgroup Controller"
   header: "kernel/cgroup/pids.c"
   icon: "🔢"
+  kernel_version: "4.3+"
+  source_file: "kernel/cgroup/pids.c"
+
+  context:
+    type: "process"
+    can_sleep: false
+    notes: "fork 路径检查"
 
   interface_files:
-    - "pids.max"
-    - "pids.current"
-    - "pids.events"
+    pids_max:
+      name: "pids.max"
+      description: "进程数硬限制"
+      access: "read-write"
+      default: "max (无限制)"
+    pids_current:
+      name: "pids.current"
+      description: "当前进程数"
+      access: "read-only"
+    pids_peak:
+      name: "pids.peak"
+      description: "历史最高进程数"
+      access: "read-only"
+    pids_events:
+      name: "pids.events"
+      description: "事件计数器"
+      access: "read-only"
+      events:
+        - "max - 达到限制次数"
 
   purpose:
-    - "限制 cgroup 中的进程数"
+    - "限制 cgroup 中的进程/线程数"
     - "防止 fork 炸弹"
+    - "资源隔离"
+
+  kernel_functions:
+    - pattern: 'pids_css_alloc\s*\('
+      description: "分配 pids cgroup 状态"
+      file: "kernel/cgroup/pids.c"
+    - pattern: 'pids_can_attach\s*\('
+      description: "检查是否可附加"
+      file: "kernel/cgroup/pids.c"
+    - pattern: 'pids_can_fork\s*\('
+      description: "检查是否可 fork"
+      file: "kernel/cgroup/pids.c"
+    - pattern: 'pids_cancel_fork\s*\('
+      description: "取消 fork"
+      file: "kernel/cgroup/pids.c"
+    - pattern: 'pids_fork\s*\('
+      description: "fork 成功回调"
+      file: "kernel/cgroup/pids.c"
+    - pattern: 'pids_release\s*\('
+      description: "进程退出释放"
+      file: "kernel/cgroup/pids.c"
+
+  data_structures:
+    pids_cgroup:
+      description: "pids cgroup 结构"
+      file: "kernel/cgroup/pids.c"
+      fields:
+        - name: "css"
+          type: "struct cgroup_subsys_state"
+          description: "cgroup 子系统状态"
+        - name: "counter"
+          type: "struct pids_count"
+          description: "进程计数器"
+        - name: "events_limit"
+          type: "atomic64_t"
+          description: "限制事件计数"
+
+  call_chains:
+    fork_check_chain:
+      description: "fork 检查调用链"
+      trigger: "进程 fork"
+      chain:
+        - function: "kernel_clone"
+          file: "kernel/fork.c"
+          description: "clone 系统调用"
+        - function: "copy_process"
+          file: "kernel/fork.c"
+          description: "复制进程"
+        - function: "cgroup_can_fork"
+          file: "kernel/cgroup/cgroup.c"
+          description: "检查 cgroup 约束"
+        - function: "pids_can_fork"
+          file: "kernel/cgroup/pids.c"
+          description: "检查 pids 限制"
+          return: "-EAGAIN if over limit"
+        - function: "pids_fork"
+          file: "kernel/cgroup/pids.c"
+          description: "增加计数"
+          is_user_entry: true
 
 # ============================================================
 # CPUSET CGROUP
@@ -211,41 +1350,269 @@ cpusetcg:
   description: "Cpuset Cgroup Controller"
   header: "kernel/cgroup/cpuset.c"
   icon: "🎯"
+  kernel_version: "2.6.24+"
+  source_file: "kernel/cgroup/cpuset.c"
+
+  context:
+    type: "process"
+    can_sleep: true
 
   interface_files:
-    - "cpuset.cpus"
-    - "cpuset.cpus.effective"
-    - "cpuset.mems"
-    - "cpuset.mems.effective"
-    - "cpuset.cpus.partition"
+    cpuset_cpus:
+      name: "cpuset.cpus"
+      description: "允许使用的 CPU 列表"
+      access: "read-write"
+      format: "CPU 范围列表 (如 0-3,8-11)"
+      default: "继承父级或所有 CPU"
+    cpuset_cpus_effective:
+      name: "cpuset.cpus.effective"
+      description: "实际生效的 CPU 列表"
+      access: "read-only"
+      notes: "考虑祖先限制和 CPU 热插拔"
+    cpuset_mems:
+      name: "cpuset.mems"
+      description: "允许使用的 NUMA 节点"
+      access: "read-write"
+      format: "节点范围列表 (如 0-1)"
+      default: "继承父级或所有节点"
+    cpuset_mems_effective:
+      name: "cpuset.mems.effective"
+      description: "实际生效的 NUMA 节点"
+      access: "read-only"
+    cpuset_cpus_partition:
+      name: "cpuset.cpus.partition"
+      description: "CPU 分区模式"
+      access: "read-write"
+      values:
+        - "member - 普通成员"
+        - "root - 分区根"
+        - "isolated - 隔离分区"
+    cpuset_cpus_exclusive:
+      name: "cpuset.cpus.exclusive"
+      description: "独占 CPU 列表"
+      access: "read-write"
+    cpuset_cpus_exclusive_effective:
+      name: "cpuset.cpus.exclusive.effective"
+      description: "实际独占 CPU"
+      access: "read-only"
+    cpuset_cpu_pressure:
+      name: "cpuset.cpu.pressure"
+      description: "CPU 压力信息"
+      access: "read-only"
+    cpuset_memory_pressure:
+      name: "cpuset.memory.pressure"
+      description: "内存压力信息"
+      access: "read-only"
+    cpuset_memory_migrate:
+      name: "cpuset.memory_migrate"
+      description: "迁移内存到新节点"
+      access: "read-write"
+      values: ["0 - 禁用", "1 - 启用"]
 
   features:
-    - "CPU 绑定"
-    - "NUMA 内存节点绑定"
-    - "CPU 分区"
+    cpu_binding:
+      description: "CPU 绑定"
+      mechanism: "限制任务可运行的 CPU"
+      use_cases:
+        - "性能隔离"
+        - "NUMA 优化"
+        - "实时任务隔离"
+    numa_binding:
+      description: "NUMA 内存节点绑定"
+      mechanism: "限制内存分配的节点"
+      use_cases:
+        - "减少 NUMA 跨节点访问"
+        - "内存带宽隔离"
+    partition:
+      description: "CPU 分区"
+      mechanism: "将 CPU 从默认调度域移除"
+      types:
+        - "member - 共享 CPU"
+        - "root - 分区根，CPU 从默认域移除"
+        - "isolated - 完全隔离的 CPU"
+
+  kernel_functions:
+    - pattern: 'cpuset_css_alloc\s*\('
+      description: "分配 cpuset 状态"
+      file: "kernel/cgroup/cpuset.c"
+    - pattern: 'cpuset_css_online\s*\('
+      description: "cpuset 上线"
+      file: "kernel/cgroup/cpuset.c"
+    - pattern: 'cpuset_can_attach\s*\('
+      description: "检查是否可附加"
+      file: "kernel/cgroup/cpuset.c"
+    - pattern: 'cpuset_attach\s*\('
+      description: "执行附加"
+      file: "kernel/cgroup/cpuset.c"
+    - pattern: 'cpuset_fork\s*\('
+      description: "fork 回调"
+      file: "kernel/cgroup/cpuset.c"
+    - pattern: 'cpuset_cpus_allowed\s*\('
+      description: "获取允许的 CPU"
+      file: "kernel/cgroup/cpuset.c"
+    - pattern: 'cpuset_mems_allowed\s*\('
+      description: "获取允许的内存节点"
+      file: "kernel/cgroup/cpuset.c"
+    - pattern: 'rebuild_sched_domains_locked\s*\('
+      description: "重建调度域"
+      file: "kernel/cgroup/cpuset.c"
+    - pattern: 'update_cpumask\s*\('
+      description: "更新 CPU 掩码"
+      file: "kernel/cgroup/cpuset.c"
+    - pattern: 'update_nodemask\s*\('
+      description: "更新节点掩码"
+      file: "kernel/cgroup/cpuset.c"
+
+  data_structures:
+    cpuset:
+      description: "cpuset 结构"
+      file: "kernel/cgroup/cpuset.c"
+      fields:
+        - name: "css"
+          type: "struct cgroup_subsys_state"
+          description: "cgroup 子系统状态"
+        - name: "cpus_allowed"
+          type: "cpumask_var_t"
+          description: "允许的 CPU"
+        - name: "mems_allowed"
+          type: "nodemask_t"
+          description: "允许的内存节点"
+        - name: "effective_cpus"
+          type: "cpumask_var_t"
+          description: "有效 CPU"
+        - name: "effective_mems"
+          type: "nodemask_t"
+          description: "有效内存节点"
+        - name: "exclusive_cpus"
+          type: "cpumask_var_t"
+          description: "独占 CPU"
+        - name: "flags"
+          type: "unsigned long"
+          description: "标志"
+        - name: "partition_root_state"
+          type: "int"
+          description: "分区状态"
+
+  call_chains:
+    cpuset_change_chain:
+      description: "cpuset 更改调用链"
+      trigger: "写入 cpuset.cpus"
+      chain:
+        - function: "cpuset_write_resmask"
+          file: "kernel/cgroup/cpuset.c"
+          description: "写入处理"
+        - function: "update_cpumask"
+          file: "kernel/cgroup/cpuset.c"
+          description: "更新 CPU 掩码"
+        - function: "update_tasks_cpumask"
+          file: "kernel/cgroup/cpuset.c"
+          description: "更新任务亲和性"
+        - function: "set_cpus_allowed_ptr"
+          file: "kernel/sched/core.c"
+          description: "设置任务 CPU 亲和性"
+        - function: "rebuild_sched_domains_locked"
+          file: "kernel/cgroup/cpuset.c"
+          description: "重建调度域 (如需要)"
+          is_user_entry: true
 
 # ============================================================
 # FREEZER
 # ============================================================
 
 freezer:
-  description: "Cgroup Freezer"
-  header: "kernel/cgroup/freezer.c"
+  description: "Cgroup Freezer (v2 集成)"
+  header: "kernel/cgroup/cgroup.c"
   icon: "❄️"
+  kernel_version: "5.2+ (v2 集成)"
+  source_file: "kernel/cgroup/cgroup.c"
+  notes: "v2 中 freezer 集成到核心，不是独立控制器"
 
-  interface_file: "cgroup.freeze"
+  context:
+    type: "process"
+    can_sleep: true
+
+  interface_file:
+    name: "cgroup.freeze"
+    description: "冻结/解冻 cgroup"
+    access: "read-write"
 
   states:
     - value: 0
-      description: "运行中"
+      description: "运行中 (THAWED)"
     - value: 1
-      description: "冻结"
+      description: "冻结 (FROZEN)"
+
+  events:
+    file: "cgroup.events"
+    frozen:
+      description: "cgroup 是否完全冻结"
+      values: ["0 - 未冻结", "1 - 完全冻结"]
+
+  mechanism:
+    description: "冻结机制"
+    steps:
+      - "设置 cgroup.freeze = 1"
+      - "向所有任务发送 SIGSTOP"
+      - "任务进入 TASK_FROZEN 状态"
+      - "等待所有任务停止"
+    unfreeze_steps:
+      - "设置 cgroup.freeze = 0"
+      - "向所有任务发送 SIGCONT"
+      - "任务恢复执行"
 
   kernel_functions:
-    - pattern: 'cgroup_freeze\s*\('
+    - pattern: 'cgroup_freeze\s*\(\s*(?P<cgrp>[^,]+)\s*,'
       description: "冻结 cgroup"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_do_freeze\s*\('
+      description: "执行冻结"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_freeze_task\s*\('
+      description: "冻结单个任务"
+      file: "kernel/cgroup/cgroup.c"
     - pattern: 'cgroup_freezer_migrate_task\s*\('
       description: "迁移冻结任务"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_freezing\s*\('
+      description: "检查 cgroup 是否正在冻结"
+      file: "include/linux/cgroup.h"
+    - pattern: 'cgroup_enter_frozen\s*\('
+      description: "任务进入冻结状态"
+      file: "kernel/cgroup/cgroup.c"
+    - pattern: 'cgroup_leave_frozen\s*\('
+      description: "任务离开冻结状态"
+      file: "kernel/cgroup/cgroup.c"
+
+  use_cases:
+    - "容器暂停/恢复"
+    - "检查点/恢复 (CRIU)"
+    - "系统挂起/休眠"
+    - "调试和分析"
+
+  call_chains:
+    freeze_chain:
+      description: "冻结调用链"
+      trigger: "echo 1 > cgroup.freeze"
+      chain:
+        - function: "cgroup_freeze_write"
+          file: "kernel/cgroup/cgroup.c"
+          description: "写入处理"
+        - function: "cgroup_freeze"
+          file: "kernel/cgroup/cgroup.c"
+          description: "设置冻结标志"
+        - function: "cgroup_do_freeze"
+          file: "kernel/cgroup/cgroup.c"
+          description: "遍历并冻结任务"
+        - function: "cgroup_freeze_task"
+          file: "kernel/cgroup/cgroup.c"
+          description: "冻结单个任务"
+        - function: "signal_wake_up"
+          file: "kernel/signal.c"
+          description: "唤醒任务处理信号"
+        - function: "cgroup_enter_frozen"
+          file: "kernel/cgroup/cgroup.c"
+          description: "任务进入冻结"
+          is_user_entry: true
 
 # ============================================================
 # PRESSURE STALL INFORMATION (PSI)
@@ -253,24 +1620,360 @@ freezer:
 
 psi:
   description: "Pressure Stall Information"
-  header: "kernel/sched/psi.c"
+  header: "include/linux/psi.h"
   icon: "📊"
+  kernel_version: "4.20+"
+  source_file: "kernel/sched/psi.c"
+
+  context:
+    type: "varies"
+    notes: "统计在调度器上下文收集"
 
   interface_files:
-    - "cpu.pressure"
-    - "memory.pressure"
-    - "io.pressure"
+    cpu_pressure:
+      name: "cpu.pressure"
+      description: "CPU 压力"
+      access: "read-only/read-write (触发器)"
+      location: "cgroup 目录或 /proc/pressure/cpu"
+    memory_pressure:
+      name: "memory.pressure"
+      description: "内存压力"
+      access: "read-only/read-write (触发器)"
+      location: "cgroup 目录或 /proc/pressure/memory"
+    io_pressure:
+      name: "io.pressure"
+      description: "IO 压力"
+      access: "read-only/read-write (触发器)"
+      location: "cgroup 目录或 /proc/pressure/io"
+    irq_pressure:
+      name: "/proc/pressure/irq"
+      description: "IRQ 压力 (全局)"
+      access: "read-only"
+      kernel_version: "5.14+"
 
   metrics:
-    - name: "some"
-      description: "部分任务阻塞"
-    - name: "full"
-      description: "所有任务阻塞"
+    some:
+      description: "部分任务阻塞 (至少一个任务在等待)"
+      meaning: "有生产力损失但系统未完全停滞"
+      use_case: "检测资源争用"
+    full:
+      description: "所有任务阻塞 (所有任务都在等待)"
+      meaning: "系统完全停滞在该资源上"
+      use_case: "检测严重瓶颈"
 
-  format: "some avg10=X.XX avg60=X.XX avg300=X.XX total=XXXXX"
+  format:
+    read_format: "some avg10=X.XX avg60=X.XX avg300=X.XX total=XXXXX"
+    explanation:
+      - "avg10 - 10 秒滑动平均 (%)"
+      - "avg60 - 60 秒滑动平均 (%)"
+      - "avg300 - 300 秒 (5 分钟) 滑动平均 (%)"
+      - "total - 总停滞时间 (微秒)"
 
-  monitoring:
+  trigger:
+    description: "PSI 触发器 - 压力阈值通知"
+    write_format: "some/full THRESHOLD_US WINDOW_US"
+    example: "some 50000 1000000"
+    explanation: "在 1 秒窗口内 some 超过 50ms 时触发"
+    poll_mechanism: "使用 poll()/epoll() 等待触发"
+
+  kernel_functions:
     - pattern: 'psi_trigger_create\s*\('
       description: "创建 PSI 触发器"
+      file: "kernel/sched/psi.c"
     - pattern: 'psi_trigger_destroy\s*\('
       description: "销毁 PSI 触发器"
+      file: "kernel/sched/psi.c"
+    - pattern: 'psi_trigger_poll\s*\('
+      description: "触发器 poll 操作"
+      file: "kernel/sched/psi.c"
+    - pattern: 'psi_task_change\s*\('
+      description: "任务状态变化"
+      file: "kernel/sched/psi.c"
+    - pattern: 'psi_task_switch\s*\('
+      description: "任务切换时更新"
+      file: "kernel/sched/psi.c"
+    - pattern: 'psi_memstall_enter\s*\('
+      description: "进入内存停滞"
+      file: "kernel/sched/psi.c"
+    - pattern: 'psi_memstall_leave\s*\('
+      description: "离开内存停滞"
+      file: "kernel/sched/psi.c"
+    - pattern: 'psi_cgroup_alloc\s*\('
+      description: "分配 cgroup PSI 状态"
+      file: "kernel/sched/psi.c"
+    - pattern: 'psi_cgroup_free\s*\('
+      description: "释放 cgroup PSI 状态"
+      file: "kernel/sched/psi.c"
+
+  data_structures:
+    psi_group:
+      description: "PSI 组结构"
+      file: "include/linux/psi_types.h"
+      fields:
+        - name: "pcpu"
+          type: "struct psi_group_cpu __percpu *"
+          description: "per-CPU 状态"
+        - name: "avg_total"
+          type: "u64[]"
+          description: "总停滞时间"
+        - name: "avg"
+          type: "unsigned long[][]"
+          description: "平均值"
+        - name: "avg_last_update"
+          type: "u64"
+          description: "最后更新时间"
+        - name: "avg_next_update"
+          type: "u64"
+          description: "下次更新时间"
+        - name: "rtpoll_work"
+          type: "struct delayed_work"
+          description: "实时轮询工作"
+        - name: "rtpoll_triggers"
+          type: "struct list_head"
+          description: "触发器链表"
+
+  use_cases:
+    - description: "OOM 预防 - 在 OOM 前检测内存压力"
+    - description: "工作负载均衡 - 在 CPU 压力高时迁移工作"
+    - description: "IO 调度 - 根据 IO 压力调整批处理大小"
+    - description: "自动扩展 - 容器压力触发扩容"
+    - description: "监控告警 - 压力超阈值时告警"
+
+  call_chains:
+    trigger_chain:
+      description: "PSI 触发器调用链"
+      trigger: "压力超过阈值"
+      chain:
+        - function: "psi_task_change"
+          file: "kernel/sched/psi.c"
+          description: "任务状态变化"
+          context: "scheduler"
+        - function: "psi_group_change"
+          file: "kernel/sched/psi.c"
+          description: "更新组状态"
+        - function: "psi_rtpoll_work"
+          file: "kernel/sched/psi.c"
+          description: "实时轮询检查"
+          context: "workqueue"
+        - function: "psi_trigger_dispatch"
+          file: "kernel/sched/psi.c"
+          description: "检查并分发触发"
+        - function: "wake_up_interruptible"
+          file: "kernel/sched/wait.c"
+          description: "唤醒等待进程"
+          is_user_entry: true
+
+# ============================================================
+# CGROUP EXAMPLES
+# ============================================================
+
+examples:
+  - description: "创建和配置 cgroup v2"
+    kernel_version: "4.5+"
+    code: |
+      #!/bin/bash
+      # 挂载 cgroup v2 (如果尚未挂载)
+      mount -t cgroup2 none /sys/fs/cgroup
+      
+      # 创建 cgroup
+      mkdir /sys/fs/cgroup/mygroup
+      
+      # 启用控制器
+      echo "+cpu +memory +io" > /sys/fs/cgroup/cgroup.subtree_control
+      
+      # 配置 CPU 限制 (50% CPU)
+      echo "50000 100000" > /sys/fs/cgroup/mygroup/cpu.max
+      
+      # 配置内存限制 (1GB)
+      echo "1073741824" > /sys/fs/cgroup/mygroup/memory.max
+      
+      # 配置内存软限制
+      echo "536870912" > /sys/fs/cgroup/mygroup/memory.high
+      
+      # 移动进程到 cgroup
+      echo $$ > /sys/fs/cgroup/mygroup/cgroup.procs
+      
+      # 查看统计
+      cat /sys/fs/cgroup/mygroup/cpu.stat
+      cat /sys/fs/cgroup/mygroup/memory.current
+
+  - description: "IO 限速配置"
+    kernel_version: "4.10+"
+    code: |
+      #!/bin/bash
+      # 找到设备主次号 (例如 /dev/sda)
+      MAJOR_MINOR=$(stat -c '%t:%T' /dev/sda)
+      # 或者使用 lsblk -o NAME,MAJ:MIN
+      
+      # 限制读写带宽为 10MB/s
+      echo "8:0 rbps=10485760 wbps=10485760" > \
+        /sys/fs/cgroup/mygroup/io.max
+      
+      # 限制 IOPS
+      echo "8:0 riops=100 wiops=100" >> \
+        /sys/fs/cgroup/mygroup/io.max
+      
+      # 设置 IO 权重
+      echo "8:0 200" > /sys/fs/cgroup/mygroup/io.weight
+      
+      # 查看 IO 统计
+      cat /sys/fs/cgroup/mygroup/io.stat
+
+  - description: "PSI 触发器监控"
+    kernel_version: "4.20+"
+    code: |
+      #include <stdio.h>
+      #include <fcntl.h>
+      #include <poll.h>
+      #include <unistd.h>
+      #include <string.h>
+      
+      int main() {
+          int fd;
+          struct pollfd fds;
+          
+          /* 打开 PSI 文件 */
+          fd = open("/proc/pressure/memory", O_RDWR | O_NONBLOCK);
+          if (fd < 0) {
+              perror("open");
+              return 1;
+          }
+          
+          /* 设置触发器: 1秒窗口内 some 超过 50ms */
+          const char *trigger = "some 50000 1000000";
+          if (write(fd, trigger, strlen(trigger)) < 0) {
+              perror("write trigger");
+              return 1;
+          }
+          
+          printf("Monitoring memory pressure...\n");
+          
+          fds.fd = fd;
+          fds.events = POLLPRI;
+          
+          while (1) {
+              int ret = poll(&fds, 1, -1);
+              if (ret > 0) {
+                  if (fds.revents & POLLPRI) {
+                      char buf[256];
+                      lseek(fd, 0, SEEK_SET);
+                      read(fd, buf, sizeof(buf));
+                      printf("Memory pressure triggered!\n%s", buf);
+                  }
+              }
+          }
+          
+          close(fd);
+          return 0;
+      }
+
+  - description: "cgroup 子系统实现示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/cgroup.h>
+      #include <linux/slab.h>
+      
+      struct my_cgroup {
+          struct cgroup_subsys_state css;
+          unsigned long my_counter;
+          spinlock_t lock;
+      };
+      
+      static inline struct my_cgroup *css_to_mycg(struct cgroup_subsys_state *css)
+      {
+          return container_of(css, struct my_cgroup, css);
+      }
+      
+      static struct cgroup_subsys_state *
+      my_css_alloc(struct cgroup_subsys_state *parent_css)
+      {
+          struct my_cgroup *mycg;
+          
+          mycg = kzalloc(sizeof(*mycg), GFP_KERNEL);
+          if (!mycg)
+              return ERR_PTR(-ENOMEM);
+          
+          spin_lock_init(&mycg->lock);
+          
+          /* 从父继承设置 */
+          if (parent_css) {
+              struct my_cgroup *parent = css_to_mycg(parent_css);
+              mycg->my_counter = parent->my_counter;
+          }
+          
+          return &mycg->css;
+      }
+      
+      static int my_css_online(struct cgroup_subsys_state *css)
+      {
+          struct my_cgroup *mycg = css_to_mycg(css);
+          /* 控制器上线时的初始化 */
+          pr_info("my_cgroup: online\n");
+          return 0;
+      }
+      
+      static void my_css_offline(struct cgroup_subsys_state *css)
+      {
+          struct my_cgroup *mycg = css_to_mycg(css);
+          /* 控制器下线时的清理 */
+          pr_info("my_cgroup: offline\n");
+      }
+      
+      static void my_css_free(struct cgroup_subsys_state *css)
+      {
+          struct my_cgroup *mycg = css_to_mycg(css);
+          kfree(mycg);
+      }
+      
+      static void my_attach(struct cgroup_taskset *tset)
+      {
+          struct task_struct *task;
+          struct cgroup_subsys_state *css;
+          
+          cgroup_taskset_for_each(task, css, tset) {
+              struct my_cgroup *mycg = css_to_mycg(css);
+              pr_info("my_cgroup: attaching task %d\n", task->pid);
+          }
+      }
+      
+      struct cgroup_subsys my_cgrp_subsys = {
+          .css_alloc    = my_css_alloc,
+          .css_online   = my_css_online,
+          .css_offline  = my_css_offline,
+          .css_free     = my_css_free,
+          .attach       = my_attach,
+          .name         = "my",
+      };
+
+  - description: "冻结和解冻 cgroup"
+    kernel_version: "5.2+"
+    code: |
+      #!/bin/bash
+      CGROUP="/sys/fs/cgroup/mygroup"
+      
+      # 创建 cgroup 并移动进程
+      mkdir -p $CGROUP
+      echo $$ > $CGROUP/cgroup.procs
+      
+      # 启动后台任务
+      sleep 1000 &
+      SLEEP_PID=$!
+      echo $SLEEP_PID > $CGROUP/cgroup.procs
+      
+      # 冻结 cgroup
+      echo 1 > $CGROUP/cgroup.freeze
+      
+      # 检查状态
+      cat $CGROUP/cgroup.events
+      # frozen 1
+      
+      # 验证进程被冻结
+      ps -p $SLEEP_PID -o pid,stat
+      # 状态显示 T (stopped)
+      
+      # 解冻 cgroup
+      echo 0 > $CGROUP/cgroup.freeze
+      
+      # 清理
+      kill $SLEEP_PID
+      rmdir $CGROUP

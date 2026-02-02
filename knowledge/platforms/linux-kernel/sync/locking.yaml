@@ -1,15 +1,409 @@
 # Linux Kernel Locking Knowledge Base
 #
 # Reference: https://www.kernel.org/doc/html/latest/locking/index.html
+# Reference: https://www.kernel.org/doc/html/latest/locking/locktypes.html
 
 # ============================================================
-# MUTEX
+# SPINLOCK - 自旋锁
+# ============================================================
+
+spinlock:
+  description: "Spinlock - 自旋锁"
+  header: "linux/spinlock.h"
+  icon: "🔄"
+  kernel_version: "2.6+"
+
+  context:
+    type: "atomic"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  # --- 定义和初始化 ---
+  definition_patterns:
+    # DEFINE_SPINLOCK - 静态定义
+    - pattern: 'DEFINE_SPINLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "静态定义并初始化自旋锁"
+
+    # spinlock_t 变量定义
+    - pattern: 'spinlock_t\s+(?P<lock>\w+)'
+      variable_capture: "lock"
+      description: "自旋锁变量声明"
+
+    # spin_lock_init - 动态初始化
+    - pattern: 'spin_lock_init\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "动态初始化自旋锁"
+
+    # __SPIN_LOCK_UNLOCKED - 静态初始化器
+    - pattern: '__SPIN_LOCK_UNLOCKED\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "自旋锁静态初始化器"
+
+  # --- 获取锁 API ---
+  lock_patterns:
+    # spin_lock - 基本获取
+    - pattern: 'spin_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取自旋锁 (禁用抢占)"
+      context: "process/softirq"
+      notes:
+        - "禁用抢占"
+        - "不禁用中断"
+        - "如果在中断上下文使用，需确保中断处理函数不会访问该锁"
+
+    # spin_lock_irq - 关闭中断
+    - pattern: 'spin_lock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取自旋锁并禁用本地中断"
+      context: "process"
+      notes:
+        - "禁用本地中断"
+        - "unlock 时无条件开启中断"
+        - "适用于已知中断是开启的场景"
+
+    # spin_lock_irqsave - 保存中断状态
+    - pattern: 'spin_lock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      extra_captures:
+        - name: "flags"
+          type: "unsigned long"
+          description: "保存的中断状态"
+      description: "保存中断状态并获取自旋锁"
+      context: "any"
+      notes:
+        - "最安全的配对使用"
+        - "保存原始中断状态"
+        - "可在任何上下文使用"
+      recommended: true
+
+    # spin_lock_bh - 禁用软中断
+    - pattern: 'spin_lock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取自旋锁并禁用软中断"
+      context: "process"
+      notes:
+        - "禁用软中断 (bottom half)"
+        - "用于进程上下文与软中断共享数据"
+
+    # spin_trylock - 非阻塞尝试
+    - pattern: 'spin_trylock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取自旋锁 (非阻塞)"
+      return_type: "int (成功返回 1，失败返回 0)"
+
+    # spin_trylock_irqsave - 非阻塞+保存中断
+    - pattern: 'spin_trylock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取自旋锁并保存中断状态"
+      return_type: "int"
+
+    # spin_trylock_bh
+    - pattern: 'spin_trylock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取自旋锁并禁用软中断"
+      return_type: "int"
+
+  # --- 释放锁 API ---
+  unlock_patterns:
+    # spin_unlock - 基本释放
+    - pattern: 'spin_unlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放自旋锁"
+
+    # spin_unlock_irq - 开启中断
+    - pattern: 'spin_unlock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放自旋锁并开启中断"
+
+    # spin_unlock_irqrestore - 恢复中断状态
+    - pattern: 'spin_unlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放自旋锁并恢复中断状态"
+      notes:
+        - "与 spin_lock_irqsave 配对"
+        - "恢复原始中断状态"
+
+    # spin_unlock_bh - 启用软中断
+    - pattern: 'spin_unlock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放自旋锁并启用软中断"
+
+  # --- 状态检查 ---
+  status_patterns:
+    # spin_is_locked - 检查是否已锁定
+    - pattern: 'spin_is_locked\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "检查自旋锁是否被持有"
+      return_type: "int (非零表示已锁定)"
+
+    # spin_is_contended - 检查是否有竞争
+    - pattern: 'spin_is_contended\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "检查自旋锁是否有竞争者"
+
+    # assert_spin_locked - 断言已锁定
+    - pattern: 'assert_spin_locked\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "断言自旋锁已被持有 (调试用)"
+
+    # lockdep_assert_held - lockdep 断言
+    - pattern: 'lockdep_assert_held\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "lockdep 断言锁已持有"
+
+  call_chains:
+    spin_lock_acquisition:
+      description: "自旋锁获取路径"
+      trigger: "spin_lock() 调用"
+      chain:
+        - function: "spin_lock(lock)"
+          file: "include/linux/spinlock.h"
+          description: "自旋锁入口"
+        - function: "raw_spin_lock(lock)"
+          file: "include/linux/spinlock.h"
+        - function: "_raw_spin_lock(lock)"
+          file: "kernel/locking/spinlock.c"
+        - function: "__raw_spin_lock(lock)"
+          description: "preempt_disable() + 自旋等待"
+        - function: "do_raw_spin_lock(lock)"
+          description: "实际自旋循环"
+          notes:
+            - "检查锁变量"
+            - "自旋等待直到获得锁"
+
+    spin_lock_contention:
+      description: "自旋锁竞争路径 (Ticket/MCS)"
+      trigger: "锁被其他 CPU 持有"
+      chain:
+        - function: "do_raw_spin_lock(lock)"
+          description: "获取失败"
+        - function: "arch_spin_lock(lock)"
+          file: "arch/xxx/include/asm/spinlock.h"
+          description: "架构相关实现"
+        - function: "ticket/MCS spinning"
+          description: "公平自旋等待"
+          notes:
+            - "Ticket lock: 按序号排队"
+            - "MCS lock: 本地自旋"
+
+  notes:
+    - "自旋锁不能嵌套获取同一把锁 (死锁)"
+    - "持锁时间应尽可能短"
+    - "spin_lock_irqsave/spin_unlock_irqrestore 是最安全的配对"
+    - "中断处理函数中必须使用 _irqsave 变体"
+    - "不能在持锁时调用可能睡眠的函数"
+
+
+# ============================================================
+# RAW SPINLOCK - 原始自旋锁
+# ============================================================
+
+raw_spinlock:
+  description: "Raw Spinlock - 原始自旋锁 (RT 内核)"
+  header: "linux/spinlock.h"
+  icon: "🔒"
+  kernel_version: "2.6+"
+
+  context:
+    type: "atomic"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  bind_patterns:
+    # DEFINE_RAW_SPINLOCK
+    - pattern: 'DEFINE_RAW_SPINLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "定义原始自旋锁"
+
+    # raw_spin_lock
+    - pattern: 'raw_spin_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取原始自旋锁"
+
+    # raw_spin_lock_irqsave
+    - pattern: 'raw_spin_lock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取原始自旋锁并保存中断状态"
+
+    # raw_spin_unlock_irqrestore
+    - pattern: 'raw_spin_unlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放原始自旋锁并恢复中断状态"
+
+  notes:
+    - "RT 内核中 spinlock 可能会睡眠"
+    - "raw_spinlock 永远不会睡眠"
+    - "用于内核核心代码 (调度器、中断等)"
+
+
+# ============================================================
+# MUTEX - 互斥锁
 # ============================================================
 
 mutex:
   description: "Mutex - 互斥锁"
   header: "linux/mutex.h"
   icon: "🔒"
+  kernel_version: "2.6.16+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  # --- 定义和初始化 ---
+  definition_patterns:
+    # DEFINE_MUTEX - 静态定义
+    - pattern: 'DEFINE_MUTEX\s*\(\s*(?P<mutex>\w+)\s*\)'
+      variable_capture: "mutex"
+      description: "静态定义并初始化互斥锁"
+
+    # struct mutex 声明
+    - pattern: 'struct mutex\s+(?P<mutex>\w+)'
+      variable_capture: "mutex"
+      description: "互斥锁变量声明"
+
+    # mutex_init - 动态初始化
+    - pattern: 'mutex_init\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "动态初始化互斥锁"
+
+    # __MUTEX_INITIALIZER - 静态初始化器
+    - pattern: '__MUTEX_INITIALIZER\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "互斥锁静态初始化器"
+
+  # --- 获取锁 API ---
+  lock_patterns:
+    # mutex_lock - 基本获取
+    - pattern: 'mutex_lock\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "获取互斥锁 (可能睡眠)"
+      context: "process only"
+      notes:
+        - "如果锁不可用会睡眠"
+        - "只能在进程上下文调用"
+        - "不可中断"
+
+    # mutex_lock_interruptible - 可中断获取
+    - pattern: 'mutex_lock_interruptible\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "可中断地获取互斥锁"
+      return_type: "int (0 成功, -EINTR 被信号中断)"
+      notes:
+        - "可被信号中断"
+        - "返回 -EINTR 表示被中断"
+
+    # mutex_lock_killable - 可被杀死获取
+    - pattern: 'mutex_lock_killable\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "可被杀死信号中断地获取互斥锁"
+      return_type: "int (0 成功, -EINTR 被杀死)"
+      notes:
+        - "只响应致命信号 (SIGKILL)"
+        - "比 interruptible 更严格"
+
+    # mutex_lock_io - I/O 等待获取
+    - pattern: 'mutex_lock_io\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "获取互斥锁 (I/O 等待计入)"
+      notes:
+        - "等待时间计入 I/O wait"
+        - "用于 I/O 相关的同步"
+
+    # mutex_trylock - 非阻塞尝试
+    - pattern: 'mutex_trylock\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "尝试获取互斥锁 (非阻塞)"
+      return_type: "int (成功返回 1，失败返回 0)"
+      notes:
+        - "立即返回"
+        - "可在原子上下文使用"
+
+  # --- 释放锁 ---
+  unlock_patterns:
+    # mutex_unlock - 释放
+    - pattern: 'mutex_unlock\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "释放互斥锁"
+      notes:
+        - "只能由持有者释放"
+        - "唤醒等待者"
+
+  # --- 状态检查 ---
+  status_patterns:
+    # mutex_is_locked - 检查是否锁定
+    - pattern: 'mutex_is_locked\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "检查互斥锁是否被持有"
+      return_type: "int (非零表示已锁定)"
+
+    # mutex_destroy - 销毁
+    - pattern: 'mutex_destroy\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "销毁互斥锁 (调试用)"
+
+    # lockdep_assert_held
+    - pattern: 'lockdep_assert_held\s*\(\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      variable_capture: "mutex"
+      description: "断言互斥锁已持有"
+
+  call_chains:
+    mutex_lock_fast_path:
+      description: "互斥锁快速路径 (无竞争)"
+      trigger: "mutex_lock() 锁可用"
+      chain:
+        - function: "mutex_lock(lock)"
+          file: "kernel/locking/mutex.c"
+          description: "互斥锁入口"
+        - function: "__mutex_trylock_fast(lock)"
+          description: "尝试快速获取"
+        - function: "atomic_long_try_cmpxchg_acquire"
+          description: "原子 CAS 操作"
+        - function: "return"
+          description: "成功获取锁"
+
+    mutex_lock_slow_path:
+      description: "互斥锁慢速路径 (有竞争)"
+      trigger: "mutex_lock() 锁被占用"
+      chain:
+        - function: "mutex_lock(lock)"
+          file: "kernel/locking/mutex.c"
+        - function: "__mutex_trylock_fast(lock)"
+          description: "快速路径失败"
+        - function: "__mutex_lock_slowpath(lock)"
+          file: "kernel/locking/mutex.c"
+          description: "进入慢速路径"
+        - function: "__mutex_lock(lock, TASK_UNINTERRUPTIBLE)"
+          description: "实际等待"
+        - function: "schedule_preempt_disabled()"
+          description: "睡眠等待"
+          context: "sleeping"
+        - function: "... 被唤醒 ..."
+        - function: "return"
+          description: "获取锁"
+
+  notes:
+    - "mutex 只能在进程上下文使用"
+    - "必须由持有者释放"
+    - "不能递归获取"
+    - "比自旋锁开销大，但持锁可以睡眠"
+    - "适合长时间持锁的场景"
+
+
+# ============================================================
+# SEMAPHORE - 信号量
+# ============================================================
+
+semaphore:
+  description: "Semaphore - 信号量"
+  header: "linux/semaphore.h"
+  icon: "🚦"
+  kernel_version: "2.6+"
 
   context:
     type: "process"
@@ -18,328 +412,1260 @@ mutex:
     preemptible: true
 
   bind_patterns:
-    # DEFINE_MUTEX - 定义互斥锁
-    - pattern: 'DEFINE_MUTEX\s*\(\s*(?P<mutex>\w+)\s*\)'
-      variable_capture: "mutex"
-      description: "定义互斥锁"
+    # DEFINE_SEMAPHORE - 静态定义 (二元信号量)
+    - pattern: 'DEFINE_SEMAPHORE\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "静态定义信号量 (初始值 1)"
 
-    # mutex_init - 初始化互斥锁
-    - pattern: 'mutex_init\s*\(\s*(?P<mutex>\w+)\s*\)'
-      variable_capture: "mutex"
-      description: "初始化互斥锁"
+    # sema_init - 初始化
+    - pattern: 'sema_init\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*,\s*(?P<val>\w+)\s*\)'
+      variable_capture: "sem"
+      extra_captures:
+        - name: "val"
+          description: "初始值"
+      description: "初始化信号量"
 
-    # mutex_lock - 获取互斥锁
-    - pattern: 'mutex_lock\s*\(\s*(?P<mutex>\w+)\s*\)'
-      variable_capture: "mutex"
-      description: "获取互斥锁（可能睡眠）"
+    # down - P 操作 (获取)
+    - pattern: 'down\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "获取信号量 (可能睡眠)"
 
-    # mutex_lock_interruptible - 可中断获取
-    - pattern: 'mutex_lock_interruptible\s*\(\s*(?P<mutex>\w+)\s*\)'
-      variable_capture: "mutex"
-      description: "可中断获取互斥锁"
+    # down_interruptible - 可中断获取
+    - pattern: 'down_interruptible\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "可中断地获取信号量"
+      return_type: "int (0 成功, -EINTR 被中断)"
 
-    # mutex_lock_killable - 可被杀获取
-    - pattern: 'mutex_lock_killable\s*\(\s*(?P<mutex>\w+)\s*\)'
-      variable_capture: "mutex"
-      description: "可被杀获取互斥锁"
+    # down_killable - 可被杀死获取
+    - pattern: 'down_killable\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "可被杀死地获取信号量"
 
-    # mutex_trylock - 非阻塞尝试获取
-    - pattern: 'mutex_trylock\s*\(\s*(?P<mutex>\w+)\s*\)'
-      variable_capture: "mutex"
-      description: "尝试获取互斥锁"
+    # down_trylock - 非阻塞尝试
+    - pattern: 'down_trylock\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "尝试获取信号量"
+      return_type: "int (成功返回 0，失败返回非零)"
 
-    # mutex_unlock - 释放互斥锁
-    - pattern: 'mutex_unlock\s*\(\s*(?P<mutex>\w+)\s*\)'
-      variable_capture: "mutex"
-      description: "释放互斥锁"
+    # down_timeout - 带超时获取
+    - pattern: 'down_timeout\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*,\s*(?P<jiffies>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "带超时获取信号量"
+      return_type: "int (0 成功, -ETIME 超时)"
 
-    # mutex_is_locked - 检查是否已锁定
-    - pattern: 'mutex_is_locked\s*\(\s*(?P<mutex>\w+)\s*\)'
-      variable_capture: "mutex"
-      description: "检查互斥锁状态"
-
-  kernel_call_chain:
-    trigger: "mutex_lock() 被调用"
-    chain:
-      - function: "__mutex_lock_slowpath"
-        description: "互斥锁慢速路径"
-      - function: "mutex_lock"
-        description: "获取互斥锁"
-      - function: "mutex_unlock"
-        description: "释放互斥锁"
-
-
-# ============================================================
-# SPINLOCK
-# ============================================================
-
-spinlock:
-  description: "Spinlock - 自旋锁"
-  header: "linux/spinlock.h"
-  icon: "🔄"
-
-  context:
-    type: "process"  # 但不能在睡眠上下文中使用
-    can_sleep: false
-    can_schedule: false
-    preemptible: false
-
-  bind_patterns:
-    # DEFINE_SPINLOCK - 定义自旋锁
-    - pattern: 'DEFINE_SPINLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "定义自旋锁"
-
-    # spin_lock_init - 初始化自旋锁
-    - pattern: 'spin_lock_init\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "初始化自旋锁"
-
-    # spin_lock - 获取自旋锁
-    - pattern: 'spin_lock\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "获取自旋锁"
-
-    # spin_lock_irqsave - 关闭中断获取自旋锁
-    - pattern: 'spin_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "保存中断状态并获取自旋锁"
-
-    # spin_lock_irq - 关闭中断获取自旋锁
-    - pattern: 'spin_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "关闭中断获取自旋锁"
-
-    # spin_lock_bh - 关闭软中断获取自旋锁
-    - pattern: 'spin_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "关闭软中断获取自旋锁"
-
-    # spin_trylock - 非阻塞尝试获取
-    - pattern: 'spin_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "尝试获取自旋锁"
-
-    # spin_unlock - 释放自旋锁
-    - pattern: 'spin_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "释放自旋锁"
-
-    # spin_unlock_irqrestore - 恢复中断状态释放自旋锁
-    - pattern: 'spin_unlock_irqrestore\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "恢复中断状态并释放自旋锁"
-
-    # spin_unlock_irq - 打开中断释放自旋锁
-    - pattern: 'spin_unlock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "打开中断并释放自旋锁"
-
-    # spin_unlock_bh - 打开软中断释放自旋锁
-    - pattern: 'spin_unlock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "打开软中断并释放自旋锁"
+    # up - V 操作 (释放)
+    - pattern: 'up\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "释放信号量"
 
   notes:
-    - "自旋锁不能在中断上下文中调用可能导致睡眠的函数"
-    - "spin_lock_irqsave/spin_unlock_irqrestore 是最安全的配对使用"
-    - "持锁时间应该尽可能短"
+    - "推荐使用 mutex 代替二元信号量"
+    - "计数信号量用于资源计数"
+    - "任何上下文可以 up()"
 
 
 # ============================================================
-# RW SPINLOCK
+# RW SPINLOCK - 读写自旋锁
 # ============================================================
 
 rw_spinlock:
   description: "Read-Write Spinlock - 读写自旋锁"
   header: "linux/rwlock.h"
   icon: "🔐"
+  kernel_version: "2.6+"
 
   context:
-    type: "process"
+    type: "atomic"
     can_sleep: false
     can_schedule: false
     preemptible: false
 
-  bind_patterns:
-    # DEFINE_RWLOCK - 定义读写自旋锁
+  definition_patterns:
+    # DEFINE_RWLOCK - 静态定义
     - pattern: 'DEFINE_RWLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
       variable_capture: "lock"
-      description: "定义读写自旋锁"
+      description: "静态定义读写自旋锁"
 
-    # rwlock_init - 初始化读写自旋锁
-    - pattern: 'rwlock_init\s*\(\s*(?P<lock>\w+)\s*\)'
+    # rwlock_init - 动态初始化
+    - pattern: 'rwlock_init\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "初始化读写自旋锁"
+      description: "动态初始化读写自旋锁"
 
+  # --- 读锁 API ---
+  read_lock_patterns:
     # read_lock - 获取读锁
-    - pattern: 'read_lock\s*\(\s*(?P<lock>\w+)\s*\)'
+    - pattern: 'read_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "获取读锁"
+      notes:
+        - "多个读者可以同时持有"
 
-    # read_lock_irqsave - 保存中断获取读锁
-    - pattern: 'read_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+    # read_lock_irq
+    - pattern: 'read_lock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "保存中断状态获取读锁"
+      description: "获取读锁并禁用中断"
 
-    # read_lock_irq - 关闭中断获取读锁
-    - pattern: 'read_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+    # read_lock_irqsave
+    - pattern: 'read_lock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "lock"
-      description: "关闭中断获取读锁"
+      description: "获取读锁并保存中断状态"
 
-    # read_lock_bh - 关闭软中断获取读锁
-    - pattern: 'read_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
+    # read_lock_bh
+    - pattern: 'read_lock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "关闭软中断获取读锁"
+      description: "获取读锁并禁用软中断"
 
-    # read_trylock - 非阻塞尝试获取读锁
-    - pattern: 'read_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
+    # read_trylock
+    - pattern: 'read_trylock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "尝试获取读锁"
+      return_type: "int"
 
-    # read_unlock - 释放读锁
-    - pattern: 'read_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
+    # read_unlock
+    - pattern: 'read_unlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "释放读锁"
 
+    # read_unlock_irq
+    - pattern: 'read_unlock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放读锁并开启中断"
+
+    # read_unlock_irqrestore
+    - pattern: 'read_unlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放读锁并恢复中断状态"
+
+    # read_unlock_bh
+    - pattern: 'read_unlock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放读锁并启用软中断"
+
+  # --- 写锁 API ---
+  write_lock_patterns:
     # write_lock - 获取写锁
-    - pattern: 'write_lock\s*\(\s*(?P<lock>\w+)\s*\)'
+    - pattern: 'write_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "获取写锁"
+      notes:
+        - "独占访问"
+        - "等待所有读者完成"
 
-    # write_lock_irqsave - 保存中断获取写锁
-    - pattern: 'write_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+    # write_lock_irq
+    - pattern: 'write_lock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "保存中断状态获取写锁"
+      description: "获取写锁并禁用中断"
 
-    # write_lock_irq - 关闭中断获取写锁
-    - pattern: 'write_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+    # write_lock_irqsave
+    - pattern: 'write_lock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "lock"
-      description: "关闭中断获取写锁"
+      description: "获取写锁并保存中断状态"
 
-    # write_lock_bh - 关闭软中断获取写锁
-    - pattern: 'write_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
+    # write_lock_bh
+    - pattern: 'write_lock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "关闭软中断获取写锁"
+      description: "获取写锁并禁用软中断"
 
-    # write_trylock - 非阻塞尝试获取写锁
-    - pattern: 'write_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
+    # write_trylock
+    - pattern: 'write_trylock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "尝试获取写锁"
+      return_type: "int"
 
-    # write_unlock - 释放写锁
-    - pattern: 'write_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
+    # write_unlock
+    - pattern: 'write_unlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "释放写锁"
 
+    # write_unlock_irq
+    - pattern: 'write_unlock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁并开启中断"
+
+    # write_unlock_irqrestore
+    - pattern: 'write_unlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁并恢复中断状态"
+
+    # write_unlock_bh
+    - pattern: 'write_unlock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁并启用软中断"
+
+  notes:
+    - "读者优先模式 - 可能饿死写者"
+    - "考虑使用 RCU 替代读多写少的场景"
+    - "不建议在新代码中使用"
+
 
 # ============================================================
-# SPINLOCK VARIANTS
+# RW SEMAPHORE - 读写信号量
 # ============================================================
 
-spinlock_variants:
-  description: "Spinlock Variants - 自旋锁变体"
-  header: "linux/spinlock_types.h"
+rw_semaphore:
+  description: "Read-Write Semaphore - 读写信号量 (可睡眠)"
+  header: "linux/rwsem.h"
+  icon: "📚"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  definition_patterns:
+    # DECLARE_RWSEM - 静态声明
+    - pattern: 'DECLARE_RWSEM\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "静态声明读写信号量"
+
+    # init_rwsem - 动态初始化
+    - pattern: 'init_rwsem\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "动态初始化读写信号量"
+
+  # --- 读锁 API ---
+  read_patterns:
+    # down_read - 获取读锁
+    - pattern: 'down_read\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "获取读锁 (可能睡眠)"
+
+    # down_read_interruptible
+    - pattern: 'down_read_interruptible\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "可中断地获取读锁"
+      return_type: "int"
+
+    # down_read_killable
+    - pattern: 'down_read_killable\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "可被杀死地获取读锁"
+      return_type: "int"
+
+    # down_read_trylock
+    - pattern: 'down_read_trylock\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "尝试获取读锁"
+      return_type: "int (成功返回 1)"
+
+    # up_read - 释放读锁
+    - pattern: 'up_read\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "释放读锁"
+
+  # --- 写锁 API ---
+  write_patterns:
+    # down_write - 获取写锁
+    - pattern: 'down_write\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "获取写锁 (可能睡眠)"
+
+    # down_write_interruptible
+    - pattern: 'down_write_interruptible\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "可中断地获取写锁"
+      return_type: "int"
+
+    # down_write_killable
+    - pattern: 'down_write_killable\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "可被杀死地获取写锁"
+      return_type: "int"
+
+    # down_write_trylock
+    - pattern: 'down_write_trylock\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "尝试获取写锁"
+      return_type: "int (成功返回 1)"
+
+    # up_write - 释放写锁
+    - pattern: 'up_write\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "释放写锁"
+
+    # downgrade_write - 写锁降级为读锁
+    - pattern: 'downgrade_write\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "将写锁降级为读锁"
+
+  notes:
+    - "读写信号量可以睡眠"
+    - "适合读多写少的场景"
+    - "支持写锁降级为读锁"
+    - "mmap_sem 就是 rw_semaphore"
+
+
+# ============================================================
+# PERCPU RW SEMAPHORE - Per-CPU 读写信号量
+# ============================================================
+
+percpu_rw_semaphore:
+  description: "Per-CPU Read-Write Semaphore - 高性能读写信号量"
+  header: "linux/percpu-rwsem.h"
+  icon: "🚀"
+  kernel_version: "3.12+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   bind_patterns:
-    # DEFINE_SPINLOCK - 普通自旋锁
-    - pattern: 'DEFINE_SPINLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "定义自旋锁"
+    # DEFINE_PERCPU_RWSEM - 静态定义
+    - pattern: 'DEFINE_PERCPU_RWSEM\s*\(\s*(?P<sem>\w+)\s*\)'
+      variable_capture: "sem"
+      description: "静态定义 per-CPU 读写信号量"
 
-    # spinlock_t - 自旋锁类型
-    - pattern: 'spinlock_t\s+(?P<lock>\w+)\s*='
-      variable_capture: "lock"
-      description: "自旋锁变量"
+    # percpu_init_rwsem - 动态初始化
+    - pattern: 'percpu_init_rwsem\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "动态初始化 per-CPU 读写信号量"
+      return_type: "int (0 成功)"
 
-    # __SPIN_LOCK_UNLOCKED - 静态初始化
-    - pattern: '__SPIN_LOCK_UNLOCKED\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "静态自旋锁初始化"
+    # percpu_free_rwsem - 释放
+    - pattern: 'percpu_free_rwsem\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "释放 per-CPU 读写信号量"
 
-    # SPIN_LOCK_UNLOCKED - 静态初始化（旧版）
-    - pattern: 'SPIN_LOCK_UNLOCKED\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "静态自旋锁初始化（旧版）"
+    # percpu_down_read - 获取读锁
+    - pattern: 'percpu_down_read\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "获取 per-CPU 读锁"
+      notes:
+        - "读侧几乎无锁开销"
+        - "只操作本地 per-CPU 变量"
+
+    # percpu_up_read - 释放读锁
+    - pattern: 'percpu_up_read\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "释放 per-CPU 读锁"
+
+    # percpu_down_write - 获取写锁
+    - pattern: 'percpu_down_write\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "获取 per-CPU 写锁"
+      notes:
+        - "写侧需要同步所有 CPU"
+        - "开销较大"
+
+    # percpu_up_write - 释放写锁
+    - pattern: 'percpu_up_write\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "释放 per-CPU 写锁"
+
+    # percpu_is_read_locked
+    - pattern: 'percpu_is_read_locked\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "检查是否有读者"
+
+    # percpu_is_write_locked
+    - pattern: 'percpu_is_write_locked\s*\(\s*&?(?P<sem>[\w\.\->]+)\s*\)'
+      variable_capture: "sem"
+      description: "检查是否有写者"
+
+  use_cases:
+    - "文件系统 freeze/thaw"
+    - "CPU hotplug"
+    - "极端读多写少的场景"
+
+  notes:
+    - "读侧几乎无锁开销"
+    - "写侧开销大 (需要 IPI)"
+    - "适合写操作极少的场景"
 
 
 # ============================================================
-# LOCK STATISTICS
+# MEMORY BARRIERS - 内存屏障
 # ============================================================
 
-lock_stats:
-  description: "Lock Statistics - 锁统计"
+memory_barriers:
+  description: "Memory Barriers - 内存屏障"
+  header: "asm/barrier.h"
+  icon: "🚧"
+  kernel_version: "2.6+"
+
+  # --- 通用屏障 ---
+  general_barriers:
+    mb:
+      pattern: 'mb\s*\(\s*\)'
+      description: "全屏障 (读写都序列化)"
+      notes:
+        - "最强的屏障"
+        - "确保之前的读写完成后再执行之后的"
+        - "开销大"
+
+    rmb:
+      pattern: 'rmb\s*\(\s*\)'
+      description: "读屏障"
+      notes:
+        - "确保之前的读完成"
+        - "不影响写操作顺序"
+
+    wmb:
+      pattern: 'wmb\s*\(\s*\)'
+      description: "写屏障"
+      notes:
+        - "确保之前的写完成"
+        - "不影响读操作顺序"
+
+    dma_rmb:
+      pattern: 'dma_rmb\s*\(\s*\)'
+      description: "DMA 读屏障"
+      notes:
+        - "用于 DMA 一致性"
+
+    dma_wmb:
+      pattern: 'dma_wmb\s*\(\s*\)'
+      description: "DMA 写屏障"
+
+  # --- SMP 屏障 (多处理器) ---
+  smp_barriers:
+    smp_mb:
+      pattern: 'smp_mb\s*\(\s*\)'
+      description: "SMP 全屏障"
+      notes:
+        - "多处理器环境的全屏障"
+        - "单处理器上可能是空操作"
+
+    smp_rmb:
+      pattern: 'smp_rmb\s*\(\s*\)'
+      description: "SMP 读屏障"
+
+    smp_wmb:
+      pattern: 'smp_wmb\s*\(\s*\)'
+      description: "SMP 写屏障"
+
+    smp_mb__before_atomic:
+      pattern: 'smp_mb__before_atomic\s*\(\s*\)'
+      description: "原子操作前的屏障"
+      notes:
+        - "用于某些原子操作不自带屏障时"
+
+    smp_mb__after_atomic:
+      pattern: 'smp_mb__after_atomic\s*\(\s*\)'
+      description: "原子操作后的屏障"
+
+  # --- Acquire/Release 语义 ---
+  acquire_release:
+    smp_load_acquire:
+      pattern: 'smp_load_acquire\s*\(\s*&?(?P<ptr>[\w\.\->]+)\s*\)'
+      variable_capture: "ptr"
+      description: "带 acquire 语义的加载"
+      notes:
+        - "之后的读写不会重排到此之前"
+        - "配对使用 store_release"
+        - "比全屏障开销小"
+
+    smp_store_release:
+      pattern: 'smp_store_release\s*\(\s*&?(?P<ptr>[\w\.\->]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "带 release 语义的存储"
+      notes:
+        - "之前的读写不会重排到此之后"
+        - "配对使用 load_acquire"
+
+    smp_cond_load_acquire:
+      pattern: 'smp_cond_load_acquire\s*\(\s*&?(?P<ptr>[\w\.\->]+)\s*,\s*(?P<cond>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "条件加载 + acquire"
+
+    smp_cond_load_relaxed:
+      pattern: 'smp_cond_load_relaxed\s*\(\s*&?(?P<ptr>[\w\.\->]+)\s*,\s*(?P<cond>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "条件加载 (无屏障)"
+
+  # --- 编译器屏障 ---
+  compiler_barriers:
+    barrier:
+      pattern: 'barrier\s*\(\s*\)'
+      description: "编译器屏障"
+      notes:
+        - "防止编译器重排"
+        - "不产生 CPU 屏障指令"
+        - "轻量级"
+
+    READ_ONCE:
+      pattern: 'READ_ONCE\s*\(\s*(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "防止编译器优化的读取"
+      notes:
+        - "防止编译器合并/拆分/缓存读取"
+        - "用于并发访问的变量"
+        - "不产生 CPU 屏障"
+
+    WRITE_ONCE:
+      pattern: 'WRITE_ONCE\s*\(\s*(?P<var>[\w\.\->]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "防止编译器优化的写入"
+      notes:
+        - "防止编译器合并/拆分写入"
+        - "确保单次原子写入"
+
+    data_race:
+      pattern: 'data_race\s*\(\s*(?P<expr>[^)]+)\s*\)'
+      description: "标记已知的数据竞争"
+      notes:
+        - "告诉 KCSAN 这是故意的"
+        - "避免误报"
+
+  # --- 使用场景 ---
+  usage_scenarios:
+    - name: "发布-获取模式"
+      description: "一个 CPU 发布数据，另一个 CPU 获取"
+      code: |
+        /* CPU 0: 发布者 */
+        data = new_value;
+        smp_store_release(&flag, 1);
+
+        /* CPU 1: 消费者 */
+        while (!smp_load_acquire(&flag))
+            cpu_relax();
+        use(data);
+
+    - name: "防止编译器优化"
+      description: "volatile 替代方案"
+      code: |
+        /* 错误：编译器可能只读一次 */
+        while (flag == 0) { }
+
+        /* 正确：每次都从内存读取 */
+        while (READ_ONCE(flag) == 0)
+            cpu_relax();
+
+    - name: "DMA 缓冲区"
+      description: "与设备共享内存"
+      code: |
+        /* 写入描述符 */
+        desc->addr = buf_dma;
+        desc->len = len;
+        dma_wmb();  /* 确保描述符完整 */
+        desc->flags = VALID;
+
+  notes:
+    - "屏障是成对使用的"
+    - "优先使用 acquire/release 而非全屏障"
+    - "READ_ONCE/WRITE_ONCE 用于并发变量"
+    - "barrier() 只阻止编译器重排"
+
+
+# ============================================================
+# ATOMIC OPERATIONS - 原子操作
+# ============================================================
+
+atomic_operations:
+  description: "Atomic Operations - 原子操作"
+  header: "linux/atomic.h"
+  icon: "⚛️"
+  kernel_version: "2.6+"
+
+  # --- 原子类型 ---
+  types:
+    atomic_t:
+      pattern: 'atomic_t\s+(?P<var>\w+)'
+      description: "32 位原子变量"
+      initialization:
+        - 'ATOMIC_INIT\s*\(\s*(?P<val>\w+)\s*\)'
+        - 'atomic_set\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<val>\w+)\s*\)'
+
+    atomic64_t:
+      pattern: 'atomic64_t\s+(?P<var>\w+)'
+      description: "64 位原子变量"
+      initialization:
+        - 'ATOMIC64_INIT\s*\(\s*(?P<val>\w+)\s*\)'
+        - 'atomic64_set\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<val>\w+)\s*\)'
+
+    atomic_long_t:
+      pattern: 'atomic_long_t\s+(?P<var>\w+)'
+      description: "长整型原子变量 (平台相关)"
+
+  # --- 基本读写 ---
+  read_write:
+    atomic_read:
+      pattern: 'atomic_read\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子读取"
+      return_type: "int"
+
+    atomic_set:
+      pattern: 'atomic_set\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "原子设置"
+
+    atomic64_read:
+      pattern: 'atomic64_read\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子读取"
+
+    atomic64_set:
+      pattern: 'atomic64_set\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子设置"
+
+  # --- 算术操作 ---
+  arithmetic:
+    atomic_add:
+      pattern: 'atomic_add\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子加"
+
+    atomic_sub:
+      pattern: 'atomic_sub\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子减"
+
+    atomic_inc:
+      pattern: 'atomic_inc\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子自增"
+
+    atomic_dec:
+      pattern: 'atomic_dec\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子自减"
+
+    atomic_add_return:
+      pattern: 'atomic_add_return\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子加并返回新值"
+      return_type: "int"
+
+    atomic_sub_return:
+      pattern: 'atomic_sub_return\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子减并返回新值"
+
+    atomic_inc_return:
+      pattern: 'atomic_inc_return\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子自增并返回新值"
+
+    atomic_dec_return:
+      pattern: 'atomic_dec_return\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子自减并返回新值"
+
+    atomic_fetch_add:
+      pattern: 'atomic_fetch_add\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子加并返回旧值"
+
+    atomic_fetch_sub:
+      pattern: 'atomic_fetch_sub\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子减并返回旧值"
+
+  # --- 比较交换 ---
+  compare_exchange:
+    atomic_cmpxchg:
+      pattern: 'atomic_cmpxchg\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<old>[^,]+)\s*,\s*(?P<new>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "比较并交换"
+      return_type: "int (旧值)"
+      notes:
+        - "如果 *var == old，则 *var = new"
+        - "返回原始值"
+
+    atomic_xchg:
+      pattern: 'atomic_xchg\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<new>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "无条件交换"
+      return_type: "int (旧值)"
+
+    atomic_try_cmpxchg:
+      pattern: 'atomic_try_cmpxchg\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*&?(?P<old>[\w\.\->]+)\s*,\s*(?P<new>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "尝试比较并交换"
+      return_type: "bool"
+      notes:
+        - "失败时更新 *old 为实际值"
+
+  # --- 条件操作 ---
+  conditional:
+    atomic_dec_and_test:
+      pattern: 'atomic_dec_and_test\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子自减并测试是否为 0"
+      return_type: "bool (true 表示结果为 0)"
+      notes:
+        - "常用于引用计数"
+
+    atomic_inc_and_test:
+      pattern: 'atomic_inc_and_test\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子自增并测试是否为 0"
+      return_type: "bool"
+
+    atomic_sub_and_test:
+      pattern: 'atomic_sub_and_test\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子减并测试是否为 0"
+      return_type: "bool"
+
+    atomic_add_negative:
+      pattern: 'atomic_add_negative\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子加并测试是否为负"
+      return_type: "bool"
+
+    atomic_add_unless:
+      pattern: 'atomic_add_unless\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<a>[^,]+)\s*,\s*(?P<u>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "除非等于 u，否则加 a"
+      return_type: "bool (true 表示执行了加法)"
+
+    atomic_inc_not_zero:
+      pattern: 'atomic_inc_not_zero\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "非零时自增"
+      return_type: "bool"
+
+  # --- 位操作原子 ---
+  bitwise:
+    atomic_and:
+      pattern: 'atomic_and\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子与"
+
+    atomic_or:
+      pattern: 'atomic_or\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子或"
+
+    atomic_xor:
+      pattern: 'atomic_xor\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子异或"
+
+    atomic_andnot:
+      pattern: 'atomic_andnot\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子与非 (清除位)"
+
+
+# ============================================================
+# ATOMIC BITOPS - 原子位操作
+# ============================================================
+
+atomic_bitops:
+  description: "Atomic Bit Operations - 原子位操作"
+  header: "linux/bitops.h"
+  icon: "🔢"
+
+  bind_patterns:
+    # set_bit - 设置位
+    - pattern: 'set_bit\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*\)'
+      description: "原子设置位"
+      notes:
+        - "原子操作"
+        - "SMP 安全"
+
+    # clear_bit - 清除位
+    - pattern: 'clear_bit\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*\)'
+      description: "原子清除位"
+
+    # change_bit - 翻转位
+    - pattern: 'change_bit\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*\)'
+      description: "原子翻转位"
+
+    # test_and_set_bit - 测试并设置
+    - pattern: 'test_and_set_bit\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*\)'
+      description: "测试并设置位"
+      return_type: "int (旧值)"
+      notes:
+        - "常用于自旋锁实现"
+
+    # test_and_clear_bit - 测试并清除
+    - pattern: 'test_and_clear_bit\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*\)'
+      description: "测试并清除位"
+      return_type: "int (旧值)"
+
+    # test_and_change_bit - 测试并翻转
+    - pattern: 'test_and_change_bit\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*\)'
+      description: "测试并翻转位"
+      return_type: "int (旧值)"
+
+    # test_bit - 测试位 (非原子)
+    - pattern: 'test_bit\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*\)'
+      description: "测试位 (非原子)"
+      return_type: "int"
+
+    # __set_bit - 非原子设置
+    - pattern: '__set_bit\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*\)'
+      description: "非原子设置位 (更快)"
+      notes:
+        - "非原子，需要外部同步"
+
+    # __clear_bit - 非原子清除
+    - pattern: '__clear_bit\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*\)'
+      description: "非原子清除位"
+
+    # find_first_bit - 查找第一个设置位
+    - pattern: 'find_first_bit\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "查找第一个设置位"
+      return_type: "unsigned long"
+
+    # find_first_zero_bit - 查找第一个零位
+    - pattern: 'find_first_zero_bit\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "查找第一个零位"
+      return_type: "unsigned long"
+
+    # find_next_bit - 查找下一个设置位
+    - pattern: 'find_next_bit\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<offset>\w+)\s*\)'
+      description: "从 offset 开始查找下一个设置位"
+
+  notes:
+    - "原子版本用于并发场景"
+    - "非原子版本 (__前缀) 需要外部同步"
+    - "test_and_*_bit 返回旧值"
+
+
+# ============================================================
+# LOCKDEP - 锁依赖检查
+# ============================================================
+
+lockdep:
+  description: "Lock Dependency Checker - 锁依赖检查"
   header: "linux/lockdep.h"
+  icon: "🔍"
+
+  config:
+    CONFIG_LOCKDEP:
+      description: "启用锁依赖检查"
+    CONFIG_PROVE_LOCKING:
+      description: "启用锁证明"
+    CONFIG_DEBUG_LOCK_ALLOC:
+      description: "启用锁分配调试"
 
   bind_patterns:
-    # lockstat - 锁统计
-    - pattern: 'lockstat\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<op>\w+)\s*,\s*(?P<val>\w+)\s*\)'
+    # lockdep_assert_held
+    - pattern: 'lockdep_assert_held\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "锁统计操作"
+      description: "断言锁已持有"
 
-    # lockdep - 锁依赖检查
-    - pattern: 'lockdep_init_map\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<key>[^)]+)\s*,\s*(?P<subclass>\w+)\s*\)'
+    # lockdep_assert_held_write
+    - pattern: 'lockdep_assert_held_write\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "初始化锁依赖映射"
+      description: "断言持有写锁"
+
+    # lockdep_assert_held_read
+    - pattern: 'lockdep_assert_held_read\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "断言持有读锁"
+
+    # lockdep_assert_not_held
+    - pattern: 'lockdep_assert_not_held\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "断言锁未持有"
+
+    # lock_acquire
+    - pattern: 'lock_acquire\s*\([^)]+\)'
+      description: "lockdep 锁获取跟踪"
+
+    # lock_release
+    - pattern: 'lock_release\s*\([^)]+\)'
+      description: "lockdep 锁释放跟踪"
+
+    # lockdep_set_class
+    - pattern: 'lockdep_set_class\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*&?(?P<key>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "设置锁的类"
+
+    # lockdep_set_subclass
+    - pattern: 'lockdep_set_subclass\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<subclass>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "设置锁的子类"
+
+    # lockdep_init_map
+    - pattern: 'lockdep_init_map\s*\([^)]+\)'
+      description: "初始化 lockdep 映射"
+
+  errors:
+    - name: "AA deadlock"
+      description: "同一个锁被获取两次"
+    - name: "ABBA deadlock"
+      description: "锁获取顺序不一致"
+    - name: "unsafe lock acquire"
+      description: "中断/软中断上下文中不安全的锁获取"
 
 
 # ============================================================
-# LOCKING EXAMPLES
+# SEQLOCK - 顺序锁
+# ============================================================
+
+seqlock:
+  description: "Sequence Lock - 顺序锁"
+  header: "linux/seqlock.h"
+  icon: "🔢"
+  kernel_version: "2.6+"
+
+  context:
+    reader: "不阻塞，乐观并发"
+    writer: "独占"
+
+  bind_patterns:
+    # DEFINE_SEQLOCK - 静态定义
+    - pattern: 'DEFINE_SEQLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "静态定义顺序锁"
+
+    # seqlock_init - 动态初始化
+    - pattern: 'seqlock_init\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "动态初始化顺序锁"
+
+    # write_seqlock - 获取写锁
+    - pattern: 'write_seqlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取顺序写锁"
+
+    # write_sequnlock - 释放写锁
+    - pattern: 'write_sequnlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放顺序写锁"
+
+    # write_seqlock_irqsave
+    - pattern: 'write_seqlock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取顺序写锁并保存中断状态"
+
+    # write_sequnlock_irqrestore
+    - pattern: 'write_sequnlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放顺序写锁并恢复中断状态"
+
+    # read_seqbegin - 开始读取
+    - pattern: 'read_seqbegin\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "开始顺序读取"
+      return_type: "unsigned int (序列号)"
+
+    # read_seqretry - 检查是否需要重试
+    - pattern: 'read_seqretry\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<seq>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "检查读取是否有效"
+      return_type: "int (非零表示需要重试)"
+
+  usage_pattern: |
+    /* 写者 */
+    write_seqlock(&seqlock);
+    /* 修改数据 */
+    write_sequnlock(&seqlock);
+
+    /* 读者 */
+    do {
+        seq = read_seqbegin(&seqlock);
+        /* 读取数据 */
+    } while (read_seqretry(&seqlock, seq));
+
+  notes:
+    - "读者可能需要重试"
+    - "写者不会被读者阻塞"
+    - "适合读多写少且数据简单的场景"
+    - "jiffies 使用 seqlock 保护"
+
+
+# ============================================================
+# SEQCOUNT - 序列计数
+# ============================================================
+
+seqcount:
+  description: "Sequence Counter - 序列计数"
+  header: "linux/seqlock.h"
+  icon: "🔢"
+
+  bind_patterns:
+    # seqcount_init
+    - pattern: 'seqcount_init\s*\(\s*&?(?P<seq>[\w\.\->]+)\s*\)'
+      variable_capture: "seq"
+      description: "初始化序列计数器"
+
+    # write_seqcount_begin
+    - pattern: 'write_seqcount_begin\s*\(\s*&?(?P<seq>[\w\.\->]+)\s*\)'
+      variable_capture: "seq"
+      description: "开始写入"
+
+    # write_seqcount_end
+    - pattern: 'write_seqcount_end\s*\(\s*&?(?P<seq>[\w\.\->]+)\s*\)'
+      variable_capture: "seq"
+      description: "结束写入"
+
+    # read_seqcount_begin
+    - pattern: 'read_seqcount_begin\s*\(\s*&?(?P<seq>[\w\.\->]+)\s*\)'
+      variable_capture: "seq"
+      description: "开始读取"
+      return_type: "unsigned int"
+
+    # read_seqcount_retry
+    - pattern: 'read_seqcount_retry\s*\(\s*&?(?P<seq>[\w\.\->]+)\s*,\s*(?P<start>\w+)\s*\)'
+      variable_capture: "seq"
+      description: "检查是否需要重试"
+
+    # raw_write_seqcount_begin
+    - pattern: 'raw_write_seqcount_begin\s*\(\s*&?(?P<seq>[\w\.\->]+)\s*\)'
+      variable_capture: "seq"
+      description: "开始写入 (无抢占禁用)"
+
+    # raw_write_seqcount_end
+    - pattern: 'raw_write_seqcount_end\s*\(\s*&?(?P<seq>[\w\.\->]+)\s*\)'
+      variable_capture: "seq"
+      description: "结束写入 (无抢占启用)"
+
+  notes:
+    - "seqcount 只是计数器，不是锁"
+    - "需要外部锁保护写者间同步"
+    - "比 seqlock 更灵活"
+
+
+# ============================================================
+# LOCAL LOCKS - 本地锁 (RT 内核)
+# ============================================================
+
+local_lock:
+  description: "Local Lock - 本地锁 (Per-CPU)"
+  header: "linux/local_lock.h"
+  icon: "📍"
+  kernel_version: "5.8+"
+
+  bind_patterns:
+    # DEFINE_LOCAL_IRQ_LOCK - 定义
+    - pattern: 'DEFINE_LOCAL_IRQ_LOCK\s*\(\s*(?P<lock>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "定义本地 IRQ 锁"
+
+    # local_lock
+    - pattern: 'local_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取本地锁"
+
+    # local_unlock
+    - pattern: 'local_unlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放本地锁"
+
+    # local_lock_irq
+    - pattern: 'local_lock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取本地锁并禁用中断"
+
+    # local_unlock_irq
+    - pattern: 'local_unlock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放本地锁并启用中断"
+
+    # local_lock_irqsave
+    - pattern: 'local_lock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取本地锁并保存中断状态"
+
+    # local_unlock_irqrestore
+    - pattern: 'local_unlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放本地锁并恢复中断状态"
+
+  notes:
+    - "用于保护 per-CPU 数据"
+    - "RT 内核中可以睡眠"
+    - "普通内核中等价于 preempt_disable()"
+
+
+# ============================================================
+# EXAMPLES - 锁使用示例
 # ============================================================
 
 examples:
-  - description: "Mutex 使用示例"
+  - description: "Spinlock 使用示例 - 中断安全"
     code: |
-      static DEFINE_MUTEX(my_mutex);
-      static int counter = 0;
+      #include <linux/spinlock.h>
 
-      static int increment_counter(void) {
-          mutex_lock(&my_mutex);
-          counter++;
-          mutex_unlock(&my_mutex);
-          return counter;
+      static DEFINE_SPINLOCK(my_lock);
+      static int shared_data;
+
+      /* 进程上下文 */
+      void process_context_update(int new_val)
+      {
+          unsigned long flags;
+
+          spin_lock_irqsave(&my_lock, flags);
+          shared_data = new_val;
+          spin_unlock_irqrestore(&my_lock, flags);
       }
 
-  - description: "Spinlock 使用示例"
-    code: |
-      static DEFINE_SPINLOCK(my_spinlock);
-      static unsigned long flags;
+      /* 中断处理函数 */
+      irqreturn_t my_irq_handler(int irq, void *dev)
+      {
+          unsigned long flags;
 
-      static void safe_operation(void) {
-          spin_lock_irqsave(&my_spinlock, flags);
-          /* 临界区 */
-          spin_unlock_irqrestore(&my_spinlock, flags);
+          spin_lock_irqsave(&my_lock, flags);
+          /* 安全访问 shared_data */
+          process_data(shared_data);
+          spin_unlock_irqrestore(&my_lock, flags);
+
+          return IRQ_HANDLED;
       }
 
-  - description: "读写自旋锁示例"
+  - description: "Mutex 使用示例 - 可中断获取"
     code: |
-      static DEFINE_RWLOCK(my_rwlock);
-      static int data = 0;
+      #include <linux/mutex.h>
 
-      /* 读者 */
-      static int read_data(void) {
+      static DEFINE_MUTEX(file_mutex);
+
+      int my_file_write(const char __user *buf, size_t len)
+      {
           int ret;
-          read_lock(&my_rwlock);
-          ret = data;
-          read_unlock(&my_rwlock);
+
+          ret = mutex_lock_interruptible(&file_mutex);
+          if (ret)
+              return ret;  /* 被信号中断 */
+
+          /* 执行写操作... */
+          ret = do_write(buf, len);
+
+          mutex_unlock(&file_mutex);
           return ret;
       }
 
-      /* 写者 */
-      static void write_data(int value) {
-          write_lock(&my_rwlock);
-          data = value;
-          write_unlock(&my_rwlock);
+  - description: "读写信号量使用示例"
+    code: |
+      #include <linux/rwsem.h>
+
+      static DECLARE_RWSEM(data_rwsem);
+      static struct my_data *global_data;
+
+      /* 读者 */
+      int read_data(void)
+      {
+          int value;
+
+          down_read(&data_rwsem);
+          value = global_data->value;
+          up_read(&data_rwsem);
+
+          return value;
       }
 
-  - description: "中断中自旋锁使用"
-    code: |
-      static DEFINE_SPINLOCK(irq_lock);
-      static unsigned long flags;
+      /* 写者 */
+      void write_data(int new_value)
+      {
+          down_write(&data_rwsem);
+          global_data->value = new_value;
+          up_write(&data_rwsem);
+      }
 
-      static irqreturn_t my_isr(int irq, void *dev_id) {
-          spin_lock_irqsave(&irq_lock, flags);
-          /* 安全访问共享数据 */
-          spin_unlock_irqrestore(&irq_lock, flags);
-          return IRQ_HANDLED;
+  - description: "原子操作示例 - 引用计数"
+    code: |
+      #include <linux/atomic.h>
+
+      struct my_object {
+          atomic_t refcount;
+          void *data;
+      };
+
+      void get_object(struct my_object *obj)
+      {
+          atomic_inc(&obj->refcount);
+      }
+
+      void put_object(struct my_object *obj)
+      {
+          if (atomic_dec_and_test(&obj->refcount)) {
+              /* 最后一个引用，释放对象 */
+              kfree(obj->data);
+              kfree(obj);
+          }
+      }
+
+      /* 安全获取 (非零时才增加) */
+      bool try_get_object(struct my_object *obj)
+      {
+          return atomic_inc_not_zero(&obj->refcount);
+      }
+
+  - description: "内存屏障示例 - 发布/获取"
+    code: |
+      #include <linux/compiler.h>
+
+      static struct data *shared_ptr;
+      static int ready;
+
+      /* 生产者 */
+      void producer(void)
+      {
+          struct data *p = kmalloc(sizeof(*p), GFP_KERNEL);
+          p->value = 42;
+          p->name = "test";
+          
+          /* 确保数据完全初始化后再发布指针 */
+          smp_store_release(&shared_ptr, p);
+          smp_store_release(&ready, 1);
+      }
+
+      /* 消费者 */
+      void consumer(void)
+      {
+          struct data *p;
+
+          /* 等待数据准备好 */
+          while (!smp_load_acquire(&ready))
+              cpu_relax();
+
+          /* 获取指针 - acquire 确保后续读取不会重排到前面 */
+          p = smp_load_acquire(&shared_ptr);
+          
+          /* 现在可以安全访问 p 的所有字段 */
+          use(p->value, p->name);
+      }
+
+  - description: "Seqlock 使用示例 - jiffies 风格"
+    code: |
+      #include <linux/seqlock.h>
+
+      static DEFINE_SEQLOCK(time_lock);
+      static struct timespec64 current_time;
+
+      /* 写者 (可能在中断中) */
+      void update_time(struct timespec64 *new_time)
+      {
+          unsigned long flags;
+
+          write_seqlock_irqsave(&time_lock, flags);
+          current_time = *new_time;
+          write_sequnlock_irqrestore(&time_lock, flags);
+      }
+
+      /* 读者 (乐观读取) */
+      void get_time(struct timespec64 *time)
+      {
+          unsigned int seq;
+
+          do {
+              seq = read_seqbegin(&time_lock);
+              *time = current_time;
+          } while (read_seqretry(&time_lock, seq));
+      }
+
+  - description: "Per-CPU 读写信号量示例"
+    code: |
+      #include <linux/percpu-rwsem.h>
+
+      DEFINE_PERCPU_RWSEM(my_rwsem);
+
+      /* 快速读取路径 */
+      void fast_read(void)
+      {
+          percpu_down_read(&my_rwsem);
+          /* 读取操作 - 几乎无锁开销 */
+          do_read();
+          percpu_up_read(&my_rwsem);
+      }
+
+      /* 慢速写入路径 */
+      void slow_write(void)
+      {
+          percpu_down_write(&my_rwsem);
+          /* 独占写入 - 需要同步所有 CPU */
+          do_write();
+          percpu_up_write(&my_rwsem);
       }

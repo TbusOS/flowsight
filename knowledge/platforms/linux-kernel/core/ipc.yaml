@@ -1,5 +1,6 @@
 # Linux IPC (Inter-Process Communication) Knowledge Base
 # Reference: https://man7.org/linux/man-pages/man7/sysvipc.7.html
+# Kernel source: ipc/shm.c, ipc/msg.c, ipc/sem.c, net/unix/af_unix.c
 
 # ============================================================
 # SYSTEM V SHARED MEMORY
@@ -9,48 +10,140 @@ sysv_shm:
   description: "System V Shared Memory"
   header: "linux/shm.h"
   icon: "🗃️"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   syscalls:
     shmget:
-      pattern: 'shmget\s*\('
+      pattern: 'shmget\s*\(\s*(?P<key>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
       description: "获取或创建共享内存段"
       signature: "int shmget(key_t key, size_t size, int shmflg)"
       context: "process"
+      can_sleep: true
+      return_value:
+        success: "共享内存标识符 (shmid)"
+        failure: "-1 并设置 errno"
+      flags:
+        - "IPC_CREAT - 创建新段"
+        - "IPC_EXCL - 与 IPC_CREAT 一起使用，段已存在则失败"
+        - "SHM_HUGETLB - 使用大页"
+        - "SHM_NORESERVE - 不预留交换空间"
 
     shmat:
-      pattern: 'shmat\s*\('
+      pattern: 'shmat\s*\(\s*(?P<shmid>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
       description: "附加共享内存段到进程地址空间"
       signature: "void *shmat(int shmid, const void *shmaddr, int shmflg)"
       context: "process"
+      can_sleep: true
+      return_value:
+        success: "映射的地址"
+        failure: "(void *)-1"
+      flags:
+        - "SHM_RDONLY - 只读附加"
+        - "SHM_RND - 地址向下取整到 SHMLBA"
+        - "SHM_REMAP - 替换现有映射"
 
     shmdt:
-      pattern: 'shmdt\s*\('
+      pattern: 'shmdt\s*\(\s*(?P<addr>[^)]+)\s*\)'
       description: "分离共享内存段"
       signature: "int shmdt(const void *shmaddr)"
       context: "process"
+      can_sleep: true
 
     shmctl:
-      pattern: 'shmctl\s*\('
+      pattern: 'shmctl\s*\(\s*(?P<shmid>[^,]+)\s*,\s*(?P<cmd>[^,]+)\s*,\s*(?P<buf>[^)]+)\s*\)'
       description: "共享内存控制操作"
       signature: "int shmctl(int shmid, int cmd, struct shmid_ds *buf)"
       context: "process"
+      can_sleep: true
+      commands:
+        - "IPC_STAT - 获取信息"
+        - "IPC_SET - 设置权限"
+        - "IPC_RMID - 标记删除"
+        - "SHM_LOCK - 锁定在内存"
+        - "SHM_UNLOCK - 解锁"
 
   kernel_functions:
-    - pattern: 'do_shmat\s*\('
+    - pattern: 'do_shmat\s*\(\s*(?P<shmid>[^,]+)\s*,'
       description: "内核 shmat 实现"
-    - pattern: 'newseg\s*\('
+      file: "ipc/shm.c"
+    - pattern: 'newseg\s*\(\s*(?P<ns>[^,]+)\s*,'
       description: "创建新共享内存段"
-    - pattern: 'shm_destroy\s*\('
+      file: "ipc/shm.c"
+    - pattern: 'shm_destroy\s*\(\s*(?P<ns>[^,]+)\s*,'
       description: "销毁共享内存段"
+      file: "ipc/shm.c"
+    - pattern: 'shm_obtain_object\s*\('
+      description: "获取共享内存对象"
+      file: "ipc/shm.c"
+    - pattern: 'shm_obtain_object_check\s*\('
+      description: "检查并获取共享内存对象"
+      file: "ipc/shm.c"
 
   data_structures:
     shmid_kernel:
       description: "内核共享内存描述符"
+      file: "include/linux/shm.h"
       fields:
-        - "struct kern_ipc_perm shm_perm"
-        - "struct file *shm_file"
-        - "size_t shm_segsz"
-        - "unsigned long shm_nattch"
+        - name: "shm_perm"
+          type: "struct kern_ipc_perm"
+          description: "IPC 权限"
+        - name: "shm_file"
+          type: "struct file *"
+          description: "关联的文件对象 (shmem/hugetlbfs)"
+        - name: "shm_segsz"
+          type: "size_t"
+          description: "段大小"
+        - name: "shm_nattch"
+          type: "unsigned long"
+          description: "当前附加数"
+        - name: "shm_cprid"
+          type: "pid_t"
+          description: "创建者 PID"
+        - name: "shm_lprid"
+          type: "pid_t"
+          description: "最后操作 PID"
+
+  call_chains:
+    shmget_chain:
+      description: "shmget 系统调用链"
+      trigger: "用户调用 shmget()"
+      chain:
+        - function: "ksys_shmget"
+          file: "ipc/shm.c"
+          description: "系统调用入口"
+        - function: "ipcget"
+          file: "ipc/util.c"
+          description: "通用 IPC 获取"
+        - function: "newseg"
+          file: "ipc/shm.c"
+          description: "创建新段 (如果需要)"
+        - function: "shmem_kernel_file_setup"
+          file: "mm/shmem.c"
+          description: "创建 shmem 文件"
+
+    shmat_chain:
+      description: "shmat 系统调用链"
+      trigger: "用户调用 shmat()"
+      chain:
+        - function: "ksys_shmat"
+          file: "ipc/shm.c"
+          description: "系统调用入口"
+        - function: "do_shmat"
+          file: "ipc/shm.c"
+          description: "实际附加实现"
+        - function: "do_mmap"
+          file: "mm/mmap.c"
+          description: "创建 VMA 映射"
+        - function: "shm_mmap"
+          file: "ipc/shm.c"
+          description: "共享内存 mmap 操作"
+          is_user_entry: true
 
 # ============================================================
 # SYSTEM V MESSAGE QUEUE
@@ -60,41 +153,185 @@ sysv_msg:
   description: "System V Message Queue"
   header: "linux/msg.h"
   icon: "📨"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   syscalls:
     msgget:
-      pattern: 'msgget\s*\('
+      pattern: 'msgget\s*\(\s*(?P<key>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
       description: "获取或创建消息队列"
       signature: "int msgget(key_t key, int msgflg)"
       context: "process"
+      can_sleep: true
+      return_value:
+        success: "消息队列标识符 (msqid)"
+        failure: "-1 并设置 errno"
 
     msgsnd:
-      pattern: 'msgsnd\s*\('
+      pattern: 'msgsnd\s*\(\s*(?P<msqid>[^,]+)\s*,\s*(?P<msgp>[^,]+)\s*,\s*(?P<msgsz>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
       description: "发送消息"
       signature: "int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg)"
       context: "process"
       can_sleep: true
+      flags:
+        - "IPC_NOWAIT - 非阻塞，队列满则返回错误"
 
     msgrcv:
-      pattern: 'msgrcv\s*\('
+      pattern: 'msgrcv\s*\(\s*(?P<msqid>[^,]+)\s*,\s*(?P<msgp>[^,]+)\s*,\s*(?P<msgsz>[^,]+)\s*,\s*(?P<msgtyp>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
       description: "接收消息"
       signature: "ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg)"
       context: "process"
       can_sleep: true
+      msgtyp_behavior:
+        - "0 - 接收第一条消息"
+        - ">0 - 接收类型为 msgtyp 的第一条消息"
+        - "<0 - 接收类型 <= |msgtyp| 的最小类型消息"
+      flags:
+        - "IPC_NOWAIT - 非阻塞"
+        - "MSG_NOERROR - 截断过长消息"
+        - "MSG_EXCEPT - 接收类型不是 msgtyp 的第一条消息"
+        - "MSG_COPY - 复制而不删除消息 (需要 IPC_NOWAIT)"
 
     msgctl:
-      pattern: 'msgctl\s*\('
+      pattern: 'msgctl\s*\(\s*(?P<msqid>[^,]+)\s*,\s*(?P<cmd>[^,]+)\s*,\s*(?P<buf>[^)]+)\s*\)'
       description: "消息队列控制操作"
       signature: "int msgctl(int msqid, int cmd, struct msqid_ds *buf)"
       context: "process"
+      can_sleep: true
+      commands:
+        - "IPC_STAT - 获取队列信息"
+        - "IPC_SET - 设置权限"
+        - "IPC_RMID - 删除队列"
+        - "MSG_INFO - 获取系统级信息"
 
   kernel_functions:
-    - pattern: 'do_msgsnd\s*\('
+    - pattern: 'do_msgsnd\s*\(\s*(?P<ns>[^,]+)\s*,'
       description: "内核 msgsnd 实现"
-    - pattern: 'do_msgrcv\s*\('
+      file: "ipc/msg.c"
+    - pattern: 'do_msgrcv\s*\(\s*(?P<ns>[^,]+)\s*,'
       description: "内核 msgrcv 实现"
-    - pattern: 'newque\s*\('
+      file: "ipc/msg.c"
+    - pattern: 'newque\s*\(\s*(?P<ns>[^,]+)\s*,'
       description: "创建新消息队列"
+      file: "ipc/msg.c"
+    - pattern: 'load_msg\s*\('
+      description: "从用户空间加载消息"
+      file: "ipc/msgutil.c"
+    - pattern: 'store_msg\s*\('
+      description: "存储消息到用户空间"
+      file: "ipc/msgutil.c"
+    - pattern: 'free_msg\s*\('
+      description: "释放消息内存"
+      file: "ipc/msgutil.c"
+    - pattern: 'ss_wakeup\s*\('
+      description: "唤醒等待的发送者"
+      file: "ipc/msg.c"
+
+  data_structures:
+    msg_queue:
+      description: "消息队列内核结构"
+      file: "ipc/msg.c"
+      fields:
+        - name: "q_perm"
+          type: "struct kern_ipc_perm"
+          description: "IPC 权限"
+        - name: "q_stime"
+          type: "time64_t"
+          description: "最后发送时间"
+        - name: "q_rtime"
+          type: "time64_t"
+          description: "最后接收时间"
+        - name: "q_cbytes"
+          type: "unsigned long"
+          description: "当前队列字节数"
+        - name: "q_qnum"
+          type: "unsigned long"
+          description: "当前消息数"
+        - name: "q_qbytes"
+          type: "unsigned long"
+          description: "队列最大字节数"
+        - name: "q_lspid"
+          type: "pid_t"
+          description: "最后发送者 PID"
+        - name: "q_lrpid"
+          type: "pid_t"
+          description: "最后接收者 PID"
+        - name: "q_messages"
+          type: "struct list_head"
+          description: "消息链表"
+        - name: "q_receivers"
+          type: "struct list_head"
+          description: "等待接收者链表"
+        - name: "q_senders"
+          type: "struct list_head"
+          description: "等待发送者链表"
+
+    msg_msg:
+      description: "消息结构"
+      file: "include/linux/msg.h"
+      fields:
+        - name: "m_list"
+          type: "struct list_head"
+          description: "消息链表节点"
+        - name: "m_type"
+          type: "long"
+          description: "消息类型"
+        - name: "m_ts"
+          type: "size_t"
+          description: "消息大小"
+        - name: "next"
+          type: "struct msg_msgseg *"
+          description: "大消息的后续段"
+
+  call_chains:
+    msgsnd_chain:
+      description: "msgsnd 系统调用链"
+      trigger: "用户调用 msgsnd()"
+      chain:
+        - function: "ksys_msgsnd"
+          file: "ipc/msg.c"
+          description: "系统调用入口"
+        - function: "do_msgsnd"
+          file: "ipc/msg.c"
+          description: "实际发送实现"
+        - function: "load_msg"
+          file: "ipc/msgutil.c"
+          description: "从用户空间复制消息"
+        - function: "ipc_obtain_object_check"
+          file: "ipc/util.c"
+          description: "获取并检查队列"
+        - function: "pipelined_send"
+          file: "ipc/msg.c"
+          description: "流水线发送 (直接传递给等待者)"
+        - function: "wake_up_process"
+          file: "kernel/sched/core.c"
+          description: "唤醒等待的接收者"
+
+    msgrcv_chain:
+      description: "msgrcv 系统调用链"
+      trigger: "用户调用 msgrcv()"
+      chain:
+        - function: "ksys_msgrcv"
+          file: "ipc/msg.c"
+          description: "系统调用入口"
+        - function: "do_msgrcv"
+          file: "ipc/msg.c"
+          description: "实际接收实现"
+        - function: "find_msg"
+          file: "ipc/msg.c"
+          description: "查找匹配消息"
+        - function: "store_msg"
+          file: "ipc/msgutil.c"
+          description: "复制消息到用户空间"
+        - function: "schedule"
+          file: "kernel/sched/core.c"
+          description: "无消息则阻塞等待"
+          context: "process (sleeping)"
 
 # ============================================================
 # SYSTEM V SEMAPHORE
@@ -104,34 +341,154 @@ sysv_sem:
   description: "System V Semaphore"
   header: "linux/sem.h"
   icon: "🚦"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   syscalls:
     semget:
-      pattern: 'semget\s*\('
+      pattern: 'semget\s*\(\s*(?P<key>[^,]+)\s*,\s*(?P<nsems>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
       description: "获取或创建信号量集"
       signature: "int semget(key_t key, int nsems, int semflg)"
       context: "process"
+      can_sleep: true
+      return_value:
+        success: "信号量集标识符 (semid)"
+        failure: "-1 并设置 errno"
 
     semop:
-      pattern: 'semop\s*\('
+      pattern: 'semop\s*\(\s*(?P<semid>[^,]+)\s*,\s*(?P<sops>[^,]+)\s*,\s*(?P<nsops>[^)]+)\s*\)'
       description: "信号量操作"
       signature: "int semop(int semid, struct sembuf *sops, size_t nsops)"
       context: "process"
       can_sleep: true
 
+    semtimedop:
+      pattern: 'semtimedop\s*\(\s*(?P<semid>[^,]+)\s*,\s*(?P<sops>[^,]+)\s*,\s*(?P<nsops>[^,]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      description: "带超时的信号量操作"
+      signature: "int semtimedop(int semid, struct sembuf *sops, size_t nsops, const struct timespec *timeout)"
+      context: "process"
+      can_sleep: true
+
     semctl:
-      pattern: 'semctl\s*\('
+      pattern: 'semctl\s*\(\s*(?P<semid>[^,]+)\s*,\s*(?P<semnum>[^,]+)\s*,\s*(?P<cmd>[^,)]+)'
       description: "信号量控制操作"
       signature: "int semctl(int semid, int semnum, int cmd, ...)"
       context: "process"
+      can_sleep: true
+      commands:
+        - "IPC_STAT - 获取信息"
+        - "IPC_SET - 设置权限"
+        - "IPC_RMID - 删除信号量集"
+        - "GETVAL - 获取单个信号量值"
+        - "SETVAL - 设置单个信号量值"
+        - "GETALL - 获取所有信号量值"
+        - "SETALL - 设置所有信号量值"
+        - "GETNCNT - 获取等待增加的进程数"
+        - "GETZCNT - 获取等待为零的进程数"
+        - "GETPID - 获取最后操作的 PID"
 
   operations:
     - value: -1
-      description: "P 操作 (wait/acquire)"
+      description: "P 操作 (wait/acquire) - 减少信号量，可能阻塞"
     - value: 1
-      description: "V 操作 (signal/release)"
+      description: "V 操作 (signal/release) - 增加信号量，可能唤醒等待者"
     - value: 0
-      description: "等待信号量值为 0"
+      description: "Z 操作 - 等待信号量值为 0"
+
+  sembuf_flags:
+    - name: "IPC_NOWAIT"
+      description: "非阻塞操作，无法完成则返回 EAGAIN"
+    - name: "SEM_UNDO"
+      description: "进程退出时自动撤销操作"
+
+  kernel_functions:
+    - pattern: 'do_semtimedop\s*\('
+      description: "信号量操作核心实现"
+      file: "ipc/sem.c"
+    - pattern: 'newary\s*\('
+      description: "创建新信号量数组"
+      file: "ipc/sem.c"
+    - pattern: 'perform_atomic_semop\s*\('
+      description: "原子执行信号量操作"
+      file: "ipc/sem.c"
+    - pattern: 'update_queue\s*\('
+      description: "更新等待队列"
+      file: "ipc/sem.c"
+    - pattern: 'wake_up_sem_queue_prepare\s*\('
+      description: "准备唤醒等待队列"
+      file: "ipc/sem.c"
+    - pattern: 'exit_sem\s*\('
+      description: "进程退出时清理 SEM_UNDO"
+      file: "ipc/sem.c"
+
+  data_structures:
+    sem_array:
+      description: "信号量数组内核结构"
+      file: "ipc/sem.c"
+      fields:
+        - name: "sem_perm"
+          type: "struct kern_ipc_perm"
+          description: "IPC 权限"
+        - name: "sem_otime"
+          type: "time64_t"
+          description: "最后 semop 时间"
+        - name: "sem_ctime"
+          type: "time64_t"
+          description: "最后更改时间"
+        - name: "sems"
+          type: "struct sem *"
+          description: "信号量数组"
+        - name: "pending_alter"
+          type: "struct list_head"
+          description: "等待修改操作的队列"
+        - name: "pending_const"
+          type: "struct list_head"
+          description: "等待常量操作 (值为 0) 的队列"
+        - name: "sem_nsems"
+          type: "unsigned long"
+          description: "数组中信号量数量"
+
+    sembuf:
+      description: "信号量操作缓冲区 (用户空间)"
+      file: "include/uapi/linux/sem.h"
+      fields:
+        - name: "sem_num"
+          type: "unsigned short"
+          description: "信号量索引"
+        - name: "sem_op"
+          type: "short"
+          description: "操作值 (+/-/0)"
+        - name: "sem_flg"
+          type: "short"
+          description: "操作标志"
+
+  call_chains:
+    semop_chain:
+      description: "semop 系统调用链"
+      trigger: "用户调用 semop()"
+      chain:
+        - function: "ksys_semtimedop"
+          file: "ipc/sem.c"
+          description: "系统调用入口"
+        - function: "do_semtimedop"
+          file: "ipc/sem.c"
+          description: "核心实现"
+        - function: "perform_atomic_semop"
+          file: "ipc/sem.c"
+          description: "尝试原子执行"
+        - function: "schedule"
+          file: "kernel/sched/core.c"
+          description: "无法完成则睡眠"
+          context: "process (sleeping)"
+        - function: "update_queue"
+          file: "ipc/sem.c"
+          description: "唤醒时更新队列"
+          is_user_entry: true
 
 # ============================================================
 # POSIX SHARED MEMORY
@@ -139,31 +496,116 @@ sysv_sem:
 
 posix_shm:
   description: "POSIX Shared Memory"
-  header: "mman.h"
+  header: "sys/mman.h"
   icon: "📦"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   functions:
     shm_open:
-      pattern: 'shm_open\s*\('
+      pattern: 'shm_open\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<oflag>[^,]+)\s*,\s*(?P<mode>[^)]+)\s*\)'
       description: "创建/打开 POSIX 共享内存对象"
       signature: "int shm_open(const char *name, int oflag, mode_t mode)"
+      return_value:
+        success: "文件描述符"
+        failure: "-1"
+      flags:
+        - "O_RDONLY - 只读"
+        - "O_RDWR - 读写"
+        - "O_CREAT - 创建"
+        - "O_EXCL - 独占创建"
+        - "O_TRUNC - 截断"
 
     shm_unlink:
-      pattern: 'shm_unlink\s*\('
+      pattern: 'shm_unlink\s*\(\s*(?P<name>[^)]+)\s*\)'
       description: "删除 POSIX 共享内存对象"
       signature: "int shm_unlink(const char *name)"
 
     mmap:
-      pattern: 'mmap\s*\('
+      pattern: 'mmap\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<length>[^,]+)\s*,\s*(?P<prot>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<fd>[^,]+)\s*,\s*(?P<offset>[^)]+)\s*\)'
       description: "映射共享内存"
       signature: "void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)"
+      prot_flags:
+        - "PROT_READ - 可读"
+        - "PROT_WRITE - 可写"
+        - "PROT_EXEC - 可执行"
+        - "PROT_NONE - 不可访问"
+      map_flags:
+        - "MAP_SHARED - 共享映射"
+        - "MAP_PRIVATE - 私有映射 (写时复制)"
+        - "MAP_ANONYMOUS - 匿名映射"
+        - "MAP_FIXED - 固定地址"
+        - "MAP_HUGETLB - 大页映射"
+        - "MAP_POPULATE - 预填充页表"
+        - "MAP_LOCKED - 锁定在内存"
 
     munmap:
-      pattern: 'munmap\s*\('
+      pattern: 'munmap\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<length>[^)]+)\s*\)'
       description: "取消映射"
       signature: "int munmap(void *addr, size_t length)"
 
+    ftruncate:
+      pattern: 'ftruncate\s*\(\s*(?P<fd>[^,]+)\s*,\s*(?P<length>[^)]+)\s*\)'
+      description: "设置共享内存大小"
+      signature: "int ftruncate(int fd, off_t length)"
+
   filesystem: "/dev/shm/"
+  implementation: "基于 tmpfs/shmem 文件系统"
+
+  kernel_functions:
+    - pattern: 'shmem_file_setup\s*\('
+      description: "创建 shmem 文件"
+      file: "mm/shmem.c"
+    - pattern: 'shmem_get_inode\s*\('
+      description: "获取 shmem inode"
+      file: "mm/shmem.c"
+    - pattern: 'shmem_mmap\s*\('
+      description: "shmem mmap 操作"
+      file: "mm/shmem.c"
+    - pattern: 'shmem_read_folio\s*\('
+      description: "shmem 读取页"
+      file: "mm/shmem.c"
+
+  call_chains:
+    mmap_shm_chain:
+      description: "mmap 共享内存调用链"
+      trigger: "用户调用 mmap() 映射 /dev/shm 文件"
+      chain:
+        - function: "ksys_mmap_pgoff"
+          file: "mm/mmap.c"
+          description: "系统调用入口"
+        - function: "vm_mmap_pgoff"
+          file: "mm/util.c"
+          description: "带锁 mmap"
+        - function: "do_mmap"
+          file: "mm/mmap.c"
+          description: "核心 mmap 实现"
+        - function: "mmap_region"
+          file: "mm/mmap.c"
+          description: "创建 VMA"
+        - function: "shmem_mmap"
+          file: "mm/shmem.c"
+          description: "shmem 特定 mmap"
+          is_user_entry: true
+
+  vs_sysv_shm:
+    - feature: "命名空间"
+      posix: "路径名 (/dev/shm/xxx)"
+      sysv: "key_t 键值"
+    - feature: "API 风格"
+      posix: "文件描述符"
+      sysv: "专用 shm* 系统调用"
+    - feature: "大小设置"
+      posix: "ftruncate()"
+      sysv: "shmget() 时指定"
+    - feature: "删除行为"
+      posix: "引用计数，unlink 后仍可用"
+      sysv: "IPC_RMID 标记，所有分离后删除"
 
 # ============================================================
 # UNIX DOMAIN SOCKET
@@ -173,30 +615,167 @@ unix_socket:
   description: "Unix Domain Socket"
   header: "linux/un.h"
   icon: "🔌"
+  kernel_version: "2.6+"
+  source_file: "net/unix/af_unix.c"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   socket_types:
     - name: "SOCK_STREAM"
       description: "流套接字（面向连接）"
+      reliable: true
+      ordered: true
+      connection: "required"
     - name: "SOCK_DGRAM"
       description: "数据报套接字（无连接）"
+      reliable: true
+      ordered: false
+      connection: "optional"
     - name: "SOCK_SEQPACKET"
       description: "顺序数据包套接字"
+      reliable: true
+      ordered: true
+      connection: "required"
+      message_boundary: true
 
   special_features:
     - name: "SCM_RIGHTS"
       description: "传递文件描述符"
+      usage: "sendmsg/recvmsg with cmsg"
     - name: "SCM_CREDENTIALS"
-      description: "传递进程凭证"
+      description: "传递进程凭证 (pid, uid, gid)"
+      usage: "需要 SO_PASSCRED 选项"
     - name: "SO_PEERCRED"
       description: "获取对端凭证"
+      usage: "getsockopt()"
+    - name: "SO_PEERSEC"
+      description: "获取对端安全上下文 (SELinux)"
+      usage: "getsockopt()"
+
+  address_types:
+    - name: "pathname"
+      description: "文件系统路径名"
+      example: "/var/run/socket"
+    - name: "abstract"
+      description: "抽象命名空间 (以 \\0 开头)"
+      example: "\\0my_socket"
+    - name: "unnamed"
+      description: "未命名 (socketpair)"
 
   kernel_functions:
     - pattern: 'unix_stream_connect\s*\('
       description: "Unix 流套接字连接"
+      file: "net/unix/af_unix.c"
     - pattern: 'unix_dgram_sendmsg\s*\('
       description: "Unix 数据报发送"
+      file: "net/unix/af_unix.c"
     - pattern: 'unix_stream_sendmsg\s*\('
       description: "Unix 流发送"
+      file: "net/unix/af_unix.c"
+    - pattern: 'unix_stream_recvmsg\s*\('
+      description: "Unix 流接收"
+      file: "net/unix/af_unix.c"
+    - pattern: 'unix_dgram_recvmsg\s*\('
+      description: "Unix 数据报接收"
+      file: "net/unix/af_unix.c"
+    - pattern: 'unix_bind\s*\('
+      description: "绑定地址"
+      file: "net/unix/af_unix.c"
+    - pattern: 'unix_listen\s*\('
+      description: "监听连接"
+      file: "net/unix/af_unix.c"
+    - pattern: 'unix_accept\s*\('
+      description: "接受连接"
+      file: "net/unix/af_unix.c"
+    - pattern: 'unix_scm_to_skb\s*\('
+      description: "附加辅助数据到 skb"
+      file: "net/unix/af_unix.c"
+    - pattern: 'unix_attach_fds\s*\('
+      description: "附加文件描述符 (SCM_RIGHTS)"
+      file: "net/unix/scm.c"
+    - pattern: 'unix_detach_fds\s*\('
+      description: "分离文件描述符"
+      file: "net/unix/scm.c"
+
+  data_structures:
+    unix_sock:
+      description: "Unix socket 内核结构"
+      file: "include/net/af_unix.h"
+      fields:
+        - name: "sk"
+          type: "struct sock"
+          description: "通用 socket 结构"
+        - name: "addr"
+          type: "struct unix_address *"
+          description: "socket 地址"
+        - name: "peer"
+          type: "struct sock *"
+          description: "对端 socket"
+        - name: "listener"
+          type: "struct sock *"
+          description: "监听 socket"
+        - name: "peer_wait"
+          type: "wait_queue_head_t"
+          description: "等待对端队列"
+        - name: "path"
+          type: "struct path"
+          description: "文件系统路径"
+        - name: "inflight"
+          type: "atomic_long_t"
+          description: "传输中的引用计数"
+        - name: "oob_skb"
+          type: "struct sk_buff *"
+          description: "带外数据"
+
+  call_chains:
+    connect_chain:
+      description: "Unix socket 连接调用链"
+      trigger: "用户调用 connect()"
+      chain:
+        - function: "__sys_connect"
+          file: "net/socket.c"
+          description: "系统调用入口"
+        - function: "sock->ops->connect"
+          file: "net/socket.c"
+          description: "调用协议 connect"
+        - function: "unix_stream_connect"
+          file: "net/unix/af_unix.c"
+          description: "Unix 流连接"
+        - function: "unix_find_other"
+          file: "net/unix/af_unix.c"
+          description: "查找目标 socket"
+        - function: "wake_up_interruptible_all"
+          file: "kernel/sched/wait.c"
+          description: "唤醒监听者"
+          is_user_entry: true
+
+    sendmsg_scm_rights_chain:
+      description: "传递文件描述符调用链"
+      trigger: "用户调用 sendmsg() with SCM_RIGHTS"
+      chain:
+        - function: "__sys_sendmsg"
+          file: "net/socket.c"
+          description: "系统调用入口"
+        - function: "____sys_sendmsg"
+          file: "net/socket.c"
+          description: "内部发送"
+        - function: "sock_sendmsg"
+          file: "net/socket.c"
+          description: "socket 发送"
+        - function: "unix_stream_sendmsg"
+          file: "net/unix/af_unix.c"
+          description: "Unix 流发送"
+        - function: "unix_scm_to_skb"
+          file: "net/unix/af_unix.c"
+          description: "处理辅助数据"
+        - function: "unix_attach_fds"
+          file: "net/unix/scm.c"
+          description: "附加文件描述符"
+          is_user_entry: true
 
 # ============================================================
 # PIPE
@@ -206,36 +785,192 @@ pipe:
   description: "Pipe and Named Pipe (FIFO)"
   header: "linux/pipe_fs_i.h"
   icon: "🚿"
+  kernel_version: "2.6+"
+  source_file: "fs/pipe.c"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   syscalls:
     pipe:
-      pattern: 'pipe\s*\('
+      pattern: 'pipe\s*\(\s*(?P<pipefd>[^)]+)\s*\)'
       description: "创建匿名管道"
       signature: "int pipe(int pipefd[2])"
+      return_value:
+        success: "0, pipefd[0]=读端, pipefd[1]=写端"
+        failure: "-1"
 
     pipe2:
-      pattern: 'pipe2\s*\('
+      pattern: 'pipe2\s*\(\s*(?P<pipefd>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
       description: "创建管道（带标志）"
       signature: "int pipe2(int pipefd[2], int flags)"
+      flags:
+        - "O_CLOEXEC - exec 时关闭"
+        - "O_NONBLOCK - 非阻塞"
+        - "O_DIRECT - 直接模式 (包边界)"
 
     mkfifo:
-      pattern: 'mkfifo\s*\('
+      pattern: 'mkfifo\s*\(\s*(?P<pathname>[^,]+)\s*,\s*(?P<mode>[^)]+)\s*\)'
       description: "创建命名管道"
       signature: "int mkfifo(const char *pathname, mode_t mode)"
+
+    mknod:
+      pattern: 'mknod\s*\(\s*(?P<pathname>[^,]+)\s*,\s*S_IFIFO\s*\|'
+      description: "使用 mknod 创建 FIFO"
+      signature: "int mknod(const char *pathname, mode_t mode, dev_t dev)"
 
   kernel_functions:
     - pattern: 'pipe_read\s*\('
       description: "管道读"
+      file: "fs/pipe.c"
       context: "process"
       can_sleep: true
     - pattern: 'pipe_write\s*\('
       description: "管道写"
+      file: "fs/pipe.c"
       context: "process"
       can_sleep: true
+    - pattern: 'pipe_release\s*\('
+      description: "管道释放"
+      file: "fs/pipe.c"
+    - pattern: 'pipe_fasync\s*\('
+      description: "管道异步通知"
+      file: "fs/pipe.c"
+    - pattern: 'alloc_pipe_info\s*\('
+      description: "分配管道信息"
+      file: "fs/pipe.c"
+    - pattern: 'free_pipe_info\s*\('
+      description: "释放管道信息"
+      file: "fs/pipe.c"
+    - pattern: 'pipe_wait\s*\('
+      description: "等待管道可用"
+      file: "fs/pipe.c"
+    - pattern: 'wake_up_interruptible_sync_poll\s*\('
+      description: "唤醒等待者"
+      file: "fs/pipe.c"
+
+  data_structures:
+    pipe_inode_info:
+      description: "管道 inode 信息"
+      file: "include/linux/pipe_fs_i.h"
+      fields:
+        - name: "mutex"
+          type: "struct mutex"
+          description: "管道互斥锁"
+        - name: "rd_wait"
+          type: "wait_queue_head_t"
+          description: "读等待队列"
+        - name: "wr_wait"
+          type: "wait_queue_head_t"
+          description: "写等待队列"
+        - name: "head"
+          type: "unsigned int"
+          description: "缓冲区头指针"
+        - name: "tail"
+          type: "unsigned int"
+          description: "缓冲区尾指针"
+        - name: "max_usage"
+          type: "unsigned int"
+          description: "最大缓冲区数"
+        - name: "ring_size"
+          type: "unsigned int"
+          description: "环形缓冲区大小"
+        - name: "readers"
+          type: "unsigned int"
+          description: "读端数量"
+        - name: "writers"
+          type: "unsigned int"
+          description: "写端数量"
+        - name: "bufs"
+          type: "struct pipe_buffer *"
+          description: "缓冲区数组"
+
+    pipe_buffer:
+      description: "管道缓冲区"
+      file: "include/linux/pipe_fs_i.h"
+      fields:
+        - name: "page"
+          type: "struct page *"
+          description: "数据页"
+        - name: "offset"
+          type: "unsigned int"
+          description: "页内偏移"
+        - name: "len"
+          type: "unsigned int"
+          description: "数据长度"
+        - name: "ops"
+          type: "const struct pipe_buf_operations *"
+          description: "缓冲区操作"
+        - name: "flags"
+          type: "unsigned int"
+          description: "标志"
 
   pipe_buffer:
-    size: "16 pages (64KB default)"
-    can_modify: "/proc/sys/fs/pipe-max-size"
+    default_size: "16 pages (64KB)"
+    max_size_sysctl: "/proc/sys/fs/pipe-max-size"
+    user_limit_sysctl: "/proc/sys/fs/pipe-user-pages-hard"
+    f_setpipe_sz: "fcntl(fd, F_SETPIPE_SZ, size)"
+
+  call_chains:
+    pipe_read_chain:
+      description: "管道读调用链"
+      trigger: "用户调用 read() 读取管道"
+      chain:
+        - function: "ksys_read"
+          file: "fs/read_write.c"
+          description: "系统调用入口"
+        - function: "vfs_read"
+          file: "fs/read_write.c"
+          description: "VFS 读"
+        - function: "pipe_read"
+          file: "fs/pipe.c"
+          description: "管道读实现"
+        - function: "copy_page_to_iter"
+          file: "lib/iov_iter.c"
+          description: "复制数据到用户空间"
+        - function: "pipe_wait"
+          file: "fs/pipe.c"
+          description: "无数据则等待"
+          context: "process (sleeping)"
+        - function: "wake_up_interruptible_sync_poll"
+          file: "fs/pipe.c"
+          description: "唤醒写端"
+          is_user_entry: true
+
+    pipe_write_chain:
+      description: "管道写调用链"
+      trigger: "用户调用 write() 写入管道"
+      chain:
+        - function: "ksys_write"
+          file: "fs/read_write.c"
+          description: "系统调用入口"
+        - function: "vfs_write"
+          file: "fs/read_write.c"
+          description: "VFS 写"
+        - function: "pipe_write"
+          file: "fs/pipe.c"
+          description: "管道写实现"
+        - function: "copy_page_from_iter"
+          file: "lib/iov_iter.c"
+          description: "从用户空间复制数据"
+        - function: "pipe_wait"
+          file: "fs/pipe.c"
+          description: "缓冲区满则等待"
+          context: "process (sleeping)"
+        - function: "wake_up_interruptible_sync_poll"
+          file: "fs/pipe.c"
+          description: "唤醒读端"
+          is_user_entry: true
+
+  splice_support:
+    description: "splice/vmsplice 零拷贝支持"
+    syscalls:
+      - "splice() - 管道与文件之间零拷贝"
+      - "vmsplice() - 用户空间与管道之间零拷贝"
+      - "tee() - 管道之间复制"
 
 # ============================================================
 # FUTEX
@@ -245,31 +980,199 @@ futex:
   description: "Fast Userspace Mutex"
   header: "linux/futex.h"
   icon: "⚡"
+  kernel_version: "2.6+"
+  source_file: "kernel/futex/core.c"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   operations:
     - name: "FUTEX_WAIT"
+      value: 0
       description: "等待 futex 值变化"
+      can_sleep: true
     - name: "FUTEX_WAKE"
+      value: 1
       description: "唤醒等待的进程"
+      can_sleep: false
     - name: "FUTEX_FD"
-      description: "返回 futex 文件描述符"
+      value: 2
+      description: "返回 futex 文件描述符 (已废弃)"
     - name: "FUTEX_REQUEUE"
+      value: 3
       description: "重新排队等待者"
     - name: "FUTEX_CMP_REQUEUE"
+      value: 4
       description: "条件重新排队"
+    - name: "FUTEX_WAKE_OP"
+      value: 5
+      description: "原子唤醒和操作"
+    - name: "FUTEX_LOCK_PI"
+      value: 6
+      description: "优先级继承锁"
+    - name: "FUTEX_UNLOCK_PI"
+      value: 7
+      description: "优先级继承解锁"
+    - name: "FUTEX_TRYLOCK_PI"
+      value: 8
+      description: "尝试优先级继承锁"
+    - name: "FUTEX_WAIT_BITSET"
+      value: 9
+      description: "带位掩码等待"
+    - name: "FUTEX_WAKE_BITSET"
+      value: 10
+      description: "带位掩码唤醒"
+    - name: "FUTEX_WAIT_REQUEUE_PI"
+      value: 11
+      description: "等待重排队优先级继承"
+    - name: "FUTEX_CMP_REQUEUE_PI"
+      value: 12
+      description: "比较重排队优先级继承"
+
+  flags:
+    - name: "FUTEX_PRIVATE_FLAG"
+      value: 128
+      description: "私有 futex (进程内)"
+    - name: "FUTEX_CLOCK_REALTIME"
+      value: 256
+      description: "使用 CLOCK_REALTIME"
 
   syscall:
-    pattern: 'futex\s*\('
+    pattern: 'futex\s*\(\s*(?P<uaddr>[^,]+)\s*,\s*(?P<op>[^,]+)\s*,\s*(?P<val>[^,)]+)'
     description: "futex 系统调用"
-    signature: "long futex(uint32_t *uaddr, int op, uint32_t val, ...)"
+    signature: "long futex(uint32_t *uaddr, int op, uint32_t val, const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3)"
 
   kernel_functions:
     - pattern: 'do_futex\s*\('
       description: "futex 系统调用实现"
+      file: "kernel/futex/syscalls.c"
     - pattern: 'futex_wait\s*\('
       description: "futex 等待"
+      file: "kernel/futex/waitwake.c"
     - pattern: 'futex_wake\s*\('
       description: "futex 唤醒"
+      file: "kernel/futex/waitwake.c"
+    - pattern: 'futex_requeue\s*\('
+      description: "futex 重排队"
+      file: "kernel/futex/requeue.c"
+    - pattern: 'futex_lock_pi\s*\('
+      description: "优先级继承锁"
+      file: "kernel/futex/pi.c"
+    - pattern: 'futex_unlock_pi\s*\('
+      description: "优先级继承解锁"
+      file: "kernel/futex/pi.c"
+    - pattern: 'futex_hash\s*\('
+      description: "计算 futex 哈希"
+      file: "kernel/futex/core.c"
+    - pattern: 'futex_queue\s*\('
+      description: "加入等待队列"
+      file: "kernel/futex/core.c"
+    - pattern: 'futex_unqueue\s*\('
+      description: "离开等待队列"
+      file: "kernel/futex/core.c"
+    - pattern: '__futex_unqueue\s*\('
+      description: "内部出队"
+      file: "kernel/futex/core.c"
+    - pattern: 'wake_futex\s*\('
+      description: "唤醒单个 futex 等待者"
+      file: "kernel/futex/waitwake.c"
+
+  data_structures:
+    futex_q:
+      description: "futex 等待队列节点"
+      file: "kernel/futex/futex.h"
+      fields:
+        - name: "list"
+          type: "struct plist_node"
+          description: "链表节点"
+        - name: "task"
+          type: "struct task_struct *"
+          description: "等待任务"
+        - name: "lock_ptr"
+          type: "spinlock_t *"
+          description: "哈希桶锁"
+        - name: "key"
+          type: "union futex_key"
+          description: "futex 键"
+        - name: "pi_state"
+          type: "struct futex_pi_state *"
+          description: "优先级继承状态"
+        - name: "rt_waiter"
+          type: "struct rt_mutex_waiter *"
+          description: "RT 互斥锁等待者"
+        - name: "bitset"
+          type: "u32"
+          description: "位掩码"
+
+    futex_key:
+      description: "futex 键 (唯一标识)"
+      file: "include/linux/futex.h"
+      fields:
+        - name: "both.word"
+          type: "u64"
+          description: "地址/偏移"
+        - name: "both.ptr"
+          type: "void *"
+          description: "inode 或 mm"
+        - name: "both.offset"
+          type: "int"
+          description: "页内偏移和类型"
+
+  call_chains:
+    futex_wait_chain:
+      description: "futex 等待调用链"
+      trigger: "用户调用 futex(FUTEX_WAIT)"
+      chain:
+        - function: "sys_futex"
+          file: "kernel/futex/syscalls.c"
+          description: "系统调用入口"
+        - function: "do_futex"
+          file: "kernel/futex/syscalls.c"
+          description: "操作分发"
+        - function: "futex_wait"
+          file: "kernel/futex/waitwake.c"
+          description: "等待实现"
+        - function: "futex_wait_queue"
+          file: "kernel/futex/waitwake.c"
+          description: "加入等待队列"
+        - function: "schedule"
+          file: "kernel/sched/core.c"
+          description: "进入睡眠"
+          context: "process (sleeping)"
+        - function: "wake_futex"
+          file: "kernel/futex/waitwake.c"
+          description: "被唤醒"
+          is_user_entry: true
+
+    futex_wake_chain:
+      description: "futex 唤醒调用链"
+      trigger: "用户调用 futex(FUTEX_WAKE)"
+      chain:
+        - function: "sys_futex"
+          file: "kernel/futex/syscalls.c"
+          description: "系统调用入口"
+        - function: "do_futex"
+          file: "kernel/futex/syscalls.c"
+          description: "操作分发"
+        - function: "futex_wake"
+          file: "kernel/futex/waitwake.c"
+          description: "唤醒实现"
+        - function: "wake_futex"
+          file: "kernel/futex/waitwake.c"
+          description: "唤醒单个等待者"
+        - function: "wake_up_state"
+          file: "kernel/sched/core.c"
+          description: "唤醒任务"
+          is_user_entry: true
+
+  userspace_usage:
+    pthread_mutex: "glibc pthread_mutex 基于 futex"
+    pthread_cond: "glibc pthread_cond 基于 futex"
+    pthread_rwlock: "glibc pthread_rwlock 基于 futex"
+    pthread_barrier: "glibc pthread_barrier 基于 futex"
 
 # ============================================================
 # EVENTFD
@@ -279,27 +1182,110 @@ eventfd:
   description: "Event File Descriptor"
   header: "linux/eventfd.h"
   icon: "🔔"
+  kernel_version: "2.6.22+"
+  source_file: "fs/eventfd.c"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   syscall:
-    pattern: 'eventfd\s*\('
+    pattern: 'eventfd\s*\(\s*(?P<initval>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
     description: "创建 eventfd"
     signature: "int eventfd(unsigned int initval, int flags)"
+    return_value:
+      success: "文件描述符"
+      failure: "-1"
 
   flags:
-    - "EFD_CLOEXEC"
-    - "EFD_NONBLOCK"
-    - "EFD_SEMAPHORE"
+    - name: "EFD_CLOEXEC"
+      description: "exec 时关闭"
+    - name: "EFD_NONBLOCK"
+      description: "非阻塞读写"
+    - name: "EFD_SEMAPHORE"
+      description: "信号量模式 (每次读取减 1)"
+
+  operations:
+    read:
+      description: "读取计数器"
+      behavior:
+        normal: "返回计数器值，清零计数器"
+        semaphore: "返回 1，计数器减 1"
+        blocking: "计数器为 0 时阻塞"
+    write:
+      description: "增加计数器"
+      behavior: "将写入的 8 字节值加到计数器"
+      max_value: "ULLONG_MAX - 1"
 
   kernel_functions:
-    - pattern: 'eventfd_signal\s*\('
+    - pattern: 'eventfd_signal\s*\(\s*(?P<ctx>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
       description: "从内核发送事件信号"
+      file: "fs/eventfd.c"
+      context: "any (atomic safe)"
+    - pattern: 'eventfd_signal_mask\s*\('
+      description: "带掩码的事件信号"
+      file: "fs/eventfd.c"
     - pattern: 'eventfd_ctx_read\s*\('
       description: "读取 eventfd 计数"
+      file: "fs/eventfd.c"
+    - pattern: 'eventfd_ctx_get\s*\('
+      description: "获取 eventfd 上下文引用"
+      file: "fs/eventfd.c"
+    - pattern: 'eventfd_ctx_put\s*\('
+      description: "释放 eventfd 上下文引用"
+      file: "fs/eventfd.c"
+    - pattern: 'eventfd_ctx_fileget\s*\('
+      description: "从文件获取 eventfd 上下文"
+      file: "fs/eventfd.c"
+    - pattern: 'eventfd_fget\s*\('
+      description: "获取 eventfd 文件"
+      file: "fs/eventfd.c"
+
+  data_structures:
+    eventfd_ctx:
+      description: "eventfd 上下文"
+      file: "fs/eventfd.c"
+      fields:
+        - name: "kref"
+          type: "struct kref"
+          description: "引用计数"
+        - name: "wqh"
+          type: "wait_queue_head_t"
+          description: "等待队列"
+        - name: "count"
+          type: "__u64"
+          description: "计数器"
+        - name: "flags"
+          type: "unsigned int"
+          description: "标志"
+        - name: "id"
+          type: "int"
+          description: "唯一 ID"
 
   usage:
     - description: "用户空间事件通知"
-    - description: "KVM/VFIO 中断注入"
+    - description: "KVM/VFIO 中断注入 (irqfd)"
     - description: "epoll 事件循环"
+    - description: "AIO 完成通知"
+    - description: "io_uring 事件通知"
+
+  call_chains:
+    eventfd_signal_chain:
+      description: "内核发送事件调用链"
+      trigger: "内核代码调用 eventfd_signal()"
+      chain:
+        - function: "eventfd_signal"
+          file: "fs/eventfd.c"
+          description: "发送信号"
+        - function: "wake_up_locked_poll"
+          file: "kernel/sched/wait.c"
+          description: "唤醒等待者"
+        - function: "epoll_callback"
+          file: "fs/eventpoll.c"
+          description: "epoll 回调 (如果在 epoll 中)"
+          is_user_entry: true
 
 # ============================================================
 # SIGNALFD
@@ -309,15 +1295,118 @@ signalfd:
   description: "Signal File Descriptor"
   header: "linux/signalfd.h"
   icon: "📡"
+  kernel_version: "2.6.22+"
+  source_file: "fs/signalfd.c"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   syscall:
-    pattern: 'signalfd\s*\('
-    description: "创建 signalfd"
+    pattern: 'signalfd\s*\(\s*(?P<fd>[^,]+)\s*,\s*(?P<mask>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+    description: "创建或修改 signalfd"
     signature: "int signalfd(int fd, const sigset_t *mask, int flags)"
+    return_value:
+      success: "文件描述符"
+      failure: "-1"
+    fd_behavior:
+      "-1": "创建新 signalfd"
+      "existing": "修改现有 signalfd 的信号掩码"
+
+  flags:
+    - name: "SFD_CLOEXEC"
+      description: "exec 时关闭"
+    - name: "SFD_NONBLOCK"
+      description: "非阻塞读取"
+
+  operations:
+    read:
+      description: "读取待处理信号"
+      returns: "struct signalfd_siginfo 数组"
+      blocking: "无待处理信号时阻塞"
+
+  kernel_functions:
+    - pattern: 'signalfd_read\s*\('
+      description: "signalfd 读操作"
+      file: "fs/signalfd.c"
+    - pattern: 'signalfd_poll\s*\('
+      description: "signalfd 轮询"
+      file: "fs/signalfd.c"
+    - pattern: 'signalfd_copyinfo\s*\('
+      description: "复制信号信息"
+      file: "fs/signalfd.c"
+    - pattern: 'dequeue_signal\s*\('
+      description: "从队列取出信号"
+      file: "kernel/signal.c"
+
+  data_structures:
+    signalfd_siginfo:
+      description: "signalfd 信号信息 (用户空间)"
+      file: "include/uapi/linux/signalfd.h"
+      fields:
+        - name: "ssi_signo"
+          type: "__u32"
+          description: "信号编号"
+        - name: "ssi_errno"
+          type: "__s32"
+          description: "错误码"
+        - name: "ssi_code"
+          type: "__s32"
+          description: "信号代码"
+        - name: "ssi_pid"
+          type: "__u32"
+          description: "发送者 PID"
+        - name: "ssi_uid"
+          type: "__u32"
+          description: "发送者 UID"
+        - name: "ssi_fd"
+          type: "__s32"
+          description: "文件描述符 (SIGIO)"
+        - name: "ssi_tid"
+          type: "__u32"
+          description: "定时器 ID (POSIX 定时器)"
+        - name: "ssi_band"
+          type: "__u32"
+          description: "Band 事件 (SIGIO)"
+        - name: "ssi_overrun"
+          type: "__u32"
+          description: "溢出计数 (POSIX 定时器)"
+        - name: "ssi_status"
+          type: "__s32"
+          description: "退出状态 (SIGCHLD)"
+        - name: "ssi_addr"
+          type: "__u64"
+          description: "故障地址 (SIGSEGV 等)"
 
   usage:
     - description: "将信号转为文件描述符事件"
-    - description: "配合 epoll/select 使用"
+    - description: "配合 epoll/select/poll 使用"
+    - description: "同步处理信号 (避免信号处理函数)"
+    - description: "事件驱动程序的信号处理"
+
+  call_chains:
+    signalfd_read_chain:
+      description: "signalfd 读取调用链"
+      trigger: "用户调用 read() 读取 signalfd"
+      chain:
+        - function: "ksys_read"
+          file: "fs/read_write.c"
+          description: "系统调用入口"
+        - function: "vfs_read"
+          file: "fs/read_write.c"
+          description: "VFS 读"
+        - function: "signalfd_read"
+          file: "fs/signalfd.c"
+          description: "signalfd 读实现"
+        - function: "dequeue_signal"
+          file: "kernel/signal.c"
+          description: "取出待处理信号"
+        - function: "signalfd_copyinfo"
+          file: "fs/signalfd.c"
+          description: "复制到用户空间"
+          is_user_entry: true
 
 # ============================================================
 # TIMERFD
@@ -327,24 +1416,402 @@ timerfd:
   description: "Timer File Descriptor"
   header: "linux/timerfd.h"
   icon: "⏰"
+  kernel_version: "2.6.25+"
+  source_file: "fs/timerfd.c"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   syscalls:
     timerfd_create:
-      pattern: 'timerfd_create\s*\('
+      pattern: 'timerfd_create\s*\(\s*(?P<clockid>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
       description: "创建 timerfd"
       signature: "int timerfd_create(int clockid, int flags)"
+      return_value:
+        success: "文件描述符"
+        failure: "-1"
 
     timerfd_settime:
-      pattern: 'timerfd_settime\s*\('
+      pattern: 'timerfd_settime\s*\(\s*(?P<fd>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<new_value>[^,]+)\s*,\s*(?P<old_value>[^)]+)\s*\)'
       description: "设置定时器"
-      signature: "int timerfd_settime(int fd, int flags, ...)"
+      signature: "int timerfd_settime(int fd, int flags, const struct itimerspec *new_value, struct itimerspec *old_value)"
+      flags:
+        - "TFD_TIMER_ABSTIME - 绝对时间"
+        - "TFD_TIMER_CANCEL_ON_SET - CLOCK_REALTIME 变化时取消"
 
     timerfd_gettime:
-      pattern: 'timerfd_gettime\s*\('
+      pattern: 'timerfd_gettime\s*\(\s*(?P<fd>[^,]+)\s*,\s*(?P<curr_value>[^)]+)\s*\)'
       description: "获取定时器状态"
       signature: "int timerfd_gettime(int fd, struct itimerspec *curr_value)"
 
+  create_flags:
+    - name: "TFD_CLOEXEC"
+      description: "exec 时关闭"
+    - name: "TFD_NONBLOCK"
+      description: "非阻塞"
+
   clock_types:
-    - "CLOCK_REALTIME"
-    - "CLOCK_MONOTONIC"
-    - "CLOCK_BOOTTIME"
+    - name: "CLOCK_REALTIME"
+      description: "系统实时时钟 (可被 NTP 调整)"
+    - name: "CLOCK_MONOTONIC"
+      description: "单调时钟 (不受系统时间调整影响)"
+    - name: "CLOCK_BOOTTIME"
+      description: "包含挂起时间的单调时钟"
+    - name: "CLOCK_REALTIME_ALARM"
+      description: "实时时钟闹钟 (可唤醒系统)"
+    - name: "CLOCK_BOOTTIME_ALARM"
+      description: "启动时间闹钟 (可唤醒系统)"
+
+  operations:
+    read:
+      description: "读取过期次数"
+      returns: "uint64_t 过期次数"
+      blocking: "定时器未过期时阻塞"
+      behavior: "读取后清除过期计数"
+
+  kernel_functions:
+    - pattern: 'timerfd_read\s*\('
+      description: "timerfd 读操作"
+      file: "fs/timerfd.c"
+    - pattern: 'timerfd_poll\s*\('
+      description: "timerfd 轮询"
+      file: "fs/timerfd.c"
+    - pattern: 'timerfd_setup\s*\('
+      description: "设置定时器"
+      file: "fs/timerfd.c"
+    - pattern: 'timerfd_triggered\s*\('
+      description: "定时器触发回调"
+      file: "fs/timerfd.c"
+      context: "hrtimer callback (hardirq or softirq)"
+    - pattern: 'timerfd_alarmproc\s*\('
+      description: "闹钟定时器回调"
+      file: "fs/timerfd.c"
+
+  data_structures:
+    timerfd_ctx:
+      description: "timerfd 上下文"
+      file: "fs/timerfd.c"
+      fields:
+        - name: "t.tmr"
+          type: "union {struct hrtimer, struct alarm}"
+          description: "高精度定时器或闹钟"
+        - name: "ticks"
+          type: "u64"
+          description: "过期计数"
+        - name: "wqh"
+          type: "wait_queue_head_t"
+          description: "等待队列"
+        - name: "clockid"
+          type: "int"
+          description: "时钟类型"
+        - name: "settime_flags"
+          type: "short"
+          description: "settime 标志"
+        - name: "cancelled"
+          type: "short"
+          description: "是否已取消"
+
+  call_chains:
+    timerfd_expired_chain:
+      description: "定时器过期调用链"
+      trigger: "定时器时间到达"
+      chain:
+        - function: "hrtimer_interrupt"
+          file: "kernel/time/hrtimer.c"
+          description: "高精度定时器中断"
+          context: "hardirq"
+        - function: "__hrtimer_run_queues"
+          file: "kernel/time/hrtimer.c"
+          description: "运行到期定时器"
+        - function: "timerfd_triggered"
+          file: "fs/timerfd.c"
+          description: "timerfd 回调"
+        - function: "wake_up_locked_poll"
+          file: "kernel/sched/wait.c"
+          description: "唤醒等待者"
+          is_user_entry: true
+
+  usage:
+    - description: "高精度定时器 (替代 setitimer)"
+    - description: "配合 epoll/select/poll 使用"
+    - description: "周期性任务调度"
+    - description: "超时控制"
+
+# ============================================================
+# IPC EXAMPLES
+# ============================================================
+
+examples:
+  - description: "System V 共享内存示例"
+    kernel_version: "2.6+"
+    code: |
+      #include <sys/shm.h>
+      #include <sys/ipc.h>
+      #include <stdio.h>
+      #include <string.h>
+      
+      int main() {
+          key_t key = ftok("/tmp", 65);
+          
+          /* 创建共享内存段 */
+          int shmid = shmget(key, 1024, IPC_CREAT | 0666);
+          if (shmid < 0) {
+              perror("shmget");
+              return 1;
+          }
+          
+          /* 附加到进程地址空间 */
+          char *str = shmat(shmid, NULL, 0);
+          if (str == (char *)-1) {
+              perror("shmat");
+              return 1;
+          }
+          
+          /* 写入数据 */
+          strcpy(str, "Hello, Shared Memory!");
+          printf("Written: %s\n", str);
+          
+          /* 分离共享内存 */
+          shmdt(str);
+          
+          /* 删除共享内存 (可选) */
+          /* shmctl(shmid, IPC_RMID, NULL); */
+          
+          return 0;
+      }
+
+  - description: "POSIX 共享内存示例"
+    kernel_version: "2.6+"
+    code: |
+      #include <sys/mman.h>
+      #include <sys/stat.h>
+      #include <fcntl.h>
+      #include <unistd.h>
+      #include <stdio.h>
+      #include <string.h>
+      
+      int main() {
+          const char *name = "/my_shm";
+          const size_t size = 4096;
+          
+          /* 创建共享内存对象 */
+          int fd = shm_open(name, O_CREAT | O_RDWR, 0666);
+          if (fd < 0) {
+              perror("shm_open");
+              return 1;
+          }
+          
+          /* 设置大小 */
+          ftruncate(fd, size);
+          
+          /* 映射到进程地址空间 */
+          void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                          MAP_SHARED, fd, 0);
+          if (ptr == MAP_FAILED) {
+              perror("mmap");
+              return 1;
+          }
+          
+          /* 使用共享内存 */
+          strcpy(ptr, "Hello from POSIX shm!");
+          printf("Written: %s\n", (char *)ptr);
+          
+          /* 清理 */
+          munmap(ptr, size);
+          close(fd);
+          /* shm_unlink(name); */  /* 删除共享内存对象 */
+          
+          return 0;
+      }
+
+  - description: "Unix 域套接字文件描述符传递 (SCM_RIGHTS)"
+    kernel_version: "2.6+"
+    code: |
+      #include <sys/socket.h>
+      #include <sys/un.h>
+      #include <unistd.h>
+      #include <stdio.h>
+      #include <string.h>
+      
+      /* 发送文件描述符 */
+      int send_fd(int socket, int fd_to_send) {
+          struct msghdr msg = {0};
+          struct cmsghdr *cmsg;
+          char buf[CMSG_SPACE(sizeof(fd_to_send))];
+          struct iovec io = { .iov_base = "x", .iov_len = 1 };
+          
+          msg.msg_iov = &io;
+          msg.msg_iovlen = 1;
+          msg.msg_control = buf;
+          msg.msg_controllen = sizeof(buf);
+          
+          cmsg = CMSG_FIRSTHDR(&msg);
+          cmsg->cmsg_level = SOL_SOCKET;
+          cmsg->cmsg_type = SCM_RIGHTS;
+          cmsg->cmsg_len = CMSG_LEN(sizeof(fd_to_send));
+          
+          memcpy(CMSG_DATA(cmsg), &fd_to_send, sizeof(fd_to_send));
+          
+          return sendmsg(socket, &msg, 0);
+      }
+      
+      /* 接收文件描述符 */
+      int recv_fd(int socket) {
+          struct msghdr msg = {0};
+          struct cmsghdr *cmsg;
+          char buf[CMSG_SPACE(sizeof(int))];
+          char dummy;
+          struct iovec io = { .iov_base = &dummy, .iov_len = 1 };
+          int fd;
+          
+          msg.msg_iov = &io;
+          msg.msg_iovlen = 1;
+          msg.msg_control = buf;
+          msg.msg_controllen = sizeof(buf);
+          
+          if (recvmsg(socket, &msg, 0) < 0)
+              return -1;
+          
+          cmsg = CMSG_FIRSTHDR(&msg);
+          memcpy(&fd, CMSG_DATA(cmsg), sizeof(fd));
+          
+          return fd;
+      }
+
+  - description: "eventfd 与 epoll 配合使用"
+    kernel_version: "2.6.22+"
+    code: |
+      #include <sys/eventfd.h>
+      #include <sys/epoll.h>
+      #include <unistd.h>
+      #include <stdint.h>
+      #include <stdio.h>
+      
+      int main() {
+          /* 创建 eventfd */
+          int efd = eventfd(0, EFD_NONBLOCK);
+          if (efd < 0) {
+              perror("eventfd");
+              return 1;
+          }
+          
+          /* 创建 epoll */
+          int epfd = epoll_create1(0);
+          struct epoll_event ev = {
+              .events = EPOLLIN,
+              .data.fd = efd
+          };
+          epoll_ctl(epfd, EPOLL_CTL_ADD, efd, &ev);
+          
+          /* 在另一线程或进程中发信号 */
+          uint64_t val = 1;
+          write(efd, &val, sizeof(val));
+          
+          /* 等待事件 */
+          struct epoll_event events[10];
+          int nfds = epoll_wait(epfd, events, 10, -1);
+          
+          for (int i = 0; i < nfds; i++) {
+              if (events[i].data.fd == efd) {
+                  uint64_t count;
+                  read(efd, &count, sizeof(count));
+                  printf("Event received, count: %lu\n", count);
+              }
+          }
+          
+          close(efd);
+          close(epfd);
+          return 0;
+      }
+
+  - description: "futex 用户空间互斥锁"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/futex.h>
+      #include <sys/syscall.h>
+      #include <unistd.h>
+      #include <stdatomic.h>
+      #include <limits.h>
+      
+      /* 简化的 futex 互斥锁 */
+      typedef struct {
+          atomic_int state;  /* 0=unlocked, 1=locked, 2=contended */
+      } futex_mutex_t;
+      
+      static int futex_wait(int *uaddr, int val) {
+          return syscall(SYS_futex, uaddr, FUTEX_WAIT, val, NULL, NULL, 0);
+      }
+      
+      static int futex_wake(int *uaddr, int n) {
+          return syscall(SYS_futex, uaddr, FUTEX_WAKE, n, NULL, NULL, 0);
+      }
+      
+      void futex_mutex_lock(futex_mutex_t *m) {
+          int c = 0;
+          /* 尝试从 0 -> 1 (无竞争获取) */
+          if (atomic_compare_exchange_strong(&m->state, &c, 1))
+              return;
+          
+          /* 有竞争，进入慢路径 */
+          if (c != 2)
+              c = atomic_exchange(&m->state, 2);
+          
+          while (c != 0) {
+              futex_wait((int *)&m->state, 2);
+              c = atomic_exchange(&m->state, 2);
+          }
+      }
+      
+      void futex_mutex_unlock(futex_mutex_t *m) {
+          /* 从 1 -> 0 (无竞争释放) 或从 2 -> 0 (有等待者) */
+          if (atomic_fetch_sub(&m->state, 1) != 1) {
+              atomic_store(&m->state, 0);
+              futex_wake((int *)&m->state, 1);
+          }
+      }
+
+  - description: "timerfd 周期定时器"
+    kernel_version: "2.6.25+"
+    code: |
+      #include <sys/timerfd.h>
+      #include <unistd.h>
+      #include <stdint.h>
+      #include <stdio.h>
+      #include <time.h>
+      
+      int main() {
+          /* 创建 timerfd */
+          int tfd = timerfd_create(CLOCK_MONOTONIC, 0);
+          if (tfd < 0) {
+              perror("timerfd_create");
+              return 1;
+          }
+          
+          /* 设置 1 秒后开始，每 500ms 触发一次 */
+          struct itimerspec its = {
+              .it_value = { .tv_sec = 1, .tv_nsec = 0 },
+              .it_interval = { .tv_sec = 0, .tv_nsec = 500000000 }
+          };
+          
+          if (timerfd_settime(tfd, 0, &its, NULL) < 0) {
+              perror("timerfd_settime");
+              return 1;
+          }
+          
+          /* 读取定时器过期 */
+          for (int i = 0; i < 10; i++) {
+              uint64_t expirations;
+              read(tfd, &expirations, sizeof(expirations));
+              
+              struct timespec now;
+              clock_gettime(CLOCK_MONOTONIC, &now);
+              printf("Timer expired %lu times at %ld.%09ld\n",
+                     expirations, now.tv_sec, now.tv_nsec);
+          }
+          
+          close(tfd);
+          return 0;
+      }

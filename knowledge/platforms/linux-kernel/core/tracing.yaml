@@ -6,329 +6,2093 @@
 # ============================================================
 
 ftrace:
-  description: "Function Tracer Framework"
+  description: "Function Tracer Framework - 内核函数追踪框架"
   header: "linux/ftrace.h"
   icon: "📊"
+  kernel_version: "2.6.27+"
+
+  context:
+    type: "atomic"
+    can_sleep: false
+    preemptible: false
 
   tracers:
+    - name: "nop"
+      description: "空追踪器 (禁用追踪)"
     - name: "function"
       description: "函数调用追踪"
     - name: "function_graph"
-      description: "函数调用图（含返回）"
+      description: "函数调用图 (含返回和耗时)"
     - name: "blk"
       description: "块设备 I/O 追踪"
     - name: "wakeup"
       description: "唤醒延迟追踪"
     - name: "wakeup_rt"
       description: "实时任务唤醒延迟"
+    - name: "wakeup_dl"
+      description: "deadline 任务唤醒延迟"
     - name: "irqsoff"
       description: "中断关闭时间追踪"
     - name: "preemptoff"
       description: "抢占关闭时间追踪"
+    - name: "preemptirqsoff"
+      description: "抢占和中断关闭时间"
+    - name: "mmiotrace"
+      description: "MMIO 访问追踪"
+    - name: "branch"
+      description: "分支预测追踪"
+    - name: "hwlat"
+      description: "硬件延迟检测"
 
   debugfs_interface:
-    - path: "/sys/kernel/debug/tracing/"
-      files:
-        - "available_tracers"
-        - "current_tracer"
-        - "trace"
-        - "trace_pipe"
-        - "tracing_on"
-        - "set_ftrace_filter"
-        - "set_ftrace_notrace"
-        - "set_graph_function"
-        - "available_filter_functions"
+    base_path: "/sys/kernel/debug/tracing/"
+    files:
+      - name: "available_tracers"
+        description: "可用追踪器列表"
+        access: "read"
+      - name: "current_tracer"
+        description: "当前使用的追踪器"
+        access: "read/write"
+      - name: "trace"
+        description: "追踪输出 (静态)"
+        access: "read"
+      - name: "trace_pipe"
+        description: "追踪输出 (流式)"
+        access: "read"
+      - name: "tracing_on"
+        description: "追踪开关 (0/1)"
+        access: "read/write"
+      - name: "trace_options"
+        description: "追踪选项"
+        access: "read/write"
+      - name: "set_ftrace_filter"
+        description: "要追踪的函数 (白名单)"
+        access: "read/write"
+      - name: "set_ftrace_notrace"
+        description: "不追踪的函数 (黑名单)"
+        access: "read/write"
+      - name: "set_graph_function"
+        description: "function_graph 追踪的函数"
+        access: "read/write"
+      - name: "set_graph_notrace"
+        description: "function_graph 不追踪的函数"
+        access: "read/write"
+      - name: "available_filter_functions"
+        description: "可过滤的函数列表"
+        access: "read"
+      - name: "available_filter_functions_addrs"
+        description: "可过滤函数的地址"
+        access: "read"
+      - name: "enabled_functions"
+        description: "已启用追踪的函数"
+        access: "read"
+      - name: "function_profile_enabled"
+        description: "函数分析开关"
+        access: "read/write"
+      - name: "max_graph_depth"
+        description: "function_graph 最大深度"
+        access: "read/write"
+      - name: "buffer_size_kb"
+        description: "追踪缓冲区大小 (KB)"
+        access: "read/write"
+      - name: "buffer_total_size_kb"
+        description: "总缓冲区大小"
+        access: "read"
+      - name: "free_buffer"
+        description: "释放缓冲区"
+        access: "write"
+      - name: "trace_marker"
+        description: "用户空间写入标记"
+        access: "write"
+      - name: "trace_marker_raw"
+        description: "原始二进制标记"
+        access: "write"
 
-  function_registration:
+  ftrace_ops_flags:
+    - name: "FTRACE_OPS_FL_ENABLED"
+      value: "1 << 0"
+      description: "已注册并启用"
+    - name: "FTRACE_OPS_FL_DYNAMIC"
+      value: "1 << 1"
+      description: "动态分配的 ops"
+    - name: "FTRACE_OPS_FL_PER_CPU"
+      value: "1 << 2"
+      description: "per-CPU 控制"
+    - name: "FTRACE_OPS_FL_SAVE_REGS"
+      value: "1 << 3"
+      description: "保存寄存器到 pt_regs"
+    - name: "FTRACE_OPS_FL_SAVE_REGS_IF_SUPPORTED"
+      value: "1 << 4"
+      description: "如果架构支持则保存寄存器"
+    - name: "FTRACE_OPS_FL_RECURSION_SAFE"
+      value: "1 << 5"
+      description: "回调自身处理递归"
+    - name: "FTRACE_OPS_FL_STUB"
+      value: "1 << 6"
+      description: "占位符 ops"
+    - name: "FTRACE_OPS_FL_INITIALIZED"
+      value: "1 << 7"
+      description: "已初始化"
+    - name: "FTRACE_OPS_FL_DELETED"
+      value: "1 << 8"
+      description: "正在删除"
+    - name: "FTRACE_OPS_FL_ADDING"
+      value: "1 << 9"
+      description: "正在添加"
+    - name: "FTRACE_OPS_FL_REMOVING"
+      value: "1 << 10"
+      description: "正在移除"
+    - name: "FTRACE_OPS_FL_MODIFYING"
+      value: "1 << 11"
+      description: "正在修改过滤器"
+    - name: "FTRACE_OPS_FL_ALLOC_TRAMP"
+      value: "1 << 12"
+      description: "动态分配 trampoline"
+    - name: "FTRACE_OPS_FL_IPMODIFY"
+      value: "1 << 13"
+      description: "可以修改 IP 寄存器"
+    - name: "FTRACE_OPS_FL_PID"
+      value: "1 << 14"
+      description: "受 set_ftrace_pid 影响"
+    - name: "FTRACE_OPS_FL_RCU"
+      value: "1 << 15"
+      description: "只在 RCU watching 时调用"
+    - name: "FTRACE_OPS_FL_TRACE_ARRAY"
+      value: "1 << 16"
+      description: "private 指向 trace_array"
+
+  structure:
+    ftrace_ops:
+      pattern: 'static struct ftrace_ops\s+(?P<name>\w+)\s*=\s*\{'
+      description: "ftrace 操作结构"
+      fields:
+        - name: "func"
+          type: "ftrace_func_t"
+          description: "函数追踪回调"
+        - name: "next"
+          type: "struct ftrace_ops *"
+          description: "ops 链表"
+        - name: "flags"
+          type: "unsigned long"
+          description: "标志位"
+        - name: "private"
+          type: "void *"
+          description: "私有数据"
+        - name: "saved_func"
+          type: "ftrace_func_t"
+          description: "保存的回调"
+        - name: "local_hash"
+          type: "struct ftrace_ops_hash"
+          description: "本地哈希表"
+        - name: "func_hash"
+          type: "struct ftrace_ops_hash *"
+          description: "函数哈希表"
+        - name: "trampoline"
+          type: "unsigned long"
+          description: "trampoline 地址"
+
+  registration:
     - pattern: 'register_ftrace_function\s*\(\s*&(?P<ops>\w+)\s*\)'
       description: "注册 ftrace 回调"
+      signature: "int register_ftrace_function(struct ftrace_ops *ops)"
+      return_value:
+        success: "0"
+        failure: "-EINVAL, -ENODEV"
+      context: "process"
+      can_sleep: true
+
     - pattern: 'unregister_ftrace_function\s*\(\s*&(?P<ops>\w+)\s*\)'
       description: "注销 ftrace 回调"
+      signature: "int unregister_ftrace_function(struct ftrace_ops *ops)"
+      context: "process"
+      can_sleep: true
 
-  ftrace_ops:
-    pattern: 'static struct ftrace_ops\s+(?P<name>\w+)'
+    - pattern: 'ftrace_set_filter\s*\(\s*&(?P<ops>\w+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<reset>\d+)\s*\)'
+      description: "设置 ftrace 过滤器"
+      signature: "int ftrace_set_filter(struct ftrace_ops *ops, unsigned char *buf, int len, int reset)"
+
+    - pattern: 'ftrace_set_notrace\s*\('
+      description: "设置 ftrace 不追踪过滤器"
+      signature: "int ftrace_set_notrace(struct ftrace_ops *ops, unsigned char *buf, int len, int reset)"
+
+  callbacks:
+    func:
+      pattern: '\.func\s*=\s*(?P<handler>\w+)'
+      description: "函数追踪回调"
+      signature: "void (*)(unsigned long ip, unsigned long parent_ip, struct ftrace_ops *op, struct ftrace_regs *regs)"
+      context: "任何上下文 (原子操作)"
+      can_sleep: false
+      parameters:
+        - name: "ip"
+          description: "被追踪函数的指令地址"
+        - name: "parent_ip"
+          description: "调用者的返回地址"
+        - name: "op"
+          description: "触发的 ftrace_ops"
+        - name: "regs"
+          description: "寄存器状态 (如果 SAVE_REGS)"
+
+  function_graph:
+    description: "函数图追踪器 - 显示调用关系和返回时间"
     callbacks:
-      func:
-        pattern: '\.func\s*=\s*(?P<handler>\w+)'
-        description: "函数追踪回调"
-        signature: "void (*)(unsigned long, unsigned long, struct ftrace_ops *, struct ftrace_regs *)"
-        context: "any (atomic)"
+      - name: "trace_func"
+        pattern: '\.trace_func\s*=\s*(?P<handler>\w+)'
+        description: "函数入口回调"
+        signature: "int (*)(struct ftrace_graph_ent *trace)"
+      - name: "retfunc"
+        pattern: '\.retfunc\s*=\s*(?P<handler>\w+)'
+        description: "函数返回回调"
+        signature: "void (*)(struct ftrace_graph_ret *trace)"
+    registration:
+      - pattern: 'register_ftrace_graph\s*\('
+        description: "注册函数图追踪"
+        signature: "int register_ftrace_graph(trace_func_graph_ret_t retfunc, trace_func_graph_ent_t entryfunc)"
+      - pattern: 'unregister_ftrace_graph\s*\('
+        description: "注销函数图追踪"
+        signature: "void unregister_ftrace_graph(void)"
+    structures:
+      - name: "ftrace_graph_ent"
+        fields:
+          - "func"
+          - "depth"
+        description: "函数入口信息"
+      - name: "ftrace_graph_ret"
+        fields:
+          - "func"
+          - "depth"
+          - "calltime"
+          - "rettime"
+        description: "函数返回信息"
+
+  call_chains:
+    ftrace_enable:
+      description: "ftrace 启用调用链"
+      trigger: "register_ftrace_function()"
+      chain:
+        - function: "register_ftrace_function"
+          file: "kernel/trace/ftrace.c"
+          description: "注册入口"
+        - function: "ftrace_startup"
+          file: "kernel/trace/ftrace.c"
+          description: "启动追踪"
+        - function: "ftrace_startup_enable"
+          file: "kernel/trace/ftrace.c"
+          description: "启用函数追踪"
+        - function: "ftrace_run_update_code"
+          file: "kernel/trace/ftrace.c"
+          description: "更新函数入口代码"
+        - function: "ftrace_modify_all_code"
+          file: "kernel/trace/ftrace.c"
+          description: "修改所有匹配函数"
+        - function: "ftrace_replace_code"
+          file: "arch/*/kernel/ftrace.c"
+          description: "架构相关代码修改"
+          is_user_entry: true
+
+    ftrace_callback:
+      description: "ftrace 回调调用链"
+      trigger: "被追踪函数执行"
+      chain:
+        - function: "被追踪函数入口 (mcount/fentry)"
+          file: "arch/*/kernel/entry*.S"
+          description: "函数入口桩"
+        - function: "ftrace_caller"
+          file: "arch/*/kernel/ftrace*.S"
+          description: "ftrace 调用者"
+        - function: "ftrace_ops_list_func"
+          file: "kernel/trace/ftrace.c"
+          description: "遍历 ops 列表"
+        - function: "ops->func()"
+          file: "用户代码"
+          description: "用户注册的回调"
+          is_user_entry: true
+
+  helper_functions:
+    - pattern: 'ftrace_enabled'
+      description: "全局 ftrace 启用标志"
+      type: "int"
+
+    - pattern: 'ftrace_kill\s*\(\s*\)'
+      description: "紧急关闭 ftrace"
+      signature: "void ftrace_kill(void)"
+
+    - pattern: 'ftrace_dump\s*\('
+      description: "转储 ftrace 缓冲区到控制台"
+      signature: "void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)"
+
+  examples:
+    - description: "注册 ftrace 回调"
+      kernel_version: "4.0+"
+      code: |
+        #include <linux/ftrace.h>
+        
+        static void my_ftrace_callback(unsigned long ip, unsigned long parent_ip,
+                                       struct ftrace_ops *op, struct ftrace_regs *regs)
+        {
+            /* ip: 被调用函数地址, parent_ip: 调用者返回地址 */
+            trace_printk("func %pS called from %pS\n",
+                         (void *)ip, (void *)parent_ip);
+        }
+        
+        static struct ftrace_ops my_ops __read_mostly = {
+            .func = my_ftrace_callback,
+            .flags = FTRACE_OPS_FL_RECURSION_SAFE,
+        };
+        
+        static int __init my_init(void)
+        {
+            int ret;
+            
+            /* 设置过滤器 (可选) */
+            ret = ftrace_set_filter(&my_ops, "schedule*", strlen("schedule*"), 0);
+            if (ret)
+                return ret;
+            
+            /* 注册回调 */
+            ret = register_ftrace_function(&my_ops);
+            return ret;
+        }
+        
+        static void __exit my_exit(void)
+        {
+            unregister_ftrace_function(&my_ops);
+        }
+
+    - description: "使用 debugfs 接口"
+      code: |
+        # 启用 function tracer
+        echo function > /sys/kernel/debug/tracing/current_tracer
+        
+        # 过滤特定函数
+        echo 'schedule*' > /sys/kernel/debug/tracing/set_ftrace_filter
+        
+        # 启用追踪
+        echo 1 > /sys/kernel/debug/tracing/tracing_on
+        
+        # 查看追踪输出
+        cat /sys/kernel/debug/tracing/trace
+        
+        # 使用 function_graph
+        echo function_graph > /sys/kernel/debug/tracing/current_tracer
+        echo do_sys_open > /sys/kernel/debug/tracing/set_graph_function
 
 # ============================================================
-# TRACEPOINTS
+# TRACEPOINTS (静态跟踪点)
 # ============================================================
 
 tracepoints:
-  description: "Static Tracepoints"
+  description: "Static Tracepoints - 内核静态跟踪点"
   header: "linux/tracepoint.h"
   icon: "📍"
+  kernel_version: "2.6.28+"
+
+  context:
+    type: "varies"
+    can_sleep: "depends on tracepoint"
 
   definition:
     - pattern: 'TRACE_EVENT\s*\(\s*(?P<name>\w+)\s*,'
-      description: "定义跟踪点事件"
+      description: "定义完整跟踪点事件 (含格式化)"
+      multiline: true
+      components:
+        - "TP_PROTO"
+        - "TP_ARGS"
+        - "TP_STRUCT__entry"
+        - "TP_fast_assign"
+        - "TP_printk"
+
     - pattern: 'DECLARE_TRACE\s*\(\s*(?P<name>\w+)\s*,'
-      description: "声明跟踪点"
+      description: "声明跟踪点 (在头文件)"
+      signature: "DECLARE_TRACE(name, proto, args)"
+
     - pattern: 'DEFINE_TRACE\s*\(\s*(?P<name>\w+)\s*\)'
-      description: "定义跟踪点"
+      description: "定义跟踪点 (在源文件)"
+      signature: "DEFINE_TRACE(name)"
+
+    - pattern: 'DEFINE_TRACE_FN\s*\(\s*(?P<name>\w+)\s*,'
+      description: "定义跟踪点 (带注册/注销回调)"
+      signature: "DEFINE_TRACE_FN(name, reg, unreg)"
+
+    - pattern: 'TRACE_EVENT_CONDITION\s*\(\s*(?P<name>\w+)\s*,'
+      description: "条件跟踪点 (带条件表达式)"
+
+    - pattern: 'TRACE_EVENT_FN\s*\(\s*(?P<name>\w+)\s*,'
+      description: "跟踪点 (带注册/注销回调)"
 
   usage:
     - pattern: 'trace_(?P<name>\w+)\s*\('
       description: "触发跟踪点"
+      signature: "void trace_<name>(args...)"
+      context: "跟踪点定义的上下文"
+
     - pattern: 'register_trace_(?P<name>\w+)\s*\('
       description: "注册跟踪点回调"
+      signature: "int register_trace_<name>(void (*probe)(void *data, args...), void *data)"
+      return_value:
+        success: "0"
+        failure: "-ENOMEM"
+
     - pattern: 'unregister_trace_(?P<name>\w+)\s*\('
       description: "注销跟踪点回调"
+      signature: "void unregister_trace_<name>(void (*probe)(void *data, args...), void *data)"
+
+    - pattern: 'tracepoint_probe_register\s*\('
+      description: "通用跟踪点注册"
+      signature: "int tracepoint_probe_register(struct tracepoint *tp, void *probe, void *data)"
+
+    - pattern: 'tracepoint_probe_unregister\s*\('
+      description: "通用跟踪点注销"
+      signature: "int tracepoint_probe_unregister(struct tracepoint *tp, void *probe, void *data)"
+
+    - pattern: 'for_each_kernel_tracepoint\s*\('
+      description: "遍历所有内核跟踪点"
+      signature: "void for_each_kernel_tracepoint(void (*fct)(struct tracepoint *tp, void *priv), void *priv)"
 
   common_tracepoints:
     sched:
-      - "sched_switch"
-      - "sched_wakeup"
-      - "sched_migrate_task"
-      - "sched_process_fork"
-      - "sched_process_exit"
-    
+      description: "调度器跟踪点"
+      header: "trace/events/sched.h"
+      points:
+        - name: "sched_switch"
+          description: "任务切换"
+          args: ["prev", "next"]
+          context: "中断禁用"
+        - name: "sched_wakeup"
+          description: "任务唤醒"
+          args: ["p"]
+        - name: "sched_wakeup_new"
+          description: "新任务唤醒 (fork)"
+          args: ["p"]
+        - name: "sched_migrate_task"
+          description: "任务迁移"
+          args: ["p", "dest_cpu"]
+        - name: "sched_process_fork"
+          description: "进程 fork"
+          args: ["parent", "child"]
+        - name: "sched_process_exit"
+          description: "进程退出"
+          args: ["p"]
+        - name: "sched_process_exec"
+          description: "进程 exec"
+          args: ["p", "pid", "filename"]
+        - name: "sched_process_wait"
+          description: "进程等待"
+          args: ["pid"]
+        - name: "sched_stat_wait"
+          description: "等待统计"
+          args: ["tsk", "delay"]
+        - name: "sched_stat_sleep"
+          description: "睡眠统计"
+          args: ["tsk", "delay"]
+        - name: "sched_stat_iowait"
+          description: "IO 等待统计"
+          args: ["tsk", "delay"]
+        - name: "sched_stat_runtime"
+          description: "运行时间统计"
+          args: ["tsk", "runtime", "vruntime"]
+
     irq:
-      - "irq_handler_entry"
-      - "irq_handler_exit"
-      - "softirq_entry"
-      - "softirq_exit"
-    
+      description: "中断跟踪点"
+      header: "trace/events/irq.h"
+      points:
+        - name: "irq_handler_entry"
+          description: "硬中断入口"
+          args: ["irq", "action"]
+          context: "hardirq"
+        - name: "irq_handler_exit"
+          description: "硬中断退出"
+          args: ["irq", "action", "ret"]
+          context: "hardirq"
+        - name: "softirq_entry"
+          description: "软中断入口"
+          args: ["vec_nr"]
+          context: "softirq"
+        - name: "softirq_exit"
+          description: "软中断退出"
+          args: ["vec_nr"]
+          context: "softirq"
+        - name: "softirq_raise"
+          description: "触发软中断"
+          args: ["vec_nr"]
+        - name: "tasklet_entry"
+          description: "tasklet 入口"
+          args: ["t", "func"]
+        - name: "tasklet_exit"
+          description: "tasklet 退出"
+          args: ["t", "func"]
+
     block:
-      - "block_rq_issue"
-      - "block_rq_complete"
-      - "block_bio_queue"
-    
+      description: "块设备跟踪点"
+      header: "trace/events/block.h"
+      points:
+        - name: "block_rq_issue"
+          description: "请求发出"
+          args: ["q", "rq"]
+        - name: "block_rq_complete"
+          description: "请求完成"
+          args: ["q", "rq", "error", "nr_bytes"]
+        - name: "block_rq_insert"
+          description: "请求插入队列"
+          args: ["q", "rq"]
+        - name: "block_bio_queue"
+          description: "bio 入队"
+          args: ["q", "bio"]
+        - name: "block_bio_complete"
+          description: "bio 完成"
+          args: ["q", "bio", "error"]
+        - name: "block_plug"
+          description: "队列塞入"
+          args: ["q"]
+        - name: "block_unplug"
+          description: "队列拔出"
+          args: ["q", "depth", "explicit"]
+
     syscalls:
-      - "sys_enter"
-      - "sys_exit"
-      - "sys_enter_<name>"
-      - "sys_exit_<name>"
+      description: "系统调用跟踪点"
+      header: "trace/events/syscalls.h"
+      points:
+        - name: "sys_enter"
+          description: "系统调用入口 (通用)"
+          args: ["regs", "id"]
+        - name: "sys_exit"
+          description: "系统调用退出 (通用)"
+          args: ["regs", "ret"]
+        - name: "sys_enter_<name>"
+          description: "特定系统调用入口"
+          args: "取决于系统调用"
+        - name: "sys_exit_<name>"
+          description: "特定系统调用退出"
+          args: "取决于系统调用"
+
+    mm:
+      description: "内存管理跟踪点"
+      header: "trace/events/kmem.h"
+      points:
+        - name: "kmalloc"
+          description: "kmalloc 分配"
+          args: ["call_site", "ptr", "bytes_req", "bytes_alloc", "gfp_flags"]
+        - name: "kfree"
+          description: "kfree 释放"
+          args: ["call_site", "ptr"]
+        - name: "kmem_cache_alloc"
+          description: "slab 分配"
+          args: ["call_site", "ptr", "bytes_req", "bytes_alloc", "gfp_flags"]
+        - name: "kmem_cache_free"
+          description: "slab 释放"
+          args: ["call_site", "ptr"]
+        - name: "mm_page_alloc"
+          description: "页分配"
+          args: ["page", "order", "gfp_flags", "migratetype"]
+        - name: "mm_page_free"
+          description: "页释放"
+          args: ["page", "order"]
+
+    workqueue:
+      description: "工作队列跟踪点"
+      header: "trace/events/workqueue.h"
+      points:
+        - name: "workqueue_queue_work"
+          description: "工作入队"
+          args: ["req_cpu", "pwq", "work"]
+        - name: "workqueue_activate_work"
+          description: "工作激活"
+          args: ["work"]
+        - name: "workqueue_execute_start"
+          description: "工作开始执行"
+          args: ["work"]
+        - name: "workqueue_execute_end"
+          description: "工作执行结束"
+          args: ["work"]
+
+    timer:
+      description: "定时器跟踪点"
+      header: "trace/events/timer.h"
+      points:
+        - name: "timer_init"
+          description: "定时器初始化"
+          args: ["timer"]
+        - name: "timer_start"
+          description: "定时器启动"
+          args: ["timer", "expires", "flags"]
+        - name: "timer_expire_entry"
+          description: "定时器到期入口"
+          args: ["timer"]
+        - name: "timer_expire_exit"
+          description: "定时器到期退出"
+          args: ["timer"]
+        - name: "timer_cancel"
+          description: "定时器取消"
+          args: ["timer"]
+        - name: "hrtimer_init"
+          description: "高精度定时器初始化"
+          args: ["hrtimer", "clockid", "mode"]
+        - name: "hrtimer_start"
+          description: "高精度定时器启动"
+          args: ["hrtimer"]
+        - name: "hrtimer_expire_entry"
+          description: "高精度定时器到期入口"
+          args: ["hrtimer", "now"]
+        - name: "hrtimer_expire_exit"
+          description: "高精度定时器到期退出"
+          args: ["hrtimer"]
+        - name: "hrtimer_cancel"
+          description: "高精度定时器取消"
+          args: ["hrtimer"]
+
+    net:
+      description: "网络跟踪点"
+      header: "trace/events/net.h"
+      points:
+        - name: "net_dev_xmit"
+          description: "网络设备发送"
+          args: ["skb", "rc", "dev", "skb_len"]
+        - name: "netif_receive_skb"
+          description: "网络设备接收"
+          args: ["skb"]
+        - name: "napi_gro_receive_entry"
+          description: "NAPI GRO 接收入口"
+          args: ["skb"]
+        - name: "napi_gro_receive_exit"
+          description: "NAPI GRO 接收退出"
+          args: ["ret"]
 
   debugfs_interface:
-    - "/sys/kernel/debug/tracing/events/"
-    - "/sys/kernel/debug/tracing/events/<subsystem>/<event>/enable"
-    - "/sys/kernel/debug/tracing/events/<subsystem>/<event>/filter"
+    base_path: "/sys/kernel/debug/tracing/events/"
+    structure:
+      - path: "<subsystem>/"
+        description: "子系统目录"
+      - path: "<subsystem>/<event>/"
+        description: "事件目录"
+      - path: "<subsystem>/<event>/enable"
+        description: "启用事件 (0/1)"
+      - path: "<subsystem>/<event>/filter"
+        description: "事件过滤器"
+      - path: "<subsystem>/<event>/format"
+        description: "事件格式说明"
+      - path: "<subsystem>/<event>/trigger"
+        description: "事件触发器"
+      - path: "<subsystem>/<event>/id"
+        description: "事件 ID"
+
+  call_chains:
+    tracepoint_trigger:
+      description: "跟踪点触发调用链"
+      trigger: "trace_<name>() 调用"
+      chain:
+        - function: "trace_<name>()"
+          file: "include/trace/events/*.h"
+          description: "跟踪点宏展开"
+        - function: "__DO_TRACE"
+          file: "include/linux/tracepoint.h"
+          description: "跟踪点核心宏"
+        - function: "rcu_read_lock_sched_notrace()"
+          file: "include/linux/tracepoint.h"
+          description: "RCU 保护"
+        - function: "it_func()"
+          file: "include/linux/tracepoint.h"
+          description: "遍历并调用所有探针"
+        - function: "my_probe()"
+          file: "用户代码"
+          description: "用户注册的探针"
+          is_user_entry: true
+
+  examples:
+    - description: "定义跟踪点"
+      code: |
+        /* include/trace/events/myevent.h */
+        #undef TRACE_SYSTEM
+        #define TRACE_SYSTEM myevent
+        
+        #if !defined(_TRACE_MYEVENT_H) || defined(TRACE_HEADER_MULTI_READ)
+        #define _TRACE_MYEVENT_H
+        
+        #include <linux/tracepoint.h>
+        
+        TRACE_EVENT(my_tracepoint,
+            /* 原型 */
+            TP_PROTO(int value, const char *name),
+            
+            /* 参数 */
+            TP_ARGS(value, name),
+            
+            /* 结构体字段 */
+            TP_STRUCT__entry(
+                __field(int, value)
+                __string(name, name)
+            ),
+            
+            /* 赋值 */
+            TP_fast_assign(
+                __entry->value = value;
+                __assign_str(name, name);
+            ),
+            
+            /* 打印格式 */
+            TP_printk("value=%d name=%s", __entry->value, __get_str(name))
+        );
+        
+        #endif /* _TRACE_MYEVENT_H */
+        
+        #include <trace/define_trace.h>
+
+    - description: "注册跟踪点探针"
+      code: |
+        #include <linux/tracepoint.h>
+        #include <trace/events/sched.h>
+        
+        static void my_sched_switch_probe(void *ignore,
+                                          bool preempt,
+                                          struct task_struct *prev,
+                                          struct task_struct *next)
+        {
+            printk(KERN_INFO "switch: %s -> %s\n",
+                   prev->comm, next->comm);
+        }
+        
+        static int __init my_init(void)
+        {
+            return register_trace_sched_switch(my_sched_switch_probe, NULL);
+        }
+        
+        static void __exit my_exit(void)
+        {
+            unregister_trace_sched_switch(my_sched_switch_probe, NULL);
+            tracepoint_synchronize_unregister();
+        }
 
 # ============================================================
-# KPROBES
+# KPROBES (动态函数探针)
 # ============================================================
 
 kprobes:
-  description: "Dynamic Function Probes"
+  description: "Dynamic Function Probes - 动态内核探针"
   header: "linux/kprobes.h"
   icon: "🔬"
+  kernel_version: "2.6.9+"
+
+  context:
+    type: "任何上下文"
+    can_sleep: false
+    preemptible: false
 
   types:
     - name: "kprobe"
       description: "函数入口探针"
+      struct: "struct kprobe"
     - name: "kretprobe"
       description: "函数返回探针"
+      struct: "struct kretprobe"
     - name: "jprobe"
-      description: "Jump probe (已废弃)"
+      description: "Jump probe (4.15 后废弃)"
+      struct: "struct jprobe"
+      deprecated: true
+
+  kprobe_status:
+    - name: "KPROBE_HIT_ACTIVE"
+      value: "0x00000001"
+      description: "探针被触发"
+    - name: "KPROBE_HIT_SS"
+      value: "0x00000002"
+      description: "单步执行中"
+    - name: "KPROBE_REENTER"
+      value: "0x00000004"
+      description: "探针重入"
+    - name: "KPROBE_HIT_SSDONE"
+      value: "0x00000008"
+      description: "单步完成"
+
+  kprobe_flags:
+    - name: "KPROBE_FLAG_GONE"
+      value: 1
+      description: "探针已移除"
+    - name: "KPROBE_FLAG_DISABLED"
+      value: 2
+      description: "探针临时禁用"
+    - name: "KPROBE_FLAG_OPTIMIZED"
+      value: 4
+      description: "探针已优化"
+    - name: "KPROBE_FLAG_FTRACE"
+      value: 8
+      description: "使用 ftrace 实现"
+
+  structure:
+    kprobe:
+      pattern: 'static struct kprobe\s+(?P<name>\w+)\s*=\s*\{'
+      description: "kprobe 结构"
+      fields:
+        - name: "symbol_name"
+          type: "const char *"
+          description: "探测的函数名"
+          pattern: '\.symbol_name\s*=\s*"(?P<name>\w+)"'
+        - name: "addr"
+          type: "kprobe_opcode_t *"
+          description: "探测地址 (与 symbol_name 互斥)"
+        - name: "offset"
+          type: "unsigned int"
+          description: "符号偏移量"
+        - name: "pre_handler"
+          type: "kprobe_pre_handler_t"
+          description: "函数执行前回调"
+          pattern: '\.pre_handler\s*=\s*(?P<handler>\w+)'
+        - name: "post_handler"
+          type: "kprobe_post_handler_t"
+          description: "函数执行后回调"
+          pattern: '\.post_handler\s*=\s*(?P<handler>\w+)'
+        - name: "fault_handler"
+          type: "kprobe_fault_handler_t"
+          description: "故障处理回调"
+          pattern: '\.fault_handler\s*=\s*(?P<handler>\w+)'
+        - name: "flags"
+          type: "u32"
+          description: "标志位"
+
+    kretprobe:
+      pattern: 'static struct kretprobe\s+(?P<name>\w+)\s*=\s*\{'
+      description: "kretprobe 结构"
+      fields:
+        - name: "kp"
+          type: "struct kprobe"
+          description: "嵌入的 kprobe"
+        - name: "handler"
+          type: "kretprobe_handler_t"
+          description: "返回处理回调"
+          pattern: '\.handler\s*=\s*(?P<handler>\w+)'
+        - name: "entry_handler"
+          type: "kretprobe_handler_t"
+          description: "入口处理回调 (可选)"
+          pattern: '\.entry_handler\s*=\s*(?P<handler>\w+)'
+        - name: "maxactive"
+          type: "int"
+          description: "最大并发实例数"
+        - name: "nmissed"
+          type: "int"
+          description: "错过的调用计数"
+        - name: "data_size"
+          type: "size_t"
+          description: "每实例私有数据大小"
 
   registration:
     - pattern: 'register_kprobe\s*\(\s*&(?P<probe>\w+)\s*\)'
       description: "注册 kprobe"
+      signature: "int register_kprobe(struct kprobe *p)"
+      return_value:
+        success: "0"
+        failure: "-EINVAL, -ENOENT, -EEXIST"
+      context: "process"
+      can_sleep: true
+
     - pattern: 'unregister_kprobe\s*\(\s*&(?P<probe>\w+)\s*\)'
       description: "注销 kprobe"
+      signature: "void unregister_kprobe(struct kprobe *p)"
+      context: "process"
+      can_sleep: true
+
     - pattern: 'register_kretprobe\s*\(\s*&(?P<probe>\w+)\s*\)'
       description: "注册 kretprobe"
+      signature: "int register_kretprobe(struct kretprobe *rp)"
+      return_value:
+        success: "0"
+        failure: "-EINVAL, -ENOENT, -ENOMEM"
 
-  kprobe_struct:
-    pattern: 'static struct kprobe\s+(?P<name>\w+)'
-    fields:
-      - name: "symbol_name"
-        description: "探测的函数名"
-      - name: "pre_handler"
-        description: "函数执行前回调"
-      - name: "post_handler"
-        description: "函数执行后回调"
-      - name: "fault_handler"
-        description: "故障处理回调"
+    - pattern: 'unregister_kretprobe\s*\(\s*&(?P<probe>\w+)\s*\)'
+      description: "注销 kretprobe"
+      signature: "void unregister_kretprobe(struct kretprobe *rp)"
+
+    - pattern: 'register_kprobes\s*\('
+      description: "批量注册 kprobe"
+      signature: "int register_kprobes(struct kprobe **kps, int num)"
+
+    - pattern: 'unregister_kprobes\s*\('
+      description: "批量注销 kprobe"
+      signature: "void unregister_kprobes(struct kprobe **kps, int num)"
+
+    - pattern: 'enable_kprobe\s*\('
+      description: "启用已禁用的 kprobe"
+      signature: "int enable_kprobe(struct kprobe *kp)"
+
+    - pattern: 'disable_kprobe\s*\('
+      description: "禁用 kprobe (不移除)"
+      signature: "int disable_kprobe(struct kprobe *kp)"
 
   callbacks:
     pre_handler:
       pattern: '\.pre_handler\s*=\s*(?P<handler>\w+)'
       description: "函数入口回调"
-      signature: "int (*)(struct kprobe *, struct pt_regs *)"
+      signature: "int (*)(struct kprobe *p, struct pt_regs *regs)"
       context: "任何上下文，需要原子操作"
       can_sleep: false
+      parameters:
+        - name: "p"
+          description: "触发的 kprobe 结构"
+        - name: "regs"
+          description: "寄存器状态"
+      return_value:
+        normal: "0 - 继续正常执行"
+        skip: "1 - 跳过被探测函数 (需要 IPMODIFY)"
 
     post_handler:
       pattern: '\.post_handler\s*=\s*(?P<handler>\w+)'
       description: "函数执行后回调"
-      signature: "void (*)(struct kprobe *, struct pt_regs *, unsigned long)"
+      signature: "void (*)(struct kprobe *p, struct pt_regs *regs, unsigned long flags)"
+      context: "任何上下文"
+      can_sleep: false
+      parameters:
+        - name: "p"
+          description: "触发的 kprobe 结构"
+        - name: "regs"
+          description: "寄存器状态 (函数返回后)"
+        - name: "flags"
+          description: "标志位"
+
+    fault_handler:
+      pattern: '\.fault_handler\s*=\s*(?P<handler>\w+)'
+      description: "故障处理回调"
+      signature: "int (*)(struct kprobe *p, struct pt_regs *regs, int trapnr)"
+      context: "fault 上下文"
+      can_sleep: false
+      return_value:
+        handled: "1 - 故障已处理"
+        not_handled: "0 - 让内核处理故障"
+
+    kretprobe_handler:
+      pattern: '\.handler\s*=\s*(?P<handler>\w+)'
+      description: "函数返回回调"
+      signature: "int (*)(struct kretprobe_instance *ri, struct pt_regs *regs)"
+      context: "任何上下文"
+      can_sleep: false
+      parameters:
+        - name: "ri"
+          description: "kretprobe 实例"
+        - name: "regs"
+          description: "寄存器状态"
 
   debugfs:
-    - "/sys/kernel/debug/kprobes/list"
-    - "/sys/kernel/debug/kprobes/enabled"
+    - path: "/sys/kernel/debug/kprobes/list"
+      description: "已注册的 kprobes 列表"
+    - path: "/sys/kernel/debug/kprobes/enabled"
+      description: "kprobes 全局开关"
+    - path: "/sys/kernel/debug/kprobes/blacklist"
+      description: "不可探测的函数"
+
+  call_chains:
+    kprobe_trigger:
+      description: "kprobe 触发调用链"
+      trigger: "执行被探测函数"
+      chain:
+        - function: "被探测函数入口"
+          file: "任意内核代码"
+          description: "触发断点异常"
+        - function: "int3/brk 异常处理"
+          file: "arch/*/kernel/traps.c"
+          description: "架构异常处理"
+        - function: "kprobe_handler"
+          file: "arch/*/kernel/kprobes.c"
+          description: "kprobe 处理入口"
+        - function: "kprobe_pre_handler"
+          file: "arch/*/kernel/kprobes.c"
+          description: "调用 pre_handler"
+        - function: "user_pre_handler()"
+          file: "用户代码"
+          description: "用户 pre_handler"
+          is_user_entry: true
+        - function: "单步执行原指令"
+          file: "arch/*/kernel/kprobes.c"
+          description: "执行被替换的指令"
+        - function: "post_kprobe_handler"
+          file: "arch/*/kernel/kprobes.c"
+          description: "调用 post_handler"
+        - function: "user_post_handler()"
+          file: "用户代码"
+          description: "用户 post_handler"
+          is_user_entry: true
+
+    kretprobe_trigger:
+      description: "kretprobe 触发调用链"
+      trigger: "被探测函数返回"
+      chain:
+        - function: "被探测函数"
+          description: "函数执行"
+        - function: "trampoline"
+          file: "arch/*/kernel/kprobes.c"
+          description: "kretprobe trampoline"
+        - function: "trampoline_handler"
+          file: "arch/*/kernel/kprobes.c"
+          description: "trampoline 处理"
+        - function: "kretprobe_handler()"
+          file: "用户代码"
+          description: "用户返回处理"
+          is_user_entry: true
+        - function: "返回原调用点"
+          description: "继续执行"
+
+  helper_functions:
+    - pattern: 'kprobe_running\s*\(\s*\)'
+      description: "检查是否在 kprobe 上下文"
+      signature: "int kprobe_running(void)"
+
+    - pattern: 'kprobe_flush_task\s*\('
+      description: "刷新任务的 kretprobe 实例"
+      signature: "void kprobe_flush_task(struct task_struct *tk)"
+
+    - pattern: 'kprobe_get_kallsym\s*\('
+      description: "获取符号地址"
+      signature: "void *kprobe_get_kallsym(const char *name)"
+
+  examples:
+    - description: "简单 kprobe 示例"
+      kernel_version: "2.6.9+"
+      code: |
+        #include <linux/kprobes.h>
+        
+        static int handler_pre(struct kprobe *p, struct pt_regs *regs)
+        {
+            pr_info("pre_handler: p->addr = %pS, ip = %lx, flags = 0x%lx\n",
+                    p->addr, regs->ip, regs->flags);
+            /* 返回 0 继续执行被探测函数 */
+            return 0;
+        }
+        
+        static void handler_post(struct kprobe *p, struct pt_regs *regs,
+                                 unsigned long flags)
+        {
+            pr_info("post_handler: p->addr = %pS, flags = 0x%lx\n",
+                    p->addr, flags);
+        }
+        
+        static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr)
+        {
+            pr_info("fault_handler: p->addr = %pS, trap #%d\n", p->addr, trapnr);
+            /* 返回 0 让内核处理故障 */
+            return 0;
+        }
+        
+        static struct kprobe kp = {
+            .symbol_name = "do_sys_open",
+            .pre_handler = handler_pre,
+            .post_handler = handler_post,
+            .fault_handler = handler_fault,
+        };
+        
+        static int __init kprobe_init(void)
+        {
+            int ret = register_kprobe(&kp);
+            if (ret < 0) {
+                pr_err("register_kprobe failed, returned %d\n", ret);
+                return ret;
+            }
+            pr_info("Planted kprobe at %pS\n", kp.addr);
+            return 0;
+        }
+        
+        static void __exit kprobe_exit(void)
+        {
+            unregister_kprobe(&kp);
+            pr_info("kprobe at %pS unregistered\n", kp.addr);
+        }
+
+    - description: "kretprobe 示例"
+      code: |
+        #include <linux/kprobes.h>
+        
+        static int ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+        {
+            int retval = regs_return_value(regs);
+            pr_info("do_sys_open returned %d\n", retval);
+            return 0;
+        }
+        
+        static int entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
+        {
+            pr_info("do_sys_open called\n");
+            return 0;
+        }
+        
+        static struct kretprobe my_kretprobe = {
+            .handler = ret_handler,
+            .entry_handler = entry_handler,
+            .maxactive = 20,  /* 最大并发 */
+            .kp.symbol_name = "do_sys_open",
+        };
+        
+        static int __init kretprobe_init(void)
+        {
+            int ret = register_kretprobe(&my_kretprobe);
+            if (ret < 0) {
+                pr_err("register_kretprobe failed, returned %d\n", ret);
+                return ret;
+            }
+            pr_info("Planted kretprobe at %pS\n", my_kretprobe.kp.addr);
+            return 0;
+        }
+        
+        static void __exit kretprobe_exit(void)
+        {
+            unregister_kretprobe(&my_kretprobe);
+            pr_info("kretprobe at %pS unregistered, missed %d\n",
+                    my_kretprobe.kp.addr, my_kretprobe.nmissed);
+        }
 
 # ============================================================
-# PERF EVENTS
+# PERF EVENTS (性能监控事件)
 # ============================================================
 
 perf_events:
-  description: "Performance Monitoring Events"
+  description: "Performance Monitoring Events - 性能计数器和事件采样"
   header: "linux/perf_event.h"
   icon: "📈"
+  kernel_version: "2.6.31+"
+
+  context:
+    type: "varies"
+    can_sleep: "depends on context"
 
   event_types:
     - name: "PERF_TYPE_HARDWARE"
-      description: "CPU 硬件事件 (cycles, cache misses)"
+      value: 0
+      description: "CPU 硬件事件"
+      events:
+        - "PERF_COUNT_HW_CPU_CYCLES"
+        - "PERF_COUNT_HW_INSTRUCTIONS"
+        - "PERF_COUNT_HW_CACHE_REFERENCES"
+        - "PERF_COUNT_HW_CACHE_MISSES"
+        - "PERF_COUNT_HW_BRANCH_INSTRUCTIONS"
+        - "PERF_COUNT_HW_BRANCH_MISSES"
+        - "PERF_COUNT_HW_BUS_CYCLES"
+        - "PERF_COUNT_HW_STALLED_CYCLES_FRONTEND"
+        - "PERF_COUNT_HW_STALLED_CYCLES_BACKEND"
+        - "PERF_COUNT_HW_REF_CPU_CYCLES"
+
     - name: "PERF_TYPE_SOFTWARE"
-      description: "软件事件 (page faults, context switches)"
+      value: 1
+      description: "软件事件"
+      events:
+        - "PERF_COUNT_SW_CPU_CLOCK"
+        - "PERF_COUNT_SW_TASK_CLOCK"
+        - "PERF_COUNT_SW_PAGE_FAULTS"
+        - "PERF_COUNT_SW_CONTEXT_SWITCHES"
+        - "PERF_COUNT_SW_CPU_MIGRATIONS"
+        - "PERF_COUNT_SW_PAGE_FAULTS_MIN"
+        - "PERF_COUNT_SW_PAGE_FAULTS_MAJ"
+        - "PERF_COUNT_SW_ALIGNMENT_FAULTS"
+        - "PERF_COUNT_SW_EMULATION_FAULTS"
+        - "PERF_COUNT_SW_DUMMY"
+
     - name: "PERF_TYPE_TRACEPOINT"
+      value: 2
       description: "内核跟踪点"
+
+    - name: "PERF_TYPE_HW_CACHE"
+      value: 3
+      description: "硬件缓存事件"
+
     - name: "PERF_TYPE_RAW"
-      description: "原始 PMU 事件"
+      value: 4
+      description: "原始 PMU 事件代码"
 
-  hardware_events:
-    - "PERF_COUNT_HW_CPU_CYCLES"
-    - "PERF_COUNT_HW_INSTRUCTIONS"
-    - "PERF_COUNT_HW_CACHE_REFERENCES"
-    - "PERF_COUNT_HW_CACHE_MISSES"
-    - "PERF_COUNT_HW_BRANCH_INSTRUCTIONS"
-    - "PERF_COUNT_HW_BRANCH_MISSES"
+    - name: "PERF_TYPE_BREAKPOINT"
+      value: 5
+      description: "硬件断点"
 
-  software_events:
-    - "PERF_COUNT_SW_CPU_CLOCK"
-    - "PERF_COUNT_SW_TASK_CLOCK"
-    - "PERF_COUNT_SW_PAGE_FAULTS"
-    - "PERF_COUNT_SW_CONTEXT_SWITCHES"
+  perf_event_attr:
+    description: "perf_event_open 系统调用参数"
+    fields:
+      - name: "type"
+        type: "__u32"
+        description: "事件类型"
+      - name: "size"
+        type: "__u32"
+        description: "结构大小"
+      - name: "config"
+        type: "__u64"
+        description: "事件配置"
+      - name: "sample_period / sample_freq"
+        type: "__u64"
+        description: "采样周期或频率"
+      - name: "sample_type"
+        type: "__u64"
+        description: "采样数据类型"
+      - name: "read_format"
+        type: "__u64"
+        description: "读取格式"
+      - name: "disabled"
+        type: "__u64 : 1"
+        description: "创建时禁用"
+      - name: "inherit"
+        type: "__u64 : 1"
+        description: "子进程继承"
+      - name: "pinned"
+        type: "__u64 : 1"
+        description: "固定在 PMU"
+      - name: "exclusive"
+        type: "__u64 : 1"
+        description: "独占计数器"
+      - name: "exclude_user"
+        type: "__u64 : 1"
+        description: "排除用户空间"
+      - name: "exclude_kernel"
+        type: "__u64 : 1"
+        description: "排除内核"
+      - name: "exclude_hv"
+        type: "__u64 : 1"
+        description: "排除 hypervisor"
+      - name: "exclude_idle"
+        type: "__u64 : 1"
+        description: "排除 idle"
+      - name: "mmap"
+        type: "__u64 : 1"
+        description: "记录 mmap 事件"
+      - name: "comm"
+        type: "__u64 : 1"
+        description: "记录进程名变更"
+      - name: "freq"
+        type: "__u64 : 1"
+        description: "使用频率而非周期"
+      - name: "inherit_stat"
+        type: "__u64 : 1"
+        description: "继承统计"
+      - name: "enable_on_exec"
+        type: "__u64 : 1"
+        description: "exec 时启用"
+      - name: "task"
+        type: "__u64 : 1"
+        description: "记录 fork/exit"
+      - name: "watermark"
+        type: "__u64 : 1"
+        description: "使用 wakeup_watermark"
+      - name: "wakeup_events / wakeup_watermark"
+        type: "__u32"
+        description: "唤醒阈值"
+
+  sample_type_bits:
+    - name: "PERF_SAMPLE_IP"
+      description: "指令地址"
+    - name: "PERF_SAMPLE_TID"
+      description: "线程 ID"
+    - name: "PERF_SAMPLE_TIME"
+      description: "时间戳"
+    - name: "PERF_SAMPLE_ADDR"
+      description: "数据地址"
+    - name: "PERF_SAMPLE_READ"
+      description: "计数器值"
+    - name: "PERF_SAMPLE_CALLCHAIN"
+      description: "调用栈"
+    - name: "PERF_SAMPLE_ID"
+      description: "事件 ID"
+    - name: "PERF_SAMPLE_CPU"
+      description: "CPU 编号"
+    - name: "PERF_SAMPLE_PERIOD"
+      description: "采样周期"
+    - name: "PERF_SAMPLE_STREAM_ID"
+      description: "流 ID"
+    - name: "PERF_SAMPLE_RAW"
+      description: "原始数据"
+    - name: "PERF_SAMPLE_BRANCH_STACK"
+      description: "分支栈"
+    - name: "PERF_SAMPLE_REGS_USER"
+      description: "用户寄存器"
+    - name: "PERF_SAMPLE_STACK_USER"
+      description: "用户栈"
+    - name: "PERF_SAMPLE_WEIGHT"
+      description: "权重/延迟"
+    - name: "PERF_SAMPLE_DATA_SRC"
+      description: "数据源"
 
   kernel_api:
     - pattern: 'perf_event_create_kernel_counter\s*\('
       description: "创建内核 perf 计数器"
+      signature: "struct perf_event *perf_event_create_kernel_counter(struct perf_event_attr *attr, int cpu, struct task_struct *task, perf_overflow_handler_t callback, void *context)"
+      return_value: "perf_event 指针或 ERR_PTR"
+
     - pattern: 'perf_event_release_kernel\s*\('
       description: "释放内核 perf 计数器"
+      signature: "void perf_event_release_kernel(struct perf_event *event)"
+
+    - pattern: 'perf_event_read_value\s*\('
+      description: "读取计数器值"
+      signature: "u64 perf_event_read_value(struct perf_event *event, u64 *enabled, u64 *running)"
+
+    - pattern: 'perf_event_enable\s*\('
+      description: "启用事件"
+      signature: "void perf_event_enable(struct perf_event *event)"
+
+    - pattern: 'perf_event_disable\s*\('
+      description: "禁用事件"
+      signature: "void perf_event_disable(struct perf_event *event)"
+
+    - pattern: 'perf_event_reset\s*\('
+      description: "重置计数器"
+      signature: "void perf_event_reset(struct perf_event *event)"
+
+    - pattern: 'perf_event_refresh\s*\('
+      description: "刷新计数器"
+      signature: "void perf_event_refresh(struct perf_event *event, int refresh)"
 
   pmu_registration:
-    - pattern: 'perf_pmu_register\s*\(\s*&(?P<pmu>\w+)\s*,'
+    - pattern: 'perf_pmu_register\s*\(\s*&(?P<pmu>\w+)\s*,\s*"(?P<name>[^"]+)"\s*,\s*(?P<type>\w+)\s*\)'
       description: "注册 PMU"
+      signature: "int perf_pmu_register(struct pmu *pmu, const char *name, int type)"
+      return_value:
+        success: "0"
+        failure: "-EINVAL, -ENOMEM"
+
     - pattern: 'perf_pmu_unregister\s*\(\s*&(?P<pmu>\w+)\s*\)'
       description: "注销 PMU"
+      signature: "void perf_pmu_unregister(struct pmu *pmu)"
+
+  pmu_structure:
+    pattern: 'static struct pmu\s+(?P<name>\w+)\s*=\s*\{'
+    description: "PMU 结构定义"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "PMU 名称"
+      - name: "type"
+        type: "int"
+        description: "PMU 类型"
+      - name: "capabilities"
+        type: "int"
+        description: "PMU 能力标志"
+      - name: "task_ctx_nr"
+        type: "int"
+        description: "任务上下文编号"
+      - name: "hrtimer_interval_ms"
+        type: "int"
+        description: "高精度定时器间隔"
+      - name: "nr_addr_filters"
+        type: "unsigned int"
+        description: "地址过滤器数量"
 
   pmu_callbacks:
+    pmu_enable:
+      pattern: '\.pmu_enable\s*=\s*(?P<handler>\w+)'
+      description: "启用 PMU"
+      signature: "void (*)(struct pmu *pmu)"
+      context: "process"
+      optional: true
+
+    pmu_disable:
+      pattern: '\.pmu_disable\s*=\s*(?P<handler>\w+)'
+      description: "禁用 PMU"
+      signature: "void (*)(struct pmu *pmu)"
+      context: "process"
+      optional: true
+
     event_init:
       pattern: '\.event_init\s*=\s*(?P<handler>\w+)'
-      description: "事件初始化"
+      description: "初始化事件"
+      signature: "int (*)(struct perf_event *event)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        not_for_this_pmu: "-ENOENT"
+        invalid: "-EINVAL"
 
     add:
       pattern: '\.add\s*=\s*(?P<handler>\w+)'
-      description: "启用事件"
+      description: "添加/调度事件到 PMU"
+      signature: "int (*)(struct perf_event *event, int flags)"
+      context: "中断禁用"
+      can_sleep: false
+      flags: "PERF_EF_START"
+      return_value:
+        success: "0"
+        failure: "-EAGAIN, -EBUSY"
 
     del:
       pattern: '\.del\s*=\s*(?P<handler>\w+)'
-      description: "禁用事件"
+      description: "从 PMU 移除事件"
+      signature: "void (*)(struct perf_event *event, int flags)"
+      context: "中断禁用"
+      can_sleep: false
+      flags: "PERF_EF_UPDATE"
 
     start:
       pattern: '\.start\s*=\s*(?P<handler>\w+)'
       description: "开始计数"
+      signature: "void (*)(struct perf_event *event, int flags)"
+      context: "中断禁用或 NMI"
+      can_sleep: false
+      flags: "PERF_EF_RELOAD"
 
     stop:
       pattern: '\.stop\s*=\s*(?P<handler>\w+)'
       description: "停止计数"
+      signature: "void (*)(struct perf_event *event, int flags)"
+      context: "中断禁用或 NMI"
+      can_sleep: false
+      flags: "PERF_EF_UPDATE"
 
     read:
       pattern: '\.read\s*=\s*(?P<handler>\w+)'
       description: "读取计数值"
+      signature: "void (*)(struct perf_event *event)"
+      context: "中断禁用"
+      can_sleep: false
+
+    start_txn:
+      pattern: '\.start_txn\s*=\s*(?P<handler>\w+)'
+      description: "开始事务"
+      signature: "void (*)(struct pmu *pmu, unsigned int txn_flags)"
+      optional: true
+
+    commit_txn:
+      pattern: '\.commit_txn\s*=\s*(?P<handler>\w+)'
+      description: "提交事务"
+      signature: "int (*)(struct pmu *pmu)"
+      optional: true
+
+    cancel_txn:
+      pattern: '\.cancel_txn\s*=\s*(?P<handler>\w+)'
+      description: "取消事务"
+      signature: "void (*)(struct pmu *pmu)"
+      optional: true
+
+    event_idx:
+      pattern: '\.event_idx\s*=\s*(?P<handler>\w+)'
+      description: "获取事件索引"
+      signature: "int (*)(struct perf_event *event)"
+      optional: true
+
+  pmu_capabilities:
+    - name: "PERF_PMU_CAP_NO_INTERRUPT"
+      description: "PMU 不产生中断"
+    - name: "PERF_PMU_CAP_NO_NMI"
+      description: "不使用 NMI"
+    - name: "PERF_PMU_CAP_AUX_NO_SG"
+      description: "AUX 不支持 scatter-gather"
+    - name: "PERF_PMU_CAP_AUX_SW_DOUBLEBUF"
+      description: "AUX 软件双缓冲"
+    - name: "PERF_PMU_CAP_EXCLUSIVE"
+      description: "独占计数器"
+    - name: "PERF_PMU_CAP_ITRACE"
+      description: "指令追踪"
+    - name: "PERF_PMU_CAP_HETEROGENEOUS_CPUS"
+      description: "异构 CPU"
+
+  call_chains:
+    perf_event_sampling:
+      description: "perf 事件采样调用链"
+      trigger: "计数器溢出"
+      chain:
+        - function: "PMU 中断 (PMI)"
+          file: "arch/*/kernel/cpu/perf_event*.c"
+          description: "性能监控中断"
+          context: "NMI 或 IRQ"
+        - function: "perf_event_overflow"
+          file: "kernel/events/core.c"
+          description: "溢出处理"
+        - function: "__perf_event_overflow"
+          file: "kernel/events/core.c"
+          description: "内部溢出处理"
+        - function: "perf_swevent_event"
+          file: "kernel/events/core.c"
+          description: "软件事件处理"
+        - function: "perf_event_output"
+          file: "kernel/events/core.c"
+          description: "输出采样数据"
+        - function: "用户 overflow_handler"
+          file: "用户代码"
+          description: "用户溢出回调"
+          is_user_entry: true
+
+    perf_event_open:
+      description: "perf_event_open 系统调用链"
+      trigger: "perf_event_open()"
+      chain:
+        - function: "sys_perf_event_open"
+          file: "kernel/events/core.c"
+          description: "系统调用入口"
+        - function: "perf_event_alloc"
+          file: "kernel/events/core.c"
+          description: "分配事件"
+        - function: "pmu->event_init()"
+          file: "PMU 实现"
+          description: "PMU 初始化事件"
+          is_user_entry: true
+        - function: "perf_install_in_context"
+          file: "kernel/events/core.c"
+          description: "安装到上下文"
+        - function: "返回文件描述符"
+          description: "完成"
+
+  examples:
+    - description: "内核 perf 计数器"
+      code: |
+        #include <linux/perf_event.h>
+        
+        static struct perf_event *my_event;
+        
+        static void my_overflow_handler(struct perf_event *event,
+                                        struct perf_sample_data *data,
+                                        struct pt_regs *regs)
+        {
+            u64 count = perf_event_read_value(event, NULL, NULL);
+            pr_info("overflow: count=%llu ip=%pS\n", count, (void *)regs->ip);
+        }
+        
+        static int __init my_init(void)
+        {
+            struct perf_event_attr attr = {
+                .type = PERF_TYPE_HARDWARE,
+                .config = PERF_COUNT_HW_CPU_CYCLES,
+                .size = sizeof(attr),
+                .sample_period = 1000000,  /* 每 100 万周期采样 */
+                .pinned = 1,
+            };
+            
+            my_event = perf_event_create_kernel_counter(&attr,
+                                                        -1,  /* 当前 CPU */
+                                                        NULL,  /* 所有进程 */
+                                                        my_overflow_handler,
+                                                        NULL);
+            if (IS_ERR(my_event)) {
+                pr_err("Failed to create perf event: %ld\n", PTR_ERR(my_event));
+                return PTR_ERR(my_event);
+            }
+            
+            perf_event_enable(my_event);
+            return 0;
+        }
+        
+        static void __exit my_exit(void)
+        {
+            perf_event_disable(my_event);
+            perf_event_release_kernel(my_event);
+        }
+
+    - description: "自定义 PMU"
+      code: |
+        #include <linux/perf_event.h>
+        
+        static int my_pmu_event_init(struct perf_event *event)
+        {
+            if (event->attr.type != my_pmu.type)
+                return -ENOENT;
+            /* 验证配置 */
+            return 0;
+        }
+        
+        static int my_pmu_add(struct perf_event *event, int flags)
+        {
+            /* 调度事件到硬件 */
+            if (flags & PERF_EF_START)
+                my_pmu_start(event, PERF_EF_RELOAD);
+            return 0;
+        }
+        
+        static void my_pmu_del(struct perf_event *event, int flags)
+        {
+            my_pmu_stop(event, PERF_EF_UPDATE);
+        }
+        
+        static void my_pmu_start(struct perf_event *event, int flags)
+        {
+            /* 启动硬件计数器 */
+        }
+        
+        static void my_pmu_stop(struct perf_event *event, int flags)
+        {
+            /* 停止硬件计数器 */
+            if (flags & PERF_EF_UPDATE)
+                my_pmu_read(event);
+        }
+        
+        static void my_pmu_read(struct perf_event *event)
+        {
+            /* 读取硬件计数器 */
+            u64 val = read_hw_counter();
+            local64_set(&event->count, val);
+        }
+        
+        static struct pmu my_pmu = {
+            .name = "my_pmu",
+            .event_init = my_pmu_event_init,
+            .add = my_pmu_add,
+            .del = my_pmu_del,
+            .start = my_pmu_start,
+            .stop = my_pmu_stop,
+            .read = my_pmu_read,
+        };
 
 # ============================================================
-# BPF TRACING
+# BPF TRACING (eBPF 追踪)
 # ============================================================
 
 bpf_tracing:
-  description: "eBPF Tracing"
+  description: "eBPF Tracing - 扩展 BPF 追踪"
   header: "linux/bpf.h"
   icon: "🐝"
+  kernel_version: "4.1+"
+
+  context:
+    type: "varies"
+    can_sleep: false
 
   program_types:
-    - "BPF_PROG_TYPE_KPROBE"
-    - "BPF_PROG_TYPE_TRACEPOINT"
-    - "BPF_PROG_TYPE_PERF_EVENT"
-    - "BPF_PROG_TYPE_RAW_TRACEPOINT"
-    - "BPF_PROG_TYPE_TRACING"
+    tracing:
+      - name: "BPF_PROG_TYPE_KPROBE"
+        description: "kprobe/kretprobe 追踪"
+        attach_type: "kprobe, kretprobe"
+        context: "struct pt_regs *"
+        kernel_version: "4.1+"
+
+      - name: "BPF_PROG_TYPE_TRACEPOINT"
+        description: "静态跟踪点"
+        attach_type: "tracepoint"
+        context: "跟踪点参数结构"
+        kernel_version: "4.7+"
+
+      - name: "BPF_PROG_TYPE_PERF_EVENT"
+        description: "perf 事件采样"
+        attach_type: "perf_event"
+        context: "struct bpf_perf_event_data *"
+        kernel_version: "4.9+"
+
+      - name: "BPF_PROG_TYPE_RAW_TRACEPOINT"
+        description: "原始跟踪点 (无参数处理)"
+        attach_type: "raw_tracepoint"
+        context: "struct bpf_raw_tracepoint_args *"
+        kernel_version: "4.17+"
+
+      - name: "BPF_PROG_TYPE_TRACING"
+        description: "BTF 感知追踪"
+        attach_type: "fentry/fexit/fmod_ret"
+        context: "函数参数 (CO-RE)"
+        kernel_version: "5.5+"
+
+    networking:
+      - name: "BPF_PROG_TYPE_SOCKET_FILTER"
+        description: "套接字过滤器"
+        kernel_version: "3.19+"
+
+      - name: "BPF_PROG_TYPE_SCHED_CLS"
+        description: "TC 分类器"
+        kernel_version: "4.1+"
+
+      - name: "BPF_PROG_TYPE_XDP"
+        description: "XDP (eXpress Data Path)"
+        kernel_version: "4.8+"
 
   attach_types:
-    - "BPF_TRACE_FENTRY"
-    - "BPF_TRACE_FEXIT"
-    - "BPF_TRACE_RAW_TP"
+    - name: "BPF_TRACE_FENTRY"
+      description: "函数入口 (BTF)"
+      kernel_version: "5.5+"
+    - name: "BPF_TRACE_FEXIT"
+      description: "函数退出 (BTF)"
+      kernel_version: "5.5+"
+    - name: "BPF_TRACE_RAW_TP"
+      description: "原始跟踪点"
+      kernel_version: "4.17+"
+    - name: "BPF_MODIFY_RETURN"
+      description: "修改返回值"
+      kernel_version: "5.7+"
+    - name: "BPF_LSM_MAC"
+      description: "LSM 钩子"
+      kernel_version: "5.7+"
+    - name: "BPF_TRACE_ITER"
+      description: "BPF 迭代器"
+      kernel_version: "5.8+"
 
-  helpers:
-    - "bpf_probe_read()"
-    - "bpf_probe_read_user()"
-    - "bpf_probe_read_kernel()"
-    - "bpf_get_current_pid_tgid()"
-    - "bpf_get_current_comm()"
-    - "bpf_ktime_get_ns()"
-    - "bpf_perf_event_output()"
-    - "bpf_ringbuf_output()"
+  helper_functions:
+    tracing:
+      - name: "bpf_probe_read"
+        description: "安全读取内核内存 (已废弃)"
+        signature: "int bpf_probe_read(void *dst, u32 size, const void *unsafe_ptr)"
+        deprecated: "使用 bpf_probe_read_kernel"
+
+      - name: "bpf_probe_read_kernel"
+        description: "安全读取内核内存"
+        signature: "int bpf_probe_read_kernel(void *dst, u32 size, const void *unsafe_ptr)"
+        kernel_version: "5.5+"
+
+      - name: "bpf_probe_read_user"
+        description: "安全读取用户内存"
+        signature: "int bpf_probe_read_user(void *dst, u32 size, const void *unsafe_ptr)"
+        kernel_version: "5.5+"
+
+      - name: "bpf_probe_read_kernel_str"
+        description: "安全读取内核字符串"
+        signature: "int bpf_probe_read_kernel_str(void *dst, u32 size, const void *unsafe_ptr)"
+        kernel_version: "5.5+"
+
+      - name: "bpf_probe_read_user_str"
+        description: "安全读取用户字符串"
+        signature: "int bpf_probe_read_user_str(void *dst, u32 size, const void *unsafe_ptr)"
+        kernel_version: "5.5+"
+
+      - name: "bpf_get_current_pid_tgid"
+        description: "获取当前 PID 和 TGID"
+        signature: "u64 bpf_get_current_pid_tgid(void)"
+        return: "高 32 位: TGID, 低 32 位: PID"
+
+      - name: "bpf_get_current_uid_gid"
+        description: "获取当前 UID 和 GID"
+        signature: "u64 bpf_get_current_uid_gid(void)"
+        return: "高 32 位: GID, 低 32 位: UID"
+
+      - name: "bpf_get_current_comm"
+        description: "获取当前进程名"
+        signature: "int bpf_get_current_comm(void *buf, u32 size_of_buf)"
+
+      - name: "bpf_get_current_task"
+        description: "获取当前 task_struct"
+        signature: "struct task_struct *bpf_get_current_task(void)"
+        kernel_version: "4.8+"
+
+      - name: "bpf_get_current_task_btf"
+        description: "获取当前 task_struct (BTF)"
+        signature: "struct task_struct *bpf_get_current_task_btf(void)"
+        kernel_version: "5.11+"
+
+      - name: "bpf_ktime_get_ns"
+        description: "获取当前时间 (纳秒)"
+        signature: "u64 bpf_ktime_get_ns(void)"
+
+      - name: "bpf_ktime_get_boot_ns"
+        description: "获取启动时间 (纳秒)"
+        signature: "u64 bpf_ktime_get_boot_ns(void)"
+        kernel_version: "5.7+"
+
+      - name: "bpf_get_smp_processor_id"
+        description: "获取当前 CPU ID"
+        signature: "u32 bpf_get_smp_processor_id(void)"
+
+      - name: "bpf_get_numa_node_id"
+        description: "获取 NUMA 节点 ID"
+        signature: "u32 bpf_get_numa_node_id(void)"
+        kernel_version: "4.10+"
+
+    output:
+      - name: "bpf_trace_printk"
+        description: "打印到 trace_pipe (调试用)"
+        signature: "int bpf_trace_printk(const char *fmt, u32 fmt_size, ...)"
+        note: "生产环境使用 bpf_printk 宏"
+
+      - name: "bpf_perf_event_output"
+        description: "输出到 perf buffer"
+        signature: "int bpf_perf_event_output(void *ctx, struct bpf_map *map, u64 flags, void *data, u64 size)"
+
+      - name: "bpf_ringbuf_output"
+        description: "输出到 ring buffer"
+        signature: "int bpf_ringbuf_output(void *ringbuf, void *data, u64 size, u64 flags)"
+        kernel_version: "5.8+"
+
+      - name: "bpf_ringbuf_reserve"
+        description: "预留 ring buffer 空间"
+        signature: "void *bpf_ringbuf_reserve(void *ringbuf, u64 size, u64 flags)"
+        kernel_version: "5.8+"
+
+      - name: "bpf_ringbuf_submit"
+        description: "提交 ring buffer 数据"
+        signature: "void bpf_ringbuf_submit(void *data, u64 flags)"
+        kernel_version: "5.8+"
+
+      - name: "bpf_ringbuf_discard"
+        description: "丢弃 ring buffer 数据"
+        signature: "void bpf_ringbuf_discard(void *data, u64 flags)"
+        kernel_version: "5.8+"
+
+    stack:
+      - name: "bpf_get_stackid"
+        description: "获取栈 ID"
+        signature: "int bpf_get_stackid(void *ctx, struct bpf_map *map, u64 flags)"
+
+      - name: "bpf_get_stack"
+        description: "获取栈内容"
+        signature: "int bpf_get_stack(void *ctx, void *buf, u32 size, u64 flags)"
+        kernel_version: "4.18+"
+
+    map:
+      - name: "bpf_map_lookup_elem"
+        description: "查找 map 元素"
+        signature: "void *bpf_map_lookup_elem(struct bpf_map *map, const void *key)"
+
+      - name: "bpf_map_update_elem"
+        description: "更新 map 元素"
+        signature: "int bpf_map_update_elem(struct bpf_map *map, const void *key, const void *value, u64 flags)"
+
+      - name: "bpf_map_delete_elem"
+        description: "删除 map 元素"
+        signature: "int bpf_map_delete_elem(struct bpf_map *map, const void *key)"
 
   tools:
     - name: "bpftrace"
       description: "高级 BPF 追踪语言"
+      url: "https://github.com/iovisor/bpftrace"
     - name: "bcc"
       description: "BPF Compiler Collection"
+      url: "https://github.com/iovisor/bcc"
     - name: "libbpf"
       description: "BPF 库"
+      url: "https://github.com/libbpf/libbpf"
+    - name: "bpftool"
+      description: "BPF 工具"
+      path: "tools/bpf/bpftool/"
+
+  examples:
+    - description: "bpftrace 单行追踪"
+      code: |
+        # 追踪 open 系统调用
+        bpftrace -e 'tracepoint:syscalls:sys_enter_openat { printf("%s %s\n", comm, str(args->filename)); }'
+        
+        # 追踪内核函数
+        bpftrace -e 'kprobe:do_sys_open { printf("open by %s\n", comm); }'
+        
+        # 函数返回值
+        bpftrace -e 'kretprobe:vfs_read { @bytes = hist(retval); }'
+        
+        # 调度器追踪
+        bpftrace -e 'tracepoint:sched:sched_switch { printf("%-16s -> %-16s\n", args->prev_comm, args->next_comm); }'
+
+    - description: "libbpf CO-RE 程序"
+      code: |
+        // trace.bpf.c
+        #include "vmlinux.h"
+        #include <bpf/bpf_helpers.h>
+        #include <bpf/bpf_tracing.h>
+        #include <bpf/bpf_core_read.h>
+        
+        struct event {
+            u32 pid;
+            char comm[16];
+            char filename[256];
+        };
+        
+        struct {
+            __uint(type, BPF_MAP_TYPE_RINGBUF);
+            __uint(max_entries, 256 * 1024);
+        } events SEC(".maps");
+        
+        SEC("tracepoint/syscalls/sys_enter_openat")
+        int tracepoint__syscalls__sys_enter_openat(struct trace_event_raw_sys_enter *ctx)
+        {
+            struct event *e;
+            
+            e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+            if (!e)
+                return 0;
+            
+            e->pid = bpf_get_current_pid_tgid() >> 32;
+            bpf_get_current_comm(&e->comm, sizeof(e->comm));
+            bpf_probe_read_user_str(&e->filename, sizeof(e->filename),
+                                    (const char *)ctx->args[1]);
+            
+            bpf_ringbuf_submit(e, 0);
+            return 0;
+        }
+        
+        char LICENSE[] SEC("license") = "GPL";
 
 # ============================================================
 # PRINTK / DYNAMIC DEBUG
 # ============================================================
 
 printk:
-  description: "Kernel Logging"
+  description: "Kernel Logging - 内核日志系统"
   header: "linux/printk.h"
   icon: "🖨️"
+  kernel_version: "1.0+"
 
-  levels:
+  context:
+    type: "任何上下文"
+    can_sleep: false
+
+  log_levels:
     - level: "KERN_EMERG"
-      value: 0
+      value: "0"
       description: "系统不可用"
+      pr_func: "pr_emerg()"
     - level: "KERN_ALERT"
-      value: 1
+      value: "1"
       description: "必须立即处理"
+      pr_func: "pr_alert()"
     - level: "KERN_CRIT"
-      value: 2
+      value: "2"
       description: "严重错误"
+      pr_func: "pr_crit()"
     - level: "KERN_ERR"
-      value: 3
+      value: "3"
       description: "错误"
+      pr_func: "pr_err()"
     - level: "KERN_WARNING"
-      value: 4
+      value: "4"
       description: "警告"
+      pr_func: "pr_warn()"
     - level: "KERN_NOTICE"
-      value: 5
+      value: "5"
       description: "正常但重要"
+      pr_func: "pr_notice()"
     - level: "KERN_INFO"
-      value: 6
+      value: "6"
       description: "信息"
+      pr_func: "pr_info()"
     - level: "KERN_DEBUG"
-      value: 7
+      value: "7"
       description: "调试"
+      pr_func: "pr_debug()"
+    - level: "KERN_DEFAULT"
+      value: ""
+      description: "默认级别"
+    - level: "KERN_CONT"
+      value: "c"
+      description: "续行"
+      pr_func: "pr_cont()"
 
   functions:
     - pattern: 'printk\s*\(\s*(?P<level>KERN_\w+)'
       description: "内核打印"
+      signature: "int printk(const char *fmt, ...)"
+      return_value: "打印的字符数"
+
     - pattern: 'pr_err\s*\('
       description: "打印错误"
+      level: "KERN_ERR"
+
     - pattern: 'pr_warn\s*\('
       description: "打印警告"
+      level: "KERN_WARNING"
+
     - pattern: 'pr_info\s*\('
       description: "打印信息"
+      level: "KERN_INFO"
+
     - pattern: 'pr_debug\s*\('
-      description: "打印调试（需要 DEBUG）"
+      description: "打印调试 (需要 DEBUG 或 dynamic_debug)"
+      level: "KERN_DEBUG"
+
+    - pattern: 'pr_devel\s*\('
+      description: "开发调试 (需要 DEBUG)"
+      level: "KERN_DEBUG"
+
     - pattern: 'dev_err\s*\('
       description: "设备错误打印"
+      signature: "void dev_err(const struct device *dev, const char *fmt, ...)"
+
+    - pattern: 'dev_warn\s*\('
+      description: "设备警告打印"
+      signature: "void dev_warn(const struct device *dev, const char *fmt, ...)"
+
     - pattern: 'dev_info\s*\('
       description: "设备信息打印"
+      signature: "void dev_info(const struct device *dev, const char *fmt, ...)"
+
+    - pattern: 'dev_dbg\s*\('
+      description: "设备调试打印"
+      signature: "void dev_dbg(const struct device *dev, const char *fmt, ...)"
+
+    - pattern: 'netdev_err\s*\('
+      description: "网络设备错误打印"
+      signature: "void netdev_err(const struct net_device *dev, const char *fmt, ...)"
+
+    - pattern: 'netdev_info\s*\('
+      description: "网络设备信息打印"
+      signature: "void netdev_info(const struct net_device *dev, const char *fmt, ...)"
+
+  format_specifiers:
+    - specifier: "%p"
+      description: "指针 (散列化)"
+    - specifier: "%px"
+      description: "指针 (原始地址)"
+    - specifier: "%pK"
+      description: "指针 (受 kptr_restrict 控制)"
+    - specifier: "%pS"
+      description: "符号名 + 偏移"
+    - specifier: "%ps"
+      description: "符号名"
+    - specifier: "%pF"
+      description: "函数名 + 偏移 (废弃)"
+    - specifier: "%pf"
+      description: "函数名 (废弃)"
+    - specifier: "%pB"
+      description: "回溯符号名"
+    - specifier: "%pI4"
+      description: "IPv4 地址"
+    - specifier: "%pI6"
+      description: "IPv6 地址"
+    - specifier: "%pM"
+      description: "MAC 地址"
+    - specifier: "%pUb"
+      description: "UUID (大端)"
+    - specifier: "%pUl"
+      description: "UUID (小端)"
+    - specifier: "%*ph"
+      description: "十六进制转储"
+    - specifier: "%pD"
+      description: "dentry 路径"
+    - specifier: "%pd"
+      description: "dentry 名"
 
   dynamic_debug:
-    control: "/sys/kernel/debug/dynamic_debug/control"
+    description: "动态调试 - 运行时控制 pr_debug/dev_dbg"
+    control_file: "/sys/kernel/debug/dynamic_debug/control"
     format: "file <path> line <N> +p"
     flags:
-      - "p: 打印"
-      - "f: 包含函数名"
-      - "l: 包含行号"
-      - "m: 包含模块名"
-      - "t: 包含线程 ID"
+      - flag: "p"
+        description: "打印消息"
+      - flag: "f"
+        description: "包含函数名"
+      - flag: "l"
+        description: "包含行号"
+      - flag: "m"
+        description: "包含模块名"
+      - flag: "t"
+        description: "包含线程 ID"
+      - flag: "_"
+        description: "无标志 (清除所有)"
+    examples:
+      - command: 'echo "file drivers/usb/*.c +p" > /sys/kernel/debug/dynamic_debug/control'
+        description: "启用 USB 驱动的所有 pr_debug"
+      - command: 'echo "module usbcore +p" > /sys/kernel/debug/dynamic_debug/control'
+        description: "启用 usbcore 模块的所有调试"
+      - command: 'echo "func probe +p" > /sys/kernel/debug/dynamic_debug/control'
+        description: "启用所有名为 probe 的函数的调试"
+      - command: 'echo "-p" > /sys/kernel/debug/dynamic_debug/control'
+        description: "禁用所有动态调试"
+
+  trace_printk:
+    pattern: 'trace_printk\s*\('
+    description: "打印到 ftrace 缓冲区 (调试用)"
+    signature: "int trace_printk(const char *fmt, ...)"
+    note: "比 printk 更快，不应在生产代码使用"
+
+  examples:
+    - description: "使用 pr_* 宏"
+      code: |
+        #include <linux/printk.h>
+        
+        #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+        
+        void my_function(struct device *dev, int value)
+        {
+            pr_info("module loaded\n");
+            pr_debug("value = %d\n", value);  /* 需要 DEBUG 或 dynamic_debug */
+            
+            if (value < 0) {
+                pr_err("invalid value: %d\n", value);
+                return;
+            }
+            
+            dev_info(dev, "initialized with value %d\n", value);
+        }
+
+    - description: "使用格式说明符"
+      code: |
+        #include <linux/printk.h>
+        
+        void print_debug_info(struct task_struct *task, void *addr)
+        {
+            /* 打印符号 */
+            printk(KERN_INFO "function: %pS\n", addr);
+            
+            /* 打印任务信息 */
+            printk(KERN_INFO "task: %s (pid=%d)\n", task->comm, task->pid);
+            
+            /* 打印 IPv4 地址 */
+            __be32 ip = htonl(0x7f000001);  /* 127.0.0.1 */
+            printk(KERN_INFO "ip: %pI4\n", &ip);
+            
+            /* 打印 MAC 地址 */
+            unsigned char mac[6] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+            printk(KERN_INFO "mac: %pM\n", mac);
+        }

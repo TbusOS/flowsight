@@ -6,247 +6,1562 @@
 # ============================================================
 
 lsm_framework:
-  description: "Linux Security Module Framework"
+  description: "Linux Security Module Framework - 内核安全框架"
   header: "linux/lsm_hooks.h"
   icon: "🔒"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   registration:
     - pattern: 'DEFINE_LSM\s*\(\s*(?P<name>\w+)\s*\)'
       description: "定义 LSM 模块"
-    - pattern: 'security_add_hooks\s*\(\s*(?P<hooks>\w+)\s*,'
-      description: "注册 LSM 钩子"
+    - pattern: 'security_add_hooks\s*\(\s*(?P<hooks>\w+)\s*,\s*(?P<count>\w+)\s*,\s*"(?P<lsm>\w+)"\s*\)'
+      description: "注册 LSM 钩子数组"
+    - pattern: 'LSM_HOOK_INIT\s*\(\s*(?P<hook>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      description: "初始化单个 LSM 钩子"
 
   major_lsms:
     - name: "SELinux"
       config: "CONFIG_SECURITY_SELINUX"
-      description: "强制访问控制"
+      description: "强制访问控制 (MAC)"
+      file: "security/selinux/"
     - name: "AppArmor"
       config: "CONFIG_SECURITY_APPARMOR"
       description: "路径名访问控制"
+      file: "security/apparmor/"
     - name: "Smack"
       config: "CONFIG_SECURITY_SMACK"
       description: "简化的强制访问控制"
+      file: "security/smack/"
     - name: "TOMOYO"
       config: "CONFIG_SECURITY_TOMOYO"
       description: "路径名访问控制"
+      file: "security/tomoyo/"
+    - name: "Yama"
+      config: "CONFIG_SECURITY_YAMA"
+      description: "ptrace 限制"
+      file: "security/yama/"
+    - name: "LoadPin"
+      config: "CONFIG_SECURITY_LOADPIN"
+      description: "限制内核模块加载源"
+      file: "security/loadpin/"
 
-  hook_categories:
-    file_hooks:
-      - name: "file_permission"
-        pattern: '\.file_permission\s*=\s*(?P<handler>\w+)'
-        description: "文件访问权限检查"
-        context: "process"
-        trigger: "read/write/ioctl 系统调用"
-        signature: "int (*)(struct file *, int)"
+  # ========================================
+  # FILE HOOKS (文件操作安全钩子)
+  # ========================================
+  file_hooks:
+    security_file_permission:
+      pattern: '\.file_permission\s*=\s*(?P<handler>\w+)'
+      description: "文件访问权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "read/write/ioctl 等文件操作"
+      signature: "int (*)(struct file *file, int mask)"
+      return_value:
+        success: "0"
+        failure: "-EACCES, -EPERM"
+      typical_actions:
+        - "检查文件访问权限"
+        - "记录审计日志"
+        - "SELinux 类型检查"
 
-      - name: "file_open"
-        pattern: '\.file_open\s*=\s*(?P<handler>\w+)'
-        description: "文件打开权限检查"
-        context: "process"
-        trigger: "open() 系统调用"
-        signature: "int (*)(struct file *)"
+    security_file_open:
+      pattern: '\.file_open\s*=\s*(?P<handler>\w+)'
+      description: "文件打开权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "open() 系统调用"
+      signature: "int (*)(struct file *file)"
+      return_value:
+        success: "0"
+        failure: "-EACCES, -EPERM"
+      typical_actions:
+        - "检查打开权限"
+        - "分配安全上下文"
+        - "检查 DAC 和 MAC"
 
-      - name: "file_mmap"
-        pattern: '\.file_mmap\s*=\s*(?P<handler>\w+)'
-        description: "内存映射权限检查"
-        context: "process"
-        trigger: "mmap() 系统调用"
+    security_file_alloc:
+      pattern: '\.file_alloc_security\s*=\s*(?P<handler>\w+)'
+      description: "分配文件安全结构"
+      context: "process"
+      can_sleep: true
+      trigger: "文件结构分配时"
+      signature: "int (*)(struct file *file)"
 
-    inode_hooks:
-      - name: "inode_create"
-        pattern: '\.inode_create\s*=\s*(?P<handler>\w+)'
-        description: "创建文件权限检查"
-        context: "process"
+    security_file_free:
+      pattern: '\.file_free_security\s*=\s*(?P<handler>\w+)'
+      description: "释放文件安全结构"
+      context: "process"
+      trigger: "文件结构释放时"
+      signature: "void (*)(struct file *file)"
 
-      - name: "inode_unlink"
-        pattern: '\.inode_unlink\s*=\s*(?P<handler>\w+)'
-        description: "删除文件权限检查"
-        context: "process"
+    security_file_mmap:
+      pattern: '\.mmap_file\s*=\s*(?P<handler>\w+)'
+      description: "内存映射权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "mmap() 系统调用"
+      signature: "int (*)(struct file *file, unsigned long reqprot, unsigned long prot, unsigned long flags)"
+      return_value:
+        success: "0"
+        failure: "-EACCES, -EPERM"
+      typical_actions:
+        - "检查执行权限 (PROT_EXEC)"
+        - "检查写权限 (PROT_WRITE)"
+        - "W^X 策略检查"
 
-      - name: "inode_permission"
-        pattern: '\.inode_permission\s*=\s*(?P<handler>\w+)'
-        description: "inode 访问权限检查"
-        context: "process"
+    security_file_mprotect:
+      pattern: '\.file_mprotect\s*=\s*(?P<handler>\w+)'
+      description: "内存保护修改权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "mprotect() 系统调用"
+      signature: "int (*)(struct vm_area_struct *vma, unsigned long reqprot, unsigned long prot)"
 
-    task_hooks:
-      - name: "task_alloc"
-        pattern: '\.task_alloc\s*=\s*(?P<handler>\w+)'
-        description: "进程创建安全检查"
-        context: "process"
-        trigger: "fork()/clone()"
+    security_file_lock:
+      pattern: '\.file_lock\s*=\s*(?P<handler>\w+)'
+      description: "文件锁定权限检查"
+      context: "process"
+      trigger: "flock(), fcntl(F_SETLK)"
+      signature: "int (*)(struct file *file, unsigned int cmd)"
 
-      - name: "task_kill"
-        pattern: '\.task_kill\s*=\s*(?P<handler>\w+)'
-        description: "信号发送权限检查"
-        context: "process"
+    security_file_fcntl:
+      pattern: '\.file_fcntl\s*=\s*(?P<handler>\w+)'
+      description: "fcntl 操作权限检查"
+      context: "process"
+      trigger: "fcntl() 系统调用"
+      signature: "int (*)(struct file *file, unsigned int cmd, unsigned long arg)"
 
-      - name: "task_setnice"
-        pattern: '\.task_setnice\s*=\s*(?P<handler>\w+)'
-        description: "修改优先级权限检查"
-        context: "process"
+    security_file_ioctl:
+      pattern: '\.file_ioctl\s*=\s*(?P<handler>\w+)'
+      description: "ioctl 操作权限检查"
+      context: "process"
+      trigger: "ioctl() 系统调用"
+      signature: "int (*)(struct file *file, unsigned int cmd, unsigned long arg)"
 
-    socket_hooks:
-      - name: "socket_create"
-        pattern: '\.socket_create\s*=\s*(?P<handler>\w+)'
-        description: "套接字创建权限检查"
-        context: "process"
+    security_file_receive:
+      pattern: '\.file_receive\s*=\s*(?P<handler>\w+)'
+      description: "通过 SCM_RIGHTS 接收文件权限检查"
+      context: "process"
+      trigger: "recvmsg() with SCM_RIGHTS"
+      signature: "int (*)(struct file *file)"
 
-      - name: "socket_connect"
-        pattern: '\.socket_connect\s*=\s*(?P<handler>\w+)'
-        description: "套接字连接权限检查"
-        context: "process"
+  # ========================================
+  # INODE HOOKS (inode 操作安全钩子)
+  # ========================================
+  inode_hooks:
+    security_inode_create:
+      pattern: '\.inode_create\s*=\s*(?P<handler>\w+)'
+      description: "创建文件权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "create(), open(O_CREAT)"
+      signature: "int (*)(struct inode *dir, struct dentry *dentry, umode_t mode)"
+      return_value:
+        success: "0"
+        failure: "-EACCES, -EPERM"
 
-      - name: "socket_bind"
-        pattern: '\.socket_bind\s*=\s*(?P<handler>\w+)'
-        description: "套接字绑定权限检查"
-        context: "process"
+    security_inode_link:
+      pattern: '\.inode_link\s*=\s*(?P<handler>\w+)'
+      description: "创建硬链接权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "link() 系统调用"
+      signature: "int (*)(struct dentry *old_dentry, struct inode *dir, struct dentry *new_dentry)"
 
-  call_chain:
+    security_inode_unlink:
+      pattern: '\.inode_unlink\s*=\s*(?P<handler>\w+)'
+      description: "删除文件权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "unlink() 系统调用"
+      signature: "int (*)(struct inode *dir, struct dentry *dentry)"
+
+    security_inode_symlink:
+      pattern: '\.inode_symlink\s*=\s*(?P<handler>\w+)'
+      description: "创建符号链接权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "symlink() 系统调用"
+      signature: "int (*)(struct inode *dir, struct dentry *dentry, const char *old_name)"
+
+    security_inode_mkdir:
+      pattern: '\.inode_mkdir\s*=\s*(?P<handler>\w+)'
+      description: "创建目录权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "mkdir() 系统调用"
+      signature: "int (*)(struct inode *dir, struct dentry *dentry, umode_t mode)"
+
+    security_inode_rmdir:
+      pattern: '\.inode_rmdir\s*=\s*(?P<handler>\w+)'
+      description: "删除目录权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "rmdir() 系统调用"
+      signature: "int (*)(struct inode *dir, struct dentry *dentry)"
+
+    security_inode_mknod:
+      pattern: '\.inode_mknod\s*=\s*(?P<handler>\w+)'
+      description: "创建设备节点权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "mknod() 系统调用"
+      signature: "int (*)(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)"
+
+    security_inode_rename:
+      pattern: '\.inode_rename\s*=\s*(?P<handler>\w+)'
+      description: "重命名文件权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "rename() 系统调用"
+      signature: "int (*)(struct inode *old_dir, struct dentry *old_dentry, struct inode *new_dir, struct dentry *new_dentry, unsigned int flags)"
+
+    security_inode_readlink:
+      pattern: '\.inode_readlink\s*=\s*(?P<handler>\w+)'
+      description: "读取符号链接权限检查"
+      context: "process"
+      trigger: "readlink() 系统调用"
+      signature: "int (*)(struct dentry *dentry)"
+
+    security_inode_follow_link:
+      pattern: '\.inode_follow_link\s*=\s*(?P<handler>\w+)'
+      description: "跟随符号链接权限检查"
+      context: "process"
+      trigger: "路径解析时"
+      signature: "int (*)(struct dentry *dentry, struct inode *inode, bool rcu)"
+
+    security_inode_permission:
+      pattern: '\.inode_permission\s*=\s*(?P<handler>\w+)'
+      description: "inode 访问权限检查"
+      context: "process or RCU"
+      can_sleep: "depends on rcu flag"
+      trigger: "任何 inode 访问"
+      signature: "int (*)(struct inode *inode, int mask)"
+      return_value:
+        success: "0"
+        failure: "-EACCES"
+      typical_actions:
+        - "MAC 权限检查"
+        - "SELinux 类型强制"
+        - "AppArmor 配置文件检查"
+
+    security_inode_setattr:
+      pattern: '\.inode_setattr\s*=\s*(?P<handler>\w+)'
+      description: "修改 inode 属性权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "chmod, chown, truncate 等"
+      signature: "int (*)(struct dentry *dentry, struct iattr *attr)"
+
+    security_inode_getattr:
+      pattern: '\.inode_getattr\s*=\s*(?P<handler>\w+)'
+      description: "获取 inode 属性权限检查"
+      context: "process"
+      trigger: "stat() 系统调用"
+      signature: "int (*)(const struct path *path)"
+
+    security_inode_setxattr:
+      pattern: '\.inode_setxattr\s*=\s*(?P<handler>\w+)'
+      description: "设置扩展属性权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "setxattr() 系统调用"
+      signature: "int (*)(struct dentry *dentry, const char *name, const void *value, size_t size, int flags)"
+
+    security_inode_getxattr:
+      pattern: '\.inode_getxattr\s*=\s*(?P<handler>\w+)'
+      description: "获取扩展属性权限检查"
+      context: "process"
+      trigger: "getxattr() 系统调用"
+      signature: "int (*)(struct dentry *dentry, const char *name)"
+
+    security_inode_listxattr:
+      pattern: '\.inode_listxattr\s*=\s*(?P<handler>\w+)'
+      description: "列出扩展属性权限检查"
+      context: "process"
+      trigger: "listxattr() 系统调用"
+      signature: "int (*)(struct dentry *dentry)"
+
+    security_inode_removexattr:
+      pattern: '\.inode_removexattr\s*=\s*(?P<handler>\w+)'
+      description: "删除扩展属性权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "removexattr() 系统调用"
+      signature: "int (*)(struct dentry *dentry, const char *name)"
+
+  # ========================================
+  # TASK HOOKS (进程操作安全钩子)
+  # ========================================
+  task_hooks:
+    security_task_alloc:
+      pattern: '\.task_alloc\s*=\s*(?P<handler>\w+)'
+      description: "进程创建安全检查"
+      context: "process"
+      can_sleep: true
+      trigger: "fork()/clone()"
+      signature: "int (*)(struct task_struct *task, unsigned long clone_flags)"
+      return_value:
+        success: "0"
+        failure: "-ENOMEM, -EPERM"
+      typical_actions:
+        - "分配任务安全结构"
+        - "继承父进程安全上下文"
+
+    security_task_free:
+      pattern: '\.task_free\s*=\s*(?P<handler>\w+)'
+      description: "进程销毁清理"
+      context: "process"
+      trigger: "进程退出"
+      signature: "void (*)(struct task_struct *task)"
+
+    security_task_setuid:
+      pattern: '\.task_fix_setuid\s*=\s*(?P<handler>\w+)'
+      description: "setuid 操作安全检查"
+      context: "process"
+      trigger: "setuid/setreuid/setresuid"
+      signature: "int (*)(struct cred *new, const struct cred *old, int flags)"
+      return_value:
+        success: "0"
+        failure: "-EPERM"
+
+    security_task_setgid:
+      pattern: '\.task_fix_setgid\s*=\s*(?P<handler>\w+)'
+      description: "setgid 操作安全检查"
+      context: "process"
+      trigger: "setgid/setregid/setresgid"
+      signature: "int (*)(struct cred *new, const struct cred *old, int flags)"
+
+    security_task_setpgid:
+      pattern: '\.task_setpgid\s*=\s*(?P<handler>\w+)'
+      description: "设置进程组 ID 权限检查"
+      context: "process"
+      trigger: "setpgid() 系统调用"
+      signature: "int (*)(struct task_struct *p, pid_t pgid)"
+
+    security_task_getpgid:
+      pattern: '\.task_getpgid\s*=\s*(?P<handler>\w+)'
+      description: "获取进程组 ID 权限检查"
+      context: "process"
+      trigger: "getpgid() 系统调用"
+      signature: "int (*)(struct task_struct *p)"
+
+    security_task_getsid:
+      pattern: '\.task_getsid\s*=\s*(?P<handler>\w+)'
+      description: "获取会话 ID 权限检查"
+      context: "process"
+      trigger: "getsid() 系统调用"
+      signature: "int (*)(struct task_struct *p)"
+
+    security_task_setnice:
+      pattern: '\.task_setnice\s*=\s*(?P<handler>\w+)'
+      description: "修改优先级权限检查"
+      context: "process"
+      trigger: "nice(), setpriority()"
+      signature: "int (*)(struct task_struct *p, int nice)"
+      return_value:
+        success: "0"
+        failure: "-EPERM"
+
+    security_task_setioprio:
+      pattern: '\.task_setioprio\s*=\s*(?P<handler>\w+)'
+      description: "设置 I/O 优先级权限检查"
+      context: "process"
+      trigger: "ioprio_set() 系统调用"
+      signature: "int (*)(struct task_struct *p, int ioprio)"
+
+    security_task_getioprio:
+      pattern: '\.task_getioprio\s*=\s*(?P<handler>\w+)'
+      description: "获取 I/O 优先级权限检查"
+      context: "process"
+      trigger: "ioprio_get() 系统调用"
+      signature: "int (*)(struct task_struct *p)"
+
+    security_task_setscheduler:
+      pattern: '\.task_setscheduler\s*=\s*(?P<handler>\w+)'
+      description: "设置调度策略权限检查"
+      context: "process"
+      trigger: "sched_setscheduler()"
+      signature: "int (*)(struct task_struct *p)"
+
+    security_task_getscheduler:
+      pattern: '\.task_getscheduler\s*=\s*(?P<handler>\w+)'
+      description: "获取调度策略权限检查"
+      context: "process"
+      trigger: "sched_getscheduler()"
+      signature: "int (*)(struct task_struct *p)"
+
+    security_task_kill:
+      pattern: '\.task_kill\s*=\s*(?P<handler>\w+)'
+      description: "信号发送权限检查"
+      context: "process"
+      trigger: "kill(), tkill(), tgkill()"
+      signature: "int (*)(struct task_struct *p, struct siginfo *info, int sig, const struct cred *cred)"
+      return_value:
+        success: "0"
+        failure: "-EPERM"
+
+    security_task_prctl:
+      pattern: '\.task_prctl\s*=\s*(?P<handler>\w+)'
+      description: "prctl 操作权限检查"
+      context: "process"
+      trigger: "prctl() 系统调用"
+      signature: "int (*)(int option, unsigned long arg2, unsigned long arg3, unsigned long arg4, unsigned long arg5)"
+
+    security_task_to_inode:
+      pattern: '\.task_to_inode\s*=\s*(?P<handler>\w+)'
+      description: "进程到 inode 映射"
+      context: "process"
+      trigger: "/proc/<pid>/ 访问"
+      signature: "void (*)(struct task_struct *p, struct inode *inode)"
+
+  # ========================================
+  # SOCKET HOOKS (套接字安全钩子)
+  # ========================================
+  socket_hooks:
+    security_socket_create:
+      pattern: '\.socket_create\s*=\s*(?P<handler>\w+)'
+      description: "套接字创建权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "socket() 系统调用"
+      signature: "int (*)(int family, int type, int protocol, int kern)"
+      return_value:
+        success: "0"
+        failure: "-EACCES, -EPERM"
+      typical_actions:
+        - "检查网络访问权限"
+        - "限制套接字类型"
+
+    security_socket_post_create:
+      pattern: '\.socket_post_create\s*=\s*(?P<handler>\w+)'
+      description: "套接字创建后初始化"
+      context: "process"
+      can_sleep: true
+      trigger: "socket() 成功后"
+      signature: "int (*)(struct socket *sock, int family, int type, int protocol, int kern)"
+
+    security_socket_bind:
+      pattern: '\.socket_bind\s*=\s*(?P<handler>\w+)'
+      description: "套接字绑定权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "bind() 系统调用"
+      signature: "int (*)(struct socket *sock, struct sockaddr *address, int addrlen)"
+      return_value:
+        success: "0"
+        failure: "-EACCES"
+      typical_actions:
+        - "检查端口绑定权限"
+        - "检查地址绑定权限"
+
+    security_socket_connect:
+      pattern: '\.socket_connect\s*=\s*(?P<handler>\w+)'
+      description: "套接字连接权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "connect() 系统调用"
+      signature: "int (*)(struct socket *sock, struct sockaddr *address, int addrlen)"
+      return_value:
+        success: "0"
+        failure: "-EACCES"
+
+    security_socket_listen:
+      pattern: '\.socket_listen\s*=\s*(?P<handler>\w+)'
+      description: "套接字监听权限检查"
+      context: "process"
+      trigger: "listen() 系统调用"
+      signature: "int (*)(struct socket *sock, int backlog)"
+
+    security_socket_accept:
+      pattern: '\.socket_accept\s*=\s*(?P<handler>\w+)'
+      description: "接受连接权限检查"
+      context: "process"
+      can_sleep: true
+      trigger: "accept() 系统调用"
+      signature: "int (*)(struct socket *sock, struct socket *newsock)"
+
+    security_socket_sendmsg:
+      pattern: '\.socket_sendmsg\s*=\s*(?P<handler>\w+)'
+      description: "发送消息权限检查"
+      context: "process"
+      trigger: "send/sendto/sendmsg"
+      signature: "int (*)(struct socket *sock, struct msghdr *msg, int size)"
+
+    security_socket_recvmsg:
+      pattern: '\.socket_recvmsg\s*=\s*(?P<handler>\w+)'
+      description: "接收消息权限检查"
+      context: "process"
+      trigger: "recv/recvfrom/recvmsg"
+      signature: "int (*)(struct socket *sock, struct msghdr *msg, int size, int flags)"
+
+    security_socket_getsockname:
+      pattern: '\.socket_getsockname\s*=\s*(?P<handler>\w+)'
+      description: "获取套接字名权限检查"
+      context: "process"
+      trigger: "getsockname() 系统调用"
+      signature: "int (*)(struct socket *sock)"
+
+    security_socket_getpeername:
+      pattern: '\.socket_getpeername\s*=\s*(?P<handler>\w+)'
+      description: "获取对端名权限检查"
+      context: "process"
+      trigger: "getpeername() 系统调用"
+      signature: "int (*)(struct socket *sock)"
+
+    security_socket_setsockopt:
+      pattern: '\.socket_setsockopt\s*=\s*(?P<handler>\w+)'
+      description: "设置套接字选项权限检查"
+      context: "process"
+      trigger: "setsockopt() 系统调用"
+      signature: "int (*)(struct socket *sock, int level, int optname)"
+
+    security_socket_getsockopt:
+      pattern: '\.socket_getsockopt\s*=\s*(?P<handler>\w+)'
+      description: "获取套接字选项权限检查"
+      context: "process"
+      trigger: "getsockopt() 系统调用"
+      signature: "int (*)(struct socket *sock, int level, int optname)"
+
+    security_socket_shutdown:
+      pattern: '\.socket_shutdown\s*=\s*(?P<handler>\w+)'
+      description: "关闭套接字权限检查"
+      context: "process"
+      trigger: "shutdown() 系统调用"
+      signature: "int (*)(struct socket *sock, int how)"
+
+  # ========================================
+  # CALL CHAINS (调用链)
+  # ========================================
+  call_chains:
     file_open:
-      - "sys_open()"
-      - "  do_sys_open()"
-      - "    do_filp_open()"
-      - "      path_openat()"
-      - "        do_open()"
-      - "          security_file_open()  # LSM hook"
-      - "            call_int_hook(file_open, ...)"
-      - "              selinux_file_open()"
+      description: "文件打开 LSM 调用链"
+      trigger: "open() 系统调用"
+      chain:
+        - function: "sys_open / sys_openat"
+          file: "fs/open.c"
+          description: "系统调用入口"
+        - function: "do_sys_open"
+          file: "fs/open.c"
+          description: "打开处理"
+        - function: "do_filp_open"
+          file: "fs/namei.c"
+          description: "路径解析和打开"
+        - function: "path_openat"
+          file: "fs/namei.c"
+          description: "路径打开"
+        - function: "do_open"
+          file: "fs/namei.c"
+          description: "执行打开"
+        - function: "security_file_open"
+          file: "security/security.c"
+          description: "LSM 钩子调用点"
+        - function: "call_int_hook(file_open, ...)"
+          file: "security/security.c"
+          description: "遍历所有 LSM"
+        - function: "selinux_file_open"
+          file: "security/selinux/hooks.c"
+          description: "SELinux 检查"
+          is_user_entry: true
+
+    inode_permission:
+      description: "inode 权限检查调用链"
+      trigger: "任何文件访问"
+      chain:
+        - function: "vfs_xxx"
+          file: "fs/*.c"
+          description: "VFS 操作入口"
+        - function: "inode_permission"
+          file: "fs/namei.c"
+          description: "权限检查入口"
+        - function: "security_inode_permission"
+          file: "security/security.c"
+          description: "LSM 钩子"
+        - function: "selinux_inode_permission"
+          file: "security/selinux/hooks.c"
+          description: "SELinux 类型强制检查"
+          is_user_entry: true
+
+    socket_create:
+      description: "套接字创建 LSM 调用链"
+      trigger: "socket() 系统调用"
+      chain:
+        - function: "sys_socket"
+          file: "net/socket.c"
+          description: "系统调用入口"
+        - function: "__sys_socket"
+          file: "net/socket.c"
+          description: "内部处理"
+        - function: "sock_create"
+          file: "net/socket.c"
+          description: "创建套接字"
+        - function: "__sock_create"
+          file: "net/socket.c"
+          description: "内部创建"
+        - function: "security_socket_create"
+          file: "security/security.c"
+          description: "LSM 钩子"
+        - function: "selinux_socket_create"
+          file: "security/selinux/hooks.c"
+          description: "SELinux 网络检查"
+          is_user_entry: true
+
+    task_kill:
+      description: "信号发送 LSM 调用链"
+      trigger: "kill() 系统调用"
+      chain:
+        - function: "sys_kill"
+          file: "kernel/signal.c"
+          description: "系统调用入口"
+        - function: "kill_something_info"
+          file: "kernel/signal.c"
+          description: "信号分发"
+        - function: "group_send_sig_info"
+          file: "kernel/signal.c"
+          description: "组信号发送"
+        - function: "check_kill_permission"
+          file: "kernel/signal.c"
+          description: "权限检查"
+        - function: "security_task_kill"
+          file: "security/security.c"
+          description: "LSM 钩子"
+        - function: "selinux_task_kill"
+          file: "security/selinux/hooks.c"
+          description: "SELinux 信号检查"
+          is_user_entry: true
+
+  examples:
+    - description: "LSM 模块注册示例"
+      kernel_version: "4.2+"
+      code: |
+        #include <linux/lsm_hooks.h>
+        
+        static int my_file_open(struct file *file)
+        {
+            /* 检查文件打开权限 */
+            if (should_deny_access(file))
+                return -EACCES;
+            return 0;
+        }
+        
+        static int my_inode_permission(struct inode *inode, int mask)
+        {
+            /* 检查 inode 访问权限 */
+            return 0;
+        }
+        
+        static struct security_hook_list my_hooks[] __lsm_ro_after_init = {
+            LSM_HOOK_INIT(file_open, my_file_open),
+            LSM_HOOK_INIT(inode_permission, my_inode_permission),
+        };
+        
+        static int __init my_lsm_init(void)
+        {
+            security_add_hooks(my_hooks, ARRAY_SIZE(my_hooks), "mylsm");
+            return 0;
+        }
+        
+        DEFINE_LSM(mylsm) = {
+            .name = "mylsm",
+            .init = my_lsm_init,
+        };
 
 # ============================================================
 # SELINUX
 # ============================================================
 
 selinux:
-  description: "Security-Enhanced Linux"
+  description: "Security-Enhanced Linux - MAC 强制访问控制"
   header: "security/selinux/"
   icon: "🛡️"
+  kernel_version: "2.6+"
 
-  contexts:
-    - name: "user"
-      description: "SELinux 用户"
-    - name: "role"
-      description: "SELinux 角色"
-    - name: "type"
-      description: "SELinux 类型"
-    - name: "level"
-      description: "MLS/MCS 级别"
+  context:
+    type: "process"
+    can_sleep: true
+
+  security_context:
+    description: "SELinux 安全上下文格式: user:role:type:level"
+    components:
+      - name: "user"
+        description: "SELinux 用户标识"
+        examples: ["system_u", "unconfined_u", "user_u"]
+      - name: "role"
+        description: "SELinux 角色"
+        examples: ["object_r", "system_r", "unconfined_r"]
+      - name: "type"
+        description: "SELinux 类型/域"
+        examples: ["kernel_t", "init_t", "httpd_t", "unconfined_t"]
+      - name: "level"
+        description: "MLS/MCS 安全级别"
+        examples: ["s0", "s0-s0:c0.c1023"]
 
   permissions:
     file:
-      - "read", "write", "execute", "append"
-      - "create", "unlink", "rename"
-      - "getattr", "setattr", "relabelfrom", "relabelto"
-      - "lock", "ioctl", "open"
+      - name: "read"
+        description: "读取文件内容"
+      - name: "write"
+        description: "写入文件内容"
+      - name: "execute"
+        description: "执行文件"
+      - name: "append"
+        description: "追加写入"
+      - name: "create"
+        description: "创建文件"
+      - name: "unlink"
+        description: "删除文件"
+      - name: "rename"
+        description: "重命名文件"
+      - name: "getattr"
+        description: "获取属性"
+      - name: "setattr"
+        description: "设置属性"
+      - name: "relabelfrom"
+        description: "从标签转换"
+      - name: "relabelto"
+        description: "转换到标签"
+      - name: "lock"
+        description: "文件锁"
+      - name: "ioctl"
+        description: "ioctl 操作"
+      - name: "open"
+        description: "打开文件"
+      - name: "map"
+        description: "内存映射"
+      - name: "execute_no_trans"
+        description: "执行不切换域"
+      - name: "entrypoint"
+        description: "域入口点"
 
     process:
-      - "fork", "transition", "sigchld", "sigkill"
-      - "ptrace", "getattr", "setexec", "setfscreate"
+      - name: "fork"
+        description: "创建子进程"
+      - name: "transition"
+        description: "域转换"
+      - name: "sigchld"
+        description: "SIGCHLD 信号"
+      - name: "sigkill"
+        description: "SIGKILL 信号"
+      - name: "signal"
+        description: "其他信号"
+      - name: "ptrace"
+        description: "跟踪进程"
+      - name: "getattr"
+        description: "获取属性"
+      - name: "setexec"
+        description: "设置执行上下文"
+      - name: "setfscreate"
+        description: "设置文件创建上下文"
+      - name: "setcurrent"
+        description: "设置当前上下文"
+      - name: "execmem"
+        description: "执行内存"
+      - name: "execstack"
+        description: "执行堆栈"
+      - name: "execheap"
+        description: "执行堆"
+
+    socket:
+      - name: "create"
+        description: "创建套接字"
+      - name: "bind"
+        description: "绑定地址"
+      - name: "connect"
+        description: "建立连接"
+      - name: "listen"
+        description: "监听"
+      - name: "accept"
+        description: "接受连接"
+      - name: "read"
+        description: "读取数据"
+      - name: "write"
+        description: "写入数据"
+      - name: "getattr"
+        description: "获取属性"
+      - name: "setattr"
+        description: "设置属性"
+      - name: "name_bind"
+        description: "绑定端口名"
+      - name: "name_connect"
+        description: "连接端口名"
 
   policy_files:
-    - "/etc/selinux/config"
-    - "/etc/selinux/*/policy/policy.*"
-    - "/sys/fs/selinux/"
+    - path: "/etc/selinux/config"
+      description: "主配置文件"
+    - path: "/etc/selinux/*/policy/policy.*"
+      description: "编译后的策略"
+    - path: "/sys/fs/selinux/"
+      description: "selinuxfs 文件系统"
+    - path: "/sys/fs/selinux/enforce"
+      description: "强制模式开关"
+    - path: "/sys/fs/selinux/policy"
+      description: "当前策略"
 
   commands:
-    - "getenforce"
-    - "setenforce"
-    - "sestatus"
-    - "chcon"
-    - "restorecon"
-    - "semanage"
-    - "audit2allow"
+    - name: "getenforce"
+      description: "获取当前模式"
+    - name: "setenforce"
+      description: "设置模式 (0=Permissive, 1=Enforcing)"
+    - name: "sestatus"
+      description: "显示状态"
+    - name: "chcon"
+      description: "修改文件上下文"
+    - name: "restorecon"
+      description: "恢复默认上下文"
+    - name: "semanage"
+      description: "管理策略"
+    - name: "audit2allow"
+      description: "从审计日志生成策略"
+    - name: "setsebool"
+      description: "设置布尔值"
+    - name: "getsebool"
+      description: "获取布尔值"
 
 # ============================================================
-# CAPABILITIES
+# CAPABILITIES (能力系统)
 # ============================================================
 
 capabilities:
-  description: "POSIX Capabilities"
+  description: "POSIX Capabilities - 细粒度权限控制"
   header: "linux/capability.h"
   icon: "🔑"
+  kernel_version: "2.2+"
 
-  common_caps:
-    - name: "CAP_SYS_ADMIN"
-      description: "系统管理（几乎万能）"
-    - name: "CAP_NET_ADMIN"
-      description: "网络配置"
-    - name: "CAP_NET_RAW"
-      description: "原始套接字"
-    - name: "CAP_SYS_PTRACE"
-      description: "进程跟踪"
+  context:
+    type: "process"
+    can_sleep: false
+
+  capability_sets:
+    - name: "Permitted (P)"
+      description: "允许的能力上限"
+    - name: "Inheritable (I)"
+      description: "可继承的能力"
+    - name: "Effective (E)"
+      description: "当前有效的能力"
+    - name: "Bounding"
+      description: "能力边界集"
+    - name: "Ambient"
+      description: "环境能力集 (4.3+)"
+
+  capabilities_list:
+    # 文件系统相关
+    - name: "CAP_CHOWN"
+      value: 0
+      description: "修改文件所有者"
+      typical_use: "chown 系统调用"
     - name: "CAP_DAC_OVERRIDE"
-      description: "绕过文件权限检查"
-    - name: "CAP_SETUID"
-      description: "设置 UID"
-    - name: "CAP_SETGID"
-      description: "设置 GID"
+      value: 1
+      description: "绕过文件读/写/执行权限检查"
+      typical_use: "root 文件访问"
+    - name: "CAP_DAC_READ_SEARCH"
+      value: 2
+      description: "绕过文件读取和目录搜索权限"
+      typical_use: "备份程序"
+    - name: "CAP_FOWNER"
+      value: 3
+      description: "绕过文件所有者检查"
+      typical_use: "chmod/utime"
+    - name: "CAP_FSETID"
+      value: 4
+      description: "设置文件 setuid/setgid 位"
+      typical_use: "安装程序"
+
+    # 进程相关
     - name: "CAP_KILL"
-      description: "发送信号"
+      value: 5
+      description: "绕过发送信号的权限检查"
+      typical_use: "kill 进程"
+    - name: "CAP_SETGID"
+      value: 6
+      description: "设置进程 GID"
+      typical_use: "setgid/setgroups"
+    - name: "CAP_SETUID"
+      value: 7
+      description: "设置进程 UID"
+      typical_use: "setuid/seteuid"
+    - name: "CAP_SETPCAP"
+      value: 8
+      description: "修改进程能力"
+      typical_use: "能力管理"
+
+    # 系统管理
+    - name: "CAP_LINUX_IMMUTABLE"
+      value: 9
+      description: "设置不可变文件属性"
+      typical_use: "chattr +i"
+    - name: "CAP_NET_BIND_SERVICE"
+      value: 10
+      description: "绑定 1024 以下端口"
+      typical_use: "Web 服务器"
+    - name: "CAP_NET_BROADCAST"
+      value: 11
+      description: "网络广播"
+      typical_use: "广播应用"
+    - name: "CAP_NET_ADMIN"
+      value: 12
+      description: "网络管理"
+      typical_use: "iptables, ip route"
+    - name: "CAP_NET_RAW"
+      value: 13
+      description: "原始套接字"
+      typical_use: "ping, tcpdump"
+    - name: "CAP_IPC_LOCK"
+      value: 14
+      description: "锁定内存"
+      typical_use: "mlock"
+    - name: "CAP_IPC_OWNER"
+      value: 15
+      description: "绕过 IPC 权限检查"
+      typical_use: "System V IPC"
+    - name: "CAP_SYS_MODULE"
+      value: 16
+      description: "加载/卸载内核模块"
+      typical_use: "insmod/rmmod"
+    - name: "CAP_SYS_RAWIO"
+      value: 17
+      description: "原始 I/O 操作"
+      typical_use: "ioperm, iopl"
+    - name: "CAP_SYS_CHROOT"
+      value: 18
+      description: "chroot 系统调用"
+      typical_use: "沙箱"
+    - name: "CAP_SYS_PTRACE"
+      value: 19
+      description: "跟踪任意进程"
+      typical_use: "调试器"
+    - name: "CAP_SYS_PACCT"
+      value: 20
+      description: "进程记账"
+      typical_use: "acct()"
+    - name: "CAP_SYS_ADMIN"
+      value: 21
+      description: "系统管理 (几乎万能)"
+      typical_use: "mount, sethostname, 等"
+    - name: "CAP_SYS_BOOT"
+      value: 22
+      description: "重启系统"
+      typical_use: "reboot()"
+    - name: "CAP_SYS_NICE"
+      value: 23
+      description: "设置进程优先级"
+      typical_use: "nice, sched_setscheduler"
+    - name: "CAP_SYS_RESOURCE"
+      value: 24
+      description: "覆盖资源限制"
+      typical_use: "setrlimit"
+    - name: "CAP_SYS_TIME"
+      value: 25
+      description: "设置系统时间"
+      typical_use: "settimeofday"
+    - name: "CAP_SYS_TTY_CONFIG"
+      value: 26
+      description: "TTY 配置"
+      typical_use: "vhangup"
     - name: "CAP_MKNOD"
+      value: 27
       description: "创建设备文件"
+      typical_use: "mknod"
+    - name: "CAP_LEASE"
+      value: 28
+      description: "文件租约"
+      typical_use: "fcntl(F_SETLEASE)"
+    - name: "CAP_AUDIT_WRITE"
+      value: 29
+      description: "写入审计日志"
+      typical_use: "audit_log_user_*"
+    - name: "CAP_AUDIT_CONTROL"
+      value: 30
+      description: "审计配置"
+      typical_use: "auditctl"
+    - name: "CAP_SETFCAP"
+      value: 31
+      description: "设置文件能力"
+      typical_use: "setcap"
+    - name: "CAP_MAC_OVERRIDE"
+      value: 32
+      description: "覆盖 MAC (Smack)"
+      typical_use: "MAC 管理"
+    - name: "CAP_MAC_ADMIN"
+      value: 33
+      description: "MAC 管理"
+      typical_use: "MAC 配置"
+    - name: "CAP_SYSLOG"
+      value: 34
+      description: "syslog 配置"
+      typical_use: "dmesg"
+    - name: "CAP_WAKE_ALARM"
+      value: 35
+      description: "唤醒闹钟"
+      typical_use: "CLOCK_REALTIME_ALARM"
+    - name: "CAP_BLOCK_SUSPEND"
+      value: 36
+      description: "阻止系统挂起"
+      typical_use: "wake lock"
+    - name: "CAP_AUDIT_READ"
+      value: 37
+      description: "读取审计日志"
+      typical_use: "审计分析"
 
   functions:
     - pattern: 'capable\s*\(\s*(?P<cap>CAP_\w+)\s*\)'
-      description: "检查进程是否有指定能力"
-    - pattern: 'ns_capable\s*\('
-      description: "命名空间能力检查"
-    - pattern: 'has_capability\s*\('
-      description: "检查任务是否有能力"
+      description: "检查当前进程是否有指定能力"
+      signature: "bool capable(int cap)"
+      context: "process"
+      return_value: "true/false"
+
+    - pattern: 'ns_capable\s*\(\s*(?P<ns>[\w\->]+)\s*,\s*(?P<cap>CAP_\w+)\s*\)'
+      description: "在指定命名空间检查能力"
+      signature: "bool ns_capable(struct user_namespace *ns, int cap)"
+      context: "process"
+
+    - pattern: 'has_capability\s*\(\s*(?P<task>\w+)\s*,\s*(?P<cap>CAP_\w+)\s*\)'
+      description: "检查指定任务是否有能力"
+      signature: "bool has_capability(struct task_struct *t, int cap)"
+
+    - pattern: 'has_ns_capability\s*\('
+      description: "在命名空间检查任务能力"
+      signature: "bool has_ns_capability(struct task_struct *t, struct user_namespace *ns, int cap)"
+
+    - pattern: 'capable_wrt_inode_uidgid\s*\('
+      description: "相对于 inode UID/GID 检查能力"
+      signature: "bool capable_wrt_inode_uidgid(const struct inode *inode, int cap)"
+
+    - pattern: 'file_ns_capable\s*\('
+      description: "检查文件关联命名空间的能力"
+      signature: "bool file_ns_capable(const struct file *file, struct user_namespace *ns, int cap)"
+
+  capability_manipulation:
+    - pattern: 'cap_raise\s*\(\s*(?P<set>\w+)\s*,\s*(?P<cap>CAP_\w+)\s*\)'
+      description: "添加能力到集合"
+      macro: "cap_raise(c, cap)"
+
+    - pattern: 'cap_lower\s*\(\s*(?P<set>\w+)\s*,\s*(?P<cap>CAP_\w+)\s*\)'
+      description: "从集合移除能力"
+      macro: "cap_lower(c, cap)"
+
+    - pattern: 'cap_raised\s*\(\s*(?P<set>\w+)\s*,\s*(?P<cap>CAP_\w+)\s*\)'
+      description: "检查能力是否在集合中"
+      macro: "cap_raised(c, cap)"
+
+    - pattern: 'cap_drop_bound\s*\('
+      description: "从边界集移除能力"
+
+  call_chains:
+    capability_check:
+      description: "能力检查调用链"
+      trigger: "任何需要权限的操作"
+      chain:
+        - function: "capable(CAP_xxx)"
+          file: "kernel/capability.c"
+          description: "检查入口"
+        - function: "ns_capable_common"
+          file: "kernel/capability.c"
+          description: "通用检查"
+        - function: "security_capable"
+          file: "security/security.c"
+          description: "LSM 钩子"
+        - function: "cap_capable"
+          file: "security/commoncap.c"
+          description: "能力检查实现"
+        - function: "selinux_capable"
+          file: "security/selinux/hooks.c"
+          description: "SELinux 额外检查"
+          is_user_entry: true
+
+  examples:
+    - description: "检查网络管理能力"
+      code: |
+        #include <linux/capability.h>
+        
+        int my_net_operation(void)
+        {
+            /* 检查是否有网络管理能力 */
+            if (!capable(CAP_NET_ADMIN))
+                return -EPERM;
+            
+            /* 执行网络管理操作 */
+            return do_net_admin_stuff();
+        }
+
+    - description: "命名空间感知的能力检查"
+      code: |
+        #include <linux/capability.h>
+        #include <linux/user_namespace.h>
+        
+        int my_privileged_operation(struct user_namespace *ns)
+        {
+            /* 在指定命名空间检查能力 */
+            if (!ns_capable(ns, CAP_SYS_ADMIN))
+                return -EPERM;
+            
+            return do_privileged_stuff();
+        }
 
 # ============================================================
-# SECCOMP
+# SECCOMP (安全计算模式)
 # ============================================================
 
 seccomp:
-  description: "Secure Computing Mode"
+  description: "Secure Computing Mode - 系统调用过滤"
   header: "linux/seccomp.h"
   icon: "🔐"
+  kernel_version: "2.6.12+ (strict), 3.5+ (filter)"
+
+  context:
+    type: "process"
+    can_sleep: false
 
   modes:
+    - name: "SECCOMP_MODE_DISABLED"
+      value: 0
+      description: "禁用 seccomp"
     - name: "SECCOMP_MODE_STRICT"
-      description: "严格模式，仅允许 read/write/exit"
+      value: 1
+      description: "严格模式，仅允许 read/write/_exit/sigreturn"
     - name: "SECCOMP_MODE_FILTER"
-      description: "过滤模式，BPF 过滤系统调用"
+      value: 2
+      description: "过滤模式，BPF 程序过滤系统调用"
 
-  filter_actions:
-    - "SECCOMP_RET_KILL_PROCESS"
-    - "SECCOMP_RET_KILL_THREAD"
-    - "SECCOMP_RET_TRAP"
-    - "SECCOMP_RET_ERRNO"
-    - "SECCOMP_RET_TRACE"
-    - "SECCOMP_RET_LOG"
-    - "SECCOMP_RET_ALLOW"
+  filter_return_values:
+    - name: "SECCOMP_RET_KILL_PROCESS"
+      value: "0x80000000"
+      description: "终止整个进程"
+      kernel_version: "4.14+"
+    - name: "SECCOMP_RET_KILL_THREAD"
+      value: "0x00000000"
+      description: "终止当前线程"
+      alias: "SECCOMP_RET_KILL"
+    - name: "SECCOMP_RET_TRAP"
+      value: "0x00030000"
+      description: "发送 SIGSYS 信号"
+      info: "siginfo.si_syscall = 系统调用号"
+    - name: "SECCOMP_RET_ERRNO"
+      value: "0x00050000"
+      description: "返回错误码"
+      data: "低 16 位为 errno 值"
+    - name: "SECCOMP_RET_TRACE"
+      value: "0x7ff00000"
+      description: "通知 ptrace tracer"
+      data: "低 16 位传递给 tracer"
+    - name: "SECCOMP_RET_LOG"
+      value: "0x7ffc0000"
+      description: "允许但记录日志"
+      kernel_version: "4.14+"
+    - name: "SECCOMP_RET_ALLOW"
+      value: "0x7fff0000"
+      description: "允许系统调用"
+
+  filter_operations:
+    - name: "SECCOMP_SET_MODE_STRICT"
+      value: 0
+      description: "设置严格模式"
+    - name: "SECCOMP_SET_MODE_FILTER"
+      value: 1
+      description: "设置过滤模式"
+    - name: "SECCOMP_GET_ACTION_AVAIL"
+      value: 2
+      description: "检查返回值是否可用"
+    - name: "SECCOMP_GET_NOTIF_SIZES"
+      value: 3
+      description: "获取通知大小"
+
+  filter_flags:
+    - name: "SECCOMP_FILTER_FLAG_TSYNC"
+      description: "同步所有线程"
+    - name: "SECCOMP_FILTER_FLAG_LOG"
+      description: "记录所有非 ALLOW 的操作"
+    - name: "SECCOMP_FILTER_FLAG_SPEC_ALLOW"
+      description: "禁用推测执行缓解"
+    - name: "SECCOMP_FILTER_FLAG_NEW_LISTENER"
+      description: "创建用户空间通知"
+
+  bpf_filter_structure:
+    description: "seccomp BPF 过滤器数据结构"
+    seccomp_data:
+      - field: "nr"
+        type: "int"
+        description: "系统调用号"
+      - field: "arch"
+        type: "__u32"
+        description: "架构 (AUDIT_ARCH_*)"
+      - field: "instruction_pointer"
+        type: "__u64"
+        description: "系统调用的指令指针"
+      - field: "args[6]"
+        type: "__u64"
+        description: "系统调用参数"
 
   functions:
-    - pattern: 'prctl\s*\(\s*PR_SET_SECCOMP\s*,'
-      description: "启用 seccomp"
-    - pattern: 'seccomp\s*\('
+    - pattern: 'prctl\s*\(\s*PR_SET_SECCOMP\s*,\s*(?P<mode>\w+)'
+      description: "通过 prctl 启用 seccomp"
+      signature: "prctl(PR_SET_SECCOMP, mode, ...)"
+
+    - pattern: 'seccomp\s*\(\s*(?P<op>SECCOMP_\w+)'
       description: "seccomp 系统调用"
+      signature: "int seccomp(unsigned int operation, unsigned int flags, void *args)"
+
+    - pattern: 'prctl\s*\(\s*PR_SET_NO_NEW_PRIVS'
+      description: "设置 no_new_privs (seccomp 过滤器必需)"
+      signature: "prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)"
+
+  call_chains:
+    seccomp_filter:
+      description: "seccomp 过滤器调用链"
+      trigger: "每个系统调用"
+      chain:
+        - function: "系统调用入口"
+          file: "arch/*/entry/*.S"
+          description: "系统调用入口点"
+        - function: "syscall_trace_enter"
+          file: "arch/*/kernel/ptrace.c"
+          description: "系统调用追踪入口"
+        - function: "__secure_computing"
+          file: "kernel/seccomp.c"
+          description: "seccomp 检查"
+        - function: "seccomp_run_filters"
+          file: "kernel/seccomp.c"
+          description: "运行 BPF 过滤器"
+        - function: "BPF_PROG_RUN"
+          file: "include/linux/filter.h"
+          description: "执行 BPF 程序"
+          is_user_entry: true
+
+  examples:
+    - description: "启用严格模式"
+      code: |
+        #include <linux/seccomp.h>
+        #include <sys/prctl.h>
+        
+        void enable_strict_mode(void)
+        {
+            /* 只允许 read, write, _exit, sigreturn */
+            prctl(PR_SET_SECCOMP, SECCOMP_MODE_STRICT);
+        }
+
+    - description: "BPF 过滤器示例"
+      code: |
+        #include <linux/seccomp.h>
+        #include <linux/filter.h>
+        #include <sys/prctl.h>
+        #include <sys/syscall.h>
+        
+        static struct sock_filter filter[] = {
+            /* 加载系统调用号 */
+            BPF_STMT(BPF_LD | BPF_W | BPF_ABS,
+                     offsetof(struct seccomp_data, nr)),
+            /* 允许 read */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_read, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            /* 允许 write */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            /* 允许 exit_group */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_exit_group, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            /* 其他系统调用返回 EPERM */
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | EPERM),
+        };
+        
+        static struct sock_fprog prog = {
+            .len = ARRAY_SIZE(filter),
+            .filter = filter,
+        };
+        
+        void enable_filter(void)
+        {
+            /* 必须先设置 no_new_privs */
+            prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+            /* 安装过滤器 */
+            prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog);
+        }
 
 # ============================================================
-# AUDIT
+# AUDIT (审计框架)
 # ============================================================
 
 audit:
-  description: "Linux Audit Framework"
+  description: "Linux Audit Framework - 系统审计"
   header: "linux/audit.h"
   icon: "📋"
+  kernel_version: "2.6+"
 
-  functions:
-    - pattern: 'audit_log\s*\('
-      description: "记录审计日志"
-    - pattern: 'audit_log_start\s*\('
-      description: "开始审计记录"
-    - pattern: 'audit_log_end\s*\('
-      description: "结束审计记录"
+  context:
+    type: "process/softirq"
+    can_sleep: "depends on context"
 
   message_types:
-    - "AUDIT_SYSCALL"
-    - "AUDIT_PATH"
-    - "AUDIT_EXECVE"
-    - "AUDIT_ANOM_PROMISCUOUS"
-    - "AUDIT_AVC"
+    kernel_messages:
+      - name: "AUDIT_SYSCALL"
+        value: 1300
+        description: "系统调用审计记录"
+      - name: "AUDIT_PATH"
+        value: 1302
+        description: "文件路径信息"
+      - name: "AUDIT_IPC"
+        value: 1303
+        description: "IPC 操作记录"
+      - name: "AUDIT_SOCKETCALL"
+        value: 1304
+        description: "套接字操作参数"
+      - name: "AUDIT_CONFIG_CHANGE"
+        value: 1305
+        description: "审计配置变更"
+      - name: "AUDIT_SOCKADDR"
+        value: 1306
+        description: "套接字地址"
+      - name: "AUDIT_CWD"
+        value: 1307
+        description: "当前工作目录"
+      - name: "AUDIT_EXECVE"
+        value: 1309
+        description: "execve 参数"
+      - name: "AUDIT_IPC_SET_PERM"
+        value: 1311
+        description: "IPC 权限变更"
+      - name: "AUDIT_MQ_OPEN"
+        value: 1312
+        description: "POSIX 消息队列打开"
+      - name: "AUDIT_MQ_SENDRECV"
+        value: 1313
+        description: "POSIX 消息队列收发"
+      - name: "AUDIT_MQ_NOTIFY"
+        value: 1314
+        description: "POSIX 消息队列通知"
+      - name: "AUDIT_MQ_GETSETATTR"
+        value: 1315
+        description: "POSIX 消息队列属性"
+      - name: "AUDIT_KERNEL_OTHER"
+        value: 1316
+        description: "其他内核消息"
+      - name: "AUDIT_FD_PAIR"
+        value: 1317
+        description: "pipe/socketpair"
+      - name: "AUDIT_OBJ_PID"
+        value: 1318
+        description: "ptrace 目标"
+      - name: "AUDIT_TTY"
+        value: 1319
+        description: "TTY 输入"
+      - name: "AUDIT_EOE"
+        value: 1320
+        description: "多记录事件结束"
+      - name: "AUDIT_BPRM_FCAPS"
+        value: 1321
+        description: "文件能力提升"
+      - name: "AUDIT_CAPSET"
+        value: 1322
+        description: "capset 参数"
+      - name: "AUDIT_MMAP"
+        value: 1323
+        description: "mmap 描述符和标志"
+      - name: "AUDIT_NETFILTER_PKT"
+        value: 1324
+        description: "netfilter 数据包"
+      - name: "AUDIT_NETFILTER_CFG"
+        value: 1325
+        description: "netfilter 配置变更"
+      - name: "AUDIT_SECCOMP"
+        value: 1326
+        description: "seccomp 事件"
+      - name: "AUDIT_PROCTITLE"
+        value: 1327
+        description: "进程标题"
+      - name: "AUDIT_FEATURE_CHANGE"
+        value: 1328
+        description: "审计功能变更"
+
+    daemon_messages:
+      - name: "AUDIT_DAEMON_START"
+        value: 1200
+        description: "auditd 启动"
+      - name: "AUDIT_DAEMON_END"
+        value: 1201
+        description: "auditd 正常停止"
+      - name: "AUDIT_DAEMON_ABORT"
+        value: 1202
+        description: "auditd 错误停止"
+      - name: "AUDIT_DAEMON_CONFIG"
+        value: 1203
+        description: "auditd 配置变更"
+
+    selinux_messages:
+      - name: "AUDIT_AVC"
+        value: 1400
+        description: "SELinux AVC 拒绝"
+      - name: "AUDIT_SELINUX_ERR"
+        value: 1401
+        description: "SELinux 错误"
+      - name: "AUDIT_AVC_PATH"
+        value: 1402
+        description: "AVC 路径信息"
+      - name: "AUDIT_MAC_POLICY_LOAD"
+        value: 1403
+        description: "策略加载"
+      - name: "AUDIT_MAC_STATUS"
+        value: 1404
+        description: "MAC 状态变更"
+      - name: "AUDIT_MAC_CONFIG_CHANGE"
+        value: 1405
+        description: "MAC 配置变更"
+
+    anomaly_messages:
+      - name: "AUDIT_ANOM_PROMISCUOUS"
+        value: 1700
+        description: "网卡混杂模式"
+      - name: "AUDIT_ANOM_ABEND"
+        value: 1701
+        description: "异常终止"
+      - name: "AUDIT_ANOM_LINK"
+        value: 1702
+        description: "可疑链接"
+
+  functions:
+    - pattern: 'audit_log\s*\(\s*(?P<ctx>[^,]+)\s*,\s*(?P<gfp>[^,]+)\s*,\s*(?P<type>\w+)'
+      description: "记录审计日志 (一次性完整)"
+      signature: "void audit_log(struct audit_context *ctx, gfp_t gfp_mask, int type, const char *fmt, ...)"
+      context: "process (GFP_KERNEL) or atomic (GFP_ATOMIC)"
+
+    - pattern: 'audit_log_start\s*\(\s*(?P<ctx>[^,]+)\s*,\s*(?P<gfp>[^,]+)\s*,\s*(?P<type>\w+)\s*\)'
+      description: "开始审计记录"
+      signature: "struct audit_buffer *audit_log_start(struct audit_context *ctx, gfp_t gfp_mask, int type)"
+      return_value: "审计缓冲区指针或 NULL"
+
+    - pattern: 'audit_log_format\s*\(\s*(?P<ab>\w+)'
+      description: "格式化审计数据"
+      signature: "void audit_log_format(struct audit_buffer *ab, const char *fmt, ...)"
+
+    - pattern: 'audit_log_end\s*\(\s*(?P<ab>\w+)\s*\)'
+      description: "结束并发送审计记录"
+      signature: "void audit_log_end(struct audit_buffer *ab)"
+
+    - pattern: 'audit_log_n_string\s*\('
+      description: "记录字符串 (指定长度)"
+      signature: "void audit_log_n_string(struct audit_buffer *ab, const char *buf, size_t n)"
+
+    - pattern: 'audit_log_untrustedstring\s*\('
+      description: "记录不可信字符串 (转义)"
+      signature: "void audit_log_untrustedstring(struct audit_buffer *ab, const char *string)"
+
+    - pattern: 'audit_log_d_path\s*\('
+      description: "记录路径"
+      signature: "void audit_log_d_path(struct audit_buffer *ab, const char *prefix, const struct path *path)"
+
+    - pattern: 'audit_log_key\s*\('
+      description: "记录审计规则键"
+      signature: "void audit_log_key(struct audit_buffer *ab, char *key)"
+
+    - pattern: 'audit_log_link_denied\s*\('
+      description: "记录链接拒绝"
+      signature: "void audit_log_link_denied(const char *operation, const struct path *link)"
+
+    - pattern: 'audit_log_session_info\s*\('
+      description: "记录会话信息"
+      signature: "void audit_log_session_info(struct audit_buffer *ab)"
+
+    - pattern: '__audit_syscall_entry\s*\('
+      description: "系统调用入口审计"
+      signature: "void __audit_syscall_entry(int major, unsigned long a1, unsigned long a2, unsigned long a3, unsigned long a4)"
+
+    - pattern: '__audit_syscall_exit\s*\('
+      description: "系统调用退出审计"
+      signature: "void __audit_syscall_exit(int success, long return_code)"
+
+  call_chains:
+    syscall_audit:
+      description: "系统调用审计调用链"
+      trigger: "系统调用 (当审计规则匹配)"
+      chain:
+        - function: "syscall_trace_enter"
+          file: "arch/*/kernel/ptrace.c"
+          description: "系统调用入口"
+        - function: "__audit_syscall_entry"
+          file: "kernel/auditsc.c"
+          description: "记录系统调用入口"
+        - function: "系统调用执行"
+          description: "实际系统调用"
+        - function: "syscall_trace_leave"
+          file: "arch/*/kernel/ptrace.c"
+          description: "系统调用退出"
+        - function: "__audit_syscall_exit"
+          file: "kernel/auditsc.c"
+          description: "记录系统调用退出"
+        - function: "audit_log_exit"
+          file: "kernel/auditsc.c"
+          description: "生成审计记录"
+        - function: "audit_log_end"
+          file: "kernel/audit.c"
+          description: "发送到 auditd"
+          is_user_entry: true
+
+    file_audit:
+      description: "文件访问审计调用链"
+      trigger: "文件操作 (当有审计规则)"
+      chain:
+        - function: "vfs_open/vfs_read/vfs_write"
+          file: "fs/*.c"
+          description: "VFS 操作"
+        - function: "__audit_inode"
+          file: "kernel/auditsc.c"
+          description: "记录 inode 信息"
+        - function: "__audit_file"
+          file: "kernel/auditsc.c"
+          description: "记录文件信息"
+        - function: "audit_log_name"
+          file: "kernel/auditsc.c"
+          description: "记录文件名"
+          is_user_entry: true
 
   config_files:
-    - "/etc/audit/auditd.conf"
-    - "/etc/audit/rules.d/"
+    - path: "/etc/audit/auditd.conf"
+      description: "auditd 配置"
+    - path: "/etc/audit/rules.d/"
+      description: "审计规则目录"
+    - path: "/var/log/audit/audit.log"
+      description: "审计日志文件"
+
+  commands:
+    - name: "auditctl"
+      description: "管理审计规则"
+    - name: "ausearch"
+      description: "搜索审计日志"
+    - name: "aureport"
+      description: "生成审计报告"
+    - name: "auditd"
+      description: "审计守护进程"
+
+  examples:
+    - description: "记录简单审计日志"
+      code: |
+        #include <linux/audit.h>
+        
+        void log_my_event(void)
+        {
+            audit_log(audit_context(), GFP_KERNEL, AUDIT_KERNEL_OTHER,
+                      "my_module: event occurred param=%d", 42);
+        }
+
+    - description: "记录复杂审计日志"
+      code: |
+        #include <linux/audit.h>
+        
+        void log_complex_event(struct file *file)
+        {
+            struct audit_buffer *ab;
+            
+            ab = audit_log_start(audit_context(), GFP_KERNEL, AUDIT_KERNEL_OTHER);
+            if (!ab)
+                return;
+            
+            audit_log_format(ab, "op=my_operation");
+            audit_log_format(ab, " file=");
+            audit_log_untrustedstring(ab, file->f_path.dentry->d_name.name);
+            audit_log_format(ab, " result=success");
+            
+            audit_log_end(ab);
+        }

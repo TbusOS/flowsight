@@ -1,11 +1,17 @@
 # Linux Kernel Work Queue Knowledge Base
 # 
 # Reference: https://www.kernel.org/doc/html/latest/core-api/workqueue.html
+# Kernel Version: 4.0+ (Concurrency Managed Workqueue - cmwq)
+
+# ============================================================
+# WORK_STRUCT - 基本工作单元
+# ============================================================
 
 work_struct:
   description: "Work Queue - 延迟到进程上下文执行的工作单元"
   header: "linux/workqueue.h"
   icon: "⚙️"
+  kernel_version: "2.6+"
   
   context:
     type: "process"
@@ -13,46 +19,88 @@ work_struct:
     can_schedule: true
     preemptible: true
   
+  structure:
+    pattern: 'struct work_struct\s+(?P<name>\w+)'
+    description: "工作结构体定义"
+    fields:
+      - name: "data"
+        type: "atomic_long_t"
+        description: "工作数据和状态标志"
+      - name: "entry"
+        type: "struct list_head"
+        description: "链表节点"
+      - name: "func"
+        type: "work_func_t"
+        description: "工作处理函数"
+  
   bind_patterns:
     - pattern: 'INIT_WORK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
       handler_capture: "handler"
       variable_capture: "var"
       scope: "struct_field"
+      description: "动态初始化 work_struct"
     
     - pattern: 'INIT_WORK_ONSTACK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
       handler_capture: "handler"
       variable_capture: "var"
       scope: "local"
+      description: "初始化栈上的 work_struct（调试用）"
     
     - pattern: 'DECLARE_WORK\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
       handler_capture: "handler"
       variable_capture: "var"
       scope: "global"
+      description: "静态声明并初始化 work_struct"
   
   trigger_patterns:
     - pattern: 'schedule_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
       workqueue: "system_wq"
+      description: "调度到 system_wq 执行"
+    
+    - pattern: 'schedule_work_on\s*\(\s*(?P<cpu>\d+|[\w]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "调度到指定 CPU 的 system_wq"
     
     - pattern: 'queue_work\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
       extra_captures:
         - name: "wq"
           description: "目标工作队列"
+      description: "调度到指定工作队列"
     
     - pattern: 'queue_work_on\s*\(\s*(?P<cpu>\d+|[\w]+)\s*,\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
+      description: "调度到指定 CPU 的指定工作队列"
   
   cancel_patterns:
-    - pattern: 'cancel_work_sync\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
-      variable_capture: "var"
-      behavior: "sync"
-      description: "同步取消，等待工作完成"
-    
     - pattern: 'cancel_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
       behavior: "trycancel"
-      description: "尝试取消，不等待"
+      description: "尝试取消，不等待（返回是否成功取消）"
+    
+    - pattern: 'cancel_work_sync\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "sync"
+      description: "同步取消，等待工作完成（不能在中断上下文调用）"
+    
+    - pattern: 'disable_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "disable"
+      description: "禁用工作，阻止后续调度"
+      kernel_version: "6.5+"
+    
+    - pattern: 'disable_work_sync\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "disable_sync"
+      description: "同步禁用工作"
+      kernel_version: "6.5+"
+    
+    - pattern: 'enable_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      behavior: "enable"
+      description: "重新启用工作"
+      kernel_version: "6.5+"
   
   handler_signature:
     return_type: "void"
@@ -66,80 +114,739 @@ work_struct:
     cleanup_required: true
     ref_counted: false
   
+  call_chains:
+    work_execution:
+      description: "工作项执行调用链"
+      trigger: "schedule_work() 或 queue_work() 调度工作后"
+      chain:
+        - function: "queue_work / schedule_work"
+          file: "kernel/workqueue.c"
+          description: "将工作加入队列"
+          context: "any (process/softirq/hardirq)"
+        - function: "__queue_work"
+          file: "kernel/workqueue.c"
+          description: "内部入队实现"
+        - function: "insert_work"
+          file: "kernel/workqueue.c"
+          description: "插入工作到 pool"
+        - function: "wake_up_worker"
+          file: "kernel/workqueue.c"
+          description: "唤醒 worker 线程"
+        - function: "worker_thread"
+          file: "kernel/workqueue.c"
+          description: "worker 线程主循环"
+          context: "process"
+        - function: "process_one_work"
+          file: "kernel/workqueue.c"
+          description: "处理单个工作"
+        - function: "work->func(work)"
+          file: "用户代码"
+          description: "执行用户工作处理函数"
+          is_user_entry: true
+    
+    cancel_work_sync_path:
+      description: "cancel_work_sync 执行路径"
+      trigger: "调用 cancel_work_sync()"
+      chain:
+        - function: "cancel_work_sync"
+          file: "kernel/workqueue.c"
+          description: "同步取消工作"
+          context: "process (can sleep)"
+        - function: "__cancel_work_sync"
+          file: "kernel/workqueue.c"
+          description: "内部取消实现"
+        - function: "try_to_grab_pending"
+          file: "kernel/workqueue.c"
+          description: "尝试获取待处理工作"
+        - function: "flush_work"
+          file: "kernel/workqueue.c"
+          description: "如果正在执行则等待完成"
+  
   notes:
     - "使用 container_of 获取包含此 work_struct 的结构体"
-    - "不要在 handler 中释放包含 work_struct 的内存"
+    - "不要在 handler 中释放包含 work_struct 的内存（除非确定不会重新调度）"
     - "可以在 handler 中重新调度自身"
+    - "同一个 work 不能同时在多个队列中"
+    - "schedule_work() 返回 false 表示工作已经在队列中"
 
+
+# ============================================================
+# DELAYED_WORK - 延迟工作
+# ============================================================
 
 delayed_work:
   description: "Delayed Work Queue - 延迟指定时间后执行"
   header: "linux/workqueue.h"
   icon: "⏰"
+  kernel_version: "2.6+"
   
   extends: "work_struct"
   
   context:
     type: "process"
     can_sleep: true
+    can_schedule: true
+    preemptible: true
+  
+  structure:
+    pattern: 'struct delayed_work\s+(?P<name>\w+)'
+    description: "延迟工作结构体"
+    fields:
+      - name: "work"
+        type: "struct work_struct"
+        description: "嵌入的工作结构体"
+      - name: "timer"
+        type: "struct timer_list"
+        description: "定时器"
+      - name: "wq"
+        type: "struct workqueue_struct *"
+        description: "目标工作队列"
+      - name: "cpu"
+        type: "int"
+        description: "目标 CPU"
   
   bind_patterns:
     - pattern: 'INIT_DELAYED_WORK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
       handler_capture: "handler"
       variable_capture: "var"
+      description: "动态初始化延迟工作"
+    
+    - pattern: 'INIT_DELAYED_WORK_ONSTACK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      description: "初始化栈上的延迟工作"
+    
+    - pattern: 'DECLARE_DELAYED_WORK\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "global"
+      description: "静态声明延迟工作"
   
   trigger_patterns:
     - pattern: 'schedule_delayed_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<delay>[\w\+\*\/\(\)]+)\s*\)'
       variable_capture: "var"
+      workqueue: "system_wq"
       extra_captures:
         - name: "delay"
           description: "延迟时间 (jiffies)"
     
+    - pattern: 'schedule_delayed_work_on\s*\(\s*(?P<cpu>\d+|[\w]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<delay>[\w\+\*\/\(\)]+)\s*\)'
+      variable_capture: "var"
+      description: "调度到指定 CPU"
+    
     - pattern: 'queue_delayed_work\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<delay>[\w\+\*\/\(\)]+)\s*\)'
       variable_capture: "var"
+      description: "调度到指定工作队列"
+    
+    - pattern: 'queue_delayed_work_on\s*\(\s*(?P<cpu>\d+|[\w]+)\s*,\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<delay>[\w\+\*\/\(\)]+)\s*\)'
+      variable_capture: "var"
+      description: "调度到指定 CPU 的指定队列"
     
     - pattern: 'mod_delayed_work\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<delay>[\w\+\*\/\(\)]+)\s*\)'
       variable_capture: "var"
-      description: "修改延迟时间"
+      description: "修改延迟时间（如果在队列中则重新设置定时器）"
+    
+    - pattern: 'mod_delayed_work_on\s*\(\s*(?P<cpu>\d+|[\w]+)\s*,\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<delay>[\w\+\*\/\(\)]+)\s*\)'
+      variable_capture: "var"
+      description: "修改延迟时间并指定 CPU"
   
   cancel_patterns:
     - pattern: 'cancel_delayed_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
       behavior: "trycancel"
+      description: "尝试取消延迟工作（返回是否成功）"
     
     - pattern: 'cancel_delayed_work_sync\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
       behavior: "sync"
+      description: "同步取消延迟工作"
+  
+  call_chains:
+    delayed_work_execution:
+      description: "延迟工作执行调用链"
+      trigger: "定时器到期时"
+      chain:
+        - function: "schedule_delayed_work"
+          file: "kernel/workqueue.c"
+          description: "调度延迟工作"
+        - function: "__queue_delayed_work"
+          file: "kernel/workqueue.c"
+          description: "设置定时器"
+        - function: "add_timer"
+          file: "kernel/time/timer.c"
+          description: "添加定时器"
+        - function: "delayed_work_timer_fn"
+          file: "kernel/workqueue.c"
+          description: "定时器回调（softirq 上下文）"
+          context: "softirq"
+        - function: "__queue_work"
+          file: "kernel/workqueue.c"
+          description: "将工作加入队列"
+        - function: "process_one_work"
+          file: "kernel/workqueue.c"
+          description: "worker 处理工作"
+          context: "process"
+        - function: "work->func(work)"
+          file: "用户代码"
+          is_user_entry: true
+  
+  helper_functions:
+    - pattern: 'delayed_work_pending\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      description: "检查延迟工作是否待处理"
+    
+    - pattern: 'to_delayed_work\s*\(\s*(?P<work>[\w\.\->]+)\s*\)'
+      description: "从 work_struct 获取 delayed_work"
 
+
+# ============================================================
+# WORKQUEUE_STRUCT - 工作队列实例
+# ============================================================
 
 workqueue_struct:
-  description: "Work Queue 实例"
+  description: "Work Queue 实例 - 管理 worker pool 和工作调度"
   header: "linux/workqueue.h"
+  icon: "📦"
+  kernel_version: "2.6+ (cmwq in 2.6.36+)"
   
   creation_patterns:
-    - pattern: 'alloc_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*,'
+    - pattern: 'alloc_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*,\s*(?P<flags>[\w\s\|]+)\s*,\s*(?P<max_active>\d+|[\w]+)\s*\)'
       extra_captures:
         - name: "name"
-          description: "工作队列名称"
+          description: "工作队列名称（显示在 ps 中）"
+        - name: "flags"
+          description: "队列标志"
+        - name: "max_active"
+          description: "最大并发工作数（0 表示默认）"
+      description: "分配工作队列（推荐方式）"
     
-    - pattern: 'create_singlethread_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*\)'
-      description: "单线程工作队列"
+    - pattern: 'alloc_ordered_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*,\s*(?P<flags>[\w\s\|]+)\s*\)'
+      description: "分配有序工作队列（max_active=1）"
     
     - pattern: 'create_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*\)'
-      description: "多线程工作队列（已废弃）"
+      description: "创建工作队列（已废弃，等同于 alloc_workqueue with WQ_MEM_RECLAIM）"
+      deprecated: true
+    
+    - pattern: 'create_singlethread_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*\)'
+      description: "创建单线程工作队列（已废弃）"
+      deprecated: true
+    
+    - pattern: 'create_freezable_workqueue\s*\(\s*"(?P<name>[^"]+)"\s*\)'
+      description: "创建可冻结工作队列（已废弃）"
+      deprecated: true
   
   destroy_patterns:
     - pattern: 'destroy_workqueue\s*\(\s*(?P<wq>[\w\.\->]+)\s*\)'
+      description: "销毁工作队列（会先 flush 所有工作）"
+  
+  flush_patterns:
     - pattern: 'flush_workqueue\s*\(\s*(?P<wq>[\w\.\->]+)\s*\)'
-      description: "等待队列中所有工作完成"
+      description: "等待队列中所有已调度工作完成"
+    
+    - pattern: 'flush_work\s*\(\s*&?(?P<work>[\w\.\->]+)\s*\)'
+      description: "等待指定工作完成"
+    
+    - pattern: 'flush_delayed_work\s*\(\s*&?(?P<dwork>[\w\.\->]+)\s*\)'
+      description: "等待延迟工作完成（会先取消定时器）"
+    
+    - pattern: 'drain_workqueue\s*\(\s*(?P<wq>[\w\.\->]+)\s*\)'
+      description: "排空工作队列（flush + 防止新工作）"
+  
+  flags:
+    WQ_UNBOUND:
+      value: "1 << 1"
+      description: "工作不绑定到特定 CPU，由调度器决定在哪个 CPU 执行"
+      use_case: "CPU 密集型工作、不需要 CPU 亲和性的工作"
+    
+    WQ_FREEZABLE:
+      value: "1 << 2"
+      description: "系统挂起时冻结工作队列"
+      use_case: "非关键工作，可以在系统挂起时暂停"
+    
+    WQ_MEM_RECLAIM:
+      value: "1 << 3"
+      description: "保证在内存回收路径上有 worker 可用"
+      use_case: "文件系统、块设备驱动等涉及内存回收的代码"
+    
+    WQ_HIGHPRI:
+      value: "1 << 4"
+      description: "使用高优先级 worker pool (nice -20)"
+      use_case: "对延迟敏感的工作"
+    
+    WQ_CPU_INTENSIVE:
+      value: "1 << 5"
+      description: "工作项是 CPU 密集型的"
+      use_case: "长时间运行的 CPU 密集型工作，防止阻塞其他工作"
+      note: "设置后 worker 会被标记为 CPU 密集型，允许其他 worker 并发"
+    
+    WQ_SYSFS:
+      value: "1 << 6"
+      description: "在 /sys/devices/virtual/workqueue/ 下创建 sysfs 接口"
+      use_case: "需要运行时调优的工作队列"
+    
+    WQ_POWER_EFFICIENT:
+      value: "1 << 7"
+      description: "如果 workqueue.power_efficient 启用，则使用 WQ_UNBOUND"
+      use_case: "对电源效率敏感的系统"
+    
+    __WQ_DRAINING:
+      value: "1 << 16"
+      description: "内部标志：正在排空"
+      internal: true
+    
+    __WQ_ORDERED:
+      value: "1 << 17"
+      description: "内部标志：有序队列"
+      internal: true
+    
+    __WQ_LEGACY:
+      value: "1 << 18"
+      description: "内部标志：旧式 API 创建"
+      internal: true
   
   builtin_queues:
     system_wq:
       description: "通用系统工作队列"
+      flags: "0"
+      max_active: "0 (default, currently 256)"
+      use_case: "大多数普通工作"
+    
     system_highpri_wq:
-      description: "高优先级工作队列"
+      description: "高优先级系统工作队列"
+      flags: "WQ_HIGHPRI"
+      max_active: "0"
+      use_case: "对延迟敏感的高优先级工作"
+    
     system_long_wq:
-      description: "长时间运行的工作"
+      description: "长时间运行工作的工作队列"
+      flags: "0"
+      max_active: "0"
+      use_case: "可能长时间运行的工作（避免阻塞 system_wq）"
+    
     system_unbound_wq:
       description: "不绑定 CPU 的工作队列"
+      flags: "WQ_UNBOUND"
+      max_active: "0"
+      use_case: "CPU 密集型工作、不需要本地性的工作"
+    
     system_freezable_wq:
-      description: "可冻结的工作队列"
+      description: "可冻结的系统工作队列"
+      flags: "WQ_FREEZABLE"
+      max_active: "0"
+      use_case: "系统挂起时可以暂停的工作"
+    
+    system_power_efficient_wq:
+      description: "电源高效的工作队列"
+      flags: "WQ_POWER_EFFICIENT"
+      max_active: "0"
+      use_case: "对电源效率敏感的工作"
+    
+    system_freezable_power_efficient_wq:
+      description: "可冻结且电源高效的工作队列"
+      flags: "WQ_FREEZABLE | WQ_POWER_EFFICIENT"
+      max_active: "0"
+      use_case: "可冻结且对电源效率敏感的工作"
+  
+  concurrency:
+    max_active:
+      description: "每个 CPU 上最多同时执行的工作数"
+      default: "0 (使用 WQ_DFL_ACTIVE = 256)"
+      ordered: "1 (严格顺序执行)"
+      note: "对于 WQ_UNBOUND 队列，这是全局限制"
+    
+    worker_pool:
+      description: "cmwq 使用 per-CPU 和 unbound worker pool"
+      structure:
+        - name: "per-CPU bound pool"
+          description: "每个 CPU 有一个普通优先级和一个高优先级 pool"
+        - name: "unbound pool"
+          description: "基于 NUMA 节点的共享 pool"
+    
+    worker_management:
+      description: "worker 线程动态创建和销毁"
+      idle_timeout: "300 seconds"
+      max_workers: "无硬性限制，按需创建"
+  
+  call_chains:
+    workqueue_creation:
+      description: "工作队列创建调用链"
+      trigger: "alloc_workqueue() 调用"
+      chain:
+        - function: "alloc_workqueue"
+          file: "kernel/workqueue.c"
+          description: "分配工作队列"
+        - function: "__alloc_workqueue_key"
+          file: "kernel/workqueue.c"
+          description: "内部分配实现"
+        - function: "alloc_and_link_pwqs"
+          file: "kernel/workqueue.c"
+          description: "分配 pool workqueue"
+        - function: "init_rescuer"
+          file: "kernel/workqueue.c"
+          description: "初始化 rescuer（如果 WQ_MEM_RECLAIM）"
+    
+    flush_workqueue_path:
+      description: "flush_workqueue 执行路径"
+      trigger: "flush_workqueue() 调用"
+      chain:
+        - function: "flush_workqueue"
+          file: "kernel/workqueue.c"
+          description: "刷新工作队列"
+          context: "process (can sleep)"
+        - function: "__flush_workqueue"
+          file: "kernel/workqueue.c"
+          description: "内部刷新实现"
+        - function: "flush_color_wait"
+          file: "kernel/workqueue.c"
+          description: "等待当前 color 的工作完成"
+        - function: "wait_for_completion"
+          file: "kernel/sched/completion.c"
+          description: "等待完成"
+
+
+# ============================================================
+# WORKER POOL - 工作者池
+# ============================================================
+
+worker_pool:
+  description: "Worker Pool - cmwq 的核心，管理 worker 线程"
+  header: "kernel/workqueue_internal.h"
+  icon: "👷"
+  kernel_version: "2.6.36+"
+  internal: true
+  
+  structure:
+    fields:
+      - name: "lock"
+        type: "raw_spinlock_t"
+        description: "保护 pool 的自旋锁"
+      - name: "cpu"
+        type: "int"
+        description: "绑定的 CPU (-1 表示 unbound)"
+      - name: "node"
+        type: "int"
+        description: "NUMA 节点 ID"
+      - name: "worklist"
+        type: "struct list_head"
+        description: "待处理的工作列表"
+      - name: "nr_workers"
+        type: "int"
+        description: "worker 总数"
+      - name: "nr_idle"
+        type: "int"
+        description: "空闲 worker 数"
+      - name: "workers"
+        type: "struct list_head"
+        description: "所有 worker 列表"
+      - name: "idle_list"
+        type: "struct list_head"
+        description: "空闲 worker 列表"
+  
+  worker_states:
+    idle:
+      description: "空闲状态，等待工作"
+    busy:
+      description: "正在执行工作"
+    cpu_intensive:
+      description: "执行 CPU 密集型工作（不计入并发限制）"
+  
+  notes:
+    - "每个 CPU 有两个 bound pool：normal 和 highpri"
+    - "unbound pool 基于 NUMA 节点共享"
+    - "worker 线程名称格式：kworker/N:M 或 kworker/u:M"
+
+
+# ============================================================
+# RCU WORK - RCU 延迟工作
+# ============================================================
+
+rcu_work:
+  description: "RCU Work - 在 RCU 宽限期后执行的工作"
+  header: "linux/workqueue.h"
+  icon: "🔄"
+  kernel_version: "4.20+"
+  
+  context:
+    type: "process"
+    can_sleep: true
+  
+  structure:
+    pattern: 'struct rcu_work\s+(?P<name>\w+)'
+    fields:
+      - name: "work"
+        type: "struct work_struct"
+        description: "嵌入的工作结构体"
+      - name: "rcu"
+        type: "struct rcu_head"
+        description: "RCU 头"
+      - name: "wq"
+        type: "struct workqueue_struct *"
+        description: "目标工作队列"
+  
+  bind_patterns:
+    - pattern: 'INIT_RCU_WORK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      description: "初始化 RCU 工作"
+    
+    - pattern: 'INIT_RCU_WORK_ONSTACK\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      description: "初始化栈上的 RCU 工作"
+  
+  trigger_patterns:
+    - pattern: 'queue_rcu_work\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "在 RCU 宽限期后调度工作"
+  
+  cancel_patterns:
+    - pattern: 'flush_rcu_work\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "等待 RCU 工作完成"
+  
+  call_chains:
+    rcu_work_execution:
+      description: "RCU 工作执行调用链"
+      trigger: "queue_rcu_work() 后 RCU 宽限期结束"
+      chain:
+        - function: "queue_rcu_work"
+          file: "kernel/workqueue.c"
+          description: "注册 RCU 回调"
+        - function: "call_rcu"
+          file: "kernel/rcu/tree.c"
+          description: "等待 RCU 宽限期"
+        - function: "rcu_work_rcufn"
+          file: "kernel/workqueue.c"
+          description: "RCU 回调，调度实际工作"
+          context: "softirq"
+        - function: "__queue_work"
+          file: "kernel/workqueue.c"
+          description: "将工作加入队列"
+        - function: "work->func(work)"
+          file: "用户代码"
+          context: "process"
+          is_user_entry: true
+
+
+# ============================================================
+# WORKQUEUE HELPERS
+# ============================================================
+
+workqueue_helpers:
+  description: "Workqueue Helper Functions"
+  header: "linux/workqueue.h"
+  
+  functions:
+    work_pending:
+      pattern: 'work_pending\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      description: "检查工作是否待处理"
+      return_type: "bool"
+    
+    work_busy:
+      pattern: 'work_busy\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      description: "检查工作是否正在执行或待处理"
+      return_type: "unsigned int"
+      return_values:
+        - "WORK_BUSY_PENDING - 待处理"
+        - "WORK_BUSY_RUNNING - 正在执行"
+    
+    current_work:
+      pattern: 'current_work\s*\(\s*\)'
+      description: "获取当前 worker 正在执行的工作"
+      return_type: "struct work_struct *"
+    
+    current_is_workqueue_rescuer:
+      pattern: 'current_is_workqueue_rescuer\s*\(\s*\)'
+      description: "当前是否是 rescuer worker"
+      return_type: "bool"
+    
+    workqueue_congested:
+      pattern: 'workqueue_congested\s*\(\s*(?P<cpu>\d+|[\w]+)\s*,\s*(?P<wq>[\w\.\->]+)\s*\)'
+      description: "检查工作队列是否拥塞"
+      return_type: "bool"
+    
+    workqueue_set_max_active:
+      pattern: 'workqueue_set_max_active\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<max_active>\d+)\s*\)'
+      description: "动态设置最大活动工作数"
+
+
+# ============================================================
+# WORKQUEUE EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 work_struct 使用"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/workqueue.h>
+      
+      struct my_device {
+          struct work_struct work;
+          int data;
+      };
+      
+      static void my_work_handler(struct work_struct *work)
+      {
+          struct my_device *dev = container_of(work, struct my_device, work);
+          
+          /* 进程上下文，可以睡眠 */
+          pr_info("Processing data: %d\n", dev->data);
+          msleep(100);  /* 可以睡眠 */
+      }
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev;
+          
+          dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+          
+          INIT_WORK(&dev->work, my_work_handler);
+          platform_set_drvdata(pdev, dev);
+          
+          return 0;
+      }
+      
+      static void my_irq_handler(struct my_device *dev)
+      {
+          /* 中断上下文，延迟到进程上下文处理 */
+          dev->data = read_from_hardware();
+          schedule_work(&dev->work);
+      }
+      
+      static void my_remove(struct platform_device *pdev)
+      {
+          struct my_device *dev = platform_get_drvdata(pdev);
+          
+          /* 同步取消，确保工作完成 */
+          cancel_work_sync(&dev->work);
+      }
+
+  - description: "自定义工作队列"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/workqueue.h>
+      
+      static struct workqueue_struct *my_wq;
+      
+      static int __init my_init(void)
+      {
+          /* 创建不绑定 CPU 的工作队列，支持内存回收 */
+          my_wq = alloc_workqueue("my_driver_wq",
+                                   WQ_UNBOUND | WQ_MEM_RECLAIM,
+                                   0);  /* 0 = 使用默认 max_active */
+          if (!my_wq)
+              return -ENOMEM;
+          
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          /* 销毁前会 flush 所有待处理工作 */
+          destroy_workqueue(my_wq);
+      }
+      
+      /* 使用自定义队列调度工作 */
+      static void schedule_my_work(struct work_struct *work)
+      {
+          queue_work(my_wq, work);
+      }
+
+  - description: "延迟工作（周期性任务）"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/workqueue.h>
+      
+      struct my_device {
+          struct delayed_work dwork;
+          unsigned long poll_interval;
+          bool running;
+      };
+      
+      static void my_delayed_handler(struct work_struct *work)
+      {
+          struct delayed_work *dwork = to_delayed_work(work);
+          struct my_device *dev = container_of(dwork, struct my_device, dwork);
+          
+          /* 执行周期性任务 */
+          poll_hardware(dev);
+          
+          /* 重新调度（如果仍在运行） */
+          if (dev->running)
+              schedule_delayed_work(&dev->dwork, dev->poll_interval);
+      }
+      
+      static int my_start_polling(struct my_device *dev)
+      {
+          dev->running = true;
+          dev->poll_interval = msecs_to_jiffies(100);  /* 100ms */
+          
+          INIT_DELAYED_WORK(&dev->dwork, my_delayed_handler);
+          schedule_delayed_work(&dev->dwork, 0);  /* 立即开始 */
+          
+          return 0;
+      }
+      
+      static void my_stop_polling(struct my_device *dev)
+      {
+          dev->running = false;
+          cancel_delayed_work_sync(&dev->dwork);
+      }
+
+  - description: "有序工作队列"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/workqueue.h>
+      
+      /* 有序队列保证工作按调度顺序执行 */
+      static struct workqueue_struct *ordered_wq;
+      
+      static int __init my_init(void)
+      {
+          /* alloc_ordered_workqueue 等同于 max_active = 1 */
+          ordered_wq = alloc_ordered_workqueue("my_ordered_wq",
+                                                WQ_MEM_RECLAIM);
+          if (!ordered_wq)
+              return -ENOMEM;
+          
+          return 0;
+      }
+      
+      /* 工作将严格按 queue_work 调用顺序执行 */
+      static void queue_in_order(struct work_struct *work1,
+                                  struct work_struct *work2,
+                                  struct work_struct *work3)
+      {
+          queue_work(ordered_wq, work1);  /* 第一个执行 */
+          queue_work(ordered_wq, work2);  /* 第二个执行 */
+          queue_work(ordered_wq, work3);  /* 第三个执行 */
+      }
+
+  - description: "RCU 工作（安全释放）"
+    kernel_version: "4.20+"
+    code: |
+      #include <linux/workqueue.h>
+      #include <linux/rcupdate.h>
+      
+      struct my_rcu_data {
+          struct rcu_work rwork;
+          void *data;
+      };
+      
+      static void my_rcu_free(struct work_struct *work)
+      {
+          struct rcu_work *rwork = to_rcu_work(work);
+          struct my_rcu_data *d = container_of(rwork, struct my_rcu_data, rwork);
+          
+          /* RCU 宽限期已过，可以安全释放 */
+          kfree(d->data);
+          kfree(d);
+      }
+      
+      static void my_release_data(struct my_rcu_data *d)
+      {
+          INIT_RCU_WORK(&d->rwork, my_rcu_free);
+          queue_rcu_work(system_wq, &d->rwork);
+      }
 
