@@ -15,6 +15,7 @@
 //! - **ExecutionFlow construction with knowledge injection**
 
 pub mod async_tracker;
+pub mod cache;
 pub mod callback;
 pub mod callgraph;
 pub mod classification;
@@ -30,6 +31,9 @@ pub mod propagation;
 pub mod scenario;
 pub mod symbolic_bridge;
 pub mod types;
+
+// Re-export cache types
+pub use cache::{AnalysisCache, CacheConfig, CacheStats, global_cache};
 
 use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};
 use flowsight_knowledge::KnowledgeBase;
