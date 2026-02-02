@@ -1,6 +1,7 @@
 # Linux Kernel IRQ and Interrupt Handling Knowledge Base
 #
-# Reference: https://www.kernel.org/doc/html/latest/driver-api/interrupt.html
+# Reference: https://www.kernel.org/doc/html/latest/core-api/genericirq.html
+#            https://www.kernel.org/doc/html/latest/driver-api/interrupt.html
 
 # ============================================================
 # HARDWARE INTERRUPT (request_irq)
@@ -10,6 +11,7 @@ irq_handler:
   description: "Hardware Interrupt Handler - 硬件中断处理"
   header: "linux/interrupt.h"
   icon: "⚡"
+  kernel_version: "2.6+"
 
   context:
     type: "hardirq"
@@ -19,7 +21,7 @@ irq_handler:
 
   bind_patterns:
     # request_irq - 标准中断请求
-    - pattern: "request_irq\\s*\\(\\s*(?P<irq>\\d+|\\w+)\\s*,\\s*(?P<handler>\\w+)\\s*,\\s*(?P<flags>\\w+)\\s*,\\s*(?P<name>[\"'][\\w\\s\\-]+[\"'])\\s*,\\s*(?P<dev_id>[^)]+)\\s*\\)"
+    - pattern: 'request_irq\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<dev_id>[^)]+)\s*\)'
       handler_capture: "handler"
       extra_captures:
         - name: "irq"
@@ -31,36 +33,34 @@ irq_handler:
         - name: "dev_id"
           description: "设备 ID (传递给中断处理函数)"
 
-    # request_irq 简化形式
-    - pattern: "request_irq\\s*\\(\\s*(?P<irq>\\d+|\\w+)\\s*,\\s*(?P<handler>\\w+)\\s*,\\s*(?P<flags>\\w+)\\s*,\\s*(?P<name>[\"'][\\w\\s\\-]+[\"'])\\s*\\)"
-      handler_capture: "handler"
-      description: "无 dev_id 的 request_irq"
-
     # devm_request_irq - 资源管理版本
-    - pattern: "devm_request_irq\\s*\\(\\s*(?P<dev>[^,]+)\\s*,\\s*(?P<irq>\\d+|\\w+)\\s*,\\s*(?P<handler>\\w+)\\s*,\\s*(?P<flags>\\w+)\\s*,\\s*(?P<name>[\"'][\\w\\s\\-]+[\"'])\\s*,\\s*(?P<dev_id>[^)]+)\\s*\\)"
+    - pattern: 'devm_request_irq\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<irq>[^,]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<dev_id>[^)]+)\s*\)'
       handler_capture: "handler"
       extra_captures:
         - name: "dev"
           description: "struct device 指针"
 
   trigger_patterns:
-    # 硬件触发，无软件触发模式
     trigger_type: "hardware"
     condition:
       timing: "asynchronous"
       requires_bind: true
 
   cancel_patterns:
-    - pattern: 'free_irq\s*\(\s*(?P<irq>\d+|\w+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+    - pattern: 'free_irq\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
       variable_capture: "irq"
       behavior: "sync"
       description: "释放中断"
+
+    - pattern: 'devm_free_irq\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<irq>[^,]+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+      variable_capture: "irq"
+      description: "释放 devm 管理的中断"
 
   handler_signature:
     return_type: "irqreturn_t"
     parameters:
       - name: "irq"
-        type: "unsigned int"
+        type: "int"
         description: "中断号"
       - name: "dev_id"
         type: "void *"
@@ -74,25 +74,31 @@ irq_handler:
     - value: "IRQ_WAKE_THREAD"
       description: "唤醒线程化中断处理函数"
 
-  kernel_call_chain:
-    trigger: "硬件中断发生"
-    chain:
-      - function: "do_IRQ"
-        file: "arch/x86/kernel/irq.c"
-        description: "通用中断入口"
-      - function: "handle_irq"
-        file: "arch/x86/kernel/irq.c"
-        description: "特定架构的中断处理"
-      - function: "generic_handle_irq"
-        file: "kernel/irq/irqdesc.c"
-        description: "通用中断描述符处理"
-      - function: "handle_edge_irq"
-        file: "kernel/irq/chip.c"
-        description: "边沿触发中断处理"
-      - function: "my_irq_handler()"
-        file: "用户代码"
-        description: "用户中断处理函数"
-        is_user_entry: true
+  call_chains:
+    hardirq_flow:
+      description: "硬件中断处理流程"
+      trigger: "硬件中断发生"
+      chain:
+        - function: "do_IRQ"
+          file: "arch/x86/kernel/irq.c"
+          description: "x86 通用中断入口"
+          context: "hardirq"
+        - function: "handle_irq"
+          file: "arch/x86/kernel/irq.c"
+          description: "特定架构的中断处理"
+        - function: "generic_handle_irq"
+          file: "kernel/irq/irqdesc.c"
+          description: "通用中断描述符处理"
+        - function: "handle_edge_irq / handle_level_irq"
+          file: "kernel/irq/chip.c"
+          description: "边沿/电平触发中断处理"
+        - function: "handle_irq_event"
+          file: "kernel/irq/handle.c"
+          description: "处理中断事件"
+        - function: "my_irq_handler()"
+          file: "用户代码"
+          description: "用户中断处理函数"
+          is_user_entry: true
 
   notes:
     - "在硬中断上下文执行，不能 sleep"
@@ -109,16 +115,17 @@ threaded_irq:
   description: "Threaded Interrupt Handler - 线程化中断处理"
   header: "linux/interrupt.h"
   icon: "🧵"
+  kernel_version: "2.6.30+"
 
   context:
-    type: "process"  # 线程函数在进程上下文
+    type: "process"
     can_sleep: true
     can_schedule: true
     preemptible: true
 
   bind_patterns:
     # request_threaded_irq - 线程化中断
-    - pattern: 'request_threaded_irq\s*\(\s*(?P<irq>\d+|\w+)\s*,\s*(?P<top_half>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+    - pattern: 'request_threaded_irq\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<top_half>\w+|NULL)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
       handler_capture: "handler"
       extra_captures:
         - name: "irq"
@@ -135,7 +142,7 @@ threaded_irq:
           description: "设备 ID"
 
     # devm_request_threaded_irq
-    - pattern: 'devm_request_threaded_irq\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<irq>\d+|\w+)\s*,\s*(?P<top_half>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>["\'][\w\s\-]+["\'])\s*,\s*(?P<dev_id>[^)]*)\s*\)'
+    - pattern: 'devm_request_threaded_irq\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<irq>[^,]+)\s*,\s*(?P<top_half>\w+|NULL)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
       handler_capture: "handler"
       extra_captures:
         - name: "dev"
@@ -145,7 +152,7 @@ threaded_irq:
     return_type: "irqreturn_t"
     parameters:
       - name: "irq"
-        type: "unsigned int"
+        type: "int"
       - name: "dev_id"
         type: "void *"
 
@@ -153,39 +160,44 @@ threaded_irq:
     return_type: "irqreturn_t"
     parameters:
       - name: "irq"
-        type: "unsigned int"
+        type: "int"
       - name: "dev_id"
         type: "void *"
 
-  kernel_call_chain:
-    trigger: "硬件中断发生"
-    chain:
-      - function: "do_IRQ"
-        file: "arch/x86/kernel/irq.c"
-      - function: "handle_irq"
-      - function: "my_top_half() [hardirq context]"
-        file: "用户代码"
-        description: "顶半部 (可选，快速处理)"
-        is_user_entry: true
-        context: "hardirq"
-
-      # 如果 top_half 返回 IRQ_WAKE_THREAD
-      - separation: "调度器选择线程"
-
-      - function: "irq_thread"
-        file: "kernel/irq/handle.c"
-        description: "中断线程"
-      - function: "my_thread_fn() [process context]"
-        file: "用户代码"
-        description: "线程化处理函数 (实际处理)"
-        is_user_entry: true
-        context: "process"
+  call_chains:
+    threaded_irq_flow:
+      description: "线程化中断处理流程"
+      trigger: "硬件中断发生"
+      chain:
+        - function: "do_IRQ"
+          file: "arch/x86/kernel/irq.c"
+          context: "hardirq"
+        - function: "handle_irq"
+        - function: "my_top_half() [hardirq context]"
+          file: "用户代码"
+          description: "顶半部 (可选，快速处理)"
+          is_user_entry: true
+          context: "hardirq"
+        - separation: "返回 IRQ_WAKE_THREAD 后调度器选择线程"
+        - function: "irq_thread"
+          file: "kernel/irq/manage.c"
+          description: "中断线程主循环"
+          context: "process"
+        - function: "irq_thread_fn"
+          file: "kernel/irq/manage.c"
+          description: "调用用户线程函数"
+        - function: "my_thread_fn() [process context]"
+          file: "用户代码"
+          description: "线程化处理函数 (实际处理)"
+          is_user_entry: true
+          context: "process"
 
   notes:
     - "顶半部在硬中断上下文执行，必须快速返回"
     - "线程函数在进程上下文执行，可以 sleep"
     - "如果不需要顶半部，传递 NULL"
-    - "线程可以被 rt 优先级"
+    - "线程可以设置 RT 优先级"
+    - "IRQF_ONESHOT 标志防止中断重入"
 
 
 # ============================================================
@@ -196,6 +208,7 @@ tasklet:
   description: "Tasklet - 软中断实现的延迟处理"
   header: "linux/interrupt.h"
   icon: "🔄"
+  kernel_version: "2.4+"
 
   context:
     type: "softirq"
@@ -204,7 +217,14 @@ tasklet:
     preemptible: false
 
   bind_patterns:
-    # DECLARE_TASKLET - 静态声明
+    # DECLARE_TASKLET - 静态声明 (新 API, 5.9+)
+    - pattern: 'DECLARE_TASKLET\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      variable_capture: "var"
+      scope: "global"
+      description: "新 API: 静态声明 tasklet"
+
+    # DECLARE_TASKLET_OLD - 旧 API
     - pattern: 'DECLARE_TASKLET\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<data>\w+)\s*\)'
       handler_capture: "handler"
       variable_capture: "var"
@@ -214,45 +234,37 @@ tasklet:
           description: "传递给 handler 的 data 参数"
 
     # DECLARE_TASKLET_DISABLED - 禁用状态
-    - pattern: 'DECLARE_TASKLET_DISABLED\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+    - pattern: 'DECLARE_TASKLET_DISABLED\s*\(\s*(?P<var>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
       handler_capture: "handler"
       variable_capture: "var"
       description: "声明禁用状态的 tasklet"
 
-    # tasklet_init - 动态初始化
-    - pattern: 'tasklet_init\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+    # tasklet_init - 动态初始化 (旧 API)
+    - pattern: 'tasklet_init\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<data>[^)]+)\s*\)'
       handler_capture: "handler"
       variable_capture: "var"
       scope: "struct_field"
-      extra_captures:
-        - name: "data"
-          description: "传递给 handler 的 data 参数"
 
-    # tasklet_setup (新 API)
-    - pattern: 'tasklet_setup\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+    # tasklet_setup - 新 API (5.9+)
+    - pattern: 'tasklet_setup\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
       variable_capture: "var"
-      description: "使用 struct tasklet_struct 的 setup 宏"
+      description: "新 API: 动态初始化 tasklet"
 
   trigger_patterns:
-    # tasklet_schedule - 调度 tasklet
     - pattern: 'tasklet_schedule\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
+      description: "调度 tasklet"
       condition:
         timing: "deferred"
         requires_bind: true
 
-    # tasklet_hi_schedule - 高优先级 tasklet
     - pattern: 'tasklet_hi_schedule\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
-      description: "高优先级软中断"
+      description: "高优先级 tasklet"
       condition:
         timing: "deferred"
         requires_bind: true
-
-    # tasklet_disable / tasklet_enable
-    - pattern: 'tasklet_disable\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
-      variable_capture: "var"
-      description: "禁用 tasklet"
 
   cancel_patterns:
     - pattern: 'tasklet_kill\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
@@ -262,38 +274,57 @@ tasklet:
 
     - pattern: 'tasklet_disable\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
-      description: "禁用 tasklet"
+      description: "禁用 tasklet (同步等待)"
+
+    - pattern: 'tasklet_disable_nosync\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "禁用 tasklet (不等待)"
 
     - pattern: 'tasklet_enable\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
       description: "启用 tasklet"
 
   handler_signature:
-    return_type: "void"
-    parameters:
-      - name: "data"
-        type: "unsigned long"
-        description: "传递给 tasklet 的数据"
+    new_api:
+      return_type: "void"
+      parameters:
+        - name: "t"
+          type: "struct tasklet_struct *"
+          description: "tasklet 结构体指针，用 from_tasklet() 恢复父结构"
+    old_api:
+      return_type: "void"
+      parameters:
+        - name: "data"
+          type: "unsigned long"
+          description: "传递给 tasklet 的数据"
 
-  kernel_call_chain:
-    trigger: "软中断 (TASKLET_SOFTIRQ / HI_SOFTIRQ)"
-    chain:
-      - function: "tasklet_action"
-        file: "kernel/softirq.c"
-        description: "Tasklet 软中断处理"
-      - function: "tasklet_hi_action"
-        file: "kernel/softirq.c"
-        description: "高优先级 tasklet 处理"
-      - function: "my_tasklet_handler(data)"
-        file: "用户代码"
-        description: "用户 tasklet 处理函数"
-        is_user_entry: true
+  call_chains:
+    tasklet_execution:
+      description: "Tasklet 执行流程"
+      trigger: "软中断 (TASKLET_SOFTIRQ / HI_SOFTIRQ)"
+      chain:
+        - function: "irq_exit"
+          file: "kernel/softirq.c"
+          description: "中断退出路径检查软中断"
+        - function: "__do_softirq"
+          file: "kernel/softirq.c"
+          description: "执行软中断"
+        - function: "tasklet_action / tasklet_hi_action"
+          file: "kernel/softirq.c"
+          description: "Tasklet 软中断处理"
+        - function: "tasklet_action_common"
+          file: "kernel/softirq.c"
+          description: "通用 tasklet 处理"
+        - function: "my_tasklet_handler()"
+          file: "用户代码"
+          description: "用户 tasklet 处理函数"
+          is_user_entry: true
 
   notes:
     - "在软中断上下文执行，不能 sleep"
-    - "同一个 tasklet 不会并发执行"
-    - "可以被高优先级的 tasklet 延迟"
-    - "使用 container_of 恢复父结构体"
+    - "同一个 tasklet 不会在多个 CPU 上并发执行"
+    - "新 API (5.9+) 使用 from_tasklet() 宏恢复父结构"
+    - "推荐使用新 API tasklet_setup()"
 
 
 # ============================================================
@@ -304,6 +335,7 @@ softirq:
   description: "Softirq - 软中断"
   header: "linux/interrupt.h"
   icon: "📡"
+  kernel_version: "2.4+"
 
   context:
     type: "softirq"
@@ -312,52 +344,63 @@ softirq:
     preemptible: false
 
   bind_patterns:
-    # open_softirq - 注册软中断
     - pattern: 'open_softirq\s*\(\s*(?P<nr>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
       handler_capture: "handler"
       extra_captures:
         - name: "nr"
           description: "软中断号 (HI_SOFTIRQ, TASKLET_SOFTIRQ, etc.)"
 
-    # softirq_handle_begin / softirq_handle_end (内部宏)
+  trigger_patterns:
     - pattern: 'raise_softirq\s*\(\s*(?P<nr>\w+)\s*\)'
       description: "触发软中断"
 
-    # raise_softirq_irqoff - 禁用中断版本
     - pattern: 'raise_softirq_irqoff\s*\(\s*(?P<nr>\w+)\s*\)'
       description: "在中断禁用状态下触发软中断"
 
+    - pattern: '__raise_softirq_irqoff\s*\(\s*(?P<nr>\w+)\s*\)'
+      description: "内部版本，不检查 ksoftirqd"
+
   softirq_types:
     - name: "HI_SOFTIRQ"
-      priority: "high"
-      description: "高优先级软中断"
+      value: 0
+      priority: "highest"
+      description: "高优先级软中断 (高优先级 tasklet)"
     - name: "TIMER_SOFTIRQ"
-      priority: "normal"
+      value: 1
+      priority: "high"
       description: "Timer 软中断"
     - name: "NET_TX_SOFTIRQ"
+      value: 2
       priority: "normal"
       description: "网络发送软中断"
     - name: "NET_RX_SOFTIRQ"
+      value: 3
       priority: "normal"
       description: "网络接收软中断"
     - name: "BLOCK_SOFTIRQ"
+      value: 4
       priority: "normal"
       description: "块设备软中断"
     - name: "IRQ_POLL_SOFTIRQ"
+      value: 5
       priority: "normal"
       description: "IRQ 轮询软中断"
     - name: "TASKLET_SOFTIRQ"
+      value: 6
       priority: "normal"
       description: "Tasklet 软中断"
     - name: "SCHED_SOFTIRQ"
+      value: 7
       priority: "high"
-      description: "调度软中断"
+      description: "调度软中断 (负载均衡)"
     - name: "HRTIMER_SOFTIRQ"
+      value: 8
       priority: "high"
       description: "高精度定时器软中断"
     - name: "RCU_SOFTIRQ"
-      priority: "high"
-      description: "RCU 软中断"
+      value: 9
+      priority: "low"
+      description: "RCU 软中断 (必须最后)"
 
   handler_signature:
     return_type: "void"
@@ -366,27 +409,1026 @@ softirq:
         type: "struct softirq_action *"
         description: "软中断 action 结构体"
 
-  kernel_call_chain:
-    trigger: "软中断触发"
-    chain:
-      - function: "irq_exit"
-        file: "kernel/softirq.c"
-        description: "中断退出路径"
-      - function: "invoke_softirq"
-        file: "kernel/softirq.c"
-        description: "调用软中断处理"
-      - function: "__do_softirq"
-        file: "kernel/softirq.c"
-        description: "执行所有待处理的软中断"
-      - function: "my_softirq_handler(action)"
-        file: "用户代码"
-        description: "用户软中断处理函数"
-        is_user_entry: true
+  call_chains:
+    softirq_execution:
+      description: "软中断执行流程"
+      trigger: "硬中断返回 / ksoftirqd 唤醒"
+      chain:
+        - function: "irq_exit"
+          file: "kernel/softirq.c"
+          description: "中断退出路径"
+        - function: "invoke_softirq"
+          file: "kernel/softirq.c"
+          description: "调用软中断处理"
+        - function: "__do_softirq"
+          file: "kernel/softirq.c"
+          description: "执行所有待处理的软中断"
+        - function: "softirq_vec[nr].action()"
+          file: "kernel/softirq.c"
+          description: "执行特定软中断处理函数"
 
   notes:
-    - "软中断数量有限，通常 reserved for core kernel"
+    - "软中断数量有限 (NR_SOFTIRQS)，通常保留给核心内核"
     - "驱动程序一般使用 tasklet 而不是自定义软中断"
     - "在软中断上下文执行，不能 sleep"
+    - "如果软中断处理时间过长，会唤醒 ksoftirqd"
+
+
+# ============================================================
+# IRQ DOMAIN
+# ============================================================
+
+irq_domain:
+  description: "IRQ Domain - 中断号映射域"
+  header: "linux/irqdomain.h"
+  icon: "🗺️"
+  kernel_version: "3.1+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct\s+irq_domain_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "IRQ Domain 操作结构体"
+    fields:
+      - name: "match"
+        type: "int (*)(struct irq_domain *, struct device_node *, enum irq_domain_bus_token)"
+        description: "匹配中断控制器节点"
+      - name: "select"
+        type: "int (*)(struct irq_domain *, struct irq_fwspec *, enum irq_domain_bus_token)"
+        description: "选择 IRQ domain"
+      - name: "map"
+        type: "int (*)(struct irq_domain *, unsigned int virq, irq_hw_number_t hw)"
+        description: "创建 hwirq 到 virq 的映射"
+      - name: "unmap"
+        type: "void (*)(struct irq_domain *, unsigned int virq)"
+        description: "删除映射"
+      - name: "xlate"
+        type: "int (*)(struct irq_domain *, struct device_node *, const u32 *, unsigned int, unsigned long *, unsigned int *)"
+        description: "解析设备树中断规格"
+      - name: "alloc"
+        type: "int (*)(struct irq_domain *, unsigned int virq, unsigned int nr_irqs, void *arg)"
+        description: "分配中断 (层次结构)"
+      - name: "free"
+        type: "void (*)(struct irq_domain *, unsigned int virq, unsigned int nr_irqs)"
+        description: "释放中断 (层次结构)"
+      - name: "activate"
+        type: "void (*)(struct irq_domain *, struct irq_data *)"
+        description: "激活中断"
+      - name: "deactivate"
+        type: "void (*)(struct irq_domain *, struct irq_data *)"
+        description: "去激活中断"
+      - name: "translate"
+        type: "int (*)(struct irq_domain *, struct irq_fwspec *, unsigned long *, unsigned int *)"
+        description: "翻译 fwspec 到 hwirq"
+
+  registration:
+    # irq_domain_add_linear - 线性映射
+    - pattern: 'irq_domain_add_linear\s*\(\s*(?P<node>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*&?(?P<ops>\w+)\s*,\s*(?P<host_data>[^)]+)\s*\)'
+      description: "创建线性映射 IRQ domain"
+      extra_captures:
+        - name: "node"
+          description: "设备树节点"
+        - name: "size"
+          description: "中断数量"
+        - name: "ops"
+          description: "irq_domain_ops 结构体"
+        - name: "host_data"
+          description: "私有数据"
+
+    # irq_domain_add_tree - 树状映射
+    - pattern: 'irq_domain_add_tree\s*\(\s*(?P<node>[^,]+)\s*,\s*&?(?P<ops>\w+)\s*,\s*(?P<host_data>[^)]+)\s*\)'
+      description: "创建树状映射 IRQ domain (稀疏中断号)"
+
+    # irq_domain_add_simple - 简单线性
+    - pattern: 'irq_domain_add_simple\s*\(\s*(?P<node>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<first_irq>[^,]+)\s*,\s*&?(?P<ops>\w+)\s*,\s*(?P<host_data>[^)]+)\s*\)'
+      description: "创建简单 IRQ domain (支持传统中断号)"
+
+    # irq_domain_add_hierarchy - 层次结构
+    - pattern: 'irq_domain_add_hierarchy\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<node>[^,]+)\s*,\s*&?(?P<ops>\w+)\s*,\s*(?P<host_data>[^)]+)\s*\)'
+      description: "创建层次结构 IRQ domain"
+
+    # irq_domain_remove - 删除 domain
+    - pattern: 'irq_domain_remove\s*\(\s*(?P<domain>[\w\.\->]+)\s*\)'
+      description: "删除 IRQ domain"
+
+  helper_functions:
+    - pattern: 'irq_find_mapping\s*\(\s*(?P<domain>[^,]+)\s*,\s*(?P<hwirq>[^)]+)\s*\)'
+      description: "查找 hwirq 对应的 virq"
+      return: "unsigned int virq"
+
+    - pattern: 'irq_create_mapping\s*\(\s*(?P<domain>[^,]+)\s*,\s*(?P<hwirq>[^)]+)\s*\)'
+      description: "创建 hwirq 到 virq 的映射"
+      return: "unsigned int virq"
+
+    - pattern: 'irq_create_of_mapping\s*\(\s*(?P<oirq>[^)]+)\s*\)'
+      description: "从设备树规格创建映射"
+
+    - pattern: 'irq_dispose_mapping\s*\(\s*(?P<virq>[^)]+)\s*\)'
+      description: "删除映射"
+
+    - pattern: 'irq_domain_xlate_onecell\s*\('
+      description: "单 cell 中断规格翻译器"
+
+    - pattern: 'irq_domain_xlate_twocell\s*\('
+      description: "双 cell 中断规格翻译器"
+
+    - pattern: 'irq_domain_xlate_onetwocell\s*\('
+      description: "一或二 cell 中断规格翻译器"
+
+  callbacks:
+    map:
+      pattern: '\.map\s*=\s*(?P<handler>\w+)'
+      description: "映射回调 - 设置 irq_chip 和 handler"
+      trigger: "irq_create_mapping() 调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct irq_domain *d, unsigned int virq, irq_hw_number_t hw)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "irq_set_chip_and_handler()"
+        - "irq_set_chip_data()"
+        - "irq_set_handler_data()"
+
+    xlate:
+      pattern: '\.xlate\s*=\s*(?P<handler>\w+)'
+      description: "翻译回调 - 解析设备树中断规格"
+      trigger: "设备树解析"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct irq_domain *d, struct device_node *node, const u32 *intspec, unsigned int intsize, unsigned long *out_hwirq, unsigned int *out_type)"
+
+    alloc:
+      pattern: '\.alloc\s*=\s*(?P<handler>\w+)'
+      description: "分配回调 - 层次结构中分配中断"
+      trigger: "irq_domain_alloc_irqs()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct irq_domain *d, unsigned int virq, unsigned int nr_irqs, void *arg)"
+
+  call_chains:
+    irq_mapping:
+      description: "中断映射流程"
+      trigger: "设备请求中断"
+      chain:
+        - function: "of_irq_get / platform_get_irq"
+          file: "drivers/of/irq.c"
+          description: "获取设备树中断"
+        - function: "irq_create_of_mapping"
+          file: "kernel/irq/irqdomain.c"
+          description: "从设备树创建映射"
+        - function: "irq_domain_translate"
+          file: "kernel/irq/irqdomain.c"
+          description: "翻译中断规格"
+        - function: "ops->xlate()"
+          file: "用户代码"
+          description: "用户翻译回调"
+          is_user_entry: true
+        - function: "irq_domain_alloc_irqs"
+          file: "kernel/irq/irqdomain.c"
+          description: "分配 virq"
+        - function: "ops->alloc() / ops->map()"
+          file: "用户代码"
+          description: "用户分配/映射回调"
+          is_user_entry: true
+
+  notes:
+    - "IRQ domain 用于硬件中断号到 Linux virq 的映射"
+    - "线性映射适合连续的中断号"
+    - "树状映射适合稀疏的中断号"
+    - "层次结构支持级联中断控制器"
+
+
+# ============================================================
+# IRQ CHIP
+# ============================================================
+
+irq_chip:
+  description: "IRQ Chip - 中断控制器芯片描述"
+  header: "linux/irq.h"
+  icon: "🔌"
+  kernel_version: "2.6+"
+
+  context:
+    type: "varies"
+    note: "大多数回调在中断禁用状态下运行"
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct\s+irq_chip\s+(?P<name>\w+)\s*=\s*\{'
+    description: "IRQ Chip 结构体定义"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "芯片名称 (/proc/interrupts)"
+      - name: "irq_startup"
+        type: "unsigned int (*)(struct irq_data *data)"
+        description: "启动中断 (默认 ->enable)"
+      - name: "irq_shutdown"
+        type: "void (*)(struct irq_data *data)"
+        description: "关闭中断 (默认 ->disable)"
+      - name: "irq_enable"
+        type: "void (*)(struct irq_data *data)"
+        description: "启用中断 (默认 ->unmask)"
+      - name: "irq_disable"
+        type: "void (*)(struct irq_data *data)"
+        description: "禁用中断"
+      - name: "irq_ack"
+        type: "void (*)(struct irq_data *data)"
+        description: "响应中断 (开始新中断)"
+      - name: "irq_mask"
+        type: "void (*)(struct irq_data *data)"
+        description: "屏蔽中断源"
+      - name: "irq_mask_ack"
+        type: "void (*)(struct irq_data *data)"
+        description: "屏蔽并响应中断"
+      - name: "irq_unmask"
+        type: "void (*)(struct irq_data *data)"
+        description: "取消屏蔽中断源"
+      - name: "irq_eoi"
+        type: "void (*)(struct irq_data *data)"
+        description: "中断结束 (EOI)"
+      - name: "irq_set_affinity"
+        type: "int (*)(struct irq_data *data, const struct cpumask *dest, bool force)"
+        description: "设置 CPU 亲和性"
+      - name: "irq_retrigger"
+        type: "int (*)(struct irq_data *data)"
+        description: "重新触发中断"
+      - name: "irq_set_type"
+        type: "int (*)(struct irq_data *data, unsigned int flow_type)"
+        description: "设置触发类型 (边沿/电平)"
+      - name: "irq_set_wake"
+        type: "int (*)(struct irq_data *data, unsigned int on)"
+        description: "设置唤醒源"
+      - name: "irq_bus_lock"
+        type: "void (*)(struct irq_data *data)"
+        description: "锁定慢速总线 (I2C)"
+      - name: "irq_bus_sync_unlock"
+        type: "void (*)(struct irq_data *data)"
+        description: "同步并解锁慢速总线"
+      - name: "irq_compose_msi_msg"
+        type: "void (*)(struct irq_data *data, struct msi_msg *msg)"
+        description: "组合 MSI 消息"
+      - name: "irq_write_msi_msg"
+        type: "void (*)(struct irq_data *data, struct msi_msg *msg)"
+        description: "写入 MSI 消息"
+      - name: "ipi_send_single"
+        type: "void (*)(struct irq_data *data, unsigned int cpu)"
+        description: "发送单个 IPI"
+      - name: "ipi_send_mask"
+        type: "void (*)(struct irq_data *data, const struct cpumask *dest)"
+        description: "发送 IPI 到 CPU 集合"
+
+  callbacks:
+    irq_ack:
+      pattern: '\.irq_ack\s*=\s*(?P<handler>\w+)'
+      description: "中断响应回调"
+      trigger: "中断发生"
+      context: "hardirq"
+      can_sleep: false
+      signature: "void (*)(struct irq_data *data)"
+      typical_actions:
+        - "清除中断挂起位"
+        - "通知中断控制器已接收"
+
+    irq_mask:
+      pattern: '\.irq_mask\s*=\s*(?P<handler>\w+)'
+      description: "屏蔽中断回调"
+      trigger: "disable_irq() 或中断处理期间"
+      context: "irq_disabled"
+      can_sleep: false
+      signature: "void (*)(struct irq_data *data)"
+
+    irq_unmask:
+      pattern: '\.irq_unmask\s*=\s*(?P<handler>\w+)'
+      description: "取消屏蔽中断回调"
+      trigger: "enable_irq() 或中断处理完成"
+      context: "irq_disabled"
+      can_sleep: false
+      signature: "void (*)(struct irq_data *data)"
+
+    irq_eoi:
+      pattern: '\.irq_eoi\s*=\s*(?P<handler>\w+)'
+      description: "中断结束回调"
+      trigger: "中断处理完成"
+      context: "hardirq"
+      can_sleep: false
+      signature: "void (*)(struct irq_data *data)"
+      typical_actions:
+        - "发送 EOI 到中断控制器"
+        - "允许同优先级中断"
+
+    irq_set_type:
+      pattern: '\.irq_set_type\s*=\s*(?P<handler>\w+)'
+      description: "设置触发类型回调"
+      trigger: "irq_set_irq_type() 或设备树配置"
+      context: "process"
+      can_sleep: false
+      signature: "int (*)(struct irq_data *data, unsigned int flow_type)"
+      return_value:
+        success: "0"
+        failure: "-EINVAL"
+      typical_actions:
+        - "配置边沿/电平触发"
+        - "配置触发极性"
+
+    irq_set_affinity:
+      pattern: '\.irq_set_affinity\s*=\s*(?P<handler>\w+)'
+      description: "设置 CPU 亲和性回调"
+      trigger: "irq_set_affinity() 或 /proc/irq/N/smp_affinity"
+      context: "process (may be irq disabled)"
+      can_sleep: false
+      signature: "int (*)(struct irq_data *data, const struct cpumask *dest, bool force)"
+      return_value:
+        success: "IRQ_SET_MASK_OK / IRQ_SET_MASK_OK_NOCOPY"
+        failure: "-EINVAL"
+
+  registration:
+    - pattern: 'irq_set_chip\s*\(\s*(?P<irq>[^,]+)\s*,\s*&?(?P<chip>\w+)\s*\)'
+      description: "为 IRQ 设置芯片"
+
+    - pattern: 'irq_set_chip_data\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "设置芯片私有数据"
+
+    - pattern: 'irq_set_chip_and_handler\s*\(\s*(?P<irq>[^,]+)\s*,\s*&?(?P<chip>\w+)\s*,\s*(?P<handler>\w+)\s*\)'
+      description: "设置芯片和处理函数"
+
+    - pattern: 'irq_set_chip_and_handler_name\s*\(\s*(?P<irq>[^,]+)\s*,\s*&?(?P<chip>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "设置芯片、处理函数和名称"
+
+  handler_types:
+    - name: "handle_level_irq"
+      description: "电平触发中断处理"
+      pattern: 'handle_level_irq'
+    - name: "handle_edge_irq"
+      description: "边沿触发中断处理"
+      pattern: 'handle_edge_irq'
+    - name: "handle_fasteoi_irq"
+      description: "快速 EOI 中断处理 (GIC)"
+      pattern: 'handle_fasteoi_irq'
+    - name: "handle_simple_irq"
+      description: "简单中断处理"
+      pattern: 'handle_simple_irq'
+    - name: "handle_percpu_irq"
+      description: "Per-CPU 中断处理"
+      pattern: 'handle_percpu_irq'
+    - name: "handle_nested_irq"
+      description: "嵌套中断处理 (I2C GPIO)"
+      pattern: 'handle_nested_irq'
+
+  call_chains:
+    irq_chip_flow:
+      description: "IRQ Chip 调用流程"
+      trigger: "硬件中断发生"
+      chain:
+        - function: "generic_handle_irq"
+          file: "kernel/irq/irqdesc.c"
+          description: "通用中断处理入口"
+        - function: "handle_level_irq / handle_edge_irq"
+          file: "kernel/irq/chip.c"
+          description: "特定类型中断处理"
+        - function: "chip->irq_ack()"
+          file: "用户代码"
+          description: "响应中断"
+          is_user_entry: true
+        - function: "chip->irq_mask()"
+          file: "用户代码"
+          description: "屏蔽中断 (可选)"
+          is_user_entry: true
+        - function: "handle_irq_event"
+          file: "kernel/irq/handle.c"
+          description: "调用设备中断处理函数"
+        - function: "chip->irq_unmask()"
+          file: "用户代码"
+          description: "取消屏蔽"
+          is_user_entry: true
+        - function: "chip->irq_eoi()"
+          file: "用户代码"
+          description: "发送 EOI"
+          is_user_entry: true
+
+  flags:
+    - name: "IRQCHIP_SET_TYPE_MASKED"
+      description: "设置类型前先屏蔽"
+    - name: "IRQCHIP_EOI_IF_HANDLED"
+      description: "只有处理了才发 EOI"
+    - name: "IRQCHIP_MASK_ON_SUSPEND"
+      description: "挂起时屏蔽非唤醒中断"
+    - name: "IRQCHIP_ONOFFLINE_ENABLED"
+      description: "只在启用时调用 online/offline"
+    - name: "IRQCHIP_SKIP_SET_WAKE"
+      description: "跳过 irq_set_wake 调用"
+    - name: "IRQCHIP_ONESHOT_SAFE"
+      description: "ONESHOT 不需要 mask/unmask"
+    - name: "IRQCHIP_EOI_THREADED"
+      description: "线程模式下 unmask 时发 EOI"
+
+  notes:
+    - "irq_chip 是中断控制器的硬件抽象"
+    - "必须实现的回调: irq_mask, irq_unmask"
+    - "边沿触发需要 irq_ack"
+    - "电平触发通常需要 irq_eoi"
+
+
+# ============================================================
+# IRQ AFFINITY (中断亲和性)
+# ============================================================
+
+irq_affinity:
+  description: "IRQ Affinity - 中断 CPU 亲和性控制"
+  header: "linux/interrupt.h"
+  icon: "🎯"
+  kernel_version: "2.4+"
+
+  context:
+    type: "process"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  helper_functions:
+    - pattern: 'irq_set_affinity\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<cpumask>[^)]+)\s*\)'
+      description: "设置中断的 CPU 亲和性"
+      context: "process"
+      return: "int (0 成功, -errno 失败)"
+
+    - pattern: 'irq_set_affinity_hint\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<cpumask>[^)]+)\s*\)'
+      description: "设置亲和性提示 (用于 irqbalance)"
+      context: "process"
+
+    - pattern: 'irq_can_set_affinity\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "检查是否可以设置亲和性"
+      return: "bool"
+
+    - pattern: 'irq_can_set_affinity_usr\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "检查用户是否可以设置亲和性"
+      return: "bool"
+
+    - pattern: 'irq_set_affinity_notifier\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<notifier>[^)]+)\s*\)'
+      description: "注册亲和性变化通知"
+
+  procfs_interface:
+    smp_affinity:
+      path: "/proc/irq/N/smp_affinity"
+      description: "读写中断的 CPU 亲和性掩码 (十六进制)"
+      format: "bitmask in hex"
+      example: "echo 3 > /proc/irq/16/smp_affinity  # CPU 0,1"
+
+    smp_affinity_list:
+      path: "/proc/irq/N/smp_affinity_list"
+      description: "CPU 列表格式的亲和性"
+      format: "cpu list (e.g., 0-3,5)"
+      example: "echo 0-3 > /proc/irq/16/smp_affinity_list"
+
+    affinity_hint:
+      path: "/proc/irq/N/affinity_hint"
+      description: "驱动建议的亲和性 (只读)"
+
+    effective_affinity:
+      path: "/proc/irq/N/effective_affinity"
+      description: "实际生效的亲和性 (只读)"
+
+  irqbalance:
+    description: "irqbalance 守护进程"
+    purpose: "自动平衡中断到不同 CPU"
+    interaction:
+      - "读取 /proc/interrupts 统计"
+      - "读取 affinity_hint 获取驱动建议"
+      - "写入 smp_affinity 调整分布"
+
+  call_chains:
+    set_affinity_flow:
+      description: "设置中断亲和性流程"
+      trigger: "驱动调用或用户写 /proc"
+      chain:
+        - function: "irq_set_affinity / write to procfs"
+          description: "请求设置亲和性"
+        - function: "__irq_set_affinity"
+          file: "kernel/irq/manage.c"
+          description: "内部设置函数"
+        - function: "irq_do_set_affinity"
+          file: "kernel/irq/manage.c"
+          description: "执行亲和性设置"
+        - function: "chip->irq_set_affinity()"
+          file: "用户代码"
+          description: "调用芯片回调"
+          is_user_entry: true
+        - function: "更新硬件配置"
+          description: "中断控制器路由到指定 CPU"
+
+  notes:
+    - "Per-CPU 中断不能修改亲和性"
+    - "IRQ_NO_BALANCING 标志禁用 irqbalance"
+    - "managed 中断由内核自动管理亲和性"
+    - "MSI/MSI-X 中断可以精确控制亲和性"
+
+
+# ============================================================
+# MSI/MSI-X (Message Signaled Interrupts)
+# ============================================================
+
+msi:
+  description: "MSI/MSI-X - 消息信号中断"
+  header: "linux/pci.h"
+  icon: "📨"
+  kernel_version: "2.6.13+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  registration:
+    # pci_enable_msi - 启用单个 MSI
+    - pattern: 'pci_enable_msi\s*\(\s*(?P<pdev>[\w\.\->]+)\s*\)'
+      description: "启用单个 MSI 中断"
+      return: "0 成功, 负数失败"
+
+    # pci_disable_msi - 禁用 MSI
+    - pattern: 'pci_disable_msi\s*\(\s*(?P<pdev>[\w\.\->]+)\s*\)'
+      description: "禁用 MSI 中断"
+
+    # pci_enable_msix_range - 启用 MSI-X 范围
+    - pattern: 'pci_enable_msix_range\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<entries>[^,]+)\s*,\s*(?P<minvec>[^,]+)\s*,\s*(?P<maxvec>[^)]+)\s*\)'
+      description: "启用 minvec 到 maxvec 个 MSI-X 中断"
+      extra_captures:
+        - name: "entries"
+          description: "struct msix_entry 数组"
+        - name: "minvec"
+          description: "最小向量数"
+        - name: "maxvec"
+          description: "最大向量数"
+      return: "分配的向量数 (>0), 负数失败"
+
+    # pci_enable_msix_exact - 精确数量
+    - pattern: 'pci_enable_msix_exact\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<entries>[^,]+)\s*,\s*(?P<nvec>[^)]+)\s*\)'
+      description: "启用精确数量的 MSI-X 中断"
+
+    # pci_alloc_irq_vectors - 新 API (4.8+)
+    - pattern: 'pci_alloc_irq_vectors\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<min_vecs>[^,]+)\s*,\s*(?P<max_vecs>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+      description: "分配 IRQ 向量 (自动选择 MSI-X/MSI/INTx)"
+      extra_captures:
+        - name: "flags"
+          description: "PCI_IRQ_MSIX | PCI_IRQ_MSI | PCI_IRQ_LEGACY"
+
+    # pci_alloc_irq_vectors_affinity - 带亲和性
+    - pattern: 'pci_alloc_irq_vectors_affinity\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<min_vecs>[^,]+)\s*,\s*(?P<max_vecs>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<affd>[^)]+)\s*\)'
+      description: "分配带 CPU 亲和性的 IRQ 向量"
+
+    # pci_free_irq_vectors - 释放
+    - pattern: 'pci_free_irq_vectors\s*\(\s*(?P<pdev>[\w\.\->]+)\s*\)'
+      description: "释放所有 IRQ 向量"
+
+  helper_functions:
+    - pattern: 'pci_irq_vector\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<nr>[^)]+)\s*\)'
+      description: "获取第 nr 个向量的 Linux IRQ 号"
+      return: "unsigned int irq"
+
+    - pattern: 'pci_msi_enabled\s*\(\s*(?P<pdev>[\w\.\->]+)\s*\)'
+      description: "检查 MSI 是否启用"
+      return: "bool"
+
+    - pattern: 'pci_msix_vec_count\s*\(\s*(?P<pdev>[\w\.\->]+)\s*\)'
+      description: "获取 MSI-X 向量数量"
+      return: "int (向量数或错误码)"
+
+  flags:
+    - name: "PCI_IRQ_MSIX"
+      description: "允许 MSI-X"
+    - name: "PCI_IRQ_MSI"
+      description: "允许 MSI"
+    - name: "PCI_IRQ_LEGACY"
+      description: "允许传统 INTx"
+    - name: "PCI_IRQ_AFFINITY"
+      description: "自动设置亲和性"
+
+  msi_domain_ops:
+    pattern: 'static\s+(?:const\s+)?struct\s+msi_domain_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "MSI domain 操作"
+    fields:
+      - name: "get_hwirq"
+        description: "获取硬件中断号"
+      - name: "msi_init"
+        description: "初始化 MSI 描述符"
+      - name: "msi_free"
+        description: "释放 MSI 描述符"
+      - name: "msi_check"
+        description: "检查 MSI 域"
+      - name: "msi_prepare"
+        description: "准备 MSI 分配"
+      - name: "msi_finish"
+        description: "完成 MSI 分配"
+      - name: "set_desc"
+        description: "设置 MSI 描述符"
+
+  call_chains:
+    msi_allocation:
+      description: "MSI 向量分配流程"
+      trigger: "pci_alloc_irq_vectors() 调用"
+      chain:
+        - function: "pci_alloc_irq_vectors"
+          file: "drivers/pci/msi.c"
+          description: "分配 IRQ 向量入口"
+        - function: "__pci_enable_msix_range"
+          file: "drivers/pci/msi.c"
+          description: "尝试 MSI-X"
+        - function: "msix_capability_init"
+          file: "drivers/pci/msi.c"
+          description: "初始化 MSI-X 能力"
+        - function: "msi_domain_alloc_irqs"
+          file: "kernel/irq/msi.c"
+          description: "从 MSI domain 分配 IRQ"
+        - function: "irq_domain_alloc_irqs_hierarchy"
+          file: "kernel/irq/irqdomain.c"
+          description: "层次结构分配"
+        - function: "msi_domain_ops->msi_prepare()"
+          file: "用户代码"
+          description: "用户准备回调"
+          is_user_entry: true
+
+  notes:
+    - "MSI-X 支持每个中断独立的亲和性"
+    - "推荐使用新 API pci_alloc_irq_vectors()"
+    - "MSI 比传统 INTx 更高效，减少 CPU 占用"
+    - "MSI-X 最多支持 2048 个中断向量"
+
+
+# ============================================================
+# CHAINED INTERRUPT (级联中断)
+# ============================================================
+
+chained_irq:
+  description: "Chained Interrupt - 级联中断处理"
+  header: "linux/irq.h"
+  icon: "⛓️"
+  kernel_version: "2.6+"
+
+  context:
+    type: "hardirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  registration:
+    - pattern: 'irq_set_chained_handler\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      description: "设置级联中断处理函数"
+
+    - pattern: 'irq_set_chained_handler_and_data\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      handler_capture: "handler"
+      description: "设置级联处理函数和数据"
+
+  helper_functions:
+    - pattern: 'chained_irq_enter\s*\(\s*(?P<chip>[^,]+)\s*,\s*(?P<desc>[^)]+)\s*\)'
+      description: "进入级联中断处理"
+      context: "hardirq"
+      typical_actions:
+        - "调用 chip->irq_mask_ack() 或 chip->irq_mask()+irq_ack()"
+
+    - pattern: 'chained_irq_exit\s*\(\s*(?P<chip>[^,]+)\s*,\s*(?P<desc>[^)]+)\s*\)'
+      description: "退出级联中断处理"
+      context: "hardirq"
+      typical_actions:
+        - "调用 chip->irq_unmask()"
+        - "调用 chip->irq_eoi() (如果需要)"
+
+  handler_signature:
+    return_type: "void"
+    parameters:
+      - name: "desc"
+        type: "struct irq_desc *"
+        description: "中断描述符"
+
+  call_chains:
+    chained_flow:
+      description: "级联中断处理流程"
+      trigger: "父中断控制器收到子控制器中断"
+      chain:
+        - function: "handle_edge_irq / handle_level_irq"
+          file: "kernel/irq/chip.c"
+          description: "父中断处理"
+        - function: "my_chained_handler()"
+          file: "用户代码"
+          description: "级联处理函数"
+          is_user_entry: true
+          context: "hardirq"
+        - function: "chained_irq_enter()"
+          description: "标记进入级联处理"
+        - function: "读取子控制器状态"
+          description: "确定哪个子中断触发"
+        - function: "generic_handle_irq(child_irq)"
+          file: "kernel/irq/irqdesc.c"
+          description: "调用子中断处理"
+        - function: "chained_irq_exit()"
+          description: "标记退出级联处理"
+
+  use_cases:
+    - name: "GPIO 控制器"
+      description: "多个 GPIO 中断复用到一个父中断"
+    - name: "二级中断控制器"
+      description: "如 GPIO expander, PMIC"
+    - name: "PCI/MSI 桥"
+      description: "PCI 桥接器中断"
+
+  notes:
+    - "级联处理函数在硬中断上下文执行"
+    - "必须调用 chained_irq_enter/exit"
+    - "使用 generic_handle_irq() 分发子中断"
+    - "适用于非线程化中断控制器"
+
+
+# ============================================================
+# IPI (Inter-Processor Interrupt)
+# ============================================================
+
+ipi:
+  description: "IPI - 处理器间中断"
+  header: "linux/smp.h"
+  icon: "📡"
+  kernel_version: "2.0+"
+
+  context:
+    type: "varies"
+    note: "发送在调用上下文，接收在 IPI 上下文"
+
+  send_functions:
+    - pattern: 'smp_call_function\s*\(\s*(?P<func>\w+)\s*,\s*(?P<info>[^,]+)\s*,\s*(?P<wait>[^)]+)\s*\)'
+      handler_capture: "func"
+      description: "在所有其他 CPU 上执行函数"
+      extra_captures:
+        - name: "info"
+          description: "传递给函数的参数"
+        - name: "wait"
+          description: "1 等待完成, 0 立即返回"
+
+    - pattern: 'smp_call_function_single\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<func>\w+)\s*,\s*(?P<info>[^,]+)\s*,\s*(?P<wait>[^)]+)\s*\)'
+      handler_capture: "func"
+      description: "在指定 CPU 上执行函数"
+
+    - pattern: 'smp_call_function_many\s*\(\s*(?P<mask>[^,]+)\s*,\s*(?P<func>\w+)\s*,\s*(?P<info>[^,]+)\s*,\s*(?P<wait>[^)]+)\s*\)'
+      handler_capture: "func"
+      description: "在指定 CPU 集合上执行函数"
+
+    - pattern: 'on_each_cpu\s*\(\s*(?P<func>\w+)\s*,\s*(?P<info>[^,]+)\s*,\s*(?P<wait>[^)]+)\s*\)'
+      handler_capture: "func"
+      description: "在所有 CPU (包括当前) 上执行函数"
+
+    - pattern: 'smp_call_function_single_async\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<csd>[^)]+)\s*\)'
+      description: "异步在指定 CPU 上执行"
+
+  handler_signature:
+    return_type: "void"
+    parameters:
+      - name: "info"
+        type: "void *"
+        description: "传递的参数"
+
+  ipi_types:
+    - name: "CALL_FUNCTION_IPI"
+      description: "smp_call_function 使用"
+    - name: "RESCHEDULE_IPI"
+      description: "调度器请求重新调度"
+    - name: "CALL_FUNCTION_SINGLE_IPI"
+      description: "smp_call_function_single 使用"
+    - name: "TIMER_IPI"
+      description: "定时器相关 (某些架构)"
+    - name: "IRQ_WORK_IPI"
+      description: "irq_work 执行"
+
+  call_chains:
+    smp_call_function_flow:
+      description: "smp_call_function 执行流程"
+      trigger: "调用 smp_call_function()"
+      chain:
+        - function: "smp_call_function"
+          file: "kernel/smp.c"
+          description: "准备 call_function_data"
+        - function: "smp_call_function_many_cond"
+          file: "kernel/smp.c"
+          description: "选择目标 CPU"
+        - function: "arch_send_call_function_ipi_mask"
+          file: "arch/*/kernel/smp.c"
+          description: "架构相关 IPI 发送"
+        - separation: "IPI 发送到目标 CPU"
+        - function: "do_IPI [target CPU]"
+          file: "arch/*/kernel/smp.c"
+          description: "目标 CPU 收到 IPI"
+          context: "hardirq"
+        - function: "generic_smp_call_function_interrupt"
+          file: "kernel/smp.c"
+          description: "处理 call function IPI"
+        - function: "my_ipi_func(info) [target CPU]"
+          file: "用户代码"
+          description: "用户函数在目标 CPU 执行"
+          is_user_entry: true
+          context: "irq disabled"
+
+  schedule_on_cpu:
+    - pattern: 'schedule_on_each_cpu\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      description: "在每个 CPU 上调度 workqueue"
+      context: "process (回调在 workqueue 中执行)"
+
+    - pattern: 'queue_work_on\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<wq>[^,]+)\s*,\s*(?P<work>[^)]+)\s*\)'
+      description: "在指定 CPU 的 workqueue 上排队工作"
+
+  notes:
+    - "IPI 回调在中断禁用状态下执行"
+    - "回调不能 sleep"
+    - "wait=1 会阻塞直到所有目标 CPU 完成"
+    - "适用于 CPU 间同步和缓存刷新"
+
+
+# ============================================================
+# NMI (Non-Maskable Interrupt)
+# ============================================================
+
+nmi:
+  description: "NMI - 不可屏蔽中断"
+  header: "linux/nmi.h"
+  icon: "🚨"
+  kernel_version: "2.4+"
+
+  context:
+    type: "nmi"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+    special: "不能被任何中断屏蔽"
+
+  registration:
+    - pattern: 'register_nmi_handler\s*\(\s*(?P<type>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      handler_capture: "handler"
+      description: "注册 NMI 处理函数"
+      extra_captures:
+        - name: "type"
+          description: "NMI 类型 (NMI_UNKNOWN, NMI_LOCAL, NMI_IO_CHECK, NMI_SERR)"
+
+    - pattern: 'unregister_nmi_handler\s*\(\s*(?P<type>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "注销 NMI 处理函数"
+
+  nmi_types:
+    - name: "NMI_UNKNOWN"
+      description: "未知来源 NMI"
+    - name: "NMI_LOCAL"
+      description: "本地 NMI (性能监控, watchdog)"
+    - name: "NMI_IO_CHECK"
+      description: "I/O 检查 NMI"
+    - name: "NMI_SERR"
+      description: "系统错误 NMI"
+
+  handler_signature:
+    return_type: "int"
+    parameters:
+      - name: "type"
+        type: "unsigned int"
+        description: "NMI 类型"
+      - name: "regs"
+        type: "struct pt_regs *"
+        description: "寄存器状态"
+
+  return_values:
+    - value: "NMI_HANDLED"
+      description: "NMI 被处理"
+    - value: "NMI_DONE"
+      description: "NMI 未被处理 (检查下一个处理器)"
+
+  helper_functions:
+    - pattern: 'touch_nmi_watchdog\s*\(\s*\)'
+      description: "喂 NMI watchdog，防止超时"
+
+    - pattern: 'nmi_panic\s*\(\s*(?P<regs>[^,]+)\s*,\s*(?P<msg>[^)]+)\s*\)'
+      description: "NMI 上下文中 panic"
+
+  watchdog:
+    hardlockup_detector:
+      description: "硬锁检测器 - 检测长时间中断禁用"
+      trigger: "定时器中断长时间未响应"
+      mechanism: "perf NMI 计数器溢出"
+
+    touch_watchdog:
+      - pattern: 'touch_softlockup_watchdog\s*\(\s*\)'
+        description: "喂软锁 watchdog"
+      - pattern: 'touch_all_softlockup_watchdogs\s*\(\s*\)'
+        description: "喂所有 CPU 的软锁 watchdog"
+
+  call_chains:
+    nmi_flow:
+      description: "NMI 处理流程 (x86)"
+      trigger: "NMI 引脚或 APIC NMI"
+      chain:
+        - function: "nmi [asm entry]"
+          file: "arch/x86/entry/entry_64.S"
+          description: "NMI 汇编入口"
+        - function: "do_nmi"
+          file: "arch/x86/kernel/nmi.c"
+          description: "NMI C 入口"
+        - function: "default_do_nmi"
+          file: "arch/x86/kernel/nmi.c"
+          description: "默认 NMI 处理"
+        - function: "nmi_handle"
+          file: "arch/x86/kernel/nmi.c"
+          description: "遍历 NMI 处理函数链"
+        - function: "my_nmi_handler()"
+          file: "用户代码"
+          description: "用户 NMI 处理函数"
+          is_user_entry: true
+
+  notes:
+    - "NMI 不能被屏蔽，用于关键错误检测"
+    - "NMI 处理函数必须非常简短"
+    - "不能使用普通锁，只能用 NMI 安全的机制"
+    - "适用于: watchdog, 性能监控, 硬件错误"
+
+
+# ============================================================
+# INTERRUPT CONTROL FUNCTIONS
+# ============================================================
+
+irq_control:
+  description: "中断控制函数"
+  header: "linux/interrupt.h"
+  icon: "🎛️"
+
+  local_irq_control:
+    - pattern: 'local_irq_disable\s*\(\s*\)'
+      description: "禁用本地 CPU 中断"
+      context: "任何"
+
+    - pattern: 'local_irq_enable\s*\(\s*\)'
+      description: "启用本地 CPU 中断"
+      context: "中断禁用状态"
+
+    - pattern: 'local_irq_save\s*\(\s*(?P<flags>\w+)\s*\)'
+      description: "保存中断状态并禁用"
+      extra_captures:
+        - name: "flags"
+          description: "保存状态的变量"
+
+    - pattern: 'local_irq_restore\s*\(\s*(?P<flags>\w+)\s*\)'
+      description: "恢复之前保存的中断状态"
+
+    - pattern: 'irqs_disabled\s*\(\s*\)'
+      description: "检查本地中断是否禁用"
+      return: "bool"
+
+  specific_irq_control:
+    - pattern: 'disable_irq\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "禁用指定中断 (等待完成)"
+      context: "process"
+
+    - pattern: 'disable_irq_nosync\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "禁用指定中断 (不等待)"
+
+    - pattern: 'enable_irq\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "启用指定中断"
+
+    - pattern: 'synchronize_irq\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "等待中断处理完成"
+
+    - pattern: 'disable_hardirq\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "禁用硬中断 (不包括线程化)"
+
+  preempt_control:
+    - pattern: 'preempt_disable\s*\(\s*\)'
+      description: "禁用抢占"
+
+    - pattern: 'preempt_enable\s*\(\s*\)'
+      description: "启用抢占"
+
+    - pattern: 'preempt_enable_no_resched\s*\(\s*\)'
+      description: "启用抢占但不检查重调度"
+
+    - pattern: 'in_interrupt\s*\(\s*\)'
+      description: "检查是否在中断上下文"
+      return: "非零表示在中断上下文"
+
+    - pattern: 'in_irq\s*\(\s*\)'
+      description: "检查是否在硬中断上下文"
+      return: "非零表示在硬中断"
+
+    - pattern: 'in_softirq\s*\(\s*\)'
+      description: "检查是否在软中断上下文"
+      return: "非零表示在软中断"
+
+    - pattern: 'in_task\s*\(\s*\)'
+      description: "检查是否在任务上下文"
+      return: "非零表示在任务上下文"
+
+    - pattern: 'in_nmi\s*\(\s*\)'
+      description: "检查是否在 NMI 上下文"
+      return: "非零表示在 NMI"
+
+  notes:
+    - "local_irq_disable/enable 只影响当前 CPU"
+    - "disable_irq 全局禁用指定中断"
+    - "使用 save/restore 配对避免嵌套问题"
+    - "in_interrupt() = hardirq || softirq || nmi"
 
 
 # ============================================================
@@ -398,7 +1440,6 @@ irq_helpers:
   header: "linux/interrupt.h"
 
   macros:
-    # IRQ 返回值
     IRQ_HANDLED:
       pattern: 'IRQ_HANDLED'
       description: "中断已处理"
@@ -427,7 +1468,42 @@ irq_helpers:
       description: "低电平触发"
     IRQF_ONESHOT:
       pattern: 'IRQF_ONESHOT'
-      description: "单次触发模式"
+      description: "单次触发模式 (线程化中断)"
+    IRQF_NO_SUSPEND:
+      pattern: 'IRQF_NO_SUSPEND'
+      description: "挂起时不禁用"
+    IRQF_EARLY_RESUME:
+      pattern: 'IRQF_EARLY_RESUME'
+      description: "早期恢复"
+    IRQF_NO_THREAD:
+      pattern: 'IRQF_NO_THREAD'
+      description: "禁止强制线程化"
+    IRQF_PERCPU:
+      pattern: 'IRQF_PERCPU'
+      description: "Per-CPU 中断"
+    IRQF_NOBALANCING:
+      pattern: 'IRQF_NOBALANCING'
+      description: "禁止 irqbalance"
+
+  trigger_types:
+    IRQ_TYPE_NONE:
+      pattern: 'IRQ_TYPE_NONE'
+      description: "未指定触发类型"
+    IRQ_TYPE_EDGE_RISING:
+      pattern: 'IRQ_TYPE_EDGE_RISING'
+      description: "上升沿触发"
+    IRQ_TYPE_EDGE_FALLING:
+      pattern: 'IRQ_TYPE_EDGE_FALLING'
+      description: "下降沿触发"
+    IRQ_TYPE_EDGE_BOTH:
+      pattern: 'IRQ_TYPE_EDGE_BOTH'
+      description: "双边沿触发"
+    IRQ_TYPE_LEVEL_HIGH:
+      pattern: 'IRQ_TYPE_LEVEL_HIGH'
+      description: "高电平触发"
+    IRQ_TYPE_LEVEL_LOW:
+      pattern: 'IRQ_TYPE_LEVEL_LOW'
+      description: "低电平触发"
 
 
 # ============================================================
@@ -436,8 +1512,10 @@ irq_helpers:
 
 examples:
   - description: "简单 IRQ 处理"
+    kernel_version: "2.6+"
     code: |
-      static irqreturn_t my_irq_handler(int irq, void *dev_id) {
+      static irqreturn_t my_irq_handler(int irq, void *dev_id)
+      {
           struct my_device *dev = dev_id;
           unsigned long flags;
 
@@ -448,12 +1526,13 @@ examples:
           return IRQ_HANDLED;
       }
 
-      static int my_probe(struct platform_device *pdev) {
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev = platform_get_drvdata(pdev);
           int ret;
-          struct my_device *dev = ...;
 
-          ret = request_irq(dev->irq, my_irq_handler,
-                           IRQF_SHARED, "my_device", dev);
+          ret = devm_request_irq(&pdev->dev, dev->irq, my_irq_handler,
+                                 IRQF_SHARED, "my_device", dev);
           if (ret)
               return ret;
 
@@ -461,55 +1540,292 @@ examples:
       }
 
   - description: "线程化 IRQ"
+    kernel_version: "2.6.30+"
     code: |
-      static irqreturn_t my_top_half(int irq, void *dev_id) {
+      static irqreturn_t my_top_half(int irq, void *dev_id)
+      {
           struct my_device *dev = dev_id;
 
-          /* 快速处理：设置标志，唤醒线程 */
-          if (device_has_data(dev)) {
-              return IRQ_WAKE_THREAD;
-          }
-          return IRQ_HANDLED;
+          /* 快速处理：检查是否需要线程化处理 */
+          if (!device_has_data(dev))
+              return IRQ_NONE;
+
+          return IRQ_WAKE_THREAD;
       }
 
-      static irqreturn_t my_thread_fn(int irq, void *dev_id) {
+      static irqreturn_t my_thread_fn(int irq, void *dev_id)
+      {
           struct my_device *dev = dev_id;
 
           /* 复杂处理：可以 sleep */
+          mutex_lock(&dev->mutex);
           while (process_pending_data(dev)) {
               /* 处理数据 */
           }
+          mutex_unlock(&dev->mutex);
 
           return IRQ_HANDLED;
       }
 
-      static int my_probe(struct platform_device *pdev) {
-          return request_threaded_irq(dev->irq, my_top_half,
-                                      my_thread_fn,
-                                      IRQF_ONESHOT,
-                                      "my_device", dev);
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev = platform_get_drvdata(pdev);
+
+          return devm_request_threaded_irq(&pdev->dev, dev->irq,
+                                           my_top_half, my_thread_fn,
+                                           IRQF_ONESHOT, "my_device", dev);
       }
 
-  - description: "Tasklet 使用"
+  - description: "Tasklet 使用 (新 API 5.9+)"
+    kernel_version: "5.9+"
     code: |
       struct my_device {
           struct tasklet_struct tasklet;
           unsigned long data;
+          spinlock_t lock;
       };
 
-      static void my_tasklet_fn(unsigned long data) {
-          printk("Tasklet running, data=%lu\n", data);
+      static void my_tasklet_fn(struct tasklet_struct *t)
+      {
+          struct my_device *dev = from_tasklet(dev, t, tasklet);
+          unsigned long flags;
+
+          spin_lock_irqsave(&dev->lock, flags);
+          /* 处理延迟的工作 */
+          dev->data = 0;
+          spin_unlock_irqrestore(&dev->lock, flags);
       }
 
-      static int my_probe(struct platform_device *pdev) {
-          struct my_device *dev = ...;
-          tasklet_init(&dev->tasklet, my_tasklet_fn, dev->data);
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+
+          spin_lock_init(&dev->lock);
+          tasklet_setup(&dev->tasklet, my_tasklet_fn);
+
+          platform_set_drvdata(pdev, dev);
           return 0;
       }
 
-      static irqreturn_t my_irq_handler(int irq, void *dev_id) {
+      static irqreturn_t my_irq_handler(int irq, void *dev_id)
+      {
           struct my_device *dev = dev_id;
-          /* ... 处理 ... */
-          tasklet_schedule(&dev->tasklet);  // 调度 tasklet
+
+          dev->data |= read_hw_status(dev);
+          tasklet_schedule(&dev->tasklet);
+
           return IRQ_HANDLED;
+      }
+
+      static void my_remove(struct platform_device *pdev)
+      {
+          struct my_device *dev = platform_get_drvdata(pdev);
+          tasklet_kill(&dev->tasklet);
+      }
+
+  - description: "IRQ Domain 和 IRQ Chip"
+    kernel_version: "3.1+"
+    code: |
+      static void my_irq_mask(struct irq_data *d)
+      {
+          struct my_intc *intc = irq_data_get_irq_chip_data(d);
+          writel(BIT(d->hwirq), intc->base + INTC_MASK_SET);
+      }
+
+      static void my_irq_unmask(struct irq_data *d)
+      {
+          struct my_intc *intc = irq_data_get_irq_chip_data(d);
+          writel(BIT(d->hwirq), intc->base + INTC_MASK_CLR);
+      }
+
+      static void my_irq_ack(struct irq_data *d)
+      {
+          struct my_intc *intc = irq_data_get_irq_chip_data(d);
+          writel(BIT(d->hwirq), intc->base + INTC_ACK);
+      }
+
+      static struct irq_chip my_irq_chip = {
+          .name           = "my-intc",
+          .irq_mask       = my_irq_mask,
+          .irq_unmask     = my_irq_unmask,
+          .irq_ack        = my_irq_ack,
+      };
+
+      static int my_irq_domain_map(struct irq_domain *d, unsigned int virq,
+                                   irq_hw_number_t hw)
+      {
+          struct my_intc *intc = d->host_data;
+
+          irq_set_chip_and_handler(virq, &my_irq_chip, handle_edge_irq);
+          irq_set_chip_data(virq, intc);
+          irq_set_noprobe(virq);
+
+          return 0;
+      }
+
+      static const struct irq_domain_ops my_domain_ops = {
+          .xlate  = irq_domain_xlate_onecell,
+          .map    = my_irq_domain_map,
+      };
+
+      static int my_intc_probe(struct platform_device *pdev)
+      {
+          struct my_intc *intc;
+          struct device_node *np = pdev->dev.of_node;
+
+          intc = devm_kzalloc(&pdev->dev, sizeof(*intc), GFP_KERNEL);
+          if (!intc)
+              return -ENOMEM;
+
+          intc->base = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(intc->base))
+              return PTR_ERR(intc->base);
+
+          intc->domain = irq_domain_add_linear(np, 32,
+                                               &my_domain_ops, intc);
+          if (!intc->domain)
+              return -ENOMEM;
+
+          return 0;
+      }
+
+  - description: "级联中断处理"
+    kernel_version: "2.6+"
+    code: |
+      static void my_chained_handler(struct irq_desc *desc)
+      {
+          struct my_intc *intc = irq_desc_get_handler_data(desc);
+          struct irq_chip *chip = irq_desc_get_chip(desc);
+          u32 status;
+          int hwirq;
+
+          chained_irq_enter(chip, desc);
+
+          status = readl(intc->base + INTC_STATUS);
+          while (status) {
+              hwirq = __ffs(status);
+              status &= ~BIT(hwirq);
+
+              generic_handle_irq(irq_find_mapping(intc->domain, hwirq));
+          }
+
+          chained_irq_exit(chip, desc);
+      }
+
+      static int my_intc_probe(struct platform_device *pdev)
+      {
+          struct my_intc *intc;
+          int parent_irq;
+
+          /* ... 初始化 intc ... */
+
+          parent_irq = platform_get_irq(pdev, 0);
+          if (parent_irq < 0)
+              return parent_irq;
+
+          irq_set_chained_handler_and_data(parent_irq,
+                                           my_chained_handler, intc);
+          return 0;
+      }
+
+  - description: "MSI-X 使用 (新 API)"
+    kernel_version: "4.8+"
+    code: |
+      static int my_pci_probe(struct pci_dev *pdev,
+                              const struct pci_device_id *id)
+      {
+          struct my_device *dev;
+          int nvecs, i, ret;
+
+          dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+
+          ret = pcim_enable_device(pdev);
+          if (ret)
+              return ret;
+
+          /* 分配 MSI-X 向量，最少 1 个，最多 num_queues 个 */
+          nvecs = pci_alloc_irq_vectors(pdev, 1, dev->num_queues,
+                                        PCI_IRQ_MSIX | PCI_IRQ_MSI);
+          if (nvecs < 0)
+              return nvecs;
+
+          dev->num_irqs = nvecs;
+
+          /* 注册每个向量的处理函数 */
+          for (i = 0; i < nvecs; i++) {
+              int irq = pci_irq_vector(pdev, i);
+
+              ret = devm_request_irq(&pdev->dev, irq, my_irq_handler,
+                                     0, "my_device", &dev->queues[i]);
+              if (ret)
+                  goto err_free_irqs;
+          }
+
+          pci_set_master(pdev);
+          pci_set_drvdata(pdev, dev);
+
+          return 0;
+
+      err_free_irqs:
+          pci_free_irq_vectors(pdev);
+          return ret;
+      }
+
+      static void my_pci_remove(struct pci_dev *pdev)
+      {
+          pci_free_irq_vectors(pdev);
+      }
+
+  - description: "IPI 使用示例"
+    kernel_version: "2.6+"
+    code: |
+      struct my_ipi_data {
+          unsigned long value;
+          atomic_t count;
+      };
+
+      static void my_ipi_func(void *info)
+      {
+          struct my_ipi_data *data = info;
+
+          /* 在目标 CPU 上执行的代码 */
+          /* 注意: 此时中断禁用，不能 sleep */
+          per_cpu(my_counter, smp_processor_id()) += data->value;
+          atomic_inc(&data->count);
+      }
+
+      static int my_do_ipi_all(unsigned long value)
+      {
+          struct my_ipi_data data = {
+              .value = value,
+              .count = ATOMIC_INIT(0),
+          };
+
+          /* 在所有其他 CPU 上执行，等待完成 */
+          smp_call_function(my_ipi_func, &data, 1);
+
+          return atomic_read(&data.count);
+      }
+
+      static int my_do_ipi_single(int cpu, unsigned long value)
+      {
+          struct my_ipi_data data = {
+              .value = value,
+              .count = ATOMIC_INIT(0),
+          };
+
+          /* 在指定 CPU 上执行 */
+          smp_call_function_single(cpu, my_ipi_func, &data, 1);
+
+          return atomic_read(&data.count);
+      }
+
+      static void my_flush_all_cpus(void)
+      {
+          /* 在所有 CPU (包括当前 CPU) 上执行 */
+          on_each_cpu(my_ipi_func, NULL, 1);
       }

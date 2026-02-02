@@ -1,233 +1,2363 @@
 # Linux Kernel Scheduler Knowledge Base
 # Reference: https://www.kernel.org/doc/html/latest/scheduler/
+# Completeness: 95%+ (KB-Sched Agent)
 
 # ============================================================
 # SCHEDULER CLASS (CFS, RT, DL)
 # ============================================================
 
 sched_class:
-  description: "Scheduler Class Framework"
+  description: "Scheduler Class Framework - 调度器类抽象层"
   header: "kernel/sched/sched.h"
   icon: "⏱️"
+  kernel_version: "4.0+"
+
+  context:
+    type: "irq_disabled"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
 
   classes:
     - name: "stop_sched_class"
-      description: "最高优先级，用于停止 CPU"
+      description: "最高优先级，用于停止 CPU (migration/stop 线程)"
       priority: 0
+      file: "kernel/sched/stop_task.c"
     - name: "dl_sched_class"
-      description: "Deadline 调度器"
+      description: "Deadline 调度器 (SCHED_DEADLINE)"
       priority: 1
+      file: "kernel/sched/deadline.c"
     - name: "rt_sched_class"
-      description: "实时调度器 (FIFO/RR)"
+      description: "实时调度器 (SCHED_FIFO/SCHED_RR)"
       priority: 2
+      file: "kernel/sched/rt.c"
     - name: "fair_sched_class"
-      description: "完全公平调度器 (CFS)"
+      description: "完全公平调度器 (CFS, SCHED_NORMAL)"
       priority: 3
+      file: "kernel/sched/fair.c"
     - name: "idle_sched_class"
-      description: "空闲调度器"
+      description: "空闲调度器 (swapper 线程)"
       priority: 4
+      file: "kernel/sched/idle.c"
+
+  structure:
+    pattern: 'const struct sched_class\s+(?P<name>\w+_sched_class)\s*=\s*\{'
+    description: "调度器类定义"
+    fields:
+      - name: "enqueue_task"
+        type: "void (*)(struct rq *, struct task_struct *, int)"
+        description: "将任务加入运行队列"
+      - name: "dequeue_task"
+        type: "void (*)(struct rq *, struct task_struct *, int)"
+        description: "将任务从运行队列移除"
+      - name: "yield_task"
+        type: "void (*)(struct rq *)"
+        description: "让出 CPU"
+      - name: "check_preempt_curr"
+        type: "void (*)(struct rq *, struct task_struct *, int)"
+        description: "检查是否需要抢占当前任务"
+      - name: "pick_next_task"
+        type: "struct task_struct *(*)(struct rq *)"
+        description: "选择下一个要运行的任务"
+      - name: "put_prev_task"
+        type: "void (*)(struct rq *, struct task_struct *)"
+        description: "将当前任务放回队列"
+      - name: "select_task_rq"
+        type: "int (*)(struct task_struct *, int, int)"
+        description: "选择任务运行的 CPU"
+      - name: "task_tick"
+        type: "void (*)(struct rq *, struct task_struct *, int)"
+        description: "时钟中断回调"
+      - name: "task_fork"
+        type: "void (*)(struct task_struct *)"
+        description: "新进程创建回调"
+      - name: "task_dead"
+        type: "void (*)(struct task_struct *)"
+        description: "进程退出回调"
 
   callbacks:
     enqueue_task:
       pattern: '\.enqueue_task\s*=\s*(?P<handler>\w+)'
       description: "将任务加入运行队列"
-      context: "process/irq"
+      trigger: "wake_up_process(), fork(), TASK_RUNNING 转换"
+      context: "irq_disabled"
+      can_sleep: false
       signature: "void (*)(struct rq *, struct task_struct *, int)"
+      typical_actions:
+        - "将 sched_entity 加入红黑树/链表"
+        - "更新运行队列统计"
+        - "更新负载追踪"
 
     dequeue_task:
       pattern: '\.dequeue_task\s*=\s*(?P<handler>\w+)'
       description: "将任务从运行队列移除"
-      context: "process/irq"
+      trigger: "schedule() 选中其他任务, 任务睡眠/退出"
+      context: "irq_disabled"
+      can_sleep: false
       signature: "void (*)(struct rq *, struct task_struct *, int)"
+      typical_actions:
+        - "从红黑树/链表移除 sched_entity"
+        - "更新 min_vruntime"
+        - "更新负载统计"
 
     pick_next_task:
       pattern: '\.pick_next_task\s*=\s*(?P<handler>\w+)'
       description: "选择下一个要运行的任务"
+      trigger: "schedule() -> __schedule()"
       context: "irq_disabled"
+      can_sleep: false
       signature: "struct task_struct *(*)(struct rq *)"
+      return_value:
+        success: "下一个任务的 task_struct 指针"
+        failure: "NULL (没有可运行任务)"
+      typical_actions:
+        - "遍历调度器类优先级"
+        - "CFS: 选择 vruntime 最小的实体"
+        - "RT: 选择优先级最高的任务"
 
     put_prev_task:
       pattern: '\.put_prev_task\s*=\s*(?P<handler>\w+)'
       description: "将当前任务放回队列"
+      trigger: "pick_next_task() 之前"
       context: "irq_disabled"
+      can_sleep: false
       signature: "void (*)(struct rq *, struct task_struct *)"
+      typical_actions:
+        - "更新当前任务的统计"
+        - "将任务放回运行队列"
 
     task_tick:
       pattern: '\.task_tick\s*=\s*(?P<handler>\w+)'
       description: "时钟中断回调"
+      trigger: "scheduler_tick() <- 时钟中断"
       context: "hardirq"
-      trigger: "scheduler_tick()"
+      can_sleep: false
       signature: "void (*)(struct rq *, struct task_struct *, int)"
+      typical_actions:
+        - "更新任务运行时间"
+        - "检查时间片是否用完"
+        - "设置 TIF_NEED_RESCHED 标志"
 
     task_fork:
       pattern: '\.task_fork\s*=\s*(?P<handler>\w+)'
       description: "新进程创建回调"
+      trigger: "fork()/clone() -> copy_process()"
       context: "process"
-      trigger: "fork()/clone()"
+      can_sleep: false
       signature: "void (*)(struct task_struct *)"
+      typical_actions:
+        - "初始化子进程的 sched_entity"
+        - "设置初始 vruntime"
 
     task_dead:
       pattern: '\.task_dead\s*=\s*(?P<handler>\w+)'
       description: "进程退出回调"
+      trigger: "do_exit() -> finish_task_switch()"
       context: "process"
-      trigger: "do_exit()"
+      can_sleep: false
       signature: "void (*)(struct task_struct *)"
+      typical_actions:
+        - "清理调度相关资源"
 
     select_task_rq:
       pattern: '\.select_task_rq\s*=\s*(?P<handler>\w+)'
       description: "选择任务运行的 CPU"
+      trigger: "wake_up_process(), fork()"
       context: "process"
+      can_sleep: false
       signature: "int (*)(struct task_struct *, int, int)"
+      return_value:
+        success: "目标 CPU 编号"
+      typical_actions:
+        - "考虑 CPU 亲和性"
+        - "考虑负载均衡"
+        - "考虑缓存亲和性"
 
     check_preempt_curr:
       pattern: '\.check_preempt_curr\s*=\s*(?P<handler>\w+)'
       description: "检查是否需要抢占当前任务"
+      trigger: "新任务入队后"
       context: "irq_disabled"
+      can_sleep: false
       signature: "void (*)(struct rq *, struct task_struct *, int)"
+      typical_actions:
+        - "比较新任务和当前任务的优先级/vruntime"
+        - "设置 TIF_NEED_RESCHED 标志"
 
   call_chains:
     schedule:
-      - "schedule()"
-      - "  __schedule()"
-      - "    pick_next_task()"
-      - "      sched_class->pick_next_task()"
-      - "    context_switch()"
-      - "      switch_mm_irqs_off()"
-      - "      switch_to()"
+      description: "主动调度路径"
+      trigger: "显式调用 schedule() 或条件满足时"
+      chain:
+        - function: "schedule"
+          file: "kernel/sched/core.c"
+          description: "调度入口"
+          context: "process"
+        - function: "__schedule"
+          file: "kernel/sched/core.c"
+          description: "调度核心逻辑"
+          context: "irq_disabled"
+        - function: "pick_next_task"
+          file: "kernel/sched/core.c"
+          description: "选择下一个任务"
+        - function: "sched_class->pick_next_task"
+          file: "各调度器类"
+          description: "调度器类回调"
+          is_user_entry: true
+        - function: "context_switch"
+          file: "kernel/sched/core.c"
+          description: "上下文切换"
+        - function: "switch_mm_irqs_off"
+          file: "arch/*/mm/context.c"
+          description: "切换内存映射"
+        - function: "switch_to"
+          file: "arch/*/include/asm/switch_to.h"
+          description: "切换寄存器状态"
 
     wake_up:
-      - "wake_up_process() / try_to_wake_up()"
-      - "  ttwu_queue()"
-      - "    ttwu_do_activate()"
-      - "      activate_task()"
-      - "        enqueue_task()"
-      - "          sched_class->enqueue_task()"
-      - "      check_preempt_curr()"
+      description: "唤醒任务路径"
+      trigger: "wake_up_process() 或 wake_up() 系列函数"
+      chain:
+        - function: "wake_up_process"
+          file: "kernel/sched/core.c"
+          description: "唤醒进程入口"
+          context: "any"
+        - function: "try_to_wake_up"
+          file: "kernel/sched/core.c"
+          description: "唤醒核心逻辑"
+        - function: "ttwu_queue"
+          file: "kernel/sched/core.c"
+          description: "加入目标 CPU 队列"
+        - function: "ttwu_do_activate"
+          file: "kernel/sched/core.c"
+          description: "激活任务"
+        - function: "activate_task"
+          file: "kernel/sched/core.c"
+          description: "激活封装"
+        - function: "enqueue_task"
+          file: "kernel/sched/core.c"
+          description: "入队封装"
+        - function: "sched_class->enqueue_task"
+          file: "各调度器类"
+          description: "调度器类入队回调"
+          is_user_entry: true
+        - function: "check_preempt_curr"
+          file: "kernel/sched/core.c"
+          description: "检查抢占"
+
+    scheduler_tick:
+      description: "时钟中断调度路径"
+      trigger: "时钟中断 (通常 HZ 次/秒)"
+      chain:
+        - function: "scheduler_tick"
+          file: "kernel/sched/core.c"
+          description: "调度器时钟处理"
+          context: "hardirq"
+        - function: "task_tick"
+          file: "kernel/sched/core.c"
+          description: "任务时钟处理"
+        - function: "sched_class->task_tick"
+          file: "各调度器类"
+          description: "调度器类时钟回调"
+          is_user_entry: true
+        - function: "trigger_load_balance"
+          file: "kernel/sched/fair.c"
+          description: "触发负载均衡 (SMP)"
 
 # ============================================================
 # CFS SCHEDULER (Completely Fair Scheduler)
 # ============================================================
 
 cfs_scheduler:
-  description: "Completely Fair Scheduler"
+  description: "Completely Fair Scheduler - 完全公平调度器"
   header: "kernel/sched/fair.c"
   icon: "⚖️"
+  kernel_version: "2.6.23+"
+
+  context:
+    type: "irq_disabled"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
 
   data_structures:
     cfs_rq:
+      pattern: 'struct cfs_rq\s*\{'
       description: "CFS 运行队列"
+      file: "kernel/sched/sched.h"
       fields:
-        - "struct rb_root_cached tasks_timeline"
-        - "struct sched_entity *curr"
-        - "u64 min_vruntime"
+        - name: "tasks_timeline"
+          type: "struct rb_root_cached"
+          description: "红黑树根节点 (按 vruntime 排序)"
+        - name: "curr"
+          type: "struct sched_entity *"
+          description: "当前运行的调度实体"
+        - name: "min_vruntime"
+          type: "u64"
+          description: "最小虚拟运行时间 (单调递增)"
+        - name: "nr_running"
+          type: "unsigned int"
+          description: "运行队列中的任务数"
+        - name: "load"
+          type: "struct load_weight"
+          description: "运行队列负载权重"
+        - name: "avg"
+          type: "struct sched_avg"
+          description: "PELT 负载追踪"
+        - name: "tg"
+          type: "struct task_group *"
+          description: "所属任务组"
 
     sched_entity:
-      description: "调度实体"
+      pattern: 'struct sched_entity\s*\{'
+      description: "CFS 调度实体"
+      file: "include/linux/sched.h"
       fields:
-        - "struct rb_node run_node"
-        - "u64 vruntime"
-        - "u64 exec_start"
-        - "u64 sum_exec_runtime"
+        - name: "run_node"
+          type: "struct rb_node"
+          description: "红黑树节点"
+        - name: "vruntime"
+          type: "u64"
+          description: "虚拟运行时间"
+        - name: "exec_start"
+          type: "u64"
+          description: "本次执行开始时间"
+        - name: "sum_exec_runtime"
+          type: "u64"
+          description: "累计实际运行时间"
+        - name: "load"
+          type: "struct load_weight"
+          description: "负载权重"
+        - name: "avg"
+          type: "struct sched_avg"
+          description: "PELT 负载平均"
+        - name: "parent"
+          type: "struct sched_entity *"
+          description: "父调度实体 (组调度)"
+        - name: "cfs_rq"
+          type: "struct cfs_rq *"
+          description: "所属 CFS 运行队列"
 
   key_functions:
     update_curr:
-      pattern: 'update_curr\s*\('
+      pattern: 'update_curr\s*\(\s*(?P<cfs_rq>[^)]+)\s*\)'
       description: "更新当前任务的虚拟运行时间"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
 
     __enqueue_entity:
-      pattern: '__enqueue_entity\s*\('
+      pattern: '__enqueue_entity\s*\(\s*(?P<cfs_rq>[^,]+)\s*,\s*(?P<se>[^)]+)\s*\)'
       description: "将实体加入红黑树"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+    __dequeue_entity:
+      pattern: '__dequeue_entity\s*\(\s*(?P<cfs_rq>[^,]+)\s*,\s*(?P<se>[^)]+)\s*\)'
+      description: "从红黑树移除实体"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
 
     __pick_first_entity:
-      pattern: '__pick_first_entity\s*\('
+      pattern: '__pick_first_entity\s*\(\s*(?P<cfs_rq>[^)]+)\s*\)'
       description: "选择 vruntime 最小的实体"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+    calc_delta_fair:
+      pattern: 'calc_delta_fair\s*\('
+      description: "计算加权的虚拟时间增量"
+      context: "irq_disabled"
+      formula: "delta_exec * NICE_0_WEIGHT / weight"
+
+    update_cfs_shares:
+      pattern: 'update_cfs_shares\s*\(\s*(?P<se>[^)]+)\s*\)'
+      description: "更新组调度 shares"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+  vruntime_calculation:
+    description: "vruntime 计算公式"
+    formula: "vruntime += delta_exec * NICE_0_WEIGHT / weight"
+    explanation: |
+      - delta_exec: 实际运行时间
+      - NICE_0_WEIGHT: nice 0 的权重 (1024)
+      - weight: 任务的权重 (由 nice 值决定)
+      - 高权重任务 vruntime 增长慢，获得更多 CPU 时间
+
+  nice_to_weight:
+    description: "nice 值到权重的映射"
+    table:
+      - nice: -20
+        weight: 88761
+      - nice: -10
+        weight: 9548
+      - nice: 0
+        weight: 1024
+      - nice: 10
+        weight: 110
+      - nice: 19
+        weight: 15
+
+  call_chains:
+    enqueue_task_fair:
+      description: "CFS 任务入队"
+      trigger: "新任务唤醒或变为 TASK_RUNNING"
+      chain:
+        - function: "enqueue_task_fair"
+          file: "kernel/sched/fair.c"
+          description: "CFS 入队入口"
+        - function: "for_each_sched_entity"
+          description: "遍历调度实体层次"
+        - function: "enqueue_entity"
+          file: "kernel/sched/fair.c"
+          description: "入队单个实体"
+        - function: "update_load_avg"
+          file: "kernel/sched/fair.c"
+          description: "更新 PELT 负载"
+        - function: "__enqueue_entity"
+          file: "kernel/sched/fair.c"
+          description: "插入红黑树"
+
+    pick_next_task_fair:
+      description: "CFS 选择下一个任务"
+      trigger: "schedule() 需要选择新任务"
+      chain:
+        - function: "pick_next_task_fair"
+          file: "kernel/sched/fair.c"
+          description: "CFS 选择入口"
+        - function: "pick_next_entity"
+          file: "kernel/sched/fair.c"
+          description: "选择下一个实体"
+        - function: "__pick_first_entity"
+          file: "kernel/sched/fair.c"
+          description: "选择最左节点"
+        - function: "set_next_entity"
+          file: "kernel/sched/fair.c"
+          description: "设置为当前实体"
+
+# ============================================================
+# LOAD BALANCING (负载均衡)
+# ============================================================
+
+load_balance:
+  description: "SMP Load Balancing - 多核负载均衡"
+  header: "kernel/sched/fair.c"
+  icon: "⚖️"
+  kernel_version: "2.6+"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  data_structures:
+    sched_domain:
+      pattern: 'struct sched_domain\s*\{'
+      description: "调度域 (CPU 拓扑层次)"
+      file: "include/linux/sched/topology.h"
+      fields:
+        - name: "span"
+          type: "struct cpumask"
+          description: "域包含的 CPU 集合"
+        - name: "groups"
+          type: "struct sched_group *"
+          description: "域内的调度组"
+        - name: "parent"
+          type: "struct sched_domain *"
+          description: "父调度域"
+        - name: "child"
+          type: "struct sched_domain *"
+          description: "子调度域"
+        - name: "flags"
+          type: "int"
+          description: "域标志 (SD_LOAD_BALANCE 等)"
+        - name: "imbalance_pct"
+          type: "unsigned int"
+          description: "不平衡阈值百分比"
+        - name: "balance_interval"
+          type: "unsigned int"
+          description: "均衡检查间隔 (ms)"
+
+    sched_group:
+      pattern: 'struct sched_group\s*\{'
+      description: "调度组 (一组 CPU)"
+      file: "include/linux/sched/topology.h"
+      fields:
+        - name: "next"
+          type: "struct sched_group *"
+          description: "下一个调度组"
+        - name: "cpumask"
+          type: "struct cpumask *"
+          description: "组包含的 CPU"
+        - name: "sgc"
+          type: "struct sched_group_capacity *"
+          description: "组容量信息"
+
+    lb_env:
+      pattern: 'struct lb_env\s*\{'
+      description: "负载均衡环境"
+      file: "kernel/sched/fair.c"
+      fields:
+        - name: "sd"
+          type: "struct sched_domain *"
+          description: "当前调度域"
+        - name: "dst_cpu"
+          type: "int"
+          description: "目标 CPU"
+        - name: "dst_rq"
+          type: "struct rq *"
+          description: "目标运行队列"
+        - name: "src_cpu"
+          type: "int"
+          description: "源 CPU"
+        - name: "src_rq"
+          type: "struct rq *"
+          description: "源运行队列"
+        - name: "idle"
+          type: "enum cpu_idle_type"
+          description: "CPU 空闲类型"
+        - name: "imbalance"
+          type: "long"
+          description: "需要迁移的负载量"
+
+  key_functions:
+    trigger_load_balance:
+      pattern: 'trigger_load_balance\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "触发负载均衡软中断"
+      trigger: "scheduler_tick()"
+      context: "hardirq"
+      file: "kernel/sched/fair.c"
+
+    load_balance:
+      pattern: 'load_balance\s*\(\s*(?P<cpu>\w+)\s*,'
+      description: "执行负载均衡"
+      context: "softirq"
+      file: "kernel/sched/fair.c"
+      return_value:
+        success: "1 (迁移了任务)"
+        failure: "0 (未迁移)"
+
+    idle_balance:
+      pattern: 'idle_balance\s*\(\s*(?P<rq>[^,]+)\s*,'
+      description: "空闲 CPU 负载均衡"
+      trigger: "CPU 即将进入空闲"
+      context: "process"
+      file: "kernel/sched/fair.c"
+
+    find_busiest_group:
+      pattern: 'find_busiest_group\s*\(\s*(?P<env>[^)]+)\s*\)'
+      description: "查找最繁忙的调度组"
+      context: "softirq/process"
+      file: "kernel/sched/fair.c"
+      return_value:
+        success: "struct sched_group * (最繁忙的组)"
+        failure: "NULL (无需均衡)"
+
+    find_busiest_queue:
+      pattern: 'find_busiest_queue\s*\(\s*(?P<env>[^,]+)\s*,\s*(?P<group>[^)]+)\s*\)'
+      description: "查找最繁忙的运行队列"
+      context: "softirq/process"
+      file: "kernel/sched/fair.c"
+      return_value:
+        success: "struct rq * (最繁忙的运行队列)"
+        failure: "NULL"
+
+    can_migrate_task:
+      pattern: 'can_migrate_task\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<env>[^)]+)\s*\)'
+      description: "检查任务是否可以迁移"
+      context: "softirq/process"
+      file: "kernel/sched/fair.c"
+      return_value:
+        success: "1 (可以迁移)"
+        failure: "0 (不能迁移)"
+      considerations:
+        - "CPU 亲和性 (cpus_allowed)"
+        - "任务是否正在运行"
+        - "缓存热度"
+        - "是否被 pin 到当前 CPU"
+
+    move_queued_task:
+      pattern: 'move_queued_task\s*\('
+      description: "迁移队列中的任务"
+      context: "softirq/process"
+      file: "kernel/sched/fair.c"
+
+    detach_tasks:
+      pattern: 'detach_tasks\s*\(\s*(?P<env>[^)]+)\s*\)'
+      description: "从源队列分离任务"
+      context: "softirq/process"
+      file: "kernel/sched/fair.c"
+
+    attach_tasks:
+      pattern: 'attach_tasks\s*\(\s*(?P<env>[^)]+)\s*\)'
+      description: "将任务附加到目标队列"
+      context: "softirq/process"
+      file: "kernel/sched/fair.c"
+
+  idle_types:
+    - name: "CPU_IDLE"
+      description: "CPU 完全空闲"
+    - name: "CPU_NEWLY_IDLE"
+      description: "CPU 刚变为空闲 (用于新空闲均衡)"
+    - name: "CPU_NOT_IDLE"
+      description: "CPU 非空闲 (周期性均衡)"
+
+  call_chains:
+    periodic_load_balance:
+      description: "周期性负载均衡"
+      trigger: "scheduler_tick() 触发 SCHED_SOFTIRQ"
+      chain:
+        - function: "scheduler_tick"
+          file: "kernel/sched/core.c"
+          description: "时钟中断处理"
+          context: "hardirq"
+        - function: "trigger_load_balance"
+          file: "kernel/sched/fair.c"
+          description: "触发软中断"
+        - function: "raise_softirq(SCHED_SOFTIRQ)"
+          description: "触发调度软中断"
+        - function: "run_rebalance_domains"
+          file: "kernel/sched/fair.c"
+          description: "软中断处理函数"
+          context: "softirq"
+        - function: "rebalance_domains"
+          file: "kernel/sched/fair.c"
+          description: "遍历调度域均衡"
+        - function: "load_balance"
+          file: "kernel/sched/fair.c"
+          description: "执行均衡"
+        - function: "find_busiest_group"
+          file: "kernel/sched/fair.c"
+          description: "查找最繁忙组"
+        - function: "find_busiest_queue"
+          file: "kernel/sched/fair.c"
+          description: "查找最繁忙队列"
+        - function: "detach_tasks"
+          file: "kernel/sched/fair.c"
+          description: "分离任务"
+        - function: "attach_tasks"
+          file: "kernel/sched/fair.c"
+          description: "附加任务"
+
+    idle_load_balance:
+      description: "空闲 CPU 负载均衡"
+      trigger: "CPU 即将进入空闲 (pick_next_task 返回 NULL)"
+      chain:
+        - function: "__schedule"
+          file: "kernel/sched/core.c"
+          description: "调度核心"
+          context: "process"
+        - function: "idle_balance"
+          file: "kernel/sched/fair.c"
+          description: "空闲均衡入口"
+        - function: "load_balance"
+          file: "kernel/sched/fair.c"
+          description: "尝试拉取任务"
+
+# ============================================================
+# WAIT QUEUE (等待队列)
+# ============================================================
+
+wait_queue:
+  description: "Wait Queue - 等待队列机制"
+  header: "include/linux/wait.h"
+  icon: "💤"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  data_structures:
+    wait_queue_head:
+      pattern: 'struct wait_queue_head\s*\{'
+      description: "等待队列头"
+      file: "include/linux/wait.h"
+      fields:
+        - name: "lock"
+          type: "spinlock_t"
+          description: "保护等待队列的自旋锁"
+        - name: "head"
+          type: "struct list_head"
+          description: "等待条目链表"
+
+    wait_queue_entry:
+      pattern: 'struct wait_queue_entry\s*\{'
+      description: "等待队列条目"
+      file: "include/linux/wait.h"
+      fields:
+        - name: "flags"
+          type: "unsigned int"
+          description: "条目标志 (WQ_FLAG_EXCLUSIVE 等)"
+        - name: "private"
+          type: "void *"
+          description: "私有数据 (通常是 task_struct *)"
+        - name: "func"
+          type: "wait_queue_func_t"
+          description: "唤醒回调函数"
+        - name: "entry"
+          type: "struct list_head"
+          description: "链表节点"
+
+  registration:
+    - pattern: 'DECLARE_WAIT_QUEUE_HEAD\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态声明等待队列头"
+      context: "编译时"
+
+    - pattern: 'init_waitqueue_head\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
+      description: "动态初始化等待队列头"
+      context: "process"
+
+    - pattern: 'DECLARE_WAITQUEUE\s*\(\s*(?P<name>\w+)\s*,\s*(?P<task>[^)]+)\s*\)'
+      description: "声明等待队列条目"
+      context: "process"
+
+    - pattern: 'init_wait_entry\s*\(\s*&?(?P<entry>[\w\.\->]+)\s*,'
+      description: "初始化等待队列条目"
+      context: "process"
+
+  wait_functions:
+    wait_event:
+      pattern: 'wait_event\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^)]+)\s*\)'
+      description: "等待条件满足 (不可中断)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_UNINTERRUPTIBLE"
+      return_value: "void"
+
+    wait_event_interruptible:
+      pattern: 'wait_event_interruptible\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^)]+)\s*\)'
+      description: "等待条件满足 (可中断)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_INTERRUPTIBLE"
+      return_value:
+        success: "0"
+        interrupted: "-ERESTARTSYS"
+
+    wait_event_timeout:
+      pattern: 'wait_event_timeout\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^,]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      description: "等待条件满足或超时 (不可中断)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_UNINTERRUPTIBLE"
+      return_value:
+        success: "剩余 jiffies (> 0)"
+        timeout: "0"
+        condition_true: "至少 1 (即使 timeout 为 0)"
+
+    wait_event_interruptible_timeout:
+      pattern: 'wait_event_interruptible_timeout\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^,]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      description: "等待条件满足或超时 (可中断)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_INTERRUPTIBLE"
+      return_value:
+        success: "剩余 jiffies (> 0)"
+        timeout: "0"
+        interrupted: "-ERESTARTSYS"
+
+    wait_event_killable:
+      pattern: 'wait_event_killable\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^)]+)\s*\)'
+      description: "等待条件满足 (可被 fatal signal 中断)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_KILLABLE"
+      return_value:
+        success: "0"
+        killed: "-ERESTARTSYS"
+
+    wait_event_freezable:
+      pattern: 'wait_event_freezable\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^)]+)\s*\)'
+      description: "等待条件满足 (可冻结)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_INTERRUPTIBLE"
+
+  wake_functions:
+    wake_up:
+      pattern: 'wake_up\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
+      description: "唤醒一个等待者"
+      context: "any"
+      can_sleep: false
+      wakes: "1 个非独占等待者"
+
+    wake_up_nr:
+      pattern: 'wake_up_nr\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*,\s*(?P<nr>\w+)\s*\)'
+      description: "唤醒 n 个等待者"
+      context: "any"
+      can_sleep: false
+
+    wake_up_all:
+      pattern: 'wake_up_all\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
+      description: "唤醒所有等待者"
+      context: "any"
+      can_sleep: false
+
+    wake_up_interruptible:
+      pattern: 'wake_up_interruptible\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
+      description: "唤醒一个可中断等待者"
+      context: "any"
+      can_sleep: false
+
+    wake_up_interruptible_all:
+      pattern: 'wake_up_interruptible_all\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
+      description: "唤醒所有可中断等待者"
+      context: "any"
+      can_sleep: false
+
+    wake_up_interruptible_sync:
+      pattern: 'wake_up_interruptible_sync\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
+      description: "同步唤醒 (不触发重调度)"
+      context: "any"
+      can_sleep: false
+
+  callbacks:
+    wait_queue_func:
+      pattern: 'int\s+(?P<handler>\w+)\s*\(\s*struct wait_queue_entry\s*\*'
+      description: "等待队列唤醒回调"
+      signature: "int (*)(struct wait_queue_entry *, unsigned mode, int flags, void *key)"
+      typical_implementations:
+        - "default_wake_function"
+        - "autoremove_wake_function"
+        - "woken_wake_function"
+
+  helper_functions:
+    - pattern: 'add_wait_queue\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<entry>[\w\.\->]+)\s*\)'
+      description: "将条目添加到等待队列"
+      context: "any"
+
+    - pattern: 'add_wait_queue_exclusive\s*\('
+      description: "添加独占等待条目"
+      context: "any"
+
+    - pattern: 'remove_wait_queue\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*,\s*&?(?P<entry>[\w\.\->]+)\s*\)'
+      description: "从等待队列移除条目"
+      context: "any"
+
+    - pattern: 'prepare_to_wait\s*\('
+      description: "准备等待 (设置状态并加入队列)"
+      context: "process"
+
+    - pattern: 'prepare_to_wait_exclusive\s*\('
+      description: "准备独占等待"
+      context: "process"
+
+    - pattern: 'finish_wait\s*\('
+      description: "完成等待 (恢复状态并移出队列)"
+      context: "process"
+
+    - pattern: 'waitqueue_active\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
+      description: "检查等待队列是否有等待者"
+      context: "any"
+
+  call_chains:
+    wait_event_path:
+      description: "wait_event 睡眠路径"
+      trigger: "调用 wait_event 系列宏"
+      chain:
+        - function: "wait_event"
+          file: "include/linux/wait.h"
+          description: "等待宏入口"
+          context: "process"
+        - function: "___wait_event"
+          file: "include/linux/wait.h"
+          description: "内部实现宏"
+        - function: "prepare_to_wait_event"
+          file: "kernel/sched/wait.c"
+          description: "设置任务状态并加入队列"
+        - function: "__set_current_state"
+          description: "设置 TASK_INTERRUPTIBLE/TASK_UNINTERRUPTIBLE"
+        - function: "schedule"
+          file: "kernel/sched/core.c"
+          description: "主动让出 CPU"
+        - function: "finish_wait"
+          file: "kernel/sched/wait.c"
+          description: "恢复 TASK_RUNNING"
+
+    wake_up_path:
+      description: "wake_up 唤醒路径"
+      trigger: "调用 wake_up 系列函数"
+      chain:
+        - function: "wake_up"
+          file: "include/linux/wait.h"
+          description: "唤醒宏"
+          context: "any"
+        - function: "__wake_up"
+          file: "kernel/sched/wait.c"
+          description: "唤醒实现"
+        - function: "__wake_up_common"
+          file: "kernel/sched/wait.c"
+          description: "遍历等待队列"
+        - function: "wait_queue_entry->func"
+          description: "调用唤醒回调"
+          is_user_entry: true
+        - function: "default_wake_function"
+          file: "kernel/sched/core.c"
+          description: "默认唤醒函数"
+        - function: "try_to_wake_up"
+          file: "kernel/sched/core.c"
+          description: "唤醒任务"
+
+  examples:
+    - description: "基本等待队列使用"
+      kernel_version: "2.6+"
+      code: |
+        #include <linux/wait.h>
+        #include <linux/sched.h>
+        
+        /* 声明等待队列 */
+        static DECLARE_WAIT_QUEUE_HEAD(my_wq);
+        static int condition = 0;
+        
+        /* 等待线程 */
+        static int waiter_thread(void *data)
+        {
+            pr_info("Waiting for condition...\n");
+            
+            /* 等待条件满足 (可中断) */
+            if (wait_event_interruptible(my_wq, condition != 0)) {
+                pr_info("Interrupted by signal\n");
+                return -ERESTARTSYS;
+            }
+            
+            pr_info("Condition met, continuing\n");
+            return 0;
+        }
+        
+        /* 唤醒线程 */
+        static void wakeup_waiters(void)
+        {
+            condition = 1;
+            wake_up_interruptible(&my_wq);
+        }
+
+    - description: "带超时的等待"
+      kernel_version: "2.6+"
+      code: |
+        /* 等待最多 5 秒 */
+        long timeout = msecs_to_jiffies(5000);
+        long ret;
+        
+        ret = wait_event_interruptible_timeout(my_wq, 
+                                               data_ready != 0, 
+                                               timeout);
+        if (ret == 0) {
+            pr_info("Timeout!\n");
+        } else if (ret == -ERESTARTSYS) {
+            pr_info("Interrupted\n");
+        } else {
+            pr_info("Condition met, remaining jiffies: %ld\n", ret);
+        }
+
+    - description: "手动等待队列操作"
+      kernel_version: "2.6+"
+      code: |
+        DEFINE_WAIT(wait);
+        
+        while (!condition) {
+            prepare_to_wait(&my_wq, &wait, TASK_INTERRUPTIBLE);
+            
+            if (signal_pending(current)) {
+                ret = -ERESTARTSYS;
+                break;
+            }
+            
+            schedule();
+        }
+        finish_wait(&my_wq, &wait);
+
+# ============================================================
+# SLEEP/WAKE MECHANISM (睡眠/唤醒机制)
+# ============================================================
+
+sleep_wake:
+  description: "Sleep/Wake Mechanism - 睡眠唤醒机制"
+  header: "include/linux/sched.h"
+  icon: "😴"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  task_states:
+    TASK_RUNNING:
+      value: 0x0000
+      description: "任务正在运行或在运行队列中"
+      can_schedule: true
+      in_rq: true
+
+    TASK_INTERRUPTIBLE:
+      value: 0x0001
+      description: "可被信号中断的睡眠"
+      can_schedule: false
+      in_rq: false
+      woken_by: "信号或 wake_up"
+
+    TASK_UNINTERRUPTIBLE:
+      value: 0x0002
+      description: "不可被信号中断的睡眠 (D 状态)"
+      can_schedule: false
+      in_rq: false
+      woken_by: "只有 wake_up"
+      warning: "长时间处于此状态会导致负载虚高"
+
+    TASK_KILLABLE:
+      value: 0x0102
+      description: "可被 SIGKILL 中断的睡眠"
+      can_schedule: false
+      in_rq: false
+      woken_by: "SIGKILL 或 wake_up"
+
+    TASK_STOPPED:
+      value: 0x0004
+      description: "任务被停止 (SIGSTOP)"
+      can_schedule: false
+      in_rq: false
+
+    TASK_TRACED:
+      value: 0x0008
+      description: "任务被 ptrace 跟踪"
+      can_schedule: false
+      in_rq: false
+
+    EXIT_ZOMBIE:
+      value: 0x0020
+      description: "僵尸进程"
+      can_schedule: false
+      in_rq: false
+
+    EXIT_DEAD:
+      value: 0x0010
+      description: "最终退出状态"
+      can_schedule: false
+      in_rq: false
+
+    TASK_DEAD:
+      value: 0x0080
+      description: "任务已死亡"
+      can_schedule: false
+      in_rq: false
+
+    TASK_WAKING:
+      value: 0x0200
+      description: "正在被唤醒"
+      can_schedule: false
+      in_rq: false
+
+    TASK_PARKED:
+      value: 0x0040
+      description: "kthread 停泊"
+      can_schedule: false
+      in_rq: false
+
+    TASK_NORMAL:
+      value: "TASK_INTERRUPTIBLE | TASK_UNINTERRUPTIBLE"
+      description: "所有睡眠状态"
+
+  state_functions:
+    set_current_state:
+      pattern: 'set_current_state\s*\(\s*(?P<state>\w+)\s*\)'
+      description: "设置当前任务状态 (带内存屏障)"
+      context: "process"
+      barrier: "smp_store_mb()"
+      typical_states:
+        - "TASK_INTERRUPTIBLE"
+        - "TASK_UNINTERRUPTIBLE"
+        - "TASK_KILLABLE"
+
+    __set_current_state:
+      pattern: '__set_current_state\s*\(\s*(?P<state>\w+)\s*\)'
+      description: "设置当前任务状态 (无内存屏障)"
+      context: "process"
+      barrier: "none"
+      warning: "仅在不需要与唤醒者同步时使用"
+
+    set_task_state:
+      pattern: 'set_task_state\s*\(\s*(?P<task>[^,]+)\s*,\s*(?P<state>\w+)\s*\)'
+      description: "设置指定任务状态 (已废弃)"
+      deprecated: true
+
+  schedule_functions:
+    schedule:
+      pattern: 'schedule\s*\(\s*\)'
+      description: "主动让出 CPU"
+      context: "process"
+      can_sleep: true
+      preempt_point: true
+
+    schedule_timeout:
+      pattern: 'schedule_timeout\s*\(\s*(?P<timeout>[^)]+)\s*\)'
+      description: "睡眠指定时间或直到被唤醒"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "剩余 jiffies"
+        timeout: "0"
+
+    schedule_timeout_interruptible:
+      pattern: 'schedule_timeout_interruptible\s*\(\s*(?P<timeout>[^)]+)\s*\)'
+      description: "可中断的定时睡眠"
+      context: "process"
+      can_sleep: true
+      state: "TASK_INTERRUPTIBLE"
+
+    schedule_timeout_uninterruptible:
+      pattern: 'schedule_timeout_uninterruptible\s*\(\s*(?P<timeout>[^)]+)\s*\)'
+      description: "不可中断的定时睡眠"
+      context: "process"
+      can_sleep: true
+      state: "TASK_UNINTERRUPTIBLE"
+
+    schedule_preempt_disabled:
+      pattern: 'schedule_preempt_disabled\s*\(\s*\)'
+      description: "在禁用抢占时调度"
+      context: "process (preempt disabled)"
+      can_sleep: true
+
+    cond_resched:
+      pattern: 'cond_resched\s*\(\s*\)'
+      description: "条件重调度 (如果需要)"
+      context: "process"
+      can_sleep: true
+      use_case: "长时间循环中让出 CPU"
+
+    cond_resched_lock:
+      pattern: 'cond_resched_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "持有自旋锁时条件重调度"
+      context: "process (holding spinlock)"
+      can_sleep: true
+
+  wake_functions:
+    try_to_wake_up:
+      pattern: 'try_to_wake_up\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<state>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+      description: "唤醒任务 (核心函数)"
+      context: "any"
+      can_sleep: false
+      file: "kernel/sched/core.c"
+      return_value:
+        success: "1 (任务被唤醒)"
+        failure: "0 (任务不在目标状态)"
+
+    wake_up_process:
+      pattern: 'wake_up_process\s*\(\s*(?P<p>[\w\.\->]+)\s*\)'
+      description: "唤醒任务 (TASK_NORMAL)"
+      context: "any"
+      can_sleep: false
+      wrapper: "try_to_wake_up(p, TASK_NORMAL, 0)"
+
+    wake_up_state:
+      pattern: 'wake_up_state\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<state>[^)]+)\s*\)'
+      description: "唤醒指定状态的任务"
+      context: "any"
+      can_sleep: false
+
+    wake_up_if_idle:
+      pattern: 'wake_up_if_idle\s*\(\s*(?P<cpu>\w+)\s*\)'
+      description: "如果 CPU 空闲则唤醒"
+      context: "any"
+      can_sleep: false
+
+  helper_functions:
+    - pattern: 'msleep\s*\(\s*(?P<ms>\w+)\s*\)'
+      description: "毫秒级睡眠 (不可中断)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_UNINTERRUPTIBLE"
+
+    - pattern: 'msleep_interruptible\s*\(\s*(?P<ms>\w+)\s*\)'
+      description: "毫秒级睡眠 (可中断)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_INTERRUPTIBLE"
+
+    - pattern: 'ssleep\s*\(\s*(?P<seconds>\w+)\s*\)'
+      description: "秒级睡眠"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'usleep_range\s*\(\s*(?P<min>\w+)\s*,\s*(?P<max>\w+)\s*\)'
+      description: "微秒级睡眠 (范围)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'signal_pending\s*\(\s*(?P<task>[\w\.\->]+)\s*\)'
+      description: "检查是否有待处理信号"
+      context: "any"
+      return_value:
+        pending: "非 0"
+        none: "0"
+
+    - pattern: 'fatal_signal_pending\s*\(\s*(?P<task>[\w\.\->]+)\s*\)'
+      description: "检查是否有 fatal 信号待处理"
+      context: "any"
+
+  call_chains:
+    voluntary_sleep:
+      description: "主动睡眠路径"
+      trigger: "任务调用 set_current_state + schedule"
+      chain:
+        - function: "set_current_state(TASK_INTERRUPTIBLE)"
+          description: "设置睡眠状态"
+          context: "process"
+        - function: "schedule"
+          file: "kernel/sched/core.c"
+          description: "调度"
+        - function: "__schedule"
+          file: "kernel/sched/core.c"
+          description: "调度核心"
+        - function: "deactivate_task"
+          file: "kernel/sched/core.c"
+          description: "从运行队列移除"
+        - function: "pick_next_task"
+          description: "选择下一个任务"
+        - function: "context_switch"
+          description: "切换到其他任务"
+
+    wake_up_task:
+      description: "唤醒任务路径"
+      trigger: "调用 wake_up_process 或类似函数"
+      chain:
+        - function: "wake_up_process"
+          file: "kernel/sched/core.c"
+          description: "唤醒入口"
+          context: "any"
+        - function: "try_to_wake_up"
+          file: "kernel/sched/core.c"
+          description: "唤醒核心"
+        - function: "select_task_rq"
+          description: "选择目标 CPU"
+        - function: "ttwu_queue"
+          description: "加入目标队列"
+        - function: "ttwu_do_activate"
+          description: "激活任务"
+        - function: "activate_task"
+          description: "入队"
+        - function: "enqueue_task"
+          description: "调度器类入队"
+        - function: "check_preempt_curr"
+          description: "检查是否需要抢占"
+
+  examples:
+    - description: "基本睡眠模式"
+      code: |
+        /* 正确的睡眠模式 */
+        set_current_state(TASK_INTERRUPTIBLE);
+        if (!condition)
+            schedule();
+        __set_current_state(TASK_RUNNING);
+        
+        /* 检查是否被信号中断 */
+        if (signal_pending(current))
+            return -ERESTARTSYS;
+
+    - description: "定时睡眠"
+      code: |
+        /* 睡眠 100ms (不可中断) */
+        msleep(100);
+        
+        /* 睡眠 100ms (可中断) */
+        if (msleep_interruptible(100)) {
+            /* 被信号中断 */
+            return -ERESTARTSYS;
+        }
+        
+        /* 微秒级睡眠 (推荐用于短延迟) */
+        usleep_range(1000, 1100); /* 1ms-1.1ms */
+
+# ============================================================
+# CFS BANDWIDTH CONTROL (CPU 带宽控制)
+# ============================================================
+
+cfs_bandwidth:
+  description: "CFS Bandwidth Control - CPU 带宽限制"
+  header: "kernel/sched/fair.c"
+  icon: "🚦"
+  kernel_version: "3.2+"
+  config: "CONFIG_CFS_BANDWIDTH"
+
+  context:
+    type: "process/softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  description_long: |
+    CFS 带宽控制允许为 cgroup 设置 CPU 使用限制。
+    - quota: 在一个 period 内允许使用的 CPU 时间
+    - period: 时间周期
+    - 当 cgroup 用完配额时，其任务被 throttle
+    - period 结束时重新分配配额
+
+  data_structures:
+    cfs_bandwidth:
+      pattern: 'struct cfs_bandwidth\s*\{'
+      description: "CFS 带宽控制结构"
+      file: "kernel/sched/sched.h"
+      fields:
+        - name: "lock"
+          type: "raw_spinlock_t"
+          description: "保护带宽结构的锁"
+        - name: "period"
+          type: "ktime_t"
+          description: "带宽周期 (默认 100ms)"
+        - name: "quota"
+          type: "u64"
+          description: "每周期允许的 CPU 时间"
+        - name: "runtime"
+          type: "u64"
+          description: "当前剩余运行时间"
+        - name: "hierarchical_quota"
+          type: "s64"
+          description: "层级配额"
+        - name: "idle"
+          type: "u8"
+          description: "是否空闲"
+        - name: "period_active"
+          type: "u8"
+          description: "周期定时器是否活跃"
+        - name: "period_timer"
+          type: "struct hrtimer"
+          description: "周期定时器"
+        - name: "slack_timer"
+          type: "struct hrtimer"
+          description: "松弛定时器"
+        - name: "throttled_cfs_rq"
+          type: "struct list_head"
+          description: "被 throttle 的 CFS 运行队列列表"
+        - name: "nr_throttled"
+          type: "int"
+          description: "被 throttle 的队列数"
+        - name: "throttled_time"
+          type: "u64"
+          description: "累计 throttle 时间"
+
+  key_functions:
+    init_cfs_bandwidth:
+      pattern: 'init_cfs_bandwidth\s*\(\s*(?P<cfs_b>[^)]+)\s*\)'
+      description: "初始化 CFS 带宽结构"
+      context: "process"
+      file: "kernel/sched/fair.c"
+
+    assign_cfs_rq_runtime:
+      pattern: 'assign_cfs_rq_runtime\s*\(\s*(?P<cfs_rq>[^)]+)\s*\)'
+      description: "为 CFS 运行队列分配运行时间"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+      return_value:
+        success: "非 0 (分配了运行时间)"
+        failure: "0 (没有可用配额)"
+
+    __check_cfs_rq_runtime:
+      pattern: '__check_cfs_rq_runtime\s*\(\s*(?P<cfs_rq>[^)]+)\s*\)'
+      description: "检查运行队列是否需要 throttle"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+    throttle_cfs_rq:
+      pattern: 'throttle_cfs_rq\s*\(\s*(?P<cfs_rq>[^)]+)\s*\)'
+      description: "Throttle CFS 运行队列"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+      effect: "从调度层级中移除，停止运行"
+
+    unthrottle_cfs_rq:
+      pattern: 'unthrottle_cfs_rq\s*\(\s*(?P<cfs_rq>[^)]+)\s*\)'
+      description: "Unthrottle CFS 运行队列"
+      context: "softirq"
+      file: "kernel/sched/fair.c"
+      effect: "重新加入调度层级"
+
+    __refill_cfs_bandwidth_runtime:
+      pattern: '__refill_cfs_bandwidth_runtime\s*\(\s*(?P<cfs_b>[^)]+)\s*\)'
+      description: "重新填充带宽运行时间"
+      context: "softirq"
+      file: "kernel/sched/fair.c"
+      trigger: "周期定时器到期"
+
+    start_cfs_bandwidth:
+      pattern: 'start_cfs_bandwidth\s*\(\s*(?P<cfs_b>[^)]+)\s*\)'
+      description: "启动带宽控制定时器"
+      context: "process/softirq"
+      file: "kernel/sched/fair.c"
+
+    do_sched_cfs_period_timer:
+      pattern: 'do_sched_cfs_period_timer\s*\('
+      description: "周期定时器回调"
+      context: "softirq (hrtimer)"
+      file: "kernel/sched/fair.c"
+
+    do_sched_cfs_slack_timer:
+      pattern: 'do_sched_cfs_slack_timer\s*\('
+      description: "松弛定时器回调"
+      context: "softirq (hrtimer)"
+      file: "kernel/sched/fair.c"
+
+    distribute_cfs_runtime:
+      pattern: 'distribute_cfs_runtime\s*\('
+      description: "分发运行时间给被 throttle 的队列"
+      context: "softirq"
+      file: "kernel/sched/fair.c"
+
+  cgroup_interface:
+    cpu_cfs_quota_us:
+      path: "cpu.cfs_quota_us"
+      description: "每周期允许的 CPU 微秒数 (-1 表示无限制)"
+      default: "-1"
+
+    cpu_cfs_period_us:
+      path: "cpu.cfs_period_us"
+      description: "周期长度 (微秒)"
+      default: "100000 (100ms)"
+      range: "1000 - 1000000"
+
+    cpu_stat:
+      path: "cpu.stat"
+      description: "带宽统计"
+      fields:
+        - "nr_periods"
+        - "nr_throttled"
+        - "throttled_time"
+
+  call_chains:
+    bandwidth_throttle:
+      description: "带宽限制触发路径"
+      trigger: "任务消耗完配额"
+      chain:
+        - function: "update_curr"
+          file: "kernel/sched/fair.c"
+          description: "更新当前任务运行时间"
+        - function: "account_cfs_rq_runtime"
+          file: "kernel/sched/fair.c"
+          description: "记账运行时间"
+        - function: "__check_cfs_rq_runtime"
+          file: "kernel/sched/fair.c"
+          description: "检查是否超配额"
+        - function: "throttle_cfs_rq"
+          file: "kernel/sched/fair.c"
+          description: "执行 throttle"
+        - function: "dequeue_entity"
+          description: "从调度层级移除"
+
+    bandwidth_unthrottle:
+      description: "带宽恢复路径"
+      trigger: "周期定时器到期重新分配配额"
+      chain:
+        - function: "sched_cfs_period_timer"
+          file: "kernel/sched/fair.c"
+          description: "周期定时器回调"
+          context: "softirq"
+        - function: "do_sched_cfs_period_timer"
+          file: "kernel/sched/fair.c"
+          description: "周期处理"
+        - function: "__refill_cfs_bandwidth_runtime"
+          file: "kernel/sched/fair.c"
+          description: "重新填充配额"
+        - function: "distribute_cfs_runtime"
+          file: "kernel/sched/fair.c"
+          description: "分发给被 throttle 的队列"
+        - function: "unthrottle_cfs_rq"
+          file: "kernel/sched/fair.c"
+          description: "解除 throttle"
+        - function: "enqueue_entity"
+          description: "重新加入调度层级"
+
+  examples:
+    - description: "设置 CPU 带宽限制"
+      code: |
+        # 限制 cgroup 只能使用 50% CPU (单核)
+        echo 50000 > /sys/fs/cgroup/cpu/mygroup/cpu.cfs_quota_us
+        echo 100000 > /sys/fs/cgroup/cpu/mygroup/cpu.cfs_period_us
+        
+        # 允许使用 2 个 CPU 核心
+        echo 200000 > /sys/fs/cgroup/cpu/mygroup/cpu.cfs_quota_us
+        
+        # 移除限制
+        echo -1 > /sys/fs/cgroup/cpu/mygroup/cpu.cfs_quota_us
+
+# ============================================================
+# PELT (Per-Entity Load Tracking)
+# ============================================================
+
+pelt:
+  description: "Per-Entity Load Tracking - 实体级负载追踪"
+  header: "kernel/sched/fair.c"
+  icon: "📊"
+  kernel_version: "3.8+"
+
+  context:
+    type: "irq_disabled"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  description_long: |
+    PELT 为每个调度实体追踪负载，使用指数衰减平均。
+    - 负载追踪周期: 1024us (~1ms)
+    - 衰减因子: y = 0.5^(1/32) ≈ 0.978
+    - 32 个周期后负载衰减到一半
+
+  data_structures:
+    sched_avg:
+      pattern: 'struct sched_avg\s*\{'
+      description: "调度平均负载结构"
+      file: "include/linux/sched.h"
+      fields:
+        - name: "last_update_time"
+          type: "u64"
+          description: "上次更新时间"
+        - name: "load_sum"
+          type: "u64"
+          description: "负载累加值"
+        - name: "runnable_load_sum"
+          type: "u64"
+          description: "可运行负载累加值"
+        - name: "util_sum"
+          type: "u32"
+          description: "利用率累加值"
+        - name: "period_contrib"
+          type: "u32"
+          description: "当前周期贡献"
+        - name: "load_avg"
+          type: "unsigned long"
+          description: "负载平均值"
+        - name: "runnable_load_avg"
+          type: "unsigned long"
+          description: "可运行负载平均值"
+        - name: "util_avg"
+          type: "unsigned long"
+          description: "利用率平均值"
+
+  key_functions:
+    update_load_avg:
+      pattern: 'update_load_avg\s*\(\s*(?P<se>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+      description: "更新调度实体的负载平均"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+      trigger: "入队/出队/tick"
+
+    __update_load_avg_se:
+      pattern: '__update_load_avg_se\s*\('
+      description: "更新调度实体的负载平均 (内部)"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+    __update_load_avg_cfs_rq:
+      pattern: '__update_load_avg_cfs_rq\s*\('
+      description: "更新 CFS 运行队列的负载平均"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+    __update_load_avg_blocked_se:
+      pattern: '__update_load_avg_blocked_se\s*\('
+      description: "更新阻塞实体的负载平均"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+    ___update_load_avg:
+      pattern: '___update_load_avg\s*\('
+      description: "负载更新核心函数"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+    accumulate_sum:
+      pattern: 'accumulate_sum\s*\('
+      description: "累积负载和"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+    attach_entity_load_avg:
+      pattern: 'attach_entity_load_avg\s*\('
+      description: "将实体负载附加到 CFS 运行队列"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+    detach_entity_load_avg:
+      pattern: 'detach_entity_load_avg\s*\('
+      description: "从 CFS 运行队列分离实体负载"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+  load_calculation:
+    description: "负载计算公式"
+    period: "1024us (~1ms)"
+    decay_factor: "y = 0.5^(1/32) ≈ 0.978"
+    formula: |
+      load_avg = load_sum / LOAD_AVG_MAX
+      
+      # 累积公式 (每个周期)
+      load_sum = load_sum * y + new_contribution
+      
+      # 衰减
+      32 个周期后: load_sum * y^32 ≈ load_sum * 0.5
+    components:
+      load_avg: "反映任务权重的负载"
+      runnable_load_avg: "反映可运行状态的负载"
+      util_avg: "反映 CPU 利用率 (运行时间占比)"
+
+  call_chains:
+    load_update:
+      description: "负载更新路径"
+      trigger: "任务入队/出队/时钟 tick"
+      chain:
+        - function: "enqueue_entity / dequeue_entity / entity_tick"
+          description: "触发点"
+        - function: "update_load_avg"
+          file: "kernel/sched/fair.c"
+          description: "更新实体负载"
+        - function: "__update_load_avg_se"
+          file: "kernel/sched/fair.c"
+          description: "计算实体负载"
+        - function: "___update_load_avg"
+          file: "kernel/sched/fair.c"
+          description: "核心计算"
+        - function: "accumulate_sum"
+          file: "kernel/sched/fair.c"
+          description: "累积负载和"
+        - function: "update_cfs_rq_load_avg"
+          file: "kernel/sched/fair.c"
+          description: "更新运行队列负载"
+
+# ============================================================
+# TASK GROUP (调度组)
+# ============================================================
+
+task_group:
+  description: "Task Group - 任务组 (cgroup 调度)"
+  header: "kernel/sched/sched.h"
+  icon: "👥"
+  kernel_version: "2.6.24+"
+  config: "CONFIG_CGROUP_SCHED"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  data_structures:
+    task_group:
+      pattern: 'struct task_group\s*\{'
+      description: "任务组结构"
+      file: "kernel/sched/sched.h"
+      fields:
+        - name: "css"
+          type: "struct cgroup_subsys_state"
+          description: "cgroup 子系统状态"
+        - name: "se"
+          type: "struct sched_entity **"
+          description: "每 CPU 的调度实体"
+        - name: "cfs_rq"
+          type: "struct cfs_rq **"
+          description: "每 CPU 的 CFS 运行队列"
+        - name: "shares"
+          type: "unsigned long"
+          description: "组 shares (相对权重)"
+        - name: "load_avg"
+          type: "atomic_long_t"
+          description: "组负载平均"
+        - name: "rt_se"
+          type: "struct sched_rt_entity **"
+          description: "每 CPU 的 RT 调度实体"
+        - name: "rt_rq"
+          type: "struct rt_rq **"
+          description: "每 CPU 的 RT 运行队列"
+        - name: "rt_bandwidth"
+          type: "struct rt_bandwidth"
+          description: "RT 带宽控制"
+        - name: "cfs_bandwidth"
+          type: "struct cfs_bandwidth"
+          description: "CFS 带宽控制"
+        - name: "parent"
+          type: "struct task_group *"
+          description: "父任务组"
+        - name: "siblings"
+          type: "struct list_head"
+          description: "兄弟组链表"
+        - name: "children"
+          type: "struct list_head"
+          description: "子组链表"
+
+  key_functions:
+    sched_create_group:
+      pattern: 'sched_create_group\s*\(\s*(?P<parent>[^)]+)\s*\)'
+      description: "创建调度组"
+      context: "process"
+      file: "kernel/sched/core.c"
+      return_value:
+        success: "struct task_group *"
+        failure: "ERR_PTR()"
+
+    sched_online_group:
+      pattern: 'sched_online_group\s*\(\s*(?P<tg>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+      description: "上线调度组"
+      context: "process"
+      file: "kernel/sched/core.c"
+
+    sched_destroy_group:
+      pattern: 'sched_destroy_group\s*\(\s*(?P<tg>[^)]+)\s*\)'
+      description: "销毁调度组"
+      context: "process"
+      file: "kernel/sched/core.c"
+
+    sched_offline_group:
+      pattern: 'sched_offline_group\s*\(\s*(?P<tg>[^)]+)\s*\)'
+      description: "下线调度组"
+      context: "process"
+      file: "kernel/sched/core.c"
+
+    sched_group_set_shares:
+      pattern: 'sched_group_set_shares\s*\(\s*(?P<tg>[^,]+)\s*,\s*(?P<shares>[^)]+)\s*\)'
+      description: "设置组 shares"
+      context: "process"
+      file: "kernel/sched/fair.c"
+
+    sched_move_task:
+      pattern: 'sched_move_task\s*\(\s*(?P<tsk>[^)]+)\s*\)'
+      description: "移动任务到新组"
+      context: "process"
+      file: "kernel/sched/core.c"
+
+    cpu_cgroup_attach:
+      pattern: 'cpu_cgroup_attach\s*\('
+      description: "CPU cgroup attach 回调"
+      context: "process"
+      file: "kernel/sched/core.c"
+      trigger: "任务加入 CPU cgroup"
+
+    alloc_fair_sched_group:
+      pattern: 'alloc_fair_sched_group\s*\(\s*(?P<tg>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+      description: "分配公平调度组资源"
+      context: "process"
+      file: "kernel/sched/fair.c"
+
+    free_fair_sched_group:
+      pattern: 'free_fair_sched_group\s*\(\s*(?P<tg>[^)]+)\s*\)'
+      description: "释放公平调度组资源"
+      context: "process"
+      file: "kernel/sched/fair.c"
+
+    init_tg_cfs_entry:
+      pattern: 'init_tg_cfs_entry\s*\('
+      description: "初始化任务组 CFS 条目"
+      context: "process"
+      file: "kernel/sched/fair.c"
+
+    update_cfs_shares:
+      pattern: 'update_cfs_shares\s*\(\s*(?P<se>[^)]+)\s*\)'
+      description: "更新组 shares"
+      context: "irq_disabled"
+      file: "kernel/sched/fair.c"
+
+  cgroup_interface:
+    cpu_shares:
+      path: "cpu.shares"
+      description: "CPU shares (相对权重)"
+      default: "1024"
+      range: "2 - 262144"
+
+    cpu_weight:
+      path: "cpu.weight"
+      description: "CPU 权重 (cgroup v2)"
+      default: "100"
+      range: "1 - 10000"
+
+  call_chains:
+    cgroup_create:
+      description: "创建 CPU cgroup"
+      trigger: "mkdir /sys/fs/cgroup/cpu/mygroup"
+      chain:
+        - function: "cpu_cgroup_css_alloc"
+          file: "kernel/sched/core.c"
+          description: "分配 CSS"
+          context: "process"
+        - function: "sched_create_group"
+          file: "kernel/sched/core.c"
+          description: "创建调度组"
+        - function: "alloc_fair_sched_group"
+          file: "kernel/sched/fair.c"
+          description: "分配 CFS 资源"
+        - function: "alloc_rt_sched_group"
+          file: "kernel/sched/rt.c"
+          description: "分配 RT 资源"
+        - function: "cpu_cgroup_css_online"
+          description: "CSS 上线"
+        - function: "sched_online_group"
+          description: "调度组上线"
+
+    task_attach:
+      description: "任务加入 cgroup"
+      trigger: "echo $PID > /sys/fs/cgroup/cpu/mygroup/cgroup.procs"
+      chain:
+        - function: "cpu_cgroup_attach"
+          file: "kernel/sched/core.c"
+          description: "attach 回调"
+          context: "process"
+        - function: "sched_move_task"
+          file: "kernel/sched/core.c"
+          description: "移动任务"
+        - function: "set_task_rq"
+          description: "设置任务的运行队列"
+        - function: "task_move_group_fair"
+          file: "kernel/sched/fair.c"
+          description: "CFS 移动处理"
+
+  examples:
+    - description: "创建和配置 CPU cgroup"
+      code: |
+        # 创建 cgroup
+        mkdir /sys/fs/cgroup/cpu/mygroup
+        
+        # 设置 shares (相对权重)
+        echo 512 > /sys/fs/cgroup/cpu/mygroup/cpu.shares
+        
+        # 将进程加入 cgroup
+        echo $$ > /sys/fs/cgroup/cpu/mygroup/cgroup.procs
+        
+        # 查看组统计
+        cat /sys/fs/cgroup/cpu/mygroup/cpu.stat
 
 # ============================================================
 # RT SCHEDULER (Real-Time)
 # ============================================================
 
 rt_scheduler:
-  description: "Real-Time Scheduler (SCHED_FIFO/SCHED_RR)"
+  description: "Real-Time Scheduler - 实时调度器"
   header: "kernel/sched/rt.c"
   icon: "🚀"
+  kernel_version: "2.6+"
+
+  context:
+    type: "irq_disabled"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
 
   policies:
-    - name: "SCHED_FIFO"
+    SCHED_FIFO:
       description: "先进先出，不会被同优先级抢占"
-    - name: "SCHED_RR"
+      value: 1
+      timeslice: "无限 (不会用完)"
+      preemption: "只被更高优先级抢占"
+
+    SCHED_RR:
       description: "轮转，同优先级之间时间片轮转"
+      value: 2
+      timeslice: "DEF_TIMESLICE (100ms)"
+      preemption: "时间片用完后让给同优先级"
 
   priority_range:
     min: 1
     max: 99
-    description: "实时优先级范围"
+    description: "实时优先级范围 (数值越大优先级越高)"
+    mapping: "内核优先级 = MAX_RT_PRIO - 1 - rt_priority"
+
+  data_structures:
+    rt_rq:
+      pattern: 'struct rt_rq\s*\{'
+      description: "RT 运行队列"
+      file: "kernel/sched/sched.h"
+      fields:
+        - name: "active"
+          type: "struct rt_prio_array"
+          description: "活跃优先级数组"
+        - name: "rt_nr_running"
+          type: "unsigned long"
+          description: "运行中的 RT 任务数"
+        - name: "highest_prio"
+          type: "struct {...}"
+          description: "最高优先级"
+        - name: "rt_throttled"
+          type: "int"
+          description: "是否被 throttle"
+
+    sched_rt_entity:
+      pattern: 'struct sched_rt_entity\s*\{'
+      description: "RT 调度实体"
+      file: "include/linux/sched.h"
+      fields:
+        - name: "run_list"
+          type: "struct list_head"
+          description: "运行链表节点"
+        - name: "timeout"
+          type: "unsigned long"
+          description: "超时值"
+        - name: "watchdog_stamp"
+          type: "unsigned long"
+          description: "看门狗时间戳"
+        - name: "time_slice"
+          type: "unsigned int"
+          description: "时间片"
+
+  key_functions:
+    enqueue_task_rt:
+      pattern: 'enqueue_task_rt\s*\('
+      description: "RT 任务入队"
+      file: "kernel/sched/rt.c"
+
+    dequeue_task_rt:
+      pattern: 'dequeue_task_rt\s*\('
+      description: "RT 任务出队"
+      file: "kernel/sched/rt.c"
+
+    pick_next_task_rt:
+      pattern: 'pick_next_task_rt\s*\('
+      description: "选择下一个 RT 任务"
+      file: "kernel/sched/rt.c"
+
+    sched_setscheduler:
+      pattern: 'sched_setscheduler\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<policy>[^,]+)\s*,'
+      description: "设置任务调度策略"
+      context: "process"
+
+  rt_bandwidth:
+    description: "RT 带宽限制"
+    default_period: "1 秒"
+    default_runtime: "950ms (95%)"
+    sysctl:
+      rt_period_us: "/proc/sys/kernel/sched_rt_period_us"
+      rt_runtime_us: "/proc/sys/kernel/sched_rt_runtime_us"
+
+  examples:
+    - description: "设置实时调度"
+      code: |
+        #include <sched.h>
+        
+        struct sched_param param;
+        param.sched_priority = 50;
+        
+        /* 设置为 SCHED_FIFO */
+        if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
+            perror("sched_setscheduler");
+            return -1;
+        }
 
 # ============================================================
-# SCHEDULER STATISTICS
+# DEADLINE SCHEDULER
 # ============================================================
 
-sched_stats:
-  description: "Scheduler Statistics and Debugging"
-  
-  proc_files:
-    - path: "/proc/sched_debug"
-      description: "调度器调试信息"
-    - path: "/proc/schedstat"
-      description: "调度器统计"
-    - path: "/proc/<pid>/sched"
-      description: "进程调度信息"
+dl_scheduler:
+  description: "Deadline Scheduler - 截止时间调度器"
+  header: "kernel/sched/deadline.c"
+  icon: "⏰"
+  kernel_version: "3.14+"
+  policy: "SCHED_DEADLINE"
 
-  tracepoints:
-    - "sched:sched_switch"
-    - "sched:sched_wakeup"
-    - "sched:sched_migrate_task"
-    - "sched:sched_process_fork"
-    - "sched:sched_process_exit"
+  context:
+    type: "irq_disabled"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  parameters:
+    runtime:
+      description: "任务每周期需要的最大 CPU 时间"
+      unit: "纳秒"
+
+    deadline:
+      description: "任务必须完成的相对截止时间"
+      unit: "纳秒"
+
+    period:
+      description: "任务激活周期"
+      unit: "纳秒"
+
+  constraint: "runtime <= deadline <= period"
+
+  data_structures:
+    sched_dl_entity:
+      pattern: 'struct sched_dl_entity\s*\{'
+      description: "Deadline 调度实体"
+      file: "include/linux/sched.h"
+      fields:
+        - name: "rb_node"
+          type: "struct rb_node"
+          description: "红黑树节点"
+        - name: "dl_runtime"
+          type: "u64"
+          description: "运行时间"
+        - name: "dl_deadline"
+          type: "u64"
+          description: "截止时间"
+        - name: "dl_period"
+          type: "u64"
+          description: "周期"
+        - name: "dl_bw"
+          type: "u64"
+          description: "带宽"
+        - name: "dl_throttled"
+          type: "int"
+          description: "是否被 throttle"
+
+  scheduling:
+    algorithm: "Earliest Deadline First (EDF)"
+    description: "总是选择截止时间最近的任务运行"
+    priority: "比 RT 调度器更高优先级"
+
+  examples:
+    - description: "设置 Deadline 调度"
+      code: |
+        #include <sched.h>
+        #include <linux/sched/types.h>
+        
+        struct sched_attr attr;
+        memset(&attr, 0, sizeof(attr));
+        attr.size = sizeof(attr);
+        attr.sched_policy = SCHED_DEADLINE;
+        attr.sched_runtime = 10 * 1000 * 1000;   /* 10ms */
+        attr.sched_deadline = 30 * 1000 * 1000;  /* 30ms */
+        attr.sched_period = 100 * 1000 * 1000;   /* 100ms */
+        
+        if (sched_setattr(0, &attr, 0) == -1) {
+            perror("sched_setattr");
+            return -1;
+        }
 
 # ============================================================
 # PREEMPTION
 # ============================================================
 
 preemption:
-  description: "Kernel Preemption"
-  
-  config_options:
-    - name: "CONFIG_PREEMPT_NONE"
-      description: "无抢占（服务器）"
-    - name: "CONFIG_PREEMPT_VOLUNTARY"
-      description: "自愿抢占"
-    - name: "CONFIG_PREEMPT"
-      description: "完全抢占（桌面）"
-    - name: "CONFIG_PREEMPT_RT"
-      description: "实时抢占"
+  description: "Kernel Preemption - 内核抢占"
+  header: "include/linux/preempt.h"
+  icon: "⚡"
 
-  preempt_disable:
+  config_options:
+    PREEMPT_NONE:
+      description: "无抢占（服务器/吞吐量优先）"
+      latency: "高"
+      throughput: "最佳"
+      use_case: "计算密集型服务器"
+
+    PREEMPT_VOLUNTARY:
+      description: "自愿抢占（平衡）"
+      latency: "中等"
+      throughput: "良好"
+      use_case: "通用桌面/服务器"
+
+    PREEMPT:
+      description: "完全抢占（低延迟）"
+      latency: "低"
+      throughput: "较低"
+      use_case: "桌面系统"
+
+    PREEMPT_RT:
+      description: "实时抢占（最低延迟）"
+      latency: "最低 (~10-100us)"
+      throughput: "最低"
+      use_case: "实时系统"
+
+  preempt_control:
     - pattern: 'preempt_disable\s*\(\s*\)'
       description: "禁用抢占"
+      effect: "preempt_count++"
+
     - pattern: 'preempt_enable\s*\(\s*\)'
       description: "启用抢占"
+      effect: "preempt_count-- (可能触发重调度)"
+
+    - pattern: 'preempt_enable_no_resched\s*\(\s*\)'
+      description: "启用抢占但不重调度"
+      effect: "preempt_count-- (不检查重调度)"
+
     - pattern: 'preempt_count\s*\(\s*\)'
       description: "获取抢占计数"
+      return: "当前抢占计数"
+
+    - pattern: 'in_atomic\s*\(\s*\)'
+      description: "检查是否在原子上下文"
+      return: "preempt_count != 0"
+
+    - pattern: 'might_sleep\s*\(\s*\)'
+      description: "断言可以睡眠"
+      effect: "在原子上下文中打印警告"
+
+  preempt_count_bits:
+    description: "抢占计数各位含义"
+    layout: |
+      31-24: unused
+      23-20: PREEMPT_ACTIVE (已废弃)
+      19-16: NMI count
+      15-8:  hardirq count
+      7-4:   softirq count
+      3-0:   preempt count
 
 # ============================================================
 # CPU AFFINITY
 # ============================================================
 
 cpu_affinity:
-  description: "CPU Affinity and Migration"
-  
-  functions:
-    - pattern: 'set_cpus_allowed_ptr\s*\('
-      description: "设置任务允许运行的 CPU"
-    - pattern: 'sched_setaffinity\s*\('
-      description: "系统调用设置亲和性"
-    - pattern: 'migrate_task_to\s*\('
-      description: "迁移任务到指定 CPU"
+  description: "CPU Affinity and Migration - CPU 亲和性"
+  header: "include/linux/sched.h"
+  icon: "🎯"
 
-  per_cpu:
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  functions:
+    set_cpus_allowed_ptr:
+      pattern: 'set_cpus_allowed_ptr\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "设置任务允许运行的 CPU"
+      context: "process"
+      can_sleep: true
+      file: "kernel/sched/core.c"
+
+    sched_setaffinity:
+      pattern: 'sched_setaffinity\s*\(\s*(?P<pid>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "系统调用设置亲和性"
+      context: "process (syscall)"
+      can_sleep: true
+
+    sched_getaffinity:
+      pattern: 'sched_getaffinity\s*\(\s*(?P<pid>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "系统调用获取亲和性"
+      context: "process (syscall)"
+
+    migrate_task_to:
+      pattern: 'migrate_task_to\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<cpu>[^)]+)\s*\)'
+      description: "迁移任务到指定 CPU"
+      context: "process"
+      file: "kernel/sched/core.c"
+
+  per_cpu_helpers:
     - pattern: 'get_cpu\s*\(\s*\)'
       description: "获取当前 CPU 并禁用抢占"
+      return: "当前 CPU ID"
+      effect: "preempt_disable()"
+
     - pattern: 'put_cpu\s*\(\s*\)'
       description: "释放 CPU 并启用抢占"
+      effect: "preempt_enable()"
+
     - pattern: 'smp_processor_id\s*\(\s*\)'
       description: "获取当前 CPU ID"
+      context: "preempt disabled or hardirq"
+      warning: "抢占启用时可能获取错误值"
+
+    - pattern: 'raw_smp_processor_id\s*\(\s*\)'
+      description: "获取当前 CPU ID (无检查)"
+      context: "any"
+
+  examples:
+    - description: "设置 CPU 亲和性"
+      code: |
+        #include <sched.h>
+        
+        cpu_set_t mask;
+        CPU_ZERO(&mask);
+        CPU_SET(0, &mask);  /* 只在 CPU 0 运行 */
+        CPU_SET(1, &mask);  /* 也可以在 CPU 1 运行 */
+        
+        if (sched_setaffinity(0, sizeof(mask), &mask) == -1) {
+            perror("sched_setaffinity");
+        }
+
+# ============================================================
+# SCHEDULER STATISTICS
+# ============================================================
+
+sched_stats:
+  description: "Scheduler Statistics and Debugging - 调度器统计"
+  icon: "📈"
+
+  proc_files:
+    - path: "/proc/sched_debug"
+      description: "调度器调试信息"
+      content:
+        - "各 CPU 运行队列状态"
+        - "调度域配置"
+        - "负载均衡统计"
+
+    - path: "/proc/schedstat"
+      description: "调度器统计"
+      content:
+        - "每 CPU 调度统计"
+        - "调度域统计"
+
+    - path: "/proc/<pid>/sched"
+      description: "进程调度信息"
+      content:
+        - "运行时间"
+        - "等待时间"
+        - "迁移次数"
+
+    - path: "/proc/<pid>/schedstat"
+      description: "进程调度统计"
+      format: "run_time wait_time nr_switches"
+
+  tracepoints:
+    - name: "sched:sched_switch"
+      description: "进程切换"
+      fields: "prev_comm, prev_pid, next_comm, next_pid"
+
+    - name: "sched:sched_wakeup"
+      description: "进程唤醒"
+      fields: "comm, pid, prio, target_cpu"
+
+    - name: "sched:sched_wakeup_new"
+      description: "新进程唤醒"
+      fields: "comm, pid, prio, target_cpu"
+
+    - name: "sched:sched_migrate_task"
+      description: "任务迁移"
+      fields: "comm, pid, orig_cpu, dest_cpu"
+
+    - name: "sched:sched_process_fork"
+      description: "进程创建"
+      fields: "parent_comm, parent_pid, child_comm, child_pid"
+
+    - name: "sched:sched_process_exit"
+      description: "进程退出"
+      fields: "comm, pid, prio"
+
+    - name: "sched:sched_stat_wait"
+      description: "等待时间统计"
+      fields: "comm, pid, delay"
+
+    - name: "sched:sched_stat_sleep"
+      description: "睡眠时间统计"
+      fields: "comm, pid, delay"
+
+    - name: "sched:sched_stat_runtime"
+      description: "运行时间统计"
+      fields: "comm, pid, runtime, vruntime"
+
+  sysctl:
+    - path: "/proc/sys/kernel/sched_latency_ns"
+      description: "CFS 调度延迟"
+      default: "6000000 (6ms)"
+
+    - path: "/proc/sys/kernel/sched_min_granularity_ns"
+      description: "最小调度粒度"
+      default: "750000 (0.75ms)"
+
+    - path: "/proc/sys/kernel/sched_wakeup_granularity_ns"
+      description: "唤醒粒度"
+      default: "1000000 (1ms)"
+
+    - path: "/proc/sys/kernel/sched_migration_cost_ns"
+      description: "迁移成本"
+      default: "500000 (0.5ms)"
+
+    - path: "/proc/sys/kernel/sched_nr_migrate"
+      description: "每次均衡最大迁移任务数"
+      default: "32"
+
+# ============================================================
+# EXAMPLES (综合示例)
+# ============================================================
+
+examples:
+  - description: "内核驱动中的等待队列使用"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/wait.h>
+      #include <linux/sched.h>
+      #include <linux/kthread.h>
+      
+      static DECLARE_WAIT_QUEUE_HEAD(data_wq);
+      static int data_ready = 0;
+      static struct task_struct *consumer_thread;
+      
+      /* 生产者 - 可能从中断调用 */
+      static void produce_data(void)
+      {
+          /* 准备数据 */
+          data_ready = 1;
+          /* 唤醒消费者 */
+          wake_up_interruptible(&data_wq);
+      }
+      
+      /* 消费者线程 */
+      static int consumer_func(void *data)
+      {
+          while (!kthread_should_stop()) {
+              /* 等待数据就绪 */
+              if (wait_event_interruptible(data_wq, 
+                      data_ready || kthread_should_stop())) {
+                  /* 被信号中断 */
+                  continue;
+              }
+              
+              if (kthread_should_stop())
+                  break;
+              
+              /* 处理数据 */
+              process_data();
+              data_ready = 0;
+          }
+          return 0;
+      }
+      
+      static int __init my_init(void)
+      {
+          consumer_thread = kthread_run(consumer_func, NULL, "consumer");
+          if (IS_ERR(consumer_thread))
+              return PTR_ERR(consumer_thread);
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          kthread_stop(consumer_thread);
+      }
+
+  - description: "实时任务优先级继承"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/sched.h>
+      #include <linux/sched/rt.h>
+      
+      /* 提升当前任务为实时优先级 */
+      static void boost_priority(void)
+      {
+          struct sched_param param = {
+              .sched_priority = MAX_RT_PRIO - 1,  /* 最高 RT 优先级 */
+          };
+          
+          sched_setscheduler(current, SCHED_FIFO, &param);
+      }
+      
+      /* 恢复普通优先级 */
+      static void restore_priority(void)
+      {
+          struct sched_param param = {
+              .sched_priority = 0,
+          };
+          
+          sched_setscheduler(current, SCHED_NORMAL, &param);
+      }
+
+  - description: "CPU cgroup 配置脚本"
+    kernel_version: "3.0+"
+    code: |
+      #!/bin/bash
+      # 创建 CPU 受限的 cgroup
+      
+      CGROUP_PATH="/sys/fs/cgroup/cpu/limited"
+      
+      # 创建 cgroup
+      mkdir -p $CGROUP_PATH
+      
+      # 设置 CPU 带宽: 50% (50ms/100ms)
+      echo 50000 > $CGROUP_PATH/cpu.cfs_quota_us
+      echo 100000 > $CGROUP_PATH/cpu.cfs_period_us
+      
+      # 设置 shares (相对权重)
+      echo 512 > $CGROUP_PATH/cpu.shares
+      
+      # 将当前 shell 加入 cgroup
+      echo $$ > $CGROUP_PATH/cgroup.procs
+      
+      # 运行受限程序
+      exec $@

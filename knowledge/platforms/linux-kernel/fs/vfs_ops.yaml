@@ -1,5 +1,592 @@
 # VFS Operations Knowledge Base
 # Reference: https://www.kernel.org/doc/html/latest/filesystems/vfs.html
+# Kernel Version: 4.0+ (supports both old and new APIs)
+
+# ============================================================
+# MOUNT OPERATIONS (挂载详细)
+# ============================================================
+
+mount_operations:
+  description: "Mount Operations - 文件系统挂载操作"
+  header: "linux/fs.h"
+  icon: "🗻"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # vfs_kern_mount
+    - pattern: 'vfs_kern_mount\s*\(\s*(?P<type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "type"
+      description: "内核挂载文件系统"
+
+    # do_mount
+    - pattern: 'do_mount\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<dir>[^,]+)\s*,\s*(?P<type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "执行挂载操作"
+
+    # mount_bdev
+    - pattern: 'mount_bdev\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<dev_name>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      variable_capture: "fs_type"
+      description: "挂载块设备文件系统"
+
+    # mount_nodev
+    - pattern: 'mount_nodev\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      variable_capture: "fs_type"
+      description: "挂载无设备文件系统"
+
+    # mount_single
+    - pattern: 'mount_single\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      variable_capture: "fs_type"
+      description: "挂载单例文件系统"
+
+    # mount_ns
+    - pattern: 'mount_ns\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<ns_ops>[^,]+)\s*,\s*(?P<ns>[^)]+)\s*\)'
+      variable_capture: "fs_type"
+      description: "挂载命名空间文件系统"
+
+    # kill_litter_super
+    - pattern: 'kill_litter_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "卸载并清除临时文件系统"
+
+    # kill_block_super
+    - pattern: 'kill_block_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "卸载块设备文件系统"
+
+    # kill_anon_super
+    - pattern: 'kill_anon_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "卸载匿名文件系统"
+
+  helper_functions:
+    - pattern: 'vfs_kern_mount\s*\([^)]*\)'
+      description: "内核空间挂载文件系统"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'do_mount\s*\([^)]*\)'
+      description: "执行挂载系统调用"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'mount_bdev\s*\([^)]*\)'
+      description: "挂载块设备文件系统辅助"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'mount_nodev\s*\([^)]*\)'
+      description: "挂载无设备文件系统辅助"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'mount_single\s*\([^)]*\)'
+      description: "挂载单例文件系统辅助"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'mount_pseudo\s*\([^)]*\)'
+      description: "挂载伪文件系统"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'kill_block_super\s*\([^)]*\)'
+      description: "卸载块设备文件系统"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'kill_anon_super\s*\([^)]*\)'
+      description: "卸载匿名文件系统"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'kill_litter_super\s*\([^)]*\)'
+      description: "卸载并清除内容"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'deactivate_super\s*\([^)]*\)'
+      description: "停用超级块"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'deactivate_locked_super\s*\([^)]*\)'
+      description: "停用已锁定的超级块"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'sget\s*\([^)]*\)'
+      description: "查找或创建超级块"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'vfs_get_super\s*\([^)]*\)'
+      description: "获取超级块"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# FS_CONTEXT (新挂载 API, 4.16+)
+# ============================================================
+
+fs_context:
+  description: "FS Context - 文件系统上下文 (新挂载 API)"
+  header: "linux/fs_context.h"
+  icon: "🔧"
+  kernel_version: "4.16+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # fs_context_for_mount
+    - pattern: 'fs_context_for_mount\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<sb_flags>[^)]+)\s*\)'
+      variable_capture: "fs_type"
+      description: "创建挂载用 fs_context"
+
+    # fs_context_for_reconfigure
+    - pattern: 'fs_context_for_reconfigure\s*\(\s*(?P<dentry>[^,]+)\s*,\s*(?P<sb_flags>[^,]+)\s*,\s*(?P<ms_flags>[^)]+)\s*\)'
+      variable_capture: "dentry"
+      description: "创建重配置用 fs_context"
+
+    # fs_context_for_submount
+    - pattern: 'fs_context_for_submount\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<reference>[^)]+)\s*\)'
+      variable_capture: "fs_type"
+      description: "创建子挂载用 fs_context"
+
+    # put_fs_context
+    - pattern: 'put_fs_context\s*\(\s*(?P<fc>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "释放 fs_context"
+
+    # vfs_parse_fs_param
+    - pattern: 'vfs_parse_fs_param\s*\(\s*(?P<fc>[^,]+)\s*,\s*(?P<param>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "解析挂载参数"
+
+    # vfs_parse_fs_string
+    - pattern: 'vfs_parse_fs_string\s*\(\s*(?P<fc>[^,]+)\s*,\s*(?P<key>[^,]+)\s*,\s*(?P<value>[^,]+)\s*,\s*(?P<v_size>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "解析字符串参数"
+
+    # vfs_get_tree
+    - pattern: 'vfs_get_tree\s*\(\s*(?P<fc>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "获取文件系统树"
+
+    # vfs_create_mount
+    - pattern: 'vfs_create_mount\s*\(\s*(?P<fc>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "创建挂载点"
+
+    # fc_mount
+    - pattern: 'fc_mount\s*\(\s*(?P<fc>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "通过 fs_context 挂载"
+
+  structure:
+    name: "fs_context"
+    description: "文件系统挂载上下文"
+    fields:
+      - name: "ops"
+        type: "const struct fs_context_operations *"
+        description: "上下文操作回调"
+      - name: "uapi_mutex"
+        type: "struct mutex"
+        description: "用户 API 互斥锁"
+      - name: "fs_type"
+        type: "struct file_system_type *"
+        description: "文件系统类型"
+      - name: "root"
+        type: "struct dentry *"
+        description: "挂载根目录项"
+      - name: "user_ns"
+        type: "struct user_namespace *"
+        description: "用户命名空间"
+      - name: "net_ns"
+        type: "struct net *"
+        description: "网络命名空间"
+      - name: "cred"
+        type: "const struct cred *"
+        description: "凭证"
+      - name: "log"
+        type: "struct p_log"
+        description: "日志"
+      - name: "source"
+        type: "const char *"
+        description: "挂载源"
+      - name: "security"
+        type: "void *"
+        description: "安全数据"
+      - name: "s_fs_info"
+        type: "void *"
+        description: "文件系统私有数据"
+      - name: "sb_flags"
+        type: "unsigned int"
+        description: "超级块标志"
+      - name: "sb_flags_mask"
+        type: "unsigned int"
+        description: "标志掩码"
+      - name: "s_iflags"
+        type: "unsigned int"
+        description: "内部标志"
+      - name: "purpose"
+        type: "enum fs_context_purpose"
+        description: "上下文用途"
+      - name: "need_free"
+        type: "bool"
+        description: "是否需要释放"
+      - name: "global"
+        type: "bool"
+        description: "是否全局可见"
+
+  callbacks:
+    free:
+      pattern: '\.free\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "释放 fs_context"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct fs_context *)"
+
+    parse_param:
+      pattern: '\.parse_param\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "解析挂载参数"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct fs_context *, struct fs_parameter *)"
+      return_value:
+        success: "0"
+        failure: "负数错误码"
+
+    parse_monolithic:
+      pattern: '\.parse_monolithic\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "解析旧格式挂载选项"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct fs_context *, void *)"
+
+    get_tree:
+      pattern: '\.get_tree\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "获取/创建超级块和根 dentry"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct fs_context *)"
+      return_value:
+        success: "0，fc->root 已设置"
+        failure: "负数错误码"
+      typical_actions:
+        - "调用 vfs_get_super() 或 get_tree_nodev()"
+        - "填充超级块"
+        - "创建根 inode 和 dentry"
+
+    reconfigure:
+      pattern: '\.reconfigure\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "重新配置已挂载的文件系统"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct fs_context *)"
+
+  helper_functions:
+    - pattern: 'fs_context_for_mount\s*\([^)]*\)'
+      description: "创建挂载用 fs_context"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'fs_context_for_reconfigure\s*\([^)]*\)'
+      description: "创建重配置用 fs_context"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'put_fs_context\s*\([^)]*\)'
+      description: "释放 fs_context"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'vfs_parse_fs_param\s*\([^)]*\)'
+      description: "解析单个参数"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'vfs_get_tree\s*\([^)]*\)'
+      description: "获取文件系统树"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'vfs_create_mount\s*\([^)]*\)'
+      description: "创建 vfsmount"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'get_tree_nodev\s*\([^)]*\)'
+      description: "无设备获取树辅助"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'get_tree_single\s*\([^)]*\)'
+      description: "单例获取树辅助"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'get_tree_bdev\s*\([^)]*\)'
+      description: "块设备获取树辅助"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# DENTRY OPERATIONS
+# ============================================================
+
+dentry_operations:
+  description: "Dentry Operations - 目录项操作"
+  header: "linux/dcache.h"
+  icon: "📂"
+  kernel_version: "2.6+"
+
+  context:
+    type: "varies"
+    can_sleep: "depends on operation"
+    can_schedule: "depends on operation"
+    preemptible: "depends on operation"
+
+  bind_patterns:
+    - pattern: 'static const struct dentry_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "目录项操作结构定义"
+
+  structure:
+    name: "dentry_operations"
+    callbacks:
+      d_revalidate:
+        pattern: '\.d_revalidate\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "验证 dentry 是否仍然有效"
+        context: "process"
+        can_sleep: true
+        signature: "int (*)(struct dentry *, unsigned int)"
+        return_value:
+          success: "1 (有效)"
+          failure: "0 (无效)"
+        typical_actions:
+          - "检查 inode 是否变化 (网络文件系统)"
+          - "验证权限"
+          - "检查过期时间"
+
+      d_weak_revalidate:
+        pattern: '\.d_weak_revalidate\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "弱验证 dentry"
+        context: "process"
+        can_sleep: true
+
+      d_hash:
+        pattern: '\.d_hash\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "计算 dentry 哈希值"
+        context: "atomic"
+        can_sleep: false
+        signature: "int (*)(const struct dentry *, struct qstr *)"
+
+      d_compare:
+        pattern: '\.d_compare\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "比较两个 dentry 名称"
+        context: "atomic"
+        can_sleep: false
+        signature: "int (*)(const struct dentry *, unsigned int, const char *, const struct qstr *)"
+
+      d_delete:
+        pattern: '\.d_delete\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "决定是否删除 dentry"
+        context: "atomic"
+        can_sleep: false
+        signature: "int (*)(const struct dentry *)"
+        return_value:
+          success: "1 (删除)"
+          failure: "0 (保留)"
+
+      d_init:
+        pattern: '\.d_init\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "初始化新 dentry"
+        context: "process"
+        can_sleep: true
+
+      d_release:
+        pattern: '\.d_release\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "释放 dentry"
+        context: "process"
+        can_sleep: true
+
+      d_prune:
+        pattern: '\.d_prune\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "dentry 即将被移除"
+        context: "atomic"
+        can_sleep: false
+
+      d_iput:
+        pattern: '\.d_iput\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "释放 inode"
+        context: "process"
+        can_sleep: true
+
+      d_dname:
+        pattern: '\.d_dname\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "动态生成 dentry 名称"
+        context: "atomic"
+        can_sleep: false
+
+      d_automount:
+        pattern: '\.d_automount\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "自动挂载触发"
+        context: "process"
+        can_sleep: true
+
+      d_manage:
+        pattern: '\.d_manage\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "管理挂载遍历"
+        context: "process"
+        can_sleep: true
+
+      d_real:
+        pattern: '\.d_real\s*=\s*(?P<handler>\w+)'
+        handler_capture: "handler"
+        description: "获取真实 dentry (overlayfs)"
+        context: "process"
+        can_sleep: true
+
+
+# ============================================================
+# ADDRESS SPACE OPERATIONS
+# ============================================================
+
+address_space_operations:
+  description: "Address Space Operations - 地址空间操作"
+  header: "linux/fs.h"
+  icon: "📄"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    - pattern: 'static const struct address_space_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "地址空间操作结构定义"
+
+  structure:
+    name: "address_space_operations"
+    callbacks:
+      writepage:
+        pattern: '\.writepage\s*=\s*(?P<handler>\w+)'
+        description: "写回单个页面"
+        context: "process"
+        can_sleep: true
+      readpage:
+        pattern: '\.readpage\s*=\s*(?P<handler>\w+)'
+        description: "读取单个页面"
+        context: "process"
+        can_sleep: true
+      readahead:
+        pattern: '\.readahead\s*=\s*(?P<handler>\w+)'
+        description: "批量预读 (新 API)"
+        context: "process"
+        can_sleep: true
+      writepages:
+        pattern: '\.writepages\s*=\s*(?P<handler>\w+)'
+        description: "批量写回页面"
+        context: "process"
+        can_sleep: true
+      set_page_dirty:
+        pattern: '\.set_page_dirty\s*=\s*(?P<handler>\w+)'
+        description: "标记页面为脏"
+        context: "atomic"
+        can_sleep: false
+      write_begin:
+        pattern: '\.write_begin\s*=\s*(?P<handler>\w+)'
+        description: "写入开始，准备页面"
+        context: "process"
+        can_sleep: true
+      write_end:
+        pattern: '\.write_end\s*=\s*(?P<handler>\w+)'
+        description: "写入结束，提交修改"
+        context: "process"
+        can_sleep: true
+      bmap:
+        pattern: '\.bmap\s*=\s*(?P<handler>\w+)'
+        description: "逻辑块到物理块映射"
+        context: "process"
+        can_sleep: true
+      invalidatepage:
+        pattern: '\.invalidatepage\s*=\s*(?P<handler>\w+)'
+        description: "使页面无效 (旧 API)"
+        context: "process"
+        can_sleep: true
+      releasepage:
+        pattern: '\.releasepage\s*=\s*(?P<handler>\w+)'
+        description: "释放页面私有数据 (旧 API)"
+        context: "process"
+        can_sleep: true
+      direct_IO:
+        pattern: '\.direct_IO\s*=\s*(?P<handler>\w+)'
+        description: "直接 I/O"
+        context: "process"
+        can_sleep: true
+      migratepage:
+        pattern: '\.migratepage\s*=\s*(?P<handler>\w+)'
+        description: "页面迁移"
+        context: "process"
+        can_sleep: false
+      launder_page:
+        pattern: '\.launder_page\s*=\s*(?P<handler>\w+)'
+        description: "清洗脏页面"
+        context: "process"
+        can_sleep: true
+      is_partially_uptodate:
+        pattern: '\.is_partially_uptodate\s*=\s*(?P<handler>\w+)'
+        description: "检查页面部分是否最新"
+        context: "atomic"
+        can_sleep: false
+      error_remove_page:
+        pattern: '\.error_remove_page\s*=\s*(?P<handler>\w+)'
+        description: "移除出错的页面"
+        context: "process"
+        can_sleep: true
+      swap_activate:
+        pattern: '\.swap_activate\s*=\s*(?P<handler>\w+)'
+        description: "激活交换文件"
+        context: "process"
+        can_sleep: true
+      swap_deactivate:
+        pattern: '\.swap_deactivate\s*=\s*(?P<handler>\w+)'
+        description: "停用交换文件"
+        context: "process"
+        can_sleep: true
+
 
 # ============================================================
 # FILE OPERATIONS
@@ -245,36 +832,615 @@ file_system_type:
         description: "卸载文件系统"
 
 # ============================================================
-# CALL CHAINS
+# CALL CHAINS (调用链)
 # ============================================================
 call_chains:
+  # === 文件读写 ===
   vfs_read:
-    description: "VFS Read Path"
+    description: "VFS 读取路径"
+    trigger: "read() 系统调用"
     chain:
-      - caller: "ksys_read"
-        callee: "vfs_read"
-        description: "VFS 读取入口"
-      - caller: "vfs_read"
-        callee: "file->f_op->read_iter"
-        description: "调用文件系统读取"
+      - function: "ksys_read"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_read"
+        file: "fs/read_write.c"
+        description: "VFS 层读取"
+      - function: "__vfs_read"
+        file: "fs/read_write.c"
+        description: "内部读取分发"
+      - function: "new_sync_read"
+        file: "fs/read_write.c"
+        description: "同步读取包装"
+      - function: "call_read_iter"
+        file: "include/linux/fs.h"
+        description: "调用 read_iter"
+      - function: "file->f_op->read_iter"
+        file: "用户代码"
+        description: "文件系统读取回调"
+        is_user_entry: true
+
   vfs_write:
-    description: "VFS Write Path"
+    description: "VFS 写入路径"
+    trigger: "write() 系统调用"
     chain:
-      - caller: "ksys_write"
-        callee: "vfs_write"
-        description: "VFS 写入入口"
-      - caller: "vfs_write"
-        callee: "file->f_op->write_iter"
-        description: "调用文件系统写入"
+      - function: "ksys_write"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_write"
+        file: "fs/read_write.c"
+        description: "VFS 层写入"
+      - function: "__vfs_write"
+        file: "fs/read_write.c"
+        description: "内部写入分发"
+      - function: "new_sync_write"
+        file: "fs/read_write.c"
+        description: "同步写入包装"
+      - function: "call_write_iter"
+        file: "include/linux/fs.h"
+        description: "调用 write_iter"
+      - function: "file->f_op->write_iter"
+        file: "用户代码"
+        description: "文件系统写入回调"
+        is_user_entry: true
+
+  # === 页缓存读写 ===
+  generic_file_read:
+    description: "通用文件读取 (页缓存)"
+    trigger: "文件系统使用 generic_file_read_iter"
+    chain:
+      - function: "generic_file_read_iter"
+        file: "mm/filemap.c"
+        description: "通用读取迭代器"
+        context: "process"
+      - function: "filemap_read"
+        file: "mm/filemap.c"
+        description: "从页缓存读取"
+      - function: "filemap_get_pages"
+        file: "mm/filemap.c"
+        description: "获取或分配页面"
+      - function: "page_cache_sync_readahead"
+        file: "mm/readahead.c"
+        description: "同步预读"
+      - function: "ondemand_readahead"
+        file: "mm/readahead.c"
+        description: "按需预读"
+      - function: "read_pages"
+        file: "mm/readahead.c"
+        description: "读取页面"
+      - function: "aops->readahead"
+        file: "用户代码"
+        description: "批量预读回调 (新 API)"
+        is_user_entry: true
+      - function: "aops->readpage"
+        file: "用户代码"
+        description: "读取单页回调 (旧 API)"
+        is_user_entry: true
+
+  generic_file_write:
+    description: "通用文件写入 (页缓存)"
+    trigger: "文件系统使用 generic_file_write_iter"
+    chain:
+      - function: "generic_file_write_iter"
+        file: "mm/filemap.c"
+        description: "通用写入迭代器"
+        context: "process"
+      - function: "__generic_file_write_iter"
+        file: "mm/filemap.c"
+        description: "内部写入实现"
+      - function: "generic_perform_write"
+        file: "mm/filemap.c"
+        description: "执行页缓存写入"
+      - function: "aops->write_begin"
+        file: "用户代码"
+        description: "准备页面"
+        is_user_entry: true
+      - function: "copy_page_from_iter_atomic"
+        file: "lib/iov_iter.c"
+        description: "拷贝用户数据"
+      - function: "aops->write_end"
+        file: "用户代码"
+        description: "完成写入"
+        is_user_entry: true
+      - function: "balance_dirty_pages_ratelimited"
+        file: "mm/page-writeback.c"
+        description: "脏页限制"
+
+  # === 路径查找 ===
   path_lookup:
-    description: "Path Lookup"
+    description: "路径查找"
+    trigger: "open(), stat() 等涉及路径的系统调用"
     chain:
-      - caller: "filename_lookup"
-        callee: "path_lookupat"
-        description: "路径查找"
-      - caller: "path_lookupat"
-        callee: "link_path_walk"
+      - function: "filename_lookup"
+        file: "fs/namei.c"
+        description: "文件名查找入口"
+        context: "process"
+      - function: "path_lookupat"
+        file: "fs/namei.c"
+        description: "路径查找实现"
+      - function: "link_path_walk"
+        file: "fs/namei.c"
         description: "遍历路径组件"
-      - caller: "link_path_walk"
-        callee: "inode->i_op->lookup"
-        description: "调用文件系统查找"
+      - function: "walk_component"
+        file: "fs/namei.c"
+        description: "处理单个路径组件"
+      - function: "lookup_fast"
+        file: "fs/namei.c"
+        description: "快速路径 (dcache)"
+      - function: "__d_lookup"
+        file: "fs/dcache.c"
+        description: "dcache 查找"
+      - function: "lookup_slow"
+        file: "fs/namei.c"
+        description: "慢速路径 (调用文件系统)"
+      - function: "inode->i_op->lookup"
+        file: "用户代码"
+        description: "文件系统查找回调"
+        is_user_entry: true
+
+  # === 文件打开 ===
+  vfs_open:
+    description: "VFS 文件打开路径"
+    trigger: "open() 系统调用"
+    chain:
+      - function: "do_sys_open"
+        file: "fs/open.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "do_sys_openat2"
+        file: "fs/open.c"
+        description: "openat2 实现"
+      - function: "do_filp_open"
+        file: "fs/namei.c"
+        description: "打开文件"
+      - function: "path_openat"
+        file: "fs/namei.c"
+        description: "路径打开"
+      - function: "open_last_lookups"
+        file: "fs/namei.c"
+        description: "最终路径组件查找"
+      - function: "do_open"
+        file: "fs/namei.c"
+        description: "执行打开"
+      - function: "vfs_open"
+        file: "fs/open.c"
+        description: "VFS 打开"
+      - function: "do_dentry_open"
+        file: "fs/open.c"
+        description: "目录项打开"
+      - function: "file->f_op->open"
+        file: "用户代码"
+        description: "文件系统打开回调"
+        is_user_entry: true
+
+  # === 文件创建 ===
+  vfs_create:
+    description: "VFS 文件创建路径"
+    trigger: "open(O_CREAT) 或 creat()"
+    chain:
+      - function: "do_filp_open"
+        file: "fs/namei.c"
+        description: "打开/创建文件"
+        context: "process"
+      - function: "path_openat"
+        file: "fs/namei.c"
+        description: "路径处理"
+      - function: "open_last_lookups"
+        file: "fs/namei.c"
+        description: "最终组件处理"
+      - function: "lookup_open"
+        file: "fs/namei.c"
+        description: "查找或创建"
+      - function: "vfs_create"
+        file: "fs/namei.c"
+        description: "VFS 创建"
+      - function: "dir->i_op->create"
+        file: "用户代码"
+        description: "文件系统创建回调"
+        is_user_entry: true
+
+  # === 挂载路径 ===
+  mount_syscall:
+    description: "挂载系统调用路径"
+    trigger: "mount() 系统调用"
+    chain:
+      - function: "__x64_sys_mount"
+        file: "fs/namespace.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "do_mount"
+        file: "fs/namespace.c"
+        description: "执行挂载"
+      - function: "do_new_mount"
+        file: "fs/namespace.c"
+        description: "新挂载处理"
+      - function: "vfs_kern_mount"
+        file: "fs/namespace.c"
+        description: "内核挂载"
+      - function: "mount_fs"
+        file: "fs/super.c"
+        description: "挂载文件系统"
+      - function: "fs_type->mount"
+        file: "用户代码"
+        description: "文件系统挂载回调 (旧 API)"
+        is_user_entry: true
+
+  mount_new_api:
+    description: "新挂载 API 路径 (4.16+)"
+    trigger: "fsopen() + fsconfig() + fsmount()"
+    chain:
+      - function: "__x64_sys_fsopen"
+        file: "fs/fsopen.c"
+        description: "创建 fs_context"
+        context: "process"
+      - function: "fs_context_for_mount"
+        file: "fs/fs_context.c"
+        description: "分配挂载上下文"
+      - function: "fs_type->init_fs_context"
+        file: "用户代码"
+        description: "初始化上下文回调"
+        is_user_entry: true
+      - function: "__x64_sys_fsconfig"
+        file: "fs/fsopen.c"
+        description: "配置参数"
+      - function: "vfs_parse_fs_param"
+        file: "fs/fs_context.c"
+        description: "解析参数"
+      - function: "fc->ops->parse_param"
+        file: "用户代码"
+        description: "解析参数回调"
+        is_user_entry: true
+      - function: "__x64_sys_fsmount"
+        file: "fs/fsopen.c"
+        description: "执行挂载"
+      - function: "vfs_get_tree"
+        file: "fs/super.c"
+        description: "获取文件系统树"
+      - function: "fc->ops->get_tree"
+        file: "用户代码"
+        description: "获取超级块回调"
+        is_user_entry: true
+
+  # === 写回路径 ===
+  writeback:
+    description: "页面写回路径"
+    trigger: "sync 或内存压力"
+    chain:
+      - function: "sync_inodes_sb"
+        file: "fs/sync.c"
+        description: "同步超级块 inode"
+        context: "process"
+      - function: "writeback_inodes_sb"
+        file: "fs/fs-writeback.c"
+        description: "写回 inode"
+      - function: "bdi_writeback"
+        file: "fs/fs-writeback.c"
+        description: "BDI 写回"
+      - function: "wb_writeback"
+        file: "fs/fs-writeback.c"
+        description: "写回工作"
+      - function: "writeback_sb_inodes"
+        file: "fs/fs-writeback.c"
+        description: "写回超级块 inode"
+      - function: "__writeback_single_inode"
+        file: "fs/fs-writeback.c"
+        description: "写回单个 inode"
+      - function: "do_writepages"
+        file: "mm/page-writeback.c"
+        description: "执行写回"
+      - function: "aops->writepages"
+        file: "用户代码"
+        description: "批量写回回调"
+        is_user_entry: true
+      - function: "aops->writepage"
+        file: "用户代码"
+        description: "单页写回回调"
+        is_user_entry: true
+
+  # === mmap 页面错误 ===
+  mmap_fault:
+    description: "内存映射页面错误路径"
+    trigger: "访问 mmap 映射但页面不在内存"
+    chain:
+      - function: "handle_mm_fault"
+        file: "mm/memory.c"
+        description: "页面错误入口"
+        context: "process"
+      - function: "__handle_mm_fault"
+        file: "mm/memory.c"
+        description: "内部错误处理"
+      - function: "handle_pte_fault"
+        file: "mm/memory.c"
+        description: "PTE 错误处理"
+      - function: "do_fault"
+        file: "mm/memory.c"
+        description: "执行错误处理"
+      - function: "do_read_fault"
+        file: "mm/memory.c"
+        description: "读取错误"
+      - function: "__do_fault"
+        file: "mm/memory.c"
+        description: "调用文件系统"
+      - function: "vma->vm_ops->fault"
+        file: "用户代码"
+        description: "文件系统错误回调"
+        is_user_entry: true
+      - function: "filemap_fault"
+        file: "mm/filemap.c"
+        description: "通用实现"
+      - function: "aops->readpage"
+        file: "用户代码"
+        description: "读取页面回调"
+        is_user_entry: true
+
+  # === 直接 I/O ===
+  direct_io:
+    description: "直接 I/O 路径"
+    trigger: "O_DIRECT 标志的读写"
+    chain:
+      - function: "generic_file_read_iter"
+        file: "mm/filemap.c"
+        description: "通用读取迭代器"
+        context: "process"
+      - function: "mapping->a_ops->direct_IO"
+        file: "用户代码"
+        description: "直接 I/O 回调"
+        is_user_entry: true
+      - function: "blockdev_direct_IO"
+        file: "fs/direct-io.c"
+        description: "块设备直接 I/O"
+      - function: "__blockdev_direct_IO"
+        file: "fs/direct-io.c"
+        description: "核心实现"
+      - function: "do_blockdev_direct_IO"
+        file: "fs/direct-io.c"
+        description: "执行直接 I/O"
+      - function: "dio_bio_submit"
+        file: "fs/direct-io.c"
+        description: "提交 bio"
+      - function: "submit_bio"
+        file: "block/blk-core.c"
+        description: "提交到块层"
+
+  # === 文件锁 ===
+  file_lock_flock:
+    description: "flock 文件锁路径"
+    trigger: "flock() 系统调用"
+    chain:
+      - function: "__x64_sys_flock"
+        file: "fs/locks.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "flock_make_lock"
+        file: "fs/locks.c"
+        description: "创建锁结构"
+      - function: "flock_lock_inode_wait"
+        file: "fs/locks.c"
+        description: "等待并加锁"
+      - function: "flock_lock_inode"
+        file: "fs/locks.c"
+        description: "实际加锁"
+      - function: "locks_insert_lock_ctx"
+        file: "fs/locks.c"
+        description: "插入锁上下文"
+
+  file_lock_fcntl:
+    description: "fcntl 记录锁路径"
+    trigger: "fcntl(F_SETLK/F_SETLKW)"
+    chain:
+      - function: "__x64_sys_fcntl"
+        file: "fs/fcntl.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "do_fcntl"
+        file: "fs/fcntl.c"
+        description: "fcntl 分发"
+      - function: "fcntl_setlk"
+        file: "fs/locks.c"
+        description: "设置 POSIX 锁"
+      - function: "vfs_lock_file"
+        file: "fs/locks.c"
+        description: "VFS 层加锁"
+      - function: "file->f_op->lock"
+        file: "用户代码"
+        description: "文件系统锁回调 (可选)"
+        is_user_entry: true
+      - function: "posix_lock_file"
+        file: "fs/locks.c"
+        description: "POSIX 锁实现"
+
+  # === 截断路径 ===
+  truncate:
+    description: "文件截断路径"
+    trigger: "truncate()/ftruncate() 系统调用"
+    chain:
+      - function: "do_sys_truncate"
+        file: "fs/open.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "do_truncate"
+        file: "fs/open.c"
+        description: "执行截断"
+      - function: "notify_change"
+        file: "fs/attr.c"
+        description: "通知属性变化"
+      - function: "inode->i_op->setattr"
+        file: "用户代码"
+        description: "设置属性回调"
+        is_user_entry: true
+      - function: "truncate_setsize"
+        file: "mm/truncate.c"
+        description: "设置大小"
+      - function: "truncate_pagecache"
+        file: "mm/truncate.c"
+        description: "截断页缓存"
+      - function: "truncate_inode_pages_range"
+        file: "mm/truncate.c"
+        description: "截断指定范围"
+      - function: "aops->invalidatepage"
+        file: "用户代码"
+        description: "使页面无效回调"
+        is_user_entry: true
+
+
+# ============================================================
+# EXAMPLES (示例)
+# ============================================================
+
+examples:
+  - description: "简单文件系统 file_operations"
+    kernel_version: "4.0+"
+    code: |
+      static ssize_t myfs_read_iter(struct kiocb *iocb,
+                                    struct iov_iter *to)
+      {
+          return generic_file_read_iter(iocb, to);
+      }
+
+      static ssize_t myfs_write_iter(struct kiocb *iocb,
+                                     struct iov_iter *from)
+      {
+          return generic_file_write_iter(iocb, from);
+      }
+
+      static const struct file_operations myfs_file_operations = {
+          .llseek         = generic_file_llseek,
+          .read_iter      = myfs_read_iter,
+          .write_iter     = myfs_write_iter,
+          .mmap           = generic_file_mmap,
+          .fsync          = generic_file_fsync,
+          .splice_read    = generic_file_splice_read,
+          .splice_write   = iter_file_splice_write,
+      };
+
+  - description: "文件系统挂载 (旧 API)"
+    kernel_version: "2.6+"
+    code: |
+      static int myfs_fill_super(struct super_block *sb, void *data, int silent)
+      {
+          struct inode *root_inode;
+          struct dentry *root;
+
+          sb->s_magic = MYFS_MAGIC;
+          sb->s_op = &myfs_super_operations;
+
+          root_inode = myfs_make_inode(sb, S_IFDIR | 0755);
+          if (!root_inode)
+              return -ENOMEM;
+          root_inode->i_op = &myfs_dir_inode_operations;
+          root_inode->i_fop = &myfs_dir_operations;
+
+          root = d_make_root(root_inode);
+          if (!root)
+              return -ENOMEM;
+          sb->s_root = root;
+
+          return 0;
+      }
+
+      static struct dentry *myfs_mount(struct file_system_type *fs_type,
+                                       int flags, const char *dev_name, void *data)
+      {
+          return mount_nodev(fs_type, flags, data, myfs_fill_super);
+      }
+
+      static struct file_system_type myfs_fs_type = {
+          .owner      = THIS_MODULE,
+          .name       = "myfs",
+          .mount      = myfs_mount,
+          .kill_sb    = kill_litter_super,
+      };
+
+  - description: "文件系统挂载 (新 API, 4.16+)"
+    kernel_version: "4.16+"
+    code: |
+      static int myfs_fill_super(struct super_block *sb,
+                                 struct fs_context *fc)
+      {
+          struct myfs_context *ctx = fc->fs_private;
+          struct inode *root_inode;
+
+          sb->s_magic = MYFS_MAGIC;
+          sb->s_op = &myfs_super_operations;
+          sb->s_time_gran = 1;
+
+          root_inode = myfs_make_inode(sb, S_IFDIR | 0755);
+          if (!root_inode)
+              return -ENOMEM;
+
+          sb->s_root = d_make_root(root_inode);
+          if (!sb->s_root)
+              return -ENOMEM;
+
+          return 0;
+      }
+
+      static int myfs_get_tree(struct fs_context *fc)
+      {
+          return get_tree_nodev(fc, myfs_fill_super);
+      }
+
+      static const struct fs_context_operations myfs_context_ops = {
+          .free           = myfs_fc_free,
+          .parse_param    = myfs_parse_param,
+          .get_tree       = myfs_get_tree,
+          .reconfigure    = myfs_reconfigure,
+      };
+
+      static int myfs_init_fs_context(struct fs_context *fc)
+      {
+          struct myfs_context *ctx;
+
+          ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+          if (!ctx)
+              return -ENOMEM;
+
+          fc->fs_private = ctx;
+          fc->ops = &myfs_context_ops;
+          return 0;
+      }
+
+      static struct file_system_type myfs_fs_type = {
+          .owner              = THIS_MODULE,
+          .name               = "myfs",
+          .init_fs_context    = myfs_init_fs_context,
+          .kill_sb            = kill_litter_super,
+      };
+
+  - description: "dentry_operations 示例"
+    kernel_version: "2.6+"
+    code: |
+      /* 网络文件系统的 dentry 验证 */
+      static int nfs_d_revalidate(struct dentry *dentry, unsigned int flags)
+      {
+          struct inode *inode = d_inode(dentry);
+
+          if (flags & LOOKUP_RCU)
+              return -ECHILD;
+
+          if (!inode)
+              return 0;
+
+          /* 检查是否过期 */
+          if (time_after(jiffies, dentry->d_time + NFS_REVALIDATE_INTERVAL))
+              return 0;
+
+          return 1;
+      }
+
+      /* 大小写不敏感的比较 */
+      static int ci_d_compare(const struct dentry *dentry,
+                              unsigned int len, const char *str,
+                              const struct qstr *name)
+      {
+          if (len != name->len)
+              return 1;
+          return strncasecmp(str, name->name, len);
+      }
+
+      static const struct dentry_operations myfs_dentry_ops = {
+          .d_revalidate   = nfs_d_revalidate,
+          .d_compare      = ci_d_compare,
+      };

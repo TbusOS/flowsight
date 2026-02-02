@@ -440,11 +440,1270 @@ superblock_operations:
 
 
 # ============================================================
+# ADDRESS SPACE OPERATIONS (核心!)
+# ============================================================
+
+address_space_operations:
+  description: "Address Space Operations - 地址空间操作 (页缓存核心接口)"
+  header: "linux/fs.h"
+  icon: "📄"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # struct address_space_operations 定义
+    - pattern: 'static const struct address_space_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "地址空间操作结构定义"
+
+  structure:
+    name: "address_space_operations"
+    description: "页缓存操作的核心回调集合"
+    fields:
+      - name: "readpage"
+        type: "int (*)(struct file *, struct page *)"
+        description: "读取单个页面 (旧 API)"
+      - name: "read_folio"
+        type: "int (*)(struct file *, struct folio *)"
+        description: "读取单个 folio (新 API, 5.18+)"
+      - name: "writepage"
+        type: "int (*)(struct page *, struct writeback_control *)"
+        description: "写回单个页面"
+      - name: "writepages"
+        type: "int (*)(struct address_space *, struct writeback_control *)"
+        description: "批量写回页面"
+      - name: "set_page_dirty"
+        type: "int (*)(struct page *)"
+        description: "标记页面为脏"
+      - name: "readpages"
+        type: "int (*)(struct file *, struct address_space *, struct list_head *, unsigned)"
+        description: "预读多个页面 (旧 API)"
+      - name: "readahead"
+        type: "void (*)(struct readahead_control *)"
+        description: "预读多个页面 (新 API, 5.8+)"
+      - name: "write_begin"
+        type: "int (*)(struct file *, struct address_space *, loff_t, unsigned, unsigned, struct page **, void **)"
+        description: "写入开始，准备页面"
+      - name: "write_end"
+        type: "int (*)(struct file *, struct address_space *, loff_t, unsigned, unsigned, struct page *, void *)"
+        description: "写入结束，提交修改"
+      - name: "bmap"
+        type: "sector_t (*)(struct address_space *, sector_t)"
+        description: "逻辑块到物理块映射 (FIBMAP)"
+      - name: "invalidatepage"
+        type: "void (*)(struct page *, unsigned int, unsigned int)"
+        description: "使页面部分或全部无效 (旧 API)"
+      - name: "invalidate_folio"
+        type: "void (*)(struct folio *, size_t, size_t)"
+        description: "使 folio 部分或全部无效 (新 API)"
+      - name: "releasepage"
+        type: "int (*)(struct page *, gfp_t)"
+        description: "尝试释放页面私有数据 (旧 API)"
+      - name: "release_folio"
+        type: "bool (*)(struct folio *, gfp_t)"
+        description: "尝试释放 folio 私有数据 (新 API)"
+      - name: "freepage"
+        type: "void (*)(struct page *)"
+        description: "页面即将被释放时回调"
+      - name: "direct_IO"
+        type: "ssize_t (*)(struct kiocb *, struct iov_iter *)"
+        description: "直接 I/O，绕过页缓存"
+      - name: "migratepage"
+        type: "int (*)(struct address_space *, struct page *, struct page *, enum migrate_mode)"
+        description: "页面迁移回调"
+      - name: "isolate_page"
+        type: "bool (*)(struct page *, isolate_mode_t)"
+        description: "隔离页面用于迁移"
+      - name: "putback_page"
+        type: "void (*)(struct page *)"
+        description: "放回隔离失败的页面"
+      - name: "launder_page"
+        type: "int (*)(struct page *)"
+        description: "清洗脏页面 (用于截断)"
+      - name: "is_partially_uptodate"
+        type: "int (*)(struct page *, unsigned long, unsigned long)"
+        description: "检查页面部分是否最新"
+      - name: "is_dirty_writeback"
+        type: "void (*)(struct page *, bool *, bool *)"
+        description: "检查页面是否正在写回"
+      - name: "error_remove_page"
+        type: "int (*)(struct address_space *, struct page *)"
+        description: "移除出错的页面"
+      - name: "swap_activate"
+        type: "int (*)(struct swap_info_struct *, struct file *, sector_t *)"
+        description: "激活交换文件"
+      - name: "swap_deactivate"
+        type: "void (*)(struct file *)"
+        description: "停用交换文件"
+
+  callbacks:
+    readpage:
+      pattern: '\.readpage\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "读取单个页面到页缓存"
+      trigger: "页面缺失时触发"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *, struct page *)"
+      return_value:
+        success: "0"
+        failure: "负数错误码"
+      typical_actions:
+        - "分配 buffer_head"
+        - "设置 bio 并提交 I/O"
+        - "设置页面 Uptodate 标志"
+
+    read_folio:
+      pattern: '\.read_folio\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "读取单个 folio (新 API)"
+      trigger: "页面缺失时触发 (5.18+)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *, struct folio *)"
+
+    writepage:
+      pattern: '\.writepage\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "写回单个脏页面到存储"
+      trigger: "内存回收或 sync 时触发"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct page *, struct writeback_control *)"
+      return_value:
+        success: "0"
+        failure: "-EIO"
+      typical_actions:
+        - "检查页面是否为脏"
+        - "构建 bio 并提交 I/O"
+        - "清除页面 Dirty 标志"
+
+    writepages:
+      pattern: '\.writepages\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "批量写回脏页面 (更高效)"
+      trigger: "sync 或内存压力时触发"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct address_space *, struct writeback_control *)"
+
+    set_page_dirty:
+      pattern: '\.set_page_dirty\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "标记页面为脏"
+      trigger: "页面内容被修改时"
+      context: "process"
+      can_sleep: false
+      signature: "int (*)(struct page *)"
+
+    readpages:
+      pattern: '\.readpages\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "批量预读页面 (旧 API)"
+      trigger: "预读逻辑触发"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *, struct address_space *, struct list_head *, unsigned)"
+
+    readahead:
+      pattern: '\.readahead\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "批量预读页面 (新 API)"
+      trigger: "预读逻辑触发 (5.8+)"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct readahead_control *)"
+
+    write_begin:
+      pattern: '\.write_begin\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "写入开始，准备页面"
+      trigger: "generic_file_write_iter 调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *, struct address_space *, loff_t pos, unsigned len, unsigned flags, struct page **pagep, void **fsdata)"
+      return_value:
+        success: "0，pagep 指向锁定的页面"
+        failure: "负数错误码"
+      typical_actions:
+        - "分配或查找页面"
+        - "如果页面不完整，读取磁盘内容"
+        - "锁定页面"
+        - "返回页面指针"
+
+    write_end:
+      pattern: '\.write_end\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "写入结束，提交修改"
+      trigger: "generic_file_write_iter 完成数据拷贝后"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *, struct address_space *, loff_t pos, unsigned len, unsigned copied, struct page *page, void *fsdata)"
+      return_value:
+        success: "实际写入的字节数"
+        failure: "负数错误码"
+      typical_actions:
+        - "标记页面为脏"
+        - "更新 inode 大小"
+        - "解锁页面"
+
+    direct_IO:
+      pattern: '\.direct_IO\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "直接 I/O，绕过页缓存"
+      trigger: "O_DIRECT 标志的 read/write"
+      context: "process"
+      can_sleep: true
+      signature: "ssize_t (*)(struct kiocb *, struct iov_iter *)"
+      return_value:
+        success: "传输的字节数"
+        failure: "负数错误码"
+      typical_actions:
+        - "验证对齐要求"
+        - "锁定用户页面"
+        - "构建 bio 并提交 I/O"
+        - "等待 I/O 完成"
+
+    invalidatepage:
+      pattern: '\.invalidatepage\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "使页面部分或全部无效"
+      trigger: "截断文件时"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct page *, unsigned int offset, unsigned int length)"
+
+    invalidate_folio:
+      pattern: '\.invalidate_folio\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "使 folio 无效 (新 API)"
+      trigger: "截断文件时 (5.18+)"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct folio *, size_t offset, size_t length)"
+
+    releasepage:
+      pattern: '\.releasepage\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "尝试释放页面私有数据"
+      trigger: "内存回收尝试释放页面"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct page *, gfp_t)"
+      return_value:
+        success: "1 (可以释放)"
+        failure: "0 (不能释放)"
+
+    release_folio:
+      pattern: '\.release_folio\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "尝试释放 folio 私有数据 (新 API)"
+      trigger: "内存回收尝试释放 folio (5.18+)"
+      context: "process"
+      can_sleep: true
+      signature: "bool (*)(struct folio *, gfp_t)"
+
+    migratepage:
+      pattern: '\.migratepage\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "迁移页面内容"
+      trigger: "内存压缩或 NUMA 平衡"
+      context: "process"
+      can_sleep: false
+      signature: "int (*)(struct address_space *, struct page *newpage, struct page *page, enum migrate_mode)"
+
+    launder_page:
+      pattern: '\.launder_page\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "清洗脏页面"
+      trigger: "截断前确保数据写回"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct page *)"
+
+  call_chains:
+    page_cache_read:
+      description: "页缓存读取路径"
+      trigger: "用户空间 read() 系统调用"
+      chain:
+        - function: "ksys_read"
+          file: "fs/read_write.c"
+          description: "系统调用入口"
+          context: "process"
+        - function: "vfs_read"
+          file: "fs/read_write.c"
+          description: "VFS 层读取"
+        - function: "new_sync_read"
+          file: "fs/read_write.c"
+          description: "同步读取包装"
+        - function: "generic_file_read_iter"
+          file: "mm/filemap.c"
+          description: "通用文件读取迭代器"
+        - function: "filemap_read"
+          file: "mm/filemap.c"
+          description: "从页缓存读取"
+        - function: "filemap_get_pages"
+          file: "mm/filemap.c"
+          description: "获取或分配页面"
+        - function: "filemap_create_page"
+          file: "mm/filemap.c"
+          description: "创建新页面"
+        - function: "aops->readpage"
+          file: "用户代码"
+          description: "调用文件系统的 readpage"
+          is_user_entry: true
+
+    page_cache_write:
+      description: "页缓存写入路径"
+      trigger: "用户空间 write() 系统调用"
+      chain:
+        - function: "ksys_write"
+          file: "fs/read_write.c"
+          description: "系统调用入口"
+          context: "process"
+        - function: "vfs_write"
+          file: "fs/read_write.c"
+          description: "VFS 层写入"
+        - function: "new_sync_write"
+          file: "fs/read_write.c"
+          description: "同步写入包装"
+        - function: "generic_file_write_iter"
+          file: "mm/filemap.c"
+          description: "通用文件写入迭代器"
+        - function: "generic_perform_write"
+          file: "mm/filemap.c"
+          description: "执行写入操作"
+        - function: "aops->write_begin"
+          file: "用户代码"
+          description: "准备页面"
+          is_user_entry: true
+        - function: "copy_from_user"
+          file: "内核"
+          description: "拷贝用户数据到页面"
+        - function: "aops->write_end"
+          file: "用户代码"
+          description: "完成写入"
+          is_user_entry: true
+
+    writeback:
+      description: "页面写回路径"
+      trigger: "sync 系统调用或内存压力"
+      chain:
+        - function: "sync_inodes_sb"
+          file: "fs/sync.c"
+          description: "同步超级块的 inode"
+          context: "process"
+        - function: "writeback_inodes_sb"
+          file: "fs/fs-writeback.c"
+          description: "写回 inode"
+        - function: "writeback_sb_inodes"
+          file: "fs/fs-writeback.c"
+          description: "写回超级块 inode"
+        - function: "writeback_single_inode"
+          file: "fs/fs-writeback.c"
+          description: "写回单个 inode"
+        - function: "do_writepages"
+          file: "mm/page-writeback.c"
+          description: "执行写回"
+        - function: "aops->writepages"
+          file: "用户代码"
+          description: "批量写回页面"
+          is_user_entry: true
+
+  helper_functions:
+    - pattern: 'generic_file_read_iter\s*\([^)]*\)'
+      description: "通用文件读取迭代器实现"
+      context: "process"
+    - pattern: 'generic_file_write_iter\s*\([^)]*\)'
+      description: "通用文件写入迭代器实现"
+      context: "process"
+    - pattern: 'generic_perform_write\s*\([^)]*\)'
+      description: "执行页缓存写入"
+      context: "process"
+    - pattern: 'block_read_full_page\s*\([^)]*\)'
+      description: "块设备完整页面读取"
+      context: "process"
+    - pattern: 'block_write_full_page\s*\([^)]*\)'
+      description: "块设备完整页面写入"
+      context: "process"
+    - pattern: 'mpage_readpages\s*\([^)]*\)'
+      description: "多页读取辅助"
+      context: "process"
+    - pattern: 'mpage_writepages\s*\([^)]*\)'
+      description: "多页写入辅助"
+      context: "process"
+
+
+# ============================================================
+# PAGE CACHE (页缓存详细)
+# ============================================================
+
+page_cache:
+  description: "Page Cache - 页缓存管理"
+  header: "linux/pagemap.h"
+  icon: "📑"
+  kernel_version: "2.4+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # find_get_page - 查找页面
+    - pattern: 'find_get_page\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<offset>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "查找并获取页面引用"
+
+    # find_or_create_page - 查找或创建页面
+    - pattern: 'find_or_create_page\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<gfp>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "查找或创建页面"
+
+    # pagecache_get_page - 通用页面获取
+    - pattern: 'pagecache_get_page\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<gfp>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "通用页面获取函数"
+
+    # add_to_page_cache_lru - 添加页面到缓存
+    - pattern: 'add_to_page_cache_lru\s*\(\s*(?P<page>[^,]+)\s*,\s*(?P<mapping>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<gfp>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "添加页面到页缓存和 LRU"
+
+    # delete_from_page_cache - 从缓存删除页面
+    - pattern: 'delete_from_page_cache\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "从页缓存删除页面"
+
+    # truncate_inode_pages - 截断 inode 页面
+    - pattern: 'truncate_inode_pages\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<lstart>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "截断 inode 的页缓存"
+
+    # truncate_inode_pages_range - 截断范围
+    - pattern: 'truncate_inode_pages_range\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<lstart>[^,]+)\s*,\s*(?P<lend>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "截断 inode 页缓存的指定范围"
+
+    # truncate_inode_pages_final - 最终截断
+    - pattern: 'truncate_inode_pages_final\s*\(\s*(?P<mapping>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "删除 inode 时最终截断页缓存"
+
+    # invalidate_mapping_pages - 使映射页面无效
+    - pattern: 'invalidate_mapping_pages\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "使地址空间页面无效 (非阻塞)"
+
+    # invalidate_inode_pages2 - 使 inode 页面无效
+    - pattern: 'invalidate_inode_pages2\s*\(\s*(?P<mapping>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "使 inode 所有页面无效 (阻塞)"
+
+    # filemap_fault - 页面错误处理
+    - pattern: 'filemap_fault\s*\(\s*(?P<vmf>[^)]+)\s*\)'
+      variable_capture: "vmf"
+      description: "通用页面错误处理"
+
+    # filemap_page_mkwrite - 写时复制
+    - pattern: 'filemap_page_mkwrite\s*\(\s*(?P<vmf>[^)]+)\s*\)'
+      variable_capture: "vmf"
+      description: "页面写保护故障处理"
+
+    # read_cache_page - 读取缓存页面
+    - pattern: 'read_cache_page\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<filler>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "读取并缓存页面"
+
+  helper_functions:
+    - pattern: 'find_get_page\s*\([^)]*\)'
+      description: "查找页面并增加引用计数"
+      context: "process/atomic"
+      can_sleep: false
+
+    - pattern: 'find_or_create_page\s*\([^)]*\)'
+      description: "查找或创建页面 (可能睡眠)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'find_lock_page\s*\([^)]*\)'
+      description: "查找并锁定页面"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'grab_cache_page\s*\([^)]*\)'
+      description: "获取缓存页面 (创建或查找)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'grab_cache_page_write_begin\s*\([^)]*\)'
+      description: "写入开始时获取页面"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pagecache_get_page\s*\([^)]*\)'
+      description: "通用页面获取函数"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'add_to_page_cache_lru\s*\([^)]*\)'
+      description: "添加页面到缓存和 LRU 列表"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'add_to_page_cache_locked\s*\([^)]*\)'
+      description: "添加已锁定的页面到缓存"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'delete_from_page_cache\s*\([^)]*\)'
+      description: "从页缓存删除页面"
+      context: "process"
+      can_sleep: false
+
+    - pattern: '__delete_from_page_cache\s*\([^)]*\)'
+      description: "内部页缓存删除 (需持有锁)"
+      context: "atomic"
+      can_sleep: false
+
+    - pattern: 'truncate_inode_pages\s*\([^)]*\)'
+      description: "截断 inode 的所有页面"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'truncate_inode_pages_final\s*\([^)]*\)'
+      description: "inode 删除前的最终截断"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'invalidate_mapping_pages\s*\([^)]*\)'
+      description: "使页面无效 (非阻塞)"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'invalidate_inode_pages2\s*\([^)]*\)'
+      description: "使页面无效 (阻塞,等待写回)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'filemap_fault\s*\([^)]*\)'
+      description: "通用文件映射页面错误处理"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'filemap_page_mkwrite\s*\([^)]*\)'
+      description: "写保护故障处理"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'filemap_map_pages\s*\([^)]*\)'
+      description: "批量映射页面"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'generic_file_mmap\s*\([^)]*\)'
+      description: "通用文件内存映射"
+      context: "process"
+      can_sleep: true
+
+  call_chains:
+    page_lookup:
+      description: "页面查找路径"
+      trigger: "访问文件映射内存"
+      chain:
+        - function: "filemap_fault"
+          file: "mm/filemap.c"
+          description: "页面错误处理入口"
+          context: "process"
+        - function: "filemap_get_folio"
+          file: "mm/filemap.c"
+          description: "获取或分配 folio"
+        - function: "pagecache_get_page"
+          file: "mm/filemap.c"
+          description: "从基数树查找页面"
+        - function: "aops->readpage"
+          file: "用户代码"
+          description: "如果未命中则读取"
+          is_user_entry: true
+
+    page_add:
+      description: "页面添加路径"
+      trigger: "将新页面加入页缓存"
+      chain:
+        - function: "add_to_page_cache_lru"
+          file: "mm/filemap.c"
+          description: "添加到页缓存"
+          context: "process"
+        - function: "__add_to_page_cache_locked"
+          file: "mm/filemap.c"
+          description: "内部添加实现"
+        - function: "xarray_insert"
+          file: "lib/xarray.c"
+          description: "插入基数树"
+        - function: "lru_cache_add"
+          file: "mm/swap.c"
+          description: "加入 LRU 列表"
+
+    truncate:
+      description: "文件截断路径"
+      trigger: "truncate() 或 ftruncate() 系统调用"
+      chain:
+        - function: "do_truncate"
+          file: "fs/open.c"
+          description: "截断入口"
+          context: "process"
+        - function: "notify_change"
+          file: "fs/attr.c"
+          description: "通知属性变化"
+        - function: "inode->i_op->setattr"
+          file: "用户代码"
+          description: "设置 inode 属性"
+        - function: "truncate_setsize"
+          file: "mm/truncate.c"
+          description: "设置大小并截断页面"
+        - function: "truncate_pagecache"
+          file: "mm/truncate.c"
+          description: "截断页缓存"
+        - function: "truncate_inode_pages_range"
+          file: "mm/truncate.c"
+          description: "截断指定范围页面"
+
+
+# ============================================================
+# DIRECT I/O (直接 I/O)
+# ============================================================
+
+direct_io:
+  description: "Direct I/O - 直接 I/O (绕过页缓存)"
+  header: "linux/fs.h"
+  icon: "⚡"
+  kernel_version: "2.4+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # O_DIRECT 标志检查
+    - pattern: 'file->f_flags\s*&\s*O_DIRECT'
+      description: "检查 O_DIRECT 标志"
+
+    # __blockdev_direct_IO
+    - pattern: '__blockdev_direct_IO\s*\(\s*(?P<iocb>[^,]+)\s*,\s*(?P<inode>[^,]+)\s*,\s*(?P<bdev>[^,]+)\s*,\s*(?P<iter>[^,]+)\s*,'
+      variable_capture: "iocb"
+      description: "块设备直接 I/O 核心函数"
+
+    # blockdev_direct_IO
+    - pattern: 'blockdev_direct_IO\s*\(\s*(?P<iocb>[^,]+)\s*,\s*(?P<inode>[^,]+)\s*,\s*(?P<iter>[^,]+)\s*,\s*(?P<get_block>[^)]+)\s*\)'
+      variable_capture: "iocb"
+      description: "块设备直接 I/O 包装函数"
+
+    # generic_file_direct_write
+    - pattern: 'generic_file_direct_write\s*\(\s*(?P<iocb>[^,]+)\s*,\s*(?P<iter>[^)]+)\s*\)'
+      variable_capture: "iocb"
+      description: "通用直接写入"
+
+    # inode_dio_wait
+    - pattern: 'inode_dio_wait\s*\(\s*(?P<inode>[^)]+)\s*\)'
+      variable_capture: "inode"
+      description: "等待直接 I/O 完成"
+
+    # inode_dio_begin
+    - pattern: 'inode_dio_begin\s*\(\s*(?P<inode>[^)]+)\s*\)'
+      variable_capture: "inode"
+      description: "开始直接 I/O (增加引用)"
+
+    # inode_dio_end
+    - pattern: 'inode_dio_end\s*\(\s*(?P<inode>[^)]+)\s*\)'
+      variable_capture: "inode"
+      description: "结束直接 I/O (减少引用)"
+
+  helper_functions:
+    - pattern: '__blockdev_direct_IO\s*\([^)]*\)'
+      description: "块设备直接 I/O 核心实现"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'blockdev_direct_IO\s*\([^)]*\)'
+      description: "块设备直接 I/O 简化包装"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'generic_file_direct_write\s*\([^)]*\)'
+      description: "通用文件直接写入"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'inode_dio_begin\s*\([^)]*\)'
+      description: "标记直接 I/O 开始"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'inode_dio_end\s*\([^)]*\)'
+      description: "标记直接 I/O 结束"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'inode_dio_wait\s*\([^)]*\)'
+      description: "等待直接 I/O 完成"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'dio_bio_submit\s*\([^)]*\)'
+      description: "提交直接 I/O bio"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'dio_complete\s*\([^)]*\)'
+      description: "直接 I/O 完成处理"
+      context: "softirq"
+      can_sleep: false
+
+  call_chains:
+    direct_read:
+      description: "直接读取路径"
+      trigger: "O_DIRECT 标志的 read()"
+      chain:
+        - function: "ksys_read"
+          file: "fs/read_write.c"
+          description: "系统调用入口"
+          context: "process"
+        - function: "vfs_read"
+          file: "fs/read_write.c"
+          description: "VFS 读取"
+        - function: "generic_file_read_iter"
+          file: "mm/filemap.c"
+          description: "通用读取迭代器"
+        - function: "mapping->a_ops->direct_IO"
+          file: "用户代码"
+          description: "调用直接 I/O 回调"
+          is_user_entry: true
+        - function: "__blockdev_direct_IO"
+          file: "fs/direct-io.c"
+          description: "核心直接 I/O 实现"
+        - function: "do_blockdev_direct_IO"
+          file: "fs/direct-io.c"
+          description: "实际 I/O 处理"
+        - function: "submit_bio"
+          file: "block/blk-core.c"
+          description: "提交 bio 到块层"
+
+    direct_write:
+      description: "直接写入路径"
+      trigger: "O_DIRECT 标志的 write()"
+      chain:
+        - function: "ksys_write"
+          file: "fs/read_write.c"
+          description: "系统调用入口"
+          context: "process"
+        - function: "vfs_write"
+          file: "fs/read_write.c"
+          description: "VFS 写入"
+        - function: "generic_file_write_iter"
+          file: "mm/filemap.c"
+          description: "通用写入迭代器"
+        - function: "generic_file_direct_write"
+          file: "mm/filemap.c"
+          description: "通用直接写入"
+        - function: "mapping->a_ops->direct_IO"
+          file: "用户代码"
+          description: "调用直接 I/O 回调"
+          is_user_entry: true
+        - function: "__blockdev_direct_IO"
+          file: "fs/direct-io.c"
+          description: "核心直接 I/O 实现"
+        - function: "submit_bio"
+          file: "block/blk-core.c"
+          description: "提交 bio 到块层"
+
+
+# ============================================================
+# FILE LOCK (文件锁)
+# ============================================================
+
+file_lock:
+  description: "File Lock - 文件锁 (flock/POSIX)"
+  header: "linux/fs.h"
+  icon: "🔒"
+  kernel_version: "1.0+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # locks_alloc_lock - 分配锁
+    - pattern: 'locks_alloc_lock\s*\(\s*\)'
+      description: "分配文件锁结构"
+
+    # locks_free_lock - 释放锁
+    - pattern: 'locks_free_lock\s*\(\s*(?P<fl>[^)]+)\s*\)'
+      variable_capture: "fl"
+      description: "释放文件锁结构"
+
+    # locks_copy_lock - 复制锁
+    - pattern: 'locks_copy_lock\s*\(\s*(?P<dst>[^,]+)\s*,\s*(?P<src>[^)]+)\s*\)'
+      variable_capture: "dst"
+      description: "复制文件锁"
+
+    # vfs_lock_file - VFS 加锁
+    - pattern: 'vfs_lock_file\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<cmd>[^,]+)\s*,\s*(?P<fl>[^,]+)\s*,\s*(?P<conf>[^)]+)\s*\)'
+      variable_capture: "file"
+      description: "VFS 层文件加锁"
+
+    # vfs_test_lock - 测试锁
+    - pattern: 'vfs_test_lock\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<fl>[^)]+)\s*\)'
+      variable_capture: "file"
+      description: "测试文件锁"
+
+    # posix_lock_file - POSIX 锁
+    - pattern: 'posix_lock_file\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<fl>[^,]+)\s*,\s*(?P<conf>[^)]+)\s*\)'
+      variable_capture: "file"
+      description: "POSIX 文件锁"
+
+    # flock_lock_inode_wait - flock 等待
+    - pattern: 'flock_lock_inode_wait\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<fl>[^)]+)\s*\)'
+      variable_capture: "inode"
+      description: "flock 等待加锁"
+
+    # locks_lock_inode_wait - 通用等待
+    - pattern: 'locks_lock_inode_wait\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<fl>[^)]+)\s*\)'
+      variable_capture: "inode"
+      description: "通用锁等待"
+
+  structure:
+    name: "file_lock"
+    description: "文件锁结构"
+    fields:
+      - name: "fl_next"
+        type: "struct file_lock *"
+        description: "inode 锁链表"
+      - name: "fl_list"
+        type: "struct list_head"
+        description: "file_lock_context 链表"
+      - name: "fl_link"
+        type: "struct hlist_node"
+        description: "全局链表节点"
+      - name: "fl_block"
+        type: "struct list_head"
+        description: "阻塞进程链表"
+      - name: "fl_owner"
+        type: "fl_owner_t"
+        description: "锁所有者"
+      - name: "fl_flags"
+        type: "unsigned int"
+        description: "锁标志 (FL_POSIX/FL_FLOCK/FL_LEASE)"
+      - name: "fl_type"
+        type: "unsigned char"
+        description: "锁类型 (F_RDLCK/F_WRLCK/F_UNLCK)"
+      - name: "fl_pid"
+        type: "unsigned int"
+        description: "持有者 PID"
+      - name: "fl_wait"
+        type: "wait_queue_head_t"
+        description: "等待队列"
+      - name: "fl_file"
+        type: "struct file *"
+        description: "关联文件"
+      - name: "fl_start"
+        type: "loff_t"
+        description: "锁定范围起始"
+      - name: "fl_end"
+        type: "loff_t"
+        description: "锁定范围结束"
+      - name: "fl_ops"
+        type: "const struct file_lock_operations *"
+        description: "文件系统回调"
+      - name: "fl_lmops"
+        type: "const struct lock_manager_operations *"
+        description: "锁管理器回调"
+
+  helper_functions:
+    - pattern: 'locks_alloc_lock\s*\([^)]*\)'
+      description: "分配文件锁结构"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'locks_free_lock\s*\([^)]*\)'
+      description: "释放文件锁结构"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'locks_copy_lock\s*\([^)]*\)'
+      description: "复制锁到新结构"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'locks_copy_conflock\s*\([^)]*\)'
+      description: "复制冲突锁信息"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'vfs_lock_file\s*\([^)]*\)'
+      description: "VFS 层文件加锁"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'vfs_test_lock\s*\([^)]*\)'
+      description: "测试锁是否冲突"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'vfs_cancel_lock\s*\([^)]*\)'
+      description: "取消等待的锁"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'posix_lock_file\s*\([^)]*\)'
+      description: "POSIX 记录锁"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'posix_unblock_lock\s*\([^)]*\)'
+      description: "解除阻塞的 POSIX 锁"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'locks_lock_inode_wait\s*\([^)]*\)'
+      description: "等待获取 inode 锁"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'locks_remove_posix\s*\([^)]*\)'
+      description: "移除 POSIX 锁"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'locks_remove_file\s*\([^)]*\)'
+      description: "移除文件所有锁"
+      context: "process"
+      can_sleep: true
+
+    - pattern: '__break_lease\s*\([^)]*\)'
+      description: "打破租约锁"
+      context: "process"
+      can_sleep: true
+
+  call_chains:
+    flock_lock:
+      description: "flock 加锁路径"
+      trigger: "flock() 系统调用"
+      chain:
+        - function: "__x64_sys_flock"
+          file: "fs/locks.c"
+          description: "系统调用入口"
+          context: "process"
+        - function: "flock_make_lock"
+          file: "fs/locks.c"
+          description: "创建 flock 锁结构"
+        - function: "flock_lock_inode_wait"
+          file: "fs/locks.c"
+          description: "等待并加锁"
+        - function: "flock_lock_inode"
+          file: "fs/locks.c"
+          description: "实际加锁操作"
+        - function: "locks_insert_lock_ctx"
+          file: "fs/locks.c"
+          description: "插入锁上下文"
+
+    posix_lock:
+      description: "POSIX 锁路径"
+      trigger: "fcntl(F_SETLK/F_SETLKW)"
+      chain:
+        - function: "__x64_sys_fcntl"
+          file: "fs/fcntl.c"
+          description: "系统调用入口"
+          context: "process"
+        - function: "do_fcntl"
+          file: "fs/fcntl.c"
+          description: "fcntl 分发"
+        - function: "fcntl_setlk"
+          file: "fs/locks.c"
+          description: "设置 POSIX 锁"
+        - function: "vfs_lock_file"
+          file: "fs/locks.c"
+          description: "VFS 层加锁"
+        - function: "posix_lock_file"
+          file: "fs/locks.c"
+          description: "POSIX 锁实现"
+        - function: "posix_lock_inode"
+          file: "fs/locks.c"
+          description: "inode 级锁操作"
+
+    lease_break:
+      description: "租约打破路径"
+      trigger: "打开被租约保护的文件"
+      chain:
+        - function: "do_dentry_open"
+          file: "fs/open.c"
+          description: "打开文件"
+          context: "process"
+        - function: "break_lease"
+          file: "fs/locks.c"
+          description: "检查并打破租约"
+        - function: "__break_lease"
+          file: "fs/locks.c"
+          description: "实际打破租约"
+        - function: "locks_delete_lock_ctx"
+          file: "fs/locks.c"
+          description: "删除租约锁"
+
+
+# ============================================================
+# BLOCK INTEGRATION (块层集成)
+# ============================================================
+
+block_integration:
+  description: "Block Layer Integration - 块层集成"
+  header: "linux/bio.h"
+  icon: "💾"
+  kernel_version: "2.5+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # bio_alloc - 分配 bio
+    - pattern: 'bio_alloc\s*\(\s*(?P<gfp>[^,]+)\s*,\s*(?P<nr_vecs>[^)]+)\s*\)'
+      variable_capture: "gfp"
+      description: "分配 bio 结构"
+
+    # bio_alloc_bioset - 从 bioset 分配
+    - pattern: 'bio_alloc_bioset\s*\(\s*(?P<gfp>[^,]+)\s*,\s*(?P<nr_vecs>[^,]+)\s*,\s*(?P<bs>[^)]+)\s*\)'
+      variable_capture: "gfp"
+      description: "从 bioset 分配 bio"
+
+    # bio_put - 释放 bio
+    - pattern: 'bio_put\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "释放 bio 引用"
+
+    # bio_add_page - 添加页面
+    - pattern: 'bio_add_page\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<page>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<offset>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "向 bio 添加页面"
+
+    # submit_bio - 提交 bio
+    - pattern: 'submit_bio\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "提交 bio 到块层"
+
+    # submit_bio_wait - 同步提交
+    - pattern: 'submit_bio_wait\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "提交并等待 bio 完成"
+
+    # bio_endio - bio 完成
+    - pattern: 'bio_endio\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "bio I/O 完成回调"
+
+    # bio_set_dev - 设置设备
+    - pattern: 'bio_set_dev\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<bdev>[^)]+)\s*\)'
+      variable_capture: "bio"
+      description: "设置 bio 目标设备"
+
+  structure:
+    name: "bio"
+    description: "块 I/O 结构"
+    fields:
+      - name: "bi_next"
+        type: "struct bio *"
+        description: "请求队列链表"
+      - name: "bi_disk"
+        type: "struct gendisk *"
+        description: "目标磁盘"
+      - name: "bi_opf"
+        type: "unsigned int"
+        description: "操作类型和标志"
+      - name: "bi_flags"
+        type: "unsigned short"
+        description: "状态标志"
+      - name: "bi_status"
+        type: "blk_status_t"
+        description: "I/O 状态"
+      - name: "bi_iter"
+        type: "struct bvec_iter"
+        description: "I/O 位置迭代器"
+      - name: "__bi_remaining"
+        type: "atomic_t"
+        description: "剩余 I/O 计数"
+      - name: "bi_end_io"
+        type: "bio_end_io_t *"
+        description: "完成回调函数"
+      - name: "bi_private"
+        type: "void *"
+        description: "私有数据"
+      - name: "bi_io_vec"
+        type: "struct bio_vec *"
+        description: "I/O 向量数组"
+      - name: "bi_max_vecs"
+        type: "unsigned short"
+        description: "最大向量数"
+      - name: "bi_vcnt"
+        type: "unsigned short"
+        description: "当前向量数"
+
+  helper_functions:
+    - pattern: 'bio_alloc\s*\([^)]*\)'
+      description: "分配 bio 结构"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'bio_alloc_bioset\s*\([^)]*\)'
+      description: "从指定 bioset 分配 bio"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'bio_kmalloc\s*\([^)]*\)'
+      description: "使用 kmalloc 分配 bio"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'bio_put\s*\([^)]*\)'
+      description: "释放 bio 引用"
+      context: "process/softirq"
+      can_sleep: false
+
+    - pattern: 'bio_get\s*\([^)]*\)'
+      description: "增加 bio 引用"
+      context: "process/softirq"
+      can_sleep: false
+
+    - pattern: 'bio_add_page\s*\([^)]*\)'
+      description: "向 bio 添加页面"
+      context: "process"
+      can_sleep: false
+
+    - pattern: '__bio_add_page\s*\([^)]*\)'
+      description: "无检查添加页面"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'bio_set_dev\s*\([^)]*\)'
+      description: "设置目标块设备"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'bio_set_op_attrs\s*\([^)]*\)'
+      description: "设置操作类型和属性"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'submit_bio\s*\([^)]*\)'
+      description: "提交 bio 到块层"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'submit_bio_wait\s*\([^)]*\)'
+      description: "同步提交并等待完成"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'bio_endio\s*\([^)]*\)'
+      description: "bio 完成处理"
+      context: "softirq"
+      can_sleep: false
+
+    - pattern: 'bio_init\s*\([^)]*\)'
+      description: "初始化 bio 结构"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'bio_reset\s*\([^)]*\)'
+      description: "重置 bio 用于重用"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'bio_chain\s*\([^)]*\)'
+      description: "链接 bio 用于拆分"
+      context: "process"
+      can_sleep: false
+
+    - pattern: 'bio_clone_fast\s*\([^)]*\)'
+      description: "快速克隆 bio"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'bio_alloc_pages\s*\([^)]*\)'
+      description: "为 bio 分配页面"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'bio_free_pages\s*\([^)]*\)'
+      description: "释放 bio 的页面"
+      context: "process"
+      can_sleep: false
+
+  call_chains:
+    vfs_to_block:
+      description: "VFS 到块层路径"
+      trigger: "页缓存写回或直接 I/O"
+      chain:
+        - function: "aops->writepage"
+          file: "用户代码"
+          description: "文件系统写页回调"
+          context: "process"
+          is_user_entry: true
+        - function: "block_write_full_page"
+          file: "fs/buffer.c"
+          description: "块设备完整页写入"
+        - function: "submit_bh_wbc"
+          file: "fs/buffer.c"
+          description: "提交 buffer_head"
+        - function: "submit_bio"
+          file: "block/blk-core.c"
+          description: "提交 bio 到块层"
+        - function: "generic_make_request"
+          file: "block/blk-core.c"
+          description: "通用请求处理"
+        - function: "blk_mq_submit_bio"
+          file: "block/blk-mq.c"
+          description: "多队列提交"
+        - function: "blk_mq_run_hw_queue"
+          file: "block/blk-mq.c"
+          description: "运行硬件队列"
+
+    bio_completion:
+      description: "bio 完成路径"
+      trigger: "I/O 完成中断"
+      chain:
+        - function: "blk_mq_end_request"
+          file: "block/blk-mq.c"
+          description: "请求完成"
+          context: "softirq"
+        - function: "blk_update_request"
+          file: "block/blk-core.c"
+          description: "更新请求状态"
+        - function: "bio_endio"
+          file: "block/bio.c"
+          description: "bio 完成回调"
+        - function: "bio->bi_end_io"
+          file: "用户代码"
+          description: "用户完成回调"
+          is_user_entry: true
+
+
+# ============================================================
 # VFS EXAMPLES
 # ============================================================
 
 examples:
   - description: "简单字符设备文件操作"
+    kernel_version: "2.6+"
     code: |
       static int my_open(struct inode *inode, struct file *file) {
           struct my_device *dev;
@@ -476,3 +1735,297 @@ examples:
           .read = my_read,
           .write = my_write,
       };
+
+  - description: "address_space_operations 完整示例"
+    kernel_version: "5.0+"
+    code: |
+      /* 读取单个页面 */
+      static int myfs_readpage(struct file *file, struct page *page)
+      {
+          struct inode *inode = page->mapping->host;
+          loff_t offset = page_offset(page);
+          void *page_addr;
+          int ret;
+
+          page_addr = kmap_atomic(page);
+          
+          /* 从存储读取数据 */
+          ret = myfs_read_block(inode, offset, PAGE_SIZE, page_addr);
+          
+          kunmap_atomic(page_addr);
+          
+          if (ret == 0) {
+              SetPageUptodate(page);
+          } else {
+              SetPageError(page);
+          }
+          unlock_page(page);
+          return ret;
+      }
+
+      /* 写回单个页面 */
+      static int myfs_writepage(struct page *page,
+                                struct writeback_control *wbc)
+      {
+          struct inode *inode = page->mapping->host;
+          loff_t offset = page_offset(page);
+          void *page_addr;
+          int ret;
+
+          set_page_writeback(page);
+          
+          page_addr = kmap_atomic(page);
+          ret = myfs_write_block(inode, offset, PAGE_SIZE, page_addr);
+          kunmap_atomic(page_addr);
+          
+          end_page_writeback(page);
+          unlock_page(page);
+          
+          return ret;
+      }
+
+      /* 写入开始 - 准备页面 */
+      static int myfs_write_begin(struct file *file,
+                                  struct address_space *mapping,
+                                  loff_t pos, unsigned len,
+                                  unsigned flags, struct page **pagep,
+                                  void **fsdata)
+      {
+          struct page *page;
+          pgoff_t index = pos >> PAGE_SHIFT;
+
+          page = grab_cache_page_write_begin(mapping, index, flags);
+          if (!page)
+              return -ENOMEM;
+          
+          /* 如果页面不完整且是部分写入，需要先读取 */
+          if (!PageUptodate(page) && (pos & ~PAGE_MASK || len < PAGE_SIZE)) {
+              int ret = myfs_readpage(file, page);
+              if (ret) {
+                  unlock_page(page);
+                  put_page(page);
+                  return ret;
+              }
+              lock_page(page);
+          }
+          
+          *pagep = page;
+          return 0;
+      }
+
+      /* 写入结束 - 提交修改 */
+      static int myfs_write_end(struct file *file,
+                                struct address_space *mapping,
+                                loff_t pos, unsigned len, unsigned copied,
+                                struct page *page, void *fsdata)
+      {
+          struct inode *inode = mapping->host;
+          loff_t new_size = pos + copied;
+          
+          if (!PageUptodate(page)) {
+              if (copied < len) {
+                  copied = 0;
+                  goto out;
+              }
+              SetPageUptodate(page);
+          }
+          
+          if (new_size > inode->i_size)
+              i_size_write(inode, new_size);
+          
+          set_page_dirty(page);
+          
+      out:
+          unlock_page(page);
+          put_page(page);
+          return copied;
+      }
+
+      /* 直接 I/O */
+      static ssize_t myfs_direct_IO(struct kiocb *iocb,
+                                    struct iov_iter *iter)
+      {
+          struct inode *inode = file_inode(iocb->ki_filp);
+          
+          /* 使用通用块设备直接 I/O */
+          return blockdev_direct_IO(iocb, inode, iter, myfs_get_block);
+      }
+
+      static const struct address_space_operations myfs_aops = {
+          .readpage       = myfs_readpage,
+          .writepage      = myfs_writepage,
+          .write_begin    = myfs_write_begin,
+          .write_end      = myfs_write_end,
+          .direct_IO      = myfs_direct_IO,
+          .set_page_dirty = __set_page_dirty_buffers,
+      };
+
+  - description: "文件锁 (flock/POSIX) 示例"
+    kernel_version: "2.6+"
+    code: |
+      /* 文件系统可以实现自己的锁操作 */
+      static int myfs_lock(struct file *file, int cmd,
+                           struct file_lock *fl)
+      {
+          struct inode *inode = file_inode(file);
+          
+          /* 对于网络文件系统，可能需要发送锁请求到服务器 */
+          if (fl->fl_flags & FL_POSIX) {
+              /* POSIX 记录锁 */
+              return posix_lock_file(file, fl, NULL);
+          } else if (fl->fl_flags & FL_FLOCK) {
+              /* BSD flock */
+              return flock_lock_inode_wait(inode, fl);
+          }
+          
+          return -ENOLCK;
+      }
+
+      /* 用户空间使用 flock */
+      /* int flock(int fd, int operation); */
+      /* operation: LOCK_SH (共享), LOCK_EX (独占), LOCK_UN (解锁) */
+      
+      /* 用户空间使用 fcntl 记录锁 */
+      /* struct flock fl = {
+       *     .l_type = F_WRLCK,    // F_RDLCK, F_WRLCK, F_UNLCK
+       *     .l_whence = SEEK_SET,
+       *     .l_start = 0,
+       *     .l_len = 100,         // 0 表示到文件末尾
+       * };
+       * fcntl(fd, F_SETLKW, &fl); // F_SETLK 非阻塞, F_SETLKW 阻塞
+       */
+
+  - description: "bio 构建和提交示例"
+    kernel_version: "4.0+"
+    code: |
+      static int submit_page_bio(struct block_device *bdev,
+                                 struct page *page, sector_t sector,
+                                 int op, int op_flags)
+      {
+          struct bio *bio;
+          int ret;
+          
+          /* 分配 bio，1 个向量 */
+          bio = bio_alloc(GFP_NOIO, 1);
+          if (!bio)
+              return -ENOMEM;
+          
+          /* 设置目标设备 */
+          bio_set_dev(bio, bdev);
+          
+          /* 设置起始扇区 */
+          bio->bi_iter.bi_sector = sector;
+          
+          /* 设置操作类型 */
+          bio->bi_opf = op | op_flags;
+          
+          /* 添加页面 */
+          if (bio_add_page(bio, page, PAGE_SIZE, 0) != PAGE_SIZE) {
+              bio_put(bio);
+              return -EIO;
+          }
+          
+          /* 同步提交并等待 */
+          ret = submit_bio_wait(bio);
+          
+          bio_put(bio);
+          return ret;
+      }
+      
+      /* 异步提交示例 */
+      static void my_bio_endio(struct bio *bio)
+      {
+          struct my_io_context *ctx = bio->bi_private;
+          
+          if (bio->bi_status)
+              ctx->error = blk_status_to_errno(bio->bi_status);
+          
+          complete(&ctx->done);
+          bio_put(bio);
+      }
+      
+      static int submit_async_bio(struct block_device *bdev,
+                                  struct page *page, sector_t sector)
+      {
+          struct my_io_context ctx;
+          struct bio *bio;
+          
+          init_completion(&ctx.done);
+          ctx.error = 0;
+          
+          bio = bio_alloc(GFP_NOIO, 1);
+          bio_set_dev(bio, bdev);
+          bio->bi_iter.bi_sector = sector;
+          bio->bi_opf = REQ_OP_READ;
+          bio_add_page(bio, page, PAGE_SIZE, 0);
+          
+          /* 设置完成回调 */
+          bio->bi_end_io = my_bio_endio;
+          bio->bi_private = &ctx;
+          
+          /* 异步提交 */
+          submit_bio(bio);
+          
+          /* 等待完成 */
+          wait_for_completion(&ctx.done);
+          
+          return ctx.error;
+      }
+
+  - description: "页缓存操作示例"
+    kernel_version: "4.0+"
+    code: |
+      /* 查找页面 */
+      static struct page *my_find_page(struct address_space *mapping,
+                                       pgoff_t index)
+      {
+          struct page *page;
+          
+          /* 查找但不创建 */
+          page = find_get_page(mapping, index);
+          if (page) {
+              /* 找到了，page 引用计数已增加 */
+              return page;
+          }
+          
+          /* 查找或创建 */
+          page = find_or_create_page(mapping, index,
+                                     mapping_gfp_mask(mapping));
+          if (page) {
+              /* 页面已锁定，使用后需要解锁 */
+              if (!PageUptodate(page)) {
+                  /* 需要读取页面内容 */
+              }
+              unlock_page(page);
+          }
+          
+          return page;
+      }
+      
+      /* 截断文件 */
+      static void my_truncate(struct inode *inode, loff_t newsize)
+      {
+          /* 截断页缓存 */
+          truncate_pagecache(inode, newsize);
+          
+          /* 或者截断到指定偏移 */
+          truncate_inode_pages(inode->i_mapping, newsize);
+          
+          /* 使页面无效 (用于网络文件系统) */
+          invalidate_mapping_pages(inode->i_mapping, 0, -1);
+      }
+      
+      /* 添加页面到缓存 */
+      static int my_add_page(struct address_space *mapping,
+                             struct page *page, pgoff_t index)
+      {
+          int ret;
+          
+          /* 添加到页缓存和 LRU */
+          ret = add_to_page_cache_lru(page, mapping, index, GFP_KERNEL);
+          if (ret)
+              return ret;
+          
+          /* 页面现在在缓存中 */
+          return 0;
+      }

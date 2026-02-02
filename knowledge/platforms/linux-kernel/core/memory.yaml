@@ -1,6 +1,7 @@
 # Linux Kernel Memory Management Knowledge Base
 #
 # Reference: https://www.kernel.org/doc/html/latest/mm/index.html
+# Kernel Version: 4.14+
 
 # ============================================================
 # MEMORY MANAGEMENT CORE
@@ -10,6 +11,7 @@ mm_core:
   description: "Memory Management Core - 内存管理核心"
   header: "linux/mm.h"
   icon: "🧠"
+  kernel_version: "2.6+"
 
   context:
     type: "process"
@@ -19,27 +21,27 @@ mm_core:
 
   bind_patterns:
     # kmalloc - 内核堆分配
-    - pattern: 'kmalloc\s*\(\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+    - pattern: 'kmalloc\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "size"
       description: "内核堆分配"
 
     # kzalloc - 零初始化分配
-    - pattern: 'kzalloc\s*\(\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+    - pattern: 'kzalloc\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "size"
       description: "零初始化内存分配"
 
     # kmalloc_array - 数组分配
-    - pattern: 'kmalloc_array\s*\(\s*(?P<n>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+    - pattern: 'kmalloc_array\s*\(\s*(?P<n>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "n"
       description: "数组内存分配"
 
     # kcalloc - 零初始化数组
-    - pattern: 'kcalloc\s*\(\s*(?P<n>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+    - pattern: 'kcalloc\s*\(\s*(?P<n>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "n"
       description: "零初始化数组分配"
 
     # krealloc - 重新分配
-    - pattern: 'krealloc\s*\(\s*(?P<ptr>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+    - pattern: 'krealloc\s*\(\s*(?P<ptr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "ptr"
       description: "重新分配内存"
 
@@ -49,9 +51,14 @@ mm_core:
       description: "释放内核内存"
 
     # vmalloc - 虚拟内存分配
-    - pattern: 'vmalloc\s*\(\s*(?P<size>\w+)\s*\)'
+    - pattern: 'vmalloc\s*\(\s*(?P<size>[^)]+)\s*\)'
       variable_capture: "size"
       description: "虚拟内存分配"
+
+    # vzalloc - 零初始化虚拟内存分配
+    - pattern: 'vzalloc\s*\(\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "size"
+      description: "零初始化虚拟内存分配"
 
     # vfree - 释放虚拟内存
     - pattern: 'vfree\s*\(\s*(?P<addr>[^)]+)\s*\)'
@@ -68,20 +75,308 @@ mm_core:
       variable_capture: "flags"
       description: "分配单个物理页"
 
+    # get_zeroed_page - 获取零初始化页
+    - pattern: 'get_zeroed_page\s*\(\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "flags"
+      description: "分配零初始化物理页"
+
     # free_pages - 释放页
-    - pattern: 'free_pages\s*\(\s*(?P<addr>\w+)\s*,\s*(?P<order>\w+)\s*\)'
+    - pattern: 'free_pages\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<order>\w+)\s*\)'
       variable_capture: "addr"
       description: "释放物理页"
 
+    # free_page - 释放单页
+    - pattern: 'free_page\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "释放单个物理页"
+
     # alloc_pages - 分配页
-    - pattern: 'alloc_pages\s*\(\s*(?P<flags>\w+)\s*,\s*(?P<order>\w+)\s*\)'
+    - pattern: 'alloc_pages\s*\(\s*(?P<flags>[^,]+)\s*,\s*(?P<order>\w+)\s*\)'
       variable_capture: "flags"
       description: "分配页框"
 
+    # alloc_page - 分配单页
+    - pattern: 'alloc_page\s*\(\s*(?P<flags>[^)]+)\s*\)'
+      variable_capture: "flags"
+      description: "分配单个页框"
+
     # __free_pages - 释放页框
-    - pattern: '__free_pages\s*\(\s*(?P<page>[^)]+)\s*,\s*(?P<order>\w+)\s*\)'
+    - pattern: '__free_pages\s*\(\s*(?P<page>[^,]+)\s*,\s*(?P<order>\w+)\s*\)'
       variable_capture: "page"
       description: "释放页框"
+
+    # __free_page - 释放单页框
+    - pattern: '__free_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "释放单个页框"
+
+  call_chains:
+    kmalloc_path:
+      description: "kmalloc 分配路径"
+      trigger: "调用 kmalloc()"
+      chain:
+        - function: "kmalloc"
+          file: "include/linux/slab.h"
+          description: "内联封装"
+        - function: "__kmalloc"
+          file: "mm/slab.c"
+          description: "SLAB 分配实现"
+        - function: "slab_alloc"
+          file: "mm/slab.c"
+          description: "从 slab 分配"
+        - function: "cache_alloc_refill"
+          file: "mm/slab.c"
+          description: "refill 本地缓存"
+
+    vmalloc_path:
+      description: "vmalloc 分配路径"
+      trigger: "调用 vmalloc()"
+      chain:
+        - function: "vmalloc"
+          file: "mm/vmalloc.c"
+          description: "虚拟内存分配入口"
+        - function: "__vmalloc_node_range"
+          file: "mm/vmalloc.c"
+          description: "在指定范围分配"
+        - function: "__get_vm_area_node"
+          file: "mm/vmalloc.c"
+          description: "获取虚拟区域"
+        - function: "alloc_vmap_area"
+          file: "mm/vmalloc.c"
+          description: "分配 vmap 区域"
+
+
+# ============================================================
+# PAGE TABLE MANAGEMENT
+# ============================================================
+
+page_table:
+  description: "Page Table Management - 页表管理"
+  header: "asm/pgtable.h"
+  icon: "📋"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # pgd_alloc - 分配 PGD
+    - pattern: 'pgd_alloc\s*\(\s*(?P<mm>[^)]+)\s*\)'
+      variable_capture: "mm"
+      description: "分配页全局目录 (PGD)"
+
+    # pgd_free - 释放 PGD
+    - pattern: 'pgd_free\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<pgd>[^)]+)\s*\)'
+      variable_capture: "pgd"
+      description: "释放页全局目录"
+
+    # pgd_offset - PGD 偏移
+    - pattern: 'pgd_offset\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "获取 PGD 表项"
+
+    # pgd_offset_k - 内核 PGD 偏移
+    - pattern: 'pgd_offset_k\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "获取内核 PGD 表项"
+
+    # p4d_alloc - 分配 P4D (5级页表)
+    - pattern: 'p4d_alloc\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<pgd>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "分配 P4D 表项"
+
+    # pud_alloc - 分配 PUD
+    - pattern: 'pud_alloc\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<p4d>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "分配页上级目录 (PUD)"
+
+    # pud_free - 释放 PUD
+    - pattern: 'pud_free\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<pud>[^)]+)\s*\)'
+      variable_capture: "pud"
+      description: "释放页上级目录"
+
+    # pud_offset - PUD 偏移
+    - pattern: 'pud_offset\s*\(\s*(?P<p4d>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "获取 PUD 表项"
+
+    # pmd_alloc - 分配 PMD
+    - pattern: 'pmd_alloc\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<pud>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "分配页中间目录 (PMD)"
+
+    # pmd_free - 释放 PMD
+    - pattern: 'pmd_free\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<pmd>[^)]+)\s*\)'
+      variable_capture: "pmd"
+      description: "释放页中间目录"
+
+    # pmd_offset - PMD 偏移
+    - pattern: 'pmd_offset\s*\(\s*(?P<pud>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "获取 PMD 表项"
+
+    # pte_alloc - 分配 PTE
+    - pattern: 'pte_alloc\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<pmd>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "分配页表项 (PTE)"
+
+    # pte_alloc_kernel - 内核 PTE 分配
+    - pattern: 'pte_alloc_kernel\s*\(\s*(?P<pmd>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "分配内核页表项"
+
+    # __pte_alloc - 底层 PTE 分配
+    - pattern: '__pte_alloc\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<pmd>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "底层页表项分配"
+
+    # pte_free - 释放 PTE
+    - pattern: 'pte_free\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "释放页表项"
+
+    # pte_offset_kernel - 内核 PTE 偏移
+    - pattern: 'pte_offset_kernel\s*\(\s*(?P<pmd>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "获取内核页表项"
+
+    # pte_offset_map - 映射 PTE
+    - pattern: 'pte_offset_map\s*\(\s*(?P<pmd>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "映射并获取页表项"
+
+    # pte_unmap - 取消映射 PTE
+    - pattern: 'pte_unmap\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "取消页表项映射"
+
+    # set_pte - 设置 PTE
+    - pattern: 'set_pte\s*\(\s*(?P<ptep>[^,]+)\s*,\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "ptep"
+      description: "设置页表项"
+
+    # set_pte_at - 在地址设置 PTE
+    - pattern: 'set_pte_at\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<ptep>[^,]+)\s*,\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "在指定地址设置页表项"
+
+    # pte_clear - 清除 PTE
+    - pattern: 'pte_clear\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<ptep>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "清除页表项"
+
+    # pgd_none - 检查 PGD 空
+    - pattern: 'pgd_none\s*\(\s*(?P<pgd>[^)]+)\s*\)'
+      variable_capture: "pgd"
+      description: "检查 PGD 是否为空"
+
+    # pud_none - 检查 PUD 空
+    - pattern: 'pud_none\s*\(\s*(?P<pud>[^)]+)\s*\)'
+      variable_capture: "pud"
+      description: "检查 PUD 是否为空"
+
+    # pmd_none - 检查 PMD 空
+    - pattern: 'pmd_none\s*\(\s*(?P<pmd>[^)]+)\s*\)'
+      variable_capture: "pmd"
+      description: "检查 PMD 是否为空"
+
+    # pte_none - 检查 PTE 空
+    - pattern: 'pte_none\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "检查 PTE 是否为空"
+
+    # pte_present - 检查 PTE 存在
+    - pattern: 'pte_present\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "检查页是否在内存中"
+
+    # pte_dirty - 检查 PTE 脏
+    - pattern: 'pte_dirty\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "检查页是否为脏页"
+
+    # pte_young - 检查 PTE 被访问
+    - pattern: 'pte_young\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "检查页是否被访问过"
+
+    # pte_write - 检查 PTE 可写
+    - pattern: 'pte_write\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "检查页是否可写"
+
+    # mk_pte - 创建 PTE
+    - pattern: 'mk_pte\s*\(\s*(?P<page>[^,]+)\s*,\s*(?P<prot>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "从页框创建页表项"
+
+    # pte_mkdirty - 标记 PTE 脏
+    - pattern: 'pte_mkdirty\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "标记页表项为脏"
+
+    # pte_mkyoung - 标记 PTE 访问
+    - pattern: 'pte_mkyoung\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "标记页表项为已访问"
+
+    # pte_mkwrite - 标记 PTE 可写
+    - pattern: 'pte_mkwrite\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "标记页表项为可写"
+
+    # pte_wrprotect - 写保护 PTE
+    - pattern: 'pte_wrprotect\s*\(\s*(?P<pte>[^)]+)\s*\)'
+      variable_capture: "pte"
+      description: "设置页表项写保护"
+
+  call_chains:
+    page_table_walk:
+      description: "页表遍历"
+      trigger: "访问虚拟地址"
+      chain:
+        - function: "pgd_offset"
+          file: "arch/*/include/asm/pgtable.h"
+          description: "获取 PGD 表项"
+        - function: "p4d_offset"
+          file: "include/linux/pgtable.h"
+          description: "获取 P4D 表项 (5级页表)"
+        - function: "pud_offset"
+          file: "arch/*/include/asm/pgtable.h"
+          description: "获取 PUD 表项"
+        - function: "pmd_offset"
+          file: "arch/*/include/asm/pgtable.h"
+          description: "获取 PMD 表项"
+        - function: "pte_offset_map"
+          file: "include/linux/pgtable.h"
+          description: "获取 PTE 表项"
+
+    page_table_setup:
+      description: "页表建立"
+      trigger: "缺页异常或 mmap"
+      chain:
+        - function: "handle_mm_fault"
+          file: "mm/memory.c"
+          description: "处理内存错误"
+        - function: "__handle_mm_fault"
+          file: "mm/memory.c"
+          description: "内部处理"
+        - function: "pud_alloc"
+          file: "mm/memory.c"
+          description: "分配 PUD"
+        - function: "pmd_alloc"
+          file: "mm/memory.c"
+          description: "分配 PMD"
+        - function: "__pte_alloc"
+          file: "mm/memory.c"
+          description: "分配 PTE"
+        - function: "set_pte_at"
+          file: "arch/*/include/asm/pgtable.h"
+          description: "设置页表项"
+          is_user_entry: true
 
 
 # ============================================================
@@ -91,12 +386,25 @@ mm_core:
 slab_allocator:
   description: "Slab Allocator - SLAB 分配器"
   header: "linux/slab.h"
+  icon: "🗄️"
+  kernel_version: "2.2+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   bind_patterns:
     # kmem_cache_create - 创建缓存
-    - pattern: 'kmem_cache_create\s*\(\s*(?P<name>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<align>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<ctor>[^)]*)\s*\)'
+    - pattern: 'kmem_cache_create\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<align>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<ctor>[^)]*)\s*\)'
       variable_capture: "name"
       description: "创建 SLAB 缓存"
+
+    # kmem_cache_create_usercopy - 创建用户拷贝缓存
+    - pattern: 'kmem_cache_create_usercopy\s*\(\s*(?P<name>[^,]+)\s*,'
+      variable_capture: "name"
+      description: "创建支持用户拷贝的缓存"
 
     # kmem_cache_destroy - 销毁缓存
     - pattern: 'kmem_cache_destroy\s*\(\s*(?P<cache>[^)]+)\s*\)'
@@ -104,24 +412,47 @@ slab_allocator:
       description: "销毁 SLAB 缓存"
 
     # kmem_cache_alloc - 从缓存分配
-    - pattern: 'kmem_cache_alloc\s*\(\s*(?P<cache>[^)]+)\s*,\s*(?P<flags>\w+)\s*\)'
+    - pattern: 'kmem_cache_alloc\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "cache"
       description: "从 SLAB 缓存分配"
 
     # kmem_cache_zalloc - 零初始化分配
-    - pattern: 'kmem_cache_zalloc\s*\(\s*(?P<cache>[^)]+)\s*,\s*(?P<flags>\w+)\s*\)'
+    - pattern: 'kmem_cache_zalloc\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "cache"
       description: "零初始化 SLAB 分配"
 
     # kmem_cache_free - 释放回缓存
-    - pattern: 'kmem_cache_free\s*\(\s*(?P<cache>[^)]+)\s*,\s*(?P<obj>[^)]+)\s*\)'
+    - pattern: 'kmem_cache_free\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<obj>[^)]+)\s*\)'
       variable_capture: "cache"
       description: "释放对象回缓存"
 
     # kmem_cache_alloc_node - 节点分配
-    - pattern: 'kmem_cache_alloc_node\s*\(\s*(?P<cache>[^)]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
+    - pattern: 'kmem_cache_alloc_node\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
       variable_capture: "cache"
       description: "从指定节点分配"
+
+    # KMEM_CACHE - 宏创建缓存
+    - pattern: 'KMEM_CACHE\s*\(\s*(?P<struct>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "struct"
+      description: "快速创建结构体缓存"
+
+  call_chains:
+    slab_alloc_path:
+      description: "SLAB 分配路径"
+      trigger: "调用 kmem_cache_alloc()"
+      chain:
+        - function: "kmem_cache_alloc"
+          file: "mm/slab.c"
+          description: "SLAB 分配入口"
+        - function: "slab_alloc"
+          file: "mm/slab.c"
+          description: "内部分配"
+        - function: "__do_cache_alloc"
+          file: "mm/slab.c"
+          description: "执行分配"
+        - function: "cache_alloc_refill"
+          file: "mm/slab.c"
+          description: "refill 本地缓存"
 
 
 # ============================================================
@@ -131,17 +462,25 @@ slab_allocator:
 slub_allocator:
   description: "SLUB Allocator - SLUB 分配器"
   header: "linux/slub_def.h"
+  icon: "📦"
+  kernel_version: "2.6.22+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   bind_patterns:
-    # kmem_cache_create - SLUB 缓存创建
-    - pattern: 'kmem_cache_create\s*\(\s*(?P<name>[^)]+)\s*,\s*(?P<size>\w+)'
-      variable_capture: "name"
-      description: "创建 SLUB 缓存"
-
     # kmalloc_node - 节点分配
-    - pattern: 'kmalloc_node\s*\(\s*(?P<size>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
+    - pattern: 'kmalloc_node\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
       variable_capture: "size"
       description: "从指定节点分配"
+
+    # kzalloc_node - 节点零初始化分配
+    - pattern: 'kzalloc_node\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
+      variable_capture: "size"
+      description: "从指定节点零初始化分配"
 
 
 # ============================================================
@@ -151,6 +490,8 @@ slub_allocator:
 gfp_flags:
   description: "GFP Flags - 内存分配标志"
   header: "linux/gfp.h"
+  icon: "🏷️"
+  kernel_version: "2.6+"
 
   bind_patterns:
     # GFP_KERNEL - 普通内核分配
@@ -161,17 +502,25 @@ gfp_flags:
     - pattern: 'GFP_ATOMIC'
       description: "原子上下文分配 (不能睡眠)"
 
-    # GFP_NOFS - 不触发文件系统操作
-    - pattern: 'GFP_NOFS'
-      description: "不调用文件系统"
+    # GFP_NOWAIT - 不等待分配
+    - pattern: 'GFP_NOWAIT'
+      description: "不等待内存分配"
 
     # GFP_NOIO - 不触发 IO 操作
     - pattern: 'GFP_NOIO'
       description: "不进行磁盘 IO"
 
+    # GFP_NOFS - 不触发文件系统操作
+    - pattern: 'GFP_NOFS'
+      description: "不调用文件系统"
+
     # GFP_HIGHUSER - 高用户内存
     - pattern: 'GFP_HIGHUSER'
       description: "从高端内存分配"
+
+    # GFP_HIGHUSER_MOVABLE - 可移动高用户内存
+    - pattern: 'GFP_HIGHUSER_MOVABLE'
+      description: "可迁移的高端内存"
 
     # GFP_USER - 用户内存
     - pattern: 'GFP_USER'
@@ -179,11 +528,11 @@ gfp_flags:
 
     # GFP_DMA - DMA 内存
     - pattern: 'GFP_DMA'
-      description: "DMA 可达内存"
+      description: "DMA 可达内存 (低16MB)"
 
     # GFP_DMA32 - 32位 DMA 内存
     - pattern: 'GFP_DMA32'
-      description: "32位 DMA 内存"
+      description: "32位 DMA 内存 (低4GB)"
 
     # __GFP_HIGH - 高优先级
     - pattern: '__GFP_HIGH'
@@ -197,6 +546,38 @@ gfp_flags:
     - pattern: '__GFP_FS'
       description: "允许文件系统调用"
 
+    # __GFP_ZERO - 零初始化
+    - pattern: '__GFP_ZERO'
+      description: "零初始化内存"
+
+    # __GFP_NOFAIL - 不失败
+    - pattern: '__GFP_NOFAIL'
+      description: "分配不能失败"
+
+    # __GFP_NORETRY - 不重试
+    - pattern: '__GFP_NORETRY'
+      description: "分配失败不重试"
+
+    # __GFP_RETRY_MAYFAIL - 可能失败重试
+    - pattern: '__GFP_RETRY_MAYFAIL'
+      description: "尽力重试但可能失败"
+
+    # __GFP_NOWARN - 不警告
+    - pattern: '__GFP_NOWARN'
+      description: "分配失败不打印警告"
+
+    # __GFP_COMP - 复合页
+    - pattern: '__GFP_COMP'
+      description: "分配复合页"
+
+    # __GFP_MOVABLE - 可移动
+    - pattern: '__GFP_MOVABLE'
+      description: "可迁移的内存"
+
+    # __GFP_RECLAIMABLE - 可回收
+    - pattern: '__GFP_RECLAIMABLE'
+      description: "可回收的内存"
+
 
 # ============================================================
 # PAGE FLAGS
@@ -205,8 +586,15 @@ gfp_flags:
 page_flags:
   description: "Page Flags - 页标志"
   header: "linux/page-flags.h"
+  icon: "🚩"
+  kernel_version: "2.6+"
 
   bind_patterns:
+    # PageLocked - 页锁定
+    - pattern: 'PageLocked\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查页是否锁定"
+
     # PageReserved - 保留页
     - pattern: 'PageReserved\s*\(\s*(?P<page>[^)]+)\s*\)'
       variable_capture: "page"
@@ -222,10 +610,55 @@ page_flags:
       variable_capture: "page"
       description: "检查写回页"
 
+    # PageReferenced - 被引用
+    - pattern: 'PageReferenced\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查被引用页"
+
+    # PageActive - 活跃页
+    - pattern: 'PageActive\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查活跃页"
+
+    # PageLRU - LRU 页
+    - pattern: 'PageLRU\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查 LRU 页"
+
+    # PageSlab - SLAB 页
+    - pattern: 'PageSlab\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查 SLAB 页"
+
+    # PageSwapCache - 交换缓存页
+    - pattern: 'PageSwapCache\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查交换缓存页"
+
     # PageMappedToDisk - 映射到磁盘
     - pattern: 'PageMappedToDisk\s*\(\s*(?P<page>[^)]+)\s*\)'
       variable_capture: "page"
       description: "检查映射页"
+
+    # PageUptodate - 页数据有效
+    - pattern: 'PageUptodate\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查页数据是否有效"
+
+    # PageCompound - 复合页
+    - pattern: 'PageCompound\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查复合页"
+
+    # PageHead - 复合页头
+    - pattern: 'PageHead\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查复合页头"
+
+    # PageTail - 复合页尾
+    - pattern: 'PageTail\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查复合页尾"
 
     # SetPageDirty - 标记脏页
     - pattern: 'SetPageDirty\s*\(\s*(?P<page>[^)]+)\s*\)'
@@ -237,6 +670,31 @@ page_flags:
       variable_capture: "page"
       description: "清除脏页"
 
+    # SetPageReferenced - 标记引用
+    - pattern: 'SetPageReferenced\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "标记页被引用"
+
+    # lock_page - 锁定页
+    - pattern: 'lock_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "锁定页"
+
+    # unlock_page - 解锁页
+    - pattern: 'unlock_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "解锁页"
+
+    # get_page - 增加页引用
+    - pattern: 'get_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "增加页引用计数"
+
+    # put_page - 减少页引用
+    - pattern: 'put_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "减少页引用计数"
+
 
 # ============================================================
 # PAGE OPERATIONS
@@ -245,6 +703,8 @@ page_flags:
 page_ops:
   description: "Page Operations - 页操作"
   header: "linux/mm.h"
+  icon: "📄"
+  kernel_version: "2.6+"
 
   bind_patterns:
     # virt_to_page - 虚拟地址转页
@@ -263,12 +723,22 @@ page_ops:
       description: "虚拟地址转物理地址"
 
     # phys_to_virt - 物理转虚拟
-    - pattern: 'phys_to_virt\s*\(\s*(?P<addr>\w+)\s*\)'
+    - pattern: 'phys_to_virt\s*\(\s*(?P<addr>[^)]+)\s*\)'
       variable_capture: "addr"
       description: "物理地址转虚拟地址"
 
+    # page_to_pfn - 页转页帧号
+    - pattern: 'page_to_pfn\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "页结构转页帧号"
+
+    # pfn_to_page - 页帧号转页
+    - pattern: 'pfn_to_page\s*\(\s*(?P<pfn>[^)]+)\s*\)'
+      variable_capture: "pfn"
+      description: "页帧号转页结构"
+
     # __va - 物理转虚拟
-    - pattern: '__va\s*\(\s*(?P<addr>\w+)\s*\)'
+    - pattern: '__va\s*\(\s*(?P<addr>[^)]+)\s*\)'
       variable_capture: "addr"
       description: "物理地址转虚拟地址"
 
@@ -277,30 +747,1333 @@ page_ops:
       variable_capture: "addr"
       description: "虚拟地址转物理地址"
 
+    # page_address - 获取页地址
+    - pattern: 'page_address\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "获取页的虚拟地址"
+
+    # kmap - 映射高端内存页
+    - pattern: 'kmap\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "映射高端内存页"
+
+    # kunmap - 取消映射
+    - pattern: 'kunmap\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "取消高端内存映射"
+
+    # kmap_atomic - 原子映射
+    - pattern: 'kmap_atomic\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "原子映射高端内存"
+
+    # kunmap_atomic - 原子取消映射
+    - pattern: 'kunmap_atomic\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "原子取消高端内存映射"
+
 
 # ============================================================
-# MAPPING OPERATIONS
+# MEMORY RECLAIM
 # ============================================================
 
-mapping_ops:
-  description: "Mapping Operations - 映射操作"
-  header: "linux/mm.h"
+memory_reclaim:
+  description: "Memory Reclaim - 内存回收"
+  header: "linux/swap.h"
+  icon: "♻️"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
   bind_patterns:
-    # vmalloc - 分配虚拟连续内存
-    - pattern: 'vmalloc\s*\(\s*(?P<size>\w+)\s*\)'
-      variable_capture: "size"
-      description: "虚拟内存分配"
+    # try_to_free_pages - 尝试释放页
+    - pattern: 'try_to_free_pages\s*\(\s*(?P<zonelist>[^,]+)\s*,\s*(?P<order>[^,]+)\s*,\s*(?P<gfp_mask>[^,]+)\s*,\s*(?P<nodemask>[^)]+)\s*\)'
+      variable_capture: "zonelist"
+      description: "尝试释放页面"
 
-    # vfree - 释放虚拟内存
-    - pattern: 'vfree\s*\(\s*(?P<addr>[^)]+)\s*\)'
-      variable_capture: "addr"
-      description: "释放虚拟内存"
+    # shrink_node - 收缩节点
+    - pattern: 'shrink_node\s*\(\s*(?P<pgdat>[^,]+)\s*,\s*(?P<sc>[^)]+)\s*\)'
+      variable_capture: "pgdat"
+      description: "收缩节点内存"
 
-    # vmalloc_to_pfn - 虚拟地址转 PFN
-    - pattern: 'vmalloc_to_pfn\s*\(\s*(?P<addr>[^)]+)\s*\)'
+    # shrink_node_memcg - 收缩节点 memcg
+    - pattern: 'shrink_node_memcg\s*\(\s*(?P<pgdat>[^,]+)\s*,\s*(?P<memcg>[^,]+)\s*,\s*(?P<sc>[^,]+)\s*,'
+      variable_capture: "memcg"
+      description: "收缩节点 memcg 内存"
+
+    # shrink_page_list - 收缩页列表
+    - pattern: 'shrink_page_list\s*\(\s*(?P<page_list>[^,]+)\s*,'
+      variable_capture: "page_list"
+      description: "收缩页面列表"
+
+    # shrink_inactive_list - 收缩非活跃列表
+    - pattern: 'shrink_inactive_list\s*\(\s*(?P<nr_to_scan>[^,]+)\s*,'
+      variable_capture: "nr_to_scan"
+      description: "收缩非活跃 LRU 列表"
+
+    # shrink_active_list - 收缩活跃列表
+    - pattern: 'shrink_active_list\s*\(\s*(?P<nr_to_scan>[^,]+)\s*,'
+      variable_capture: "nr_to_scan"
+      description: "收缩活跃 LRU 列表"
+
+    # reclaim_pages - 回收页
+    - pattern: 'reclaim_pages\s*\(\s*(?P<page_list>[^)]+)\s*\)'
+      variable_capture: "page_list"
+      description: "回收页面列表"
+
+    # shrink_all_memory - 收缩所有内存
+    - pattern: 'shrink_all_memory\s*\(\s*(?P<nr_to_reclaim>[^)]+)\s*\)'
+      variable_capture: "nr_to_reclaim"
+      description: "收缩所有内存 (休眠用)"
+
+    # wakeup_kswapd - 唤醒 kswapd
+    - pattern: 'wakeup_kswapd\s*\(\s*(?P<zone>[^,]+)\s*,\s*(?P<gfp_mask>[^,]+)\s*,\s*(?P<order>[^,]+)\s*,\s*(?P<classzone_idx>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "唤醒 kswapd 守护进程"
+
+    # current_is_kswapd - 是否 kswapd
+    - pattern: 'current_is_kswapd\s*\(\s*\)'
+      description: "检查当前是否为 kswapd"
+
+    # mark_page_accessed - 标记访问
+    - pattern: 'mark_page_accessed\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "标记页面被访问"
+
+    # page_is_file_cache - 是否文件缓存
+    - pattern: 'page_is_file_cache\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查是否为文件缓存页"
+
+    # add_page_to_lru_list - 添加到 LRU
+    - pattern: 'add_page_to_lru_list\s*\(\s*(?P<page>[^,]+)\s*,'
+      variable_capture: "page"
+      description: "添加页到 LRU 列表"
+
+    # del_page_from_lru_list - 从 LRU 删除
+    - pattern: 'del_page_from_lru_list\s*\(\s*(?P<page>[^,]+)\s*,'
+      variable_capture: "page"
+      description: "从 LRU 列表删除页"
+
+    # isolate_lru_page - 隔离 LRU 页
+    - pattern: 'isolate_lru_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "从 LRU 隔离页"
+
+    # putback_lru_page - 放回 LRU
+    - pattern: 'putback_lru_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "将页放回 LRU"
+
+  call_chains:
+    direct_reclaim:
+      description: "直接回收路径"
+      trigger: "内存分配失败时触发"
+      chain:
+        - function: "__alloc_pages_slowpath"
+          file: "mm/page_alloc.c"
+          description: "慢速分配路径"
+        - function: "__perform_reclaim"
+          file: "mm/page_alloc.c"
+          description: "执行回收"
+        - function: "try_to_free_pages"
+          file: "mm/vmscan.c"
+          description: "尝试释放页"
+        - function: "do_try_to_free_pages"
+          file: "mm/vmscan.c"
+          description: "执行释放"
+        - function: "shrink_node"
+          file: "mm/vmscan.c"
+          description: "收缩节点"
+        - function: "shrink_node_memcg"
+          file: "mm/vmscan.c"
+          description: "收缩 memcg"
+        - function: "shrink_inactive_list"
+          file: "mm/vmscan.c"
+          description: "收缩非活跃列表"
+        - function: "shrink_page_list"
+          file: "mm/vmscan.c"
+          description: "收缩页面列表"
+
+    kswapd_reclaim:
+      description: "kswapd 后台回收"
+      trigger: "内存水位低于阈值"
+      chain:
+        - function: "kswapd"
+          file: "mm/vmscan.c"
+          description: "kswapd 守护进程"
+          context: "process (kthread)"
+        - function: "balance_pgdat"
+          file: "mm/vmscan.c"
+          description: "平衡 pgdat"
+        - function: "kswapd_shrink_node"
+          file: "mm/vmscan.c"
+          description: "kswapd 收缩节点"
+        - function: "shrink_node"
+          file: "mm/vmscan.c"
+          description: "收缩节点"
+        - function: "shrink_node_memcg"
+          file: "mm/vmscan.c"
+          description: "收缩 memcg"
+
+
+# ============================================================
+# OOM KILLER
+# ============================================================
+
+oom_killer:
+  description: "OOM Killer - 内存不足杀手"
+  header: "linux/oom.h"
+  icon: "💀"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # out_of_memory - OOM 入口
+    - pattern: 'out_of_memory\s*\(\s*(?P<oc>[^)]+)\s*\)'
+      variable_capture: "oc"
+      description: "OOM killer 主入口"
+
+    # oom_kill_process - 杀死进程
+    - pattern: 'oom_kill_process\s*\(\s*(?P<oc>[^,]+)\s*,\s*(?P<message>[^)]+)\s*\)'
+      variable_capture: "oc"
+      description: "杀死选中的进程"
+
+    # select_bad_process - 选择受害进程
+    - pattern: 'select_bad_process\s*\(\s*(?P<oc>[^)]+)\s*\)'
+      variable_capture: "oc"
+      description: "选择要杀死的进程"
+
+    # oom_badness - 计算 OOM 分数
+    - pattern: 'oom_badness\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<totalpages>[^)]+)\s*\)'
+      variable_capture: "p"
+      description: "计算进程 OOM 分数"
+
+    # oom_unkillable_task - 不可杀任务
+    - pattern: 'oom_unkillable_task\s*\(\s*(?P<p>[^,]+)\s*,'
+      variable_capture: "p"
+      description: "检查任务是否不可杀"
+
+    # find_lock_task_mm - 查找任务 mm
+    - pattern: 'find_lock_task_mm\s*\(\s*(?P<p>[^)]+)\s*\)'
+      variable_capture: "p"
+      description: "查找有效 mm 的任务"
+
+    # mark_oom_victim - 标记 OOM 受害者
+    - pattern: 'mark_oom_victim\s*\(\s*(?P<tsk>[^)]+)\s*\)'
+      variable_capture: "tsk"
+      description: "标记为 OOM 受害者"
+
+    # exit_oom_victim - 退出 OOM 受害者
+    - pattern: 'exit_oom_victim\s*\(\s*\)'
+      description: "清除 OOM 受害者标志"
+
+    # oom_killer_disable - 禁用 OOM
+    - pattern: 'oom_killer_disable\s*\(\s*(?P<timeout>[^)]+)\s*\)'
+      variable_capture: "timeout"
+      description: "禁用 OOM killer"
+
+    # oom_killer_enable - 启用 OOM
+    - pattern: 'oom_killer_enable\s*\(\s*\)'
+      description: "启用 OOM killer"
+
+    # OOM_SCORE_ADJ_MIN - 最小调整分
+    - pattern: 'OOM_SCORE_ADJ_MIN'
+      description: "OOM 分数调整最小值 (-1000, 禁用 OOM)"
+
+    # OOM_SCORE_ADJ_MAX - 最大调整分
+    - pattern: 'OOM_SCORE_ADJ_MAX'
+      description: "OOM 分数调整最大值 (1000, 优先杀死)"
+
+    # set_oom_score_adj - 设置调整分
+    - pattern: 'set_oom_score_adj\s*\(\s*(?P<adj>[^)]+)\s*\)'
+      variable_capture: "adj"
+      description: "设置 OOM 分数调整值"
+
+  call_chains:
+    oom_trigger:
+      description: "OOM 触发路径"
+      trigger: "内存严重不足时"
+      chain:
+        - function: "__alloc_pages_slowpath"
+          file: "mm/page_alloc.c"
+          description: "慢速分配路径"
+        - function: "__alloc_pages_may_oom"
+          file: "mm/page_alloc.c"
+          description: "可能触发 OOM"
+        - function: "out_of_memory"
+          file: "mm/oom_kill.c"
+          description: "OOM 入口"
+        - function: "select_bad_process"
+          file: "mm/oom_kill.c"
+          description: "选择受害进程"
+        - function: "oom_badness"
+          file: "mm/oom_kill.c"
+          description: "计算 OOM 分数"
+        - function: "oom_kill_process"
+          file: "mm/oom_kill.c"
+          description: "杀死进程"
+        - function: "__oom_kill_process"
+          file: "mm/oom_kill.c"
+          description: "执行杀死"
+
+    memcg_oom:
+      description: "Memcg OOM 路径"
+      trigger: "cgroup 内存超限"
+      chain:
+        - function: "mem_cgroup_out_of_memory"
+          file: "mm/memcontrol.c"
+          description: "memcg OOM 入口"
+        - function: "out_of_memory"
+          file: "mm/oom_kill.c"
+          description: "OOM 入口"
+        - function: "select_bad_process"
+          file: "mm/oom_kill.c"
+          description: "选择受害进程"
+        - function: "oom_kill_process"
+          file: "mm/oom_kill.c"
+          description: "杀死进程"
+
+
+# ============================================================
+# PAGE CACHE
+# ============================================================
+
+page_cache:
+  description: "Page Cache - 页缓存"
+  header: "linux/pagemap.h"
+  icon: "💾"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  structure:
+    pattern: 'static const struct address_space_operations\s+(?P<name>\w+)\s*=\s*\{'
+    description: "地址空间操作结构"
+    fields:
+      - name: "writepage"
+        type: "int (*)(struct page *, struct writeback_control *)"
+        description: "写回单个页"
+      - name: "readpage"
+        type: "int (*)(struct file *, struct page *)"
+        description: "读取单个页"
+      - name: "writepages"
+        type: "int (*)(struct address_space *, struct writeback_control *)"
+        description: "写回多个页"
+      - name: "set_page_dirty"
+        type: "int (*)(struct page *)"
+        description: "标记页为脏"
+      - name: "readpages"
+        type: "int (*)(struct file *, struct address_space *, struct list_head *, unsigned)"
+        description: "批量读取页"
+      - name: "write_begin"
+        type: "int (*)(struct file *, struct address_space *, loff_t, unsigned, unsigned, struct page **, void **)"
+        description: "写操作开始"
+      - name: "write_end"
+        type: "int (*)(struct file *, struct address_space *, loff_t, unsigned, unsigned, struct page *, void *)"
+        description: "写操作结束"
+      - name: "bmap"
+        type: "sector_t (*)(struct address_space *, sector_t)"
+        description: "逻辑块映射"
+      - name: "invalidatepage"
+        type: "void (*)(struct page *, unsigned int, unsigned int)"
+        description: "页失效"
+      - name: "releasepage"
+        type: "int (*)(struct page *, gfp_t)"
+        description: "释放页"
+      - name: "direct_IO"
+        type: "ssize_t (*)(struct kiocb *, struct iov_iter *)"
+        description: "直接 IO"
+      - name: "migratepage"
+        type: "int (*)(struct address_space *, struct page *, struct page *, enum migrate_mode)"
+        description: "页迁移"
+      - name: "launder_page"
+        type: "int (*)(struct page *)"
+        description: "清洗页"
+      - name: "error_remove_page"
+        type: "int (*)(struct address_space *, struct page *)"
+        description: "错误移除页"
+
+  callbacks:
+    writepage:
+      pattern: '\.writepage\s*=\s*(?P<handler>\w+)'
+      description: "写回单个脏页到存储"
+      trigger: "内存回收、sync、fsync"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct page *page, struct writeback_control *wbc)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "获取页对应的块"
+        - "提交 bio 请求"
+
+    readpage:
+      pattern: '\.readpage\s*=\s*(?P<handler>\w+)'
+      description: "从存储读取页"
+      trigger: "缺页异常、read 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, struct page *page)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "提交读请求"
+        - "等待 IO 完成"
+        - "设置页 uptodate"
+
+    write_begin:
+      pattern: '\.write_begin\s*=\s*(?P<handler>\w+)'
+      description: "准备写操作"
+      trigger: "write 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *, struct address_space *, loff_t pos, unsigned len, unsigned flags, struct page **pagep, void **fsdata)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "分配或查找页"
+        - "准备块缓冲区"
+
+    write_end:
+      pattern: '\.write_end\s*=\s*(?P<handler>\w+)'
+      description: "完成写操作"
+      trigger: "write_begin 之后"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *, struct address_space *, loff_t pos, unsigned len, unsigned copied, struct page *page, void *fsdata)"
+      return_value:
+        success: "已拷贝字节数"
+        failure: "-ERRNO"
+      typical_actions:
+        - "标记页为脏"
+        - "更新 inode 大小"
+
+    direct_IO:
+      pattern: '\.direct_IO\s*=\s*(?P<handler>\w+)'
+      description: "绕过页缓存的直接 IO"
+      trigger: "O_DIRECT 标志的读写"
+      context: "process"
+      can_sleep: true
+      signature: "ssize_t (*)(struct kiocb *iocb, struct iov_iter *iter)"
+      return_value:
+        success: "传输字节数"
+        failure: "-ERRNO"
+      typical_actions:
+        - "直接提交 bio"
+        - "等待 IO 完成"
+
+  bind_patterns:
+    # find_get_page - 查找页
+    - pattern: 'find_get_page\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<offset>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "在页缓存中查找页"
+
+    # find_or_create_page - 查找或创建页
+    - pattern: 'find_or_create_page\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<gfp_mask>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "查找或创建页"
+
+    # find_lock_page - 查找并锁定页
+    - pattern: 'find_lock_page\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<offset>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "查找并锁定页"
+
+    # pagecache_get_page - 获取页缓存页
+    - pattern: 'pagecache_get_page\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<fgp_flags>[^,]+)\s*,\s*(?P<gfp_mask>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "获取页缓存页"
+
+    # grab_cache_page - 抓取缓存页
+    - pattern: 'grab_cache_page\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<index>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "抓取或分配缓存页"
+
+    # grab_cache_page_nowait - 非阻塞抓取
+    - pattern: 'grab_cache_page_nowait\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<index>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "非阻塞抓取缓存页"
+
+    # add_to_page_cache_locked - 添加到缓存
+    - pattern: 'add_to_page_cache_locked\s*\(\s*(?P<page>[^,]+)\s*,\s*(?P<mapping>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<gfp_mask>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "添加页到页缓存"
+
+    # add_to_page_cache_lru - 添加到缓存和 LRU
+    - pattern: 'add_to_page_cache_lru\s*\(\s*(?P<page>[^,]+)\s*,\s*(?P<mapping>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<gfp_mask>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "添加页到页缓存和 LRU"
+
+    # delete_from_page_cache - 从缓存删除
+    - pattern: 'delete_from_page_cache\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "从页缓存删除页"
+
+    # filemap_fault - 文件映射缺页
+    - pattern: 'filemap_fault\s*\(\s*(?P<vmf>[^)]+)\s*\)'
+      variable_capture: "vmf"
+      description: "处理文件映射缺页异常"
+
+    # filemap_map_pages - 映射多个页
+    - pattern: 'filemap_map_pages\s*\(\s*(?P<vmf>[^,]+)\s*,'
+      variable_capture: "vmf"
+      description: "映射多个页"
+
+    # filemap_page_mkwrite - 页变可写
+    - pattern: 'filemap_page_mkwrite\s*\(\s*(?P<vmf>[^)]+)\s*\)'
+      variable_capture: "vmf"
+      description: "处理页变可写"
+
+    # truncate_inode_pages - 截断 inode 页
+    - pattern: 'truncate_inode_pages\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<lstart>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "截断 inode 的页缓存"
+
+    # invalidate_mapping_pages - 无效化映射页
+    - pattern: 'invalidate_mapping_pages\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      variable_capture: "mapping"
+      description: "无效化映射的页"
+
+    # write_one_page - 写回单页
+    - pattern: 'write_one_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "写回单个页"
+
+    # wait_on_page_writeback - 等待写回
+    - pattern: 'wait_on_page_writeback\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "等待页写回完成"
+
+    # wait_on_page_locked - 等待页解锁
+    - pattern: 'wait_on_page_locked\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "等待页解锁"
+
+  call_chains:
+    page_cache_read:
+      description: "页缓存读路径"
+      trigger: "read 系统调用"
+      chain:
+        - function: "ksys_read"
+          file: "fs/read_write.c"
+          description: "系统调用入口"
+        - function: "vfs_read"
+          file: "fs/read_write.c"
+          description: "VFS 读入口"
+        - function: "__vfs_read"
+          file: "fs/read_write.c"
+          description: "VFS 读实现"
+        - function: "generic_file_read_iter"
+          file: "mm/filemap.c"
+          description: "通用文件读"
+        - function: "generic_file_buffered_read"
+          file: "mm/filemap.c"
+          description: "缓冲读"
+        - function: "find_get_page"
+          file: "mm/filemap.c"
+          description: "查找页缓存"
+        - function: "user_readpage"
+          file: "用户代码"
+          description: "用户 readpage 回调"
+          is_user_entry: true
+
+    page_cache_write:
+      description: "页缓存写路径"
+      trigger: "write 系统调用"
+      chain:
+        - function: "ksys_write"
+          file: "fs/read_write.c"
+          description: "系统调用入口"
+        - function: "vfs_write"
+          file: "fs/read_write.c"
+          description: "VFS 写入口"
+        - function: "__vfs_write"
+          file: "fs/read_write.c"
+          description: "VFS 写实现"
+        - function: "generic_file_write_iter"
+          file: "mm/filemap.c"
+          description: "通用文件写"
+        - function: "generic_perform_write"
+          file: "mm/filemap.c"
+          description: "执行写"
+        - function: "a_ops->write_begin"
+          file: "用户代码"
+          description: "用户 write_begin 回调"
+          is_user_entry: true
+        - function: "a_ops->write_end"
+          file: "用户代码"
+          description: "用户 write_end 回调"
+          is_user_entry: true
+
+    page_fault_path:
+      description: "页缓存缺页路径"
+      trigger: "访问 mmap 映射的文件"
+      chain:
+        - function: "handle_mm_fault"
+          file: "mm/memory.c"
+          description: "处理内存错误"
+        - function: "__handle_mm_fault"
+          file: "mm/memory.c"
+          description: "内部处理"
+        - function: "handle_pte_fault"
+          file: "mm/memory.c"
+          description: "处理 PTE 错误"
+        - function: "do_fault"
+          file: "mm/memory.c"
+          description: "处理文件缺页"
+        - function: "do_read_fault"
+          file: "mm/memory.c"
+          description: "处理读缺页"
+        - function: "__do_fault"
+          file: "mm/memory.c"
+          description: "执行缺页处理"
+        - function: "filemap_fault"
+          file: "mm/filemap.c"
+          description: "文件映射缺页"
+
+
+# ============================================================
+# MEMORY MAPPING (MMAP)
+# ============================================================
+
+memory_mapping:
+  description: "Memory Mapping - 内存映射"
+  header: "linux/mman.h"
+  icon: "🗺️"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  structure:
+    pattern: 'static const struct vm_operations_struct\s+(?P<name>\w+)\s*=\s*\{'
+    description: "VMA 操作结构"
+    fields:
+      - name: "open"
+        type: "void (*)(struct vm_area_struct *)"
+        description: "VMA 打开回调"
+      - name: "close"
+        type: "void (*)(struct vm_area_struct *)"
+        description: "VMA 关闭回调"
+      - name: "split"
+        type: "int (*)(struct vm_area_struct *, unsigned long)"
+        description: "VMA 分割回调"
+      - name: "mremap"
+        type: "int (*)(struct vm_area_struct *)"
+        description: "VMA 重映射回调"
+      - name: "fault"
+        type: "int (*)(struct vm_fault *)"
+        description: "缺页异常处理"
+      - name: "huge_fault"
+        type: "int (*)(struct vm_fault *, enum page_entry_size)"
+        description: "大页缺页处理"
+      - name: "map_pages"
+        type: "void (*)(struct vm_fault *, pgoff_t, pgoff_t)"
+        description: "映射多个页"
+      - name: "page_mkwrite"
+        type: "int (*)(struct vm_fault *)"
+        description: "页变可写回调"
+      - name: "pfn_mkwrite"
+        type: "int (*)(struct vm_fault *)"
+        description: "PFN 变可写回调"
+      - name: "access"
+        type: "int (*)(struct vm_area_struct *, unsigned long, void *, int, int)"
+        description: "进程内存访问"
+
+  callbacks:
+    fault:
+      pattern: '\.fault\s*=\s*(?P<handler>\w+)'
+      description: "处理缺页异常"
+      trigger: "访问未映射的虚拟地址"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct vm_fault *vmf)"
+      return_value:
+        success: "VM_FAULT_NOPAGE 或 0"
+        failure: "VM_FAULT_SIGBUS, VM_FAULT_OOM"
+      typical_actions:
+        - "分配或查找页"
+        - "填充 vmf->page"
+
+    page_mkwrite:
+      pattern: '\.page_mkwrite\s*=\s*(?P<handler>\w+)'
+      description: "页即将变为可写"
+      trigger: "写时复制或共享写"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct vm_fault *vmf)"
+      return_value:
+        success: "VM_FAULT_LOCKED"
+        failure: "VM_FAULT_SIGBUS"
+      typical_actions:
+        - "锁定页"
+        - "等待写回完成"
+        - "标记页为脏"
+
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      description: "VMA 被复制或创建"
+      trigger: "fork, mmap"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct vm_area_struct *area)"
+      typical_actions:
+        - "增加引用计数"
+        - "初始化私有数据"
+
+    close:
+      pattern: '\.close\s*=\s*(?P<handler>\w+)'
+      description: "VMA 被删除"
+      trigger: "munmap, exit"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct vm_area_struct *area)"
+      typical_actions:
+        - "减少引用计数"
+        - "清理私有数据"
+
+  bind_patterns:
+    # do_mmap - 内核 mmap 入口
+    - pattern: 'do_mmap\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,'
+      variable_capture: "file"
+      description: "内核 mmap 主入口"
+
+    # do_munmap - 内核 munmap 入口
+    - pattern: 'do_munmap\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,'
+      variable_capture: "start"
+      description: "内核 munmap 主入口"
+
+    # do_brk_flags - brk 实现
+    - pattern: 'do_brk_flags\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,'
       variable_capture: "addr"
-      description: "虚拟地址转页帧号"
+      description: "brk 实现"
+
+    # vm_mmap - 内核 mmap 封装
+    - pattern: 'vm_mmap\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,'
+      variable_capture: "file"
+      description: "内核 mmap 封装"
+
+    # vm_munmap - 内核 munmap 封装
+    - pattern: 'vm_munmap\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "内核 munmap 封装"
+
+    # find_vma - 查找 VMA
+    - pattern: 'find_vma\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "查找包含地址的 VMA"
+
+    # find_vma_intersection - 查找交叉 VMA
+    - pattern: 'find_vma_intersection\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      variable_capture: "start"
+      description: "查找与范围交叉的 VMA"
+
+    # vma_merge - 合并 VMA
+    - pattern: 'vma_merge\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<prev>[^,]+)\s*,'
+      variable_capture: "mm"
+      description: "尝试合并 VMA"
+
+    # split_vma - 分割 VMA
+    - pattern: 'split_vma\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<new_below>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "分割 VMA"
+
+    # insert_vm_struct - 插入 VMA
+    - pattern: 'insert_vm_struct\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<vma>[^)]+)\s*\)'
+      variable_capture: "vma"
+      description: "插入 VMA 到 mm"
+
+    # unmap_region - 取消映射区域
+    - pattern: 'unmap_region\s*\(\s*(?P<mm>[^,]+)\s*,'
+      variable_capture: "mm"
+      description: "取消映射区域"
+
+    # remap_pfn_range - 重映射 PFN
+    - pattern: 'remap_pfn_range\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pfn>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<prot>[^)]+)\s*\)'
+      variable_capture: "pfn"
+      description: "映射物理页到用户空间"
+
+    # io_remap_pfn_range - IO 重映射
+    - pattern: 'io_remap_pfn_range\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pfn>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<prot>[^)]+)\s*\)'
+      variable_capture: "pfn"
+      description: "映射 IO 内存到用户空间"
+
+    # vm_insert_page - 插入页
+    - pattern: 'vm_insert_page\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "在 VMA 中插入单个页"
+
+    # vm_insert_pfn - 插入 PFN
+    - pattern: 'vm_insert_pfn\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pfn>[^)]+)\s*\)'
+      variable_capture: "pfn"
+      description: "在 VMA 中插入 PFN"
+
+    # vm_insert_mixed - 混合插入
+    - pattern: 'vm_insert_mixed\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pfn>[^)]+)\s*\)'
+      variable_capture: "pfn"
+      description: "混合插入页或 PFN"
+
+    # mmap_region - mmap 区域
+    - pattern: 'mmap_region\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,'
+      variable_capture: "addr"
+      description: "创建新的映射区域"
+
+    # get_unmapped_area - 获取未映射区域
+    - pattern: 'get_unmapped_area\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,'
+      variable_capture: "len"
+      description: "获取可用的未映射区域"
+
+  call_chains:
+    mmap_syscall:
+      description: "mmap 系统调用路径"
+      trigger: "用户调用 mmap()"
+      chain:
+        - function: "ksys_mmap_pgoff"
+          file: "mm/mmap.c"
+          description: "系统调用入口"
+        - function: "vm_mmap_pgoff"
+          file: "mm/util.c"
+          description: "VM mmap 封装"
+        - function: "do_mmap"
+          file: "mm/mmap.c"
+          description: "mmap 主实现"
+        - function: "get_unmapped_area"
+          file: "mm/mmap.c"
+          description: "获取可用地址"
+        - function: "mmap_region"
+          file: "mm/mmap.c"
+          description: "创建映射区域"
+        - function: "call_mmap"
+          file: "include/linux/fs.h"
+          description: "调用文件 mmap"
+        - function: "user_mmap"
+          file: "用户代码"
+          description: "用户 mmap 回调"
+          is_user_entry: true
+
+    munmap_syscall:
+      description: "munmap 系统调用路径"
+      trigger: "用户调用 munmap()"
+      chain:
+        - function: "__do_sys_munmap"
+          file: "mm/mmap.c"
+          description: "系统调用入口"
+        - function: "__vm_munmap"
+          file: "mm/mmap.c"
+          description: "munmap 封装"
+        - function: "do_munmap"
+          file: "mm/mmap.c"
+          description: "munmap 主实现"
+        - function: "unmap_region"
+          file: "mm/mmap.c"
+          description: "取消映射区域"
+        - function: "unmap_vmas"
+          file: "mm/memory.c"
+          description: "取消映射 VMA"
+
+    page_fault:
+      description: "缺页异常路径"
+      trigger: "访问未映射页"
+      chain:
+        - function: "do_page_fault"
+          file: "arch/*/mm/fault.c"
+          description: "架构缺页入口"
+        - function: "__do_page_fault"
+          file: "arch/*/mm/fault.c"
+          description: "缺页处理"
+        - function: "handle_mm_fault"
+          file: "mm/memory.c"
+          description: "MM 层缺页处理"
+        - function: "__handle_mm_fault"
+          file: "mm/memory.c"
+          description: "内部处理"
+        - function: "handle_pte_fault"
+          file: "mm/memory.c"
+          description: "PTE 层处理"
+        - function: "do_fault"
+          file: "mm/memory.c"
+          description: "文件缺页"
+        - function: "vma->vm_ops->fault"
+          file: "用户代码"
+          description: "用户 fault 回调"
+          is_user_entry: true
+
+
+# ============================================================
+# NUMA SUPPORT
+# ============================================================
+
+numa_support:
+  description: "NUMA Support - NUMA 支持"
+  header: "linux/numa.h"
+  icon: "🔀"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # numa_node_id - 当前节点 ID
+    - pattern: 'numa_node_id\s*\(\s*\)'
+      description: "获取当前 CPU 的 NUMA 节点"
+
+    # numa_mem_id - 内存节点 ID
+    - pattern: 'numa_mem_id\s*\(\s*\)'
+      description: "获取本地内存 NUMA 节点"
+
+    # cpu_to_node - CPU 转节点
+    - pattern: 'cpu_to_node\s*\(\s*(?P<cpu>[^)]+)\s*\)'
+      variable_capture: "cpu"
+      description: "获取 CPU 所在 NUMA 节点"
+
+    # node_to_cpumask - 节点转 CPU 掩码
+    - pattern: 'node_to_cpumask\s*\(\s*(?P<node>[^)]+)\s*\)'
+      variable_capture: "node"
+      description: "获取节点的 CPU 掩码"
+
+    # node_zonelist - 节点 zonelist
+    - pattern: 'node_zonelist\s*\(\s*(?P<nid>[^,]+)\s*,\s*(?P<gfp_mask>[^)]+)\s*\)'
+      variable_capture: "nid"
+      description: "获取节点的 zone 列表"
+
+    # alloc_pages_node - 节点分配页
+    - pattern: 'alloc_pages_node\s*\(\s*(?P<nid>[^,]+)\s*,\s*(?P<gfp_mask>[^,]+)\s*,\s*(?P<order>[^)]+)\s*\)'
+      variable_capture: "nid"
+      description: "从指定节点分配页"
+
+    # __alloc_pages_node - 底层节点分配
+    - pattern: '__alloc_pages_node\s*\(\s*(?P<nid>[^,]+)\s*,\s*(?P<gfp_mask>[^,]+)\s*,\s*(?P<order>[^)]+)\s*\)'
+      variable_capture: "nid"
+      description: "底层节点页分配"
+
+    # alloc_pages_current - 当前节点分配
+    - pattern: 'alloc_pages_current\s*\(\s*(?P<gfp>[^,]+)\s*,\s*(?P<order>[^)]+)\s*\)'
+      variable_capture: "gfp"
+      description: "从当前节点分配页"
+
+    # set_mempolicy - 设置内存策略
+    - pattern: 'set_mempolicy\s*\(\s*(?P<mode>[^,]+)\s*,'
+      variable_capture: "mode"
+      description: "设置内存分配策略"
+
+    # get_mempolicy - 获取内存策略
+    - pattern: 'get_mempolicy\s*\(\s*(?P<policy>[^,]+)\s*,'
+      variable_capture: "policy"
+      description: "获取内存分配策略"
+
+    # mbind - 绑定内存
+    - pattern: 'mbind\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,'
+      variable_capture: "start"
+      description: "绑定内存到节点"
+
+    # migrate_pages - 迁移页
+    - pattern: 'migrate_pages\s*\(\s*(?P<from>[^,]+)\s*,'
+      variable_capture: "from"
+      description: "迁移进程页到其他节点"
+
+    # numa_migrate_prep - NUMA 迁移准备
+    - pattern: 'numa_migrate_prep\s*\(\s*(?P<page>[^,]+)\s*,'
+      variable_capture: "page"
+      description: "准备 NUMA 页迁移"
+
+    # node_state - 节点状态
+    - pattern: 'node_state\s*\(\s*(?P<node>[^,]+)\s*,\s*(?P<state>[^)]+)\s*\)'
+      variable_capture: "node"
+      description: "检查节点状态"
+
+    # for_each_online_node - 遍历在线节点
+    - pattern: 'for_each_online_node\s*\(\s*(?P<node>\w+)\s*\)'
+      variable_capture: "node"
+      description: "遍历所有在线节点"
+
+    # for_each_node_with_cpus - 遍历有 CPU 的节点
+    - pattern: 'for_each_node_with_cpus\s*\(\s*(?P<node>\w+)\s*\)'
+      variable_capture: "node"
+      description: "遍历有 CPU 的节点"
+
+    # NUMA_NO_NODE - 无节点
+    - pattern: 'NUMA_NO_NODE'
+      description: "表示不指定 NUMA 节点"
+
+  call_chains:
+    numa_alloc:
+      description: "NUMA 感知分配路径"
+      trigger: "调用 alloc_pages_node()"
+      chain:
+        - function: "alloc_pages_node"
+          file: "include/linux/gfp.h"
+          description: "NUMA 分配入口"
+        - function: "__alloc_pages_node"
+          file: "include/linux/gfp.h"
+          description: "内部实现"
+        - function: "__alloc_pages_nodemask"
+          file: "mm/page_alloc.c"
+          description: "带节点掩码分配"
+        - function: "get_page_from_freelist"
+          file: "mm/page_alloc.c"
+          description: "从空闲列表获取"
+
+    numa_migrate:
+      description: "NUMA 页迁移路径"
+      trigger: "页在错误节点"
+      chain:
+        - function: "task_numa_fault"
+          file: "kernel/sched/fair.c"
+          description: "NUMA 缺页统计"
+        - function: "migrate_misplaced_page"
+          file: "mm/migrate.c"
+          description: "迁移错位页"
+        - function: "numamigrate_isolate_page"
+          file: "mm/migrate.c"
+          description: "隔离要迁移的页"
+        - function: "migrate_pages"
+          file: "mm/migrate.c"
+          description: "执行迁移"
+
+
+# ============================================================
+# COPY ON WRITE (COW)
+# ============================================================
+
+copy_on_write:
+  description: "Copy on Write - 写时复制"
+  header: "linux/mm.h"
+  icon: "📝"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # do_wp_page - 写保护缺页
+    - pattern: 'do_wp_page\s*\(\s*(?P<vmf>[^,]+)\s*,\s*(?P<old_page>[^)]+)\s*\)'
+      variable_capture: "vmf"
+      description: "处理写保护缺页"
+
+    # cow_user_page - COW 用户页
+    - pattern: 'cow_user_page\s*\(\s*(?P<dst>[^,]+)\s*,\s*(?P<src>[^,]+)\s*,\s*(?P<va>[^,]+)\s*,\s*(?P<vma>[^)]+)\s*\)'
+      variable_capture: "dst"
+      description: "复制用户页 (COW)"
+
+    # page_mapcount - 页映射计数
+    - pattern: 'page_mapcount\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "获取页的映射计数"
+
+    # copy_page - 复制页
+    - pattern: 'copy_page\s*\(\s*(?P<to>[^,]+)\s*,\s*(?P<from>[^)]+)\s*\)'
+      variable_capture: "to"
+      description: "复制整个页内容"
+
+    # fork_page_vma - fork 页 VMA
+    - pattern: 'copy_page_range\s*\(\s*(?P<dst_mm>[^,]+)\s*,\s*(?P<src_mm>[^,]+)\s*,\s*(?P<vma>[^)]+)\s*\)'
+      variable_capture: "vma"
+      description: "复制页表范围 (fork)"
+
+  call_chains:
+    cow_fault:
+      description: "写时复制缺页路径"
+      trigger: "写入只读的共享页"
+      chain:
+        - function: "handle_pte_fault"
+          file: "mm/memory.c"
+          description: "PTE 缺页处理"
+        - function: "do_wp_page"
+          file: "mm/memory.c"
+          description: "写保护处理"
+        - function: "wp_page_copy"
+          file: "mm/memory.c"
+          description: "复制页"
+        - function: "alloc_page_vma"
+          file: "include/linux/gfp.h"
+          description: "分配新页"
+        - function: "cow_user_page"
+          file: "mm/memory.c"
+          description: "复制内容"
+        - function: "set_pte_at"
+          file: "arch/*/include/asm/pgtable.h"
+          description: "更新页表"
+
+
+# ============================================================
+# TRANSPARENT HUGE PAGES (THP)
+# ============================================================
+
+thp:
+  description: "Transparent Huge Pages - 透明大页"
+  header: "linux/huge_mm.h"
+  icon: "📦"
+  kernel_version: "2.6.38+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # transparent_hugepage_enabled - THP 启用
+    - pattern: 'transparent_hugepage_enabled\s*\(\s*(?P<vma>[^)]+)\s*\)'
+      variable_capture: "vma"
+      description: "检查 VMA 是否启用 THP"
+
+    # do_huge_pmd_anonymous_page - 匿名大页
+    - pattern: 'do_huge_pmd_anonymous_page\s*\(\s*(?P<vmf>[^)]+)\s*\)'
+      variable_capture: "vmf"
+      description: "处理匿名大页缺页"
+
+    # do_huge_pmd_wp_page - 大页写保护
+    - pattern: 'do_huge_pmd_wp_page\s*\(\s*(?P<vmf>[^,]+)\s*,\s*(?P<orig_pmd>[^)]+)\s*\)'
+      variable_capture: "vmf"
+      description: "处理大页写保护缺页"
+
+    # collapse_huge_page - 折叠大页
+    - pattern: 'collapse_huge_page\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<address>[^,]+)\s*,'
+      variable_capture: "address"
+      description: "将多个小页折叠为大页"
+
+    # split_huge_page - 分割大页
+    - pattern: 'split_huge_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "将大页分割为小页"
+
+    # split_huge_pmd - 分割大 PMD
+    - pattern: 'split_huge_pmd\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<pmd>[^,]+)\s*,\s*(?P<address>[^)]+)\s*\)'
+      variable_capture: "address"
+      description: "分割大 PMD 为小页表"
+
+    # PageTransHuge - 检查透明大页
+    - pattern: 'PageTransHuge\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查是否为透明大页"
+
+    # PageTransCompound - 检查透明复合页
+    - pattern: 'PageTransCompound\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "检查是否为透明复合页"
+
+    # compound_head - 复合页头
+    - pattern: 'compound_head\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "获取复合页的头页"
+
+    # thp_get_unmapped_area - THP 获取未映射区
+    - pattern: 'thp_get_unmapped_area\s*\(\s*(?P<filp>[^,]+)\s*,'
+      variable_capture: "filp"
+      description: "获取 THP 对齐的地址"
+
+
+# ============================================================
+# MEMORY COMPACTION
+# ============================================================
+
+memory_compaction:
+  description: "Memory Compaction - 内存压缩"
+  header: "linux/compaction.h"
+  icon: "🗜️"
+  kernel_version: "2.6.35+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # try_to_compact_pages - 尝试压缩页
+    - pattern: 'try_to_compact_pages\s*\(\s*(?P<gfp_mask>[^,]+)\s*,\s*(?P<order>[^,]+)\s*,'
+      variable_capture: "order"
+      description: "尝试压缩页面"
+
+    # compact_zone - 压缩 zone
+    - pattern: 'compact_zone\s*\(\s*(?P<cc>[^,]+)\s*,\s*(?P<capc>[^)]+)\s*\)'
+      variable_capture: "cc"
+      description: "压缩单个 zone"
+
+    # compact_node - 压缩节点
+    - pattern: 'compact_node\s*\(\s*(?P<nid>[^)]+)\s*\)'
+      variable_capture: "nid"
+      description: "压缩整个节点"
+
+    # compaction_suitable - 是否适合压缩
+    - pattern: 'compaction_suitable\s*\(\s*(?P<zone>[^,]+)\s*,\s*(?P<order>[^,]+)\s*,'
+      variable_capture: "zone"
+      description: "检查 zone 是否适合压缩"
+
+    # kcompactd_run - 运行 kcompactd
+    - pattern: 'kcompactd_run\s*\(\s*(?P<nid>[^)]+)\s*\)'
+      variable_capture: "nid"
+      description: "启动 kcompactd"
+
+    # wakeup_kcompactd - 唤醒 kcompactd
+    - pattern: 'wakeup_kcompactd\s*\(\s*(?P<pgdat>[^,]+)\s*,\s*(?P<order>[^,]+)\s*,\s*(?P<classzone_idx>[^)]+)\s*\)'
+      variable_capture: "pgdat"
+      description: "唤醒 kcompactd 守护进程"
+
+    # isolate_freepages - 隔离空闲页
+    - pattern: 'isolate_freepages\s*\(\s*(?P<cc>[^)]+)\s*\)'
+      variable_capture: "cc"
+      description: "隔离空闲页用于迁移"
+
+    # isolate_migratepages - 隔离可迁移页
+    - pattern: 'isolate_migratepages\s*\(\s*(?P<zone>[^,]+)\s*,\s*(?P<cc>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "隔离可迁移的页"
+
+  call_chains:
+    compaction_path:
+      description: "内存压缩路径"
+      trigger: "高阶分配失败"
+      chain:
+        - function: "__alloc_pages_slowpath"
+          file: "mm/page_alloc.c"
+          description: "慢速分配路径"
+        - function: "__alloc_pages_direct_compact"
+          file: "mm/page_alloc.c"
+          description: "直接压缩"
+        - function: "try_to_compact_pages"
+          file: "mm/compaction.c"
+          description: "尝试压缩"
+        - function: "compact_zone_order"
+          file: "mm/compaction.c"
+          description: "压缩 zone"
+        - function: "compact_zone"
+          file: "mm/compaction.c"
+          description: "执行压缩"
+        - function: "isolate_migratepages"
+          file: "mm/compaction.c"
+          description: "隔离页"
+        - function: "migrate_pages"
+          file: "mm/migrate.c"
+          description: "迁移页"
+
+
+# ============================================================
+# SWAP
+# ============================================================
+
+swap:
+  description: "Swap - 交换"
+  header: "linux/swap.h"
+  icon: "💿"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # add_to_swap - 添加到交换
+    - pattern: 'add_to_swap\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "将页添加到交换缓存"
+
+    # delete_from_swap_cache - 从交换缓存删除
+    - pattern: 'delete_from_swap_cache\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "从交换缓存删除页"
+
+    # swap_writepage - 写交换页
+    - pattern: 'swap_writepage\s*\(\s*(?P<page>[^,]+)\s*,\s*(?P<wbc>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "将页写入交换空间"
+
+    # swap_readpage - 读交换页
+    - pattern: 'swap_readpage\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "从交换空间读取页"
+
+    # swapon - 启用交换
+    - pattern: 'sys_swapon\s*\(\s*(?P<specialfile>[^,]+)\s*,\s*(?P<swap_flags>[^)]+)\s*\)'
+      variable_capture: "specialfile"
+      description: "启用交换文件/分区"
+
+    # swapoff - 禁用交换
+    - pattern: 'sys_swapoff\s*\(\s*(?P<specialfile>[^)]+)\s*\)'
+      variable_capture: "specialfile"
+      description: "禁用交换文件/分区"
+
+    # get_swap_page - 获取交换页
+    - pattern: 'get_swap_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "为页获取交换槽位"
+
+    # free_swap_and_cache - 释放交换和缓存
+    - pattern: 'free_swap_and_cache\s*\(\s*(?P<entry>[^)]+)\s*\)'
+      variable_capture: "entry"
+      description: "释放交换项和缓存页"
+
+    # lookup_swap_cache - 查找交换缓存
+    - pattern: 'lookup_swap_cache\s*\(\s*(?P<entry>[^,]+)\s*,'
+      variable_capture: "entry"
+      description: "在交换缓存中查找页"
+
+    # swapcache_free_entries - 释放交换缓存项
+    - pattern: 'swapcache_free_entries\s*\(\s*(?P<entries>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+      variable_capture: "n"
+      description: "批量释放交换缓存项"
+
+  call_chains:
+    swap_out:
+      description: "换出路径"
+      trigger: "内存回收"
+      chain:
+        - function: "shrink_page_list"
+          file: "mm/vmscan.c"
+          description: "收缩页列表"
+        - function: "add_to_swap"
+          file: "mm/swap_state.c"
+          description: "添加到交换"
+        - function: "get_swap_page"
+          file: "mm/swapfile.c"
+          description: "获取交换槽"
+        - function: "swap_writepage"
+          file: "mm/page_io.c"
+          description: "写入交换"
+
+    swap_in:
+      description: "换入路径"
+      trigger: "访问被换出的页"
+      chain:
+        - function: "do_swap_page"
+          file: "mm/memory.c"
+          description: "处理交换缺页"
+        - function: "lookup_swap_cache"
+          file: "mm/swap_state.c"
+          description: "查找交换缓存"
+        - function: "swapin_readahead"
+          file: "mm/swap_state.c"
+          description: "预读取"
+        - function: "swap_readpage"
+          file: "mm/page_io.c"
+          description: "读取交换页"
 
 
 # ============================================================
@@ -309,13 +2082,19 @@ mapping_ops:
 
 examples:
   - description: "内存分配示例"
+    kernel_version: "4.0+"
     code: |
-      static int my_init(void) {
+      #include <linux/slab.h>
+      #include <linux/mm.h>
+      #include <linux/vmalloc.h>
+
+      static int my_init(void)
+      {
           struct my_data *data;
           void *buffer;
           struct page *page;
 
-          /* kmalloc 分配 */
+          /* kmalloc 分配 - 小块连续物理内存 */
           data = kmalloc(sizeof(*data), GFP_KERNEL);
           if (!data)
               return -ENOMEM;
@@ -327,35 +2106,292 @@ examples:
               return -ENOMEM;
           }
 
-          /* 分配单个页 */
-          page = alloc_pages(GFP_KERNEL, 0);
-          if (!page) {
+          /* vmalloc 分配 - 大块虚拟连续内存 */
+          void *vbuf = vmalloc(1024 * 1024);
+          if (!vbuf) {
               kfree(buffer);
               kfree(data);
               return -ENOMEM;
           }
 
-          __free_pages(page, 0);
-          vfree(buffer);
+          /* 分配单个页框 */
+          page = alloc_page(GFP_KERNEL);
+          if (!page) {
+              vfree(vbuf);
+              kfree(buffer);
+              kfree(data);
+              return -ENOMEM;
+          }
+
+          /* 使用页 */
+          void *page_addr = page_address(page);
+          memset(page_addr, 0, PAGE_SIZE);
+
+          /* 释放资源 */
+          __free_page(page);
+          vfree(vbuf);
+          kfree(buffer);
           kfree(data);
+
           return 0;
       }
 
   - description: "SLAB 缓存示例"
+    kernel_version: "2.6+"
     code: |
+      #include <linux/slab.h>
+      #include <linux/module.h>
+
+      struct my_object {
+          int id;
+          char name[32];
+          struct list_head list;
+      };
+
       static struct kmem_cache *my_cache;
 
-      static int __init my_cache_init(void) {
-          my_cache = kmem_cache_create("my_cache",
-                                       sizeof(struct my_obj),
-                                       0,
-                                       SLAB_HWCACHE_ALIGN,
-                                       NULL);
+      static int __init my_cache_init(void)
+      {
+          /* 创建专用缓存 */
+          my_cache = kmem_cache_create("my_object_cache",
+                                       sizeof(struct my_object),
+                                       0,  /* align */
+                                       SLAB_HWCACHE_ALIGN | SLAB_PANIC,
+                                       NULL);  /* constructor */
           if (!my_cache)
               return -ENOMEM;
+
+          /* 从缓存分配 */
+          struct my_object *obj = kmem_cache_alloc(my_cache, GFP_KERNEL);
+          if (!obj)
+              return -ENOMEM;
+
+          obj->id = 1;
+          strncpy(obj->name, "test", sizeof(obj->name));
+
+          /* 释放回缓存 */
+          kmem_cache_free(my_cache, obj);
+
           return 0;
       }
 
-      static void __exit my_cache_exit(void) {
+      static void __exit my_cache_exit(void)
+      {
+          /* 销毁缓存 */
           kmem_cache_destroy(my_cache);
+      }
+
+      module_init(my_cache_init);
+      module_exit(my_cache_exit);
+
+  - description: "页表操作示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/mm.h>
+      #include <linux/pgtable.h>
+      #include <asm/pgtable.h>
+
+      /* 遍历页表查找物理地址 */
+      static unsigned long virt_to_phys_via_pagetable(
+          struct mm_struct *mm, unsigned long vaddr)
+      {
+          pgd_t *pgd;
+          p4d_t *p4d;
+          pud_t *pud;
+          pmd_t *pmd;
+          pte_t *pte;
+
+          /* 遍历 PGD */
+          pgd = pgd_offset(mm, vaddr);
+          if (pgd_none(*pgd) || pgd_bad(*pgd))
+              return 0;
+
+          /* 遍历 P4D (5级页表) */
+          p4d = p4d_offset(pgd, vaddr);
+          if (p4d_none(*p4d) || p4d_bad(*p4d))
+              return 0;
+
+          /* 遍历 PUD */
+          pud = pud_offset(p4d, vaddr);
+          if (pud_none(*pud) || pud_bad(*pud))
+              return 0;
+
+          /* 遍历 PMD */
+          pmd = pmd_offset(pud, vaddr);
+          if (pmd_none(*pmd) || pmd_bad(*pmd))
+              return 0;
+
+          /* 获取 PTE */
+          pte = pte_offset_map(pmd, vaddr);
+          if (!pte || pte_none(*pte)) {
+              if (pte)
+                  pte_unmap(pte);
+              return 0;
+          }
+
+          /* 计算物理地址 */
+          unsigned long phys = (pte_pfn(*pte) << PAGE_SHIFT) |
+                               (vaddr & ~PAGE_MASK);
+          pte_unmap(pte);
+
+          return phys;
+      }
+
+  - description: "VMA 操作结构示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/mm.h>
+      #include <linux/fs.h>
+
+      static vm_fault_t my_fault(struct vm_fault *vmf)
+      {
+          struct vm_area_struct *vma = vmf->vma;
+          struct page *page;
+
+          /* 分配新页 */
+          page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+          if (!page)
+              return VM_FAULT_OOM;
+
+          /* 设置页 */
+          vmf->page = page;
+          get_page(page);
+
+          return 0;
+      }
+
+      static void my_open(struct vm_area_struct *vma)
+      {
+          pr_info("VMA opened: %lx-%lx\n", vma->vm_start, vma->vm_end);
+      }
+
+      static void my_close(struct vm_area_struct *vma)
+      {
+          pr_info("VMA closed: %lx-%lx\n", vma->vm_start, vma->vm_end);
+      }
+
+      static const struct vm_operations_struct my_vm_ops = {
+          .open   = my_open,
+          .close  = my_close,
+          .fault  = my_fault,
+      };
+
+      static int my_mmap(struct file *file, struct vm_area_struct *vma)
+      {
+          vma->vm_ops = &my_vm_ops;
+          vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
+          my_open(vma);
+          return 0;
+      }
+
+  - description: "页缓存操作示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/fs.h>
+      #include <linux/pagemap.h>
+      #include <linux/writeback.h>
+
+      static int my_readpage(struct file *file, struct page *page)
+      {
+          void *buf = kmap(page);
+
+          /* 从设备/文件读取数据到 buf */
+          memset(buf, 0, PAGE_SIZE);
+
+          kunmap(page);
+
+          SetPageUptodate(page);
+          unlock_page(page);
+          return 0;
+      }
+
+      static int my_writepage(struct page *page,
+                              struct writeback_control *wbc)
+      {
+          void *buf = kmap(page);
+
+          /* 将 buf 写入设备/文件 */
+
+          kunmap(page);
+
+          set_page_writeback(page);
+          unlock_page(page);
+          end_page_writeback(page);
+          return 0;
+      }
+
+      static const struct address_space_operations my_aops = {
+          .readpage   = my_readpage,
+          .writepage  = my_writepage,
+          .set_page_dirty = __set_page_dirty_nobuffers,
+      };
+
+  - description: "OOM 评分调整示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/oom.h>
+
+      /*
+       * 调整进程的 OOM 分数
+       * -1000: 禁用 OOM killer
+       * 0: 默认
+       * 1000: 优先被杀
+       */
+      static void adjust_oom_score(struct task_struct *task, int adj)
+      {
+          struct mm_struct *mm = task->mm;
+
+          if (!mm)
+              return;
+
+          /* 范围检查 */
+          if (adj < OOM_SCORE_ADJ_MIN)
+              adj = OOM_SCORE_ADJ_MIN;
+          else if (adj > OOM_SCORE_ADJ_MAX)
+              adj = OOM_SCORE_ADJ_MAX;
+
+          task->signal->oom_score_adj = adj;
+      }
+
+      /* 用户空间通过 /proc/PID/oom_score_adj 调整 */
+      /* echo -1000 > /proc/PID/oom_score_adj  # 禁止 OOM 杀死此进程 */
+      /* echo 1000 > /proc/PID/oom_score_adj   # 优先杀死此进程 */
+
+  - description: "NUMA 感知分配示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/mm.h>
+      #include <linux/numa.h>
+      #include <linux/slab.h>
+
+      static int numa_aware_alloc(void)
+      {
+          int node;
+          void *buf;
+          struct page *page;
+
+          /* 获取当前 CPU 的 NUMA 节点 */
+          node = numa_node_id();
+          pr_info("Current NUMA node: %d\n", node);
+
+          /* 从指定节点分配内存 */
+          buf = kmalloc_node(1024, GFP_KERNEL, node);
+          if (!buf)
+              return -ENOMEM;
+
+          /* 从指定节点分配页 */
+          page = alloc_pages_node(node, GFP_KERNEL, 0);
+          if (!page) {
+              kfree(buf);
+              return -ENOMEM;
+          }
+
+          /* 遍历所有在线节点 */
+          for_each_online_node(node) {
+              pr_info("Node %d is online\n", node);
+          }
+
+          __free_page(page);
+          kfree(buf);
+          return 0;
       }
