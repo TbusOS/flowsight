@@ -161,6 +161,41 @@ interface AsyncBinding {
 }
 ```
 
+### `get_entry_points`
+
+获取文件中的入口点函数（回调、模块初始化/退出等）。
+
+```typescript
+invoke('get_entry_points', { 
+  file_path: string 
+}): Promise<EntryPointInfo[]>
+```
+
+**参数:**
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| file_path | string | 文件绝对路径 |
+
+**返回值:**
+```typescript
+interface EntryPointInfo {
+  name: string;      // 函数名
+  kind: string;      // 类型: 'callback' | 'module_init' | 'module_exit' | 'function'
+  line: number;      // 行号
+}
+```
+
+**示例:**
+```typescript
+const entryPoints = await invoke('get_entry_points', { 
+  file_path: '/path/to/driver.c' 
+});
+// [
+//   { name: 'probe', kind: 'callback', line: 42 },
+//   { name: 'module_init', kind: 'module_init', line: 100 }
+// ]
+```
+
 ## 格式化导出
 
 ### `format_execution_flow`
@@ -169,40 +204,118 @@ interface AsyncBinding {
 
 ```typescript
 invoke('format_execution_flow', {
-  flow: ExecutionFlow,
-  format: 'mermaid' | 'table' | 'text' | 'ai',
-  options?: FormatOptions
-}): Promise<FormattedOutput>
+  filePath: string,
+  entryFunction: string,
+  options: FormatOptions
+}): Promise<FormattedFlow>
 ```
 
 **参数:**
-| 名称 | 类型 | 描述 |
-|------|------|------|
-| flow | ExecutionFlow | 执行流数据 |
-| format | string | 输出格式 |
-| options | FormatOptions | 格式化选项 |
+| 名称 | 类型 | 必须 | 描述 |
+|------|------|------|------|
+| filePath | string | 是 | 文件路径 |
+| entryFunction | string | 是 | 入口函数名 |
+| options | FormatOptions | 是 | 格式化选项 |
 
 **格式选项:**
 ```typescript
 interface FormatOptions {
-  includeLineNumbers?: boolean;
-  includeConfidence?: boolean;
-  maxDepth?: number;
-  language?: 'zh' | 'en';
+  format: 'mermaid' | 'markdown' | 'ascii' | 'json';
+  include_kernel_internal?: boolean;  // 包含内核内部调用
+  max_depth?: number;                 // 最大深度
 }
 ```
 
 **返回值:**
 ```typescript
-interface FormattedOutput {
-  content: string;
-  format: string;
-  metadata: {
-    nodeCount: number;
-    edgeCount: number;
-    asyncCount: number;
-  };
+interface FormattedFlow {
+  format: string;        // 使用的格式
+  content: string;       // 格式化内容
+  entry_function: string; // 入口函数
+  summary: string;       // 摘要
 }
+```
+
+**示例:**
+```typescript
+const result = await invoke('format_execution_flow', {
+  filePath: '/path/to/driver.c',
+  entryFunction: 'probe',
+  options: { format: 'mermaid' }
+});
+console.log(result.content);
+// flowchart TD
+//   probe["probe()"] --> child1["init_device()"]
+//   ...
+```
+
+### `get_flow_display_data`
+
+获取执行流的展示数据（用于前端 UI 渲染）。
+
+```typescript
+invoke('get_flow_display_data', {
+  filePath: string,
+  entryFunction: string
+}): Promise<DisplayFlowData>
+```
+
+**参数:**
+| 名称 | 类型 | 描述 |
+|------|------|------|
+| filePath | string | 文件路径 |
+| entryFunction | string | 入口函数名 |
+
+**返回值:**
+```typescript
+interface DisplayFlowData {
+  entry_function: string;
+  summary: string;
+  mermaid_diagram: string;
+  nodes: DisplayNode[];
+  async_patterns: AsyncPattern[];
+  stats: FlowStats;
+}
+
+interface DisplayNode {
+  id: string;
+  name: string;
+  display_name: string;
+  node_type: 'entry' | 'function' | 'async' | 'callback';
+  context: string | null;    // 执行上下文: 'process' | 'softirq' | 'hardirq'
+  can_sleep: boolean | null;
+  description: string | null;
+  depth: number;
+  children_count: number;
+}
+
+interface AsyncPattern {
+  mechanism: string;   // 'WorkQueue' | 'Timer' | 'Tasklet' | 'IRQ'
+  trigger: string;     // 触发函数
+  handler: string;     // 处理函数
+  description: string;
+}
+
+interface FlowStats {
+  total_nodes: number;
+  direct_calls: number;
+  indirect_calls: number;
+  async_calls: number;
+}
+```
+
+**示例:**
+```typescript
+const displayData = await invoke('get_flow_display_data', {
+  filePath: '/path/to/driver.c',
+  entryFunction: 'probe'
+});
+
+console.log(`总节点: ${displayData.stats.total_nodes}`);
+console.log(`异步模式: ${displayData.async_patterns.length}`);
+
+// 渲染 Mermaid 图表
+renderMermaid(displayData.mermaid_diagram);
 ```
 
 ## LLVM IR
