@@ -28,6 +28,43 @@
 
 ---
 
+## 📚 知识库开发团队
+
+专门用于完善 Linux 内核知识库的 Agent 团队。
+
+**启动命令**:
+```
+用户: 完善 memory.yaml 知识库
+系统: 自动分配 KB-Memory → 开发 → KB-Reviewer 审核 → 完成
+```
+
+**知识库团队角色：**
+- 📝 **KB-Memory** - 内存管理知识库 (mm/, 页表, 回收, OOM)
+- ⏱️ **KB-Sched** - 调度器知识库 (sched/, CFS, 负载均衡)
+- ⚡ **KB-IRQ** - 中断知识库 (irq/, softirq, tasklet)
+- 📁 **KB-FS** - 文件系统知识库 (fs/, VFS, 页缓存)
+- 🌐 **KB-Net** - 网络知识库 (net/, socket, netfilter)
+- 🔧 **KB-Drivers** - 驱动框架知识库 (drivers/ 各子系统)
+- 🔒 **KB-Sync** - 同步原语知识库 (locking, RCU, 屏障)
+- ✅ **KB-Reviewer** - 知识库审核专家
+
+**知识库计划**: `docs/plans/knowledge-base-completion-plan.md`
+**知识库 Skill**: `.claude/skills/knowledge-base-dev.md`
+
+**任务分配：**
+| 优先级 | 文件 | Agent |
+|--------|------|-------|
+| P0 | memory.yaml | KB-Memory |
+| P0 | sched.yaml | KB-Sched |
+| P0 | irq.yaml | KB-IRQ |
+| P0 | vfs.yaml | KB-FS |
+| P1 | 9 个 core 文件 | KB-* |
+| P2 | 42 个驱动文件 | KB-Drivers |
+| P3 | 3 个网络文件 | KB-Net |
+| P4 | 4 个同步文件 | KB-Sync |
+
+---
+
 ## 项目概述
 跨平台代码执行流可视化 IDE，帮助理解 Linux 内核等大型代码库的执行流程。
 
