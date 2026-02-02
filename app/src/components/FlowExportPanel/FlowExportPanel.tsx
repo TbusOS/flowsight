@@ -1,10 +1,14 @@
 /**
  * FlowExportPanel - 执行流格式化导出面板
  *
- * 使用 FlowSight 统一的 UI 风格
+ * 功能：
+ * - 多格式导出 (Mermaid, Markdown, ASCII, JSON)
+ * - 内嵌 Mermaid 图表预览
+ * - 执行流统计概览
+ * - 一键复制和文件导出
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import {
@@ -23,8 +27,12 @@ import {
   GitBranch,
   Clock,
   AlertCircle,
+  Eye,
+  FileCode,
+  RefreshCw,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import mermaid from 'mermaid'
 
 // 格式化选项
 interface FormatOptions {
@@ -93,6 +101,31 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'json', label: 'JSON', icon: <Braces className="h-3.5 w-3.5" /> },
 ]
 
+// 初始化 Mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#3b82f6',
+    primaryTextColor: '#fff',
+    primaryBorderColor: '#1d4ed8',
+    lineColor: '#6b7280',
+    secondaryColor: '#a855f7',
+    tertiaryColor: '#1f2937',
+    background: '#111827',
+    mainBkg: '#1f2937',
+    nodeBorder: '#374151',
+    clusterBkg: '#1f2937',
+    defaultLinkColor: '#6b7280',
+    titleColor: '#f3f4f6',
+    edgeLabelBackground: '#1f2937',
+  },
+  flowchart: {
+    htmlLabels: true,
+    curve: 'basis',
+  },
+})
+
 export function FlowExportPanel({ filePath, entryFunction, onClose }: FlowExportPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('summary')
   const [content, setContent] = useState<string>('')
@@ -100,6 +133,9 @@ export function FlowExportPanel({ filePath, entryFunction, onClose }: FlowExport
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [showPreview, setShowPreview] = useState(true)
+  const [mermaidSvg, setMermaidSvg] = useState<string>('')
+  const mermaidRef = useRef<HTMLDivElement>(null)
 
   // 获取格式化内容
   const fetchFormattedContent = useCallback(async (format: 'mermaid' | 'markdown' | 'ascii' | 'json') => {
@@ -163,6 +199,22 @@ export function FlowExportPanel({ filePath, entryFunction, onClose }: FlowExport
       fetchFormattedContent(activeTab)
     }
   }, [activeTab, filePath, entryFunction, fetchDisplayData, fetchFormattedContent])
+
+  // 渲染 Mermaid 图表
+  useEffect(() => {
+    if (activeTab === 'mermaid' && content && showPreview) {
+      const renderMermaid = async () => {
+        try {
+          const { svg } = await mermaid.render('mermaid-diagram', content)
+          setMermaidSvg(svg)
+        } catch (err) {
+          console.error('Mermaid 渲染失败:', err)
+          setMermaidSvg('')
+        }
+      }
+      renderMermaid()
+    }
+  }, [activeTab, content, showPreview])
 
   // 复制到剪贴板
   const handleCopy = async () => {
@@ -321,11 +373,38 @@ export function FlowExportPanel({ filePath, entryFunction, onClose }: FlowExport
       return renderSummary()
     }
 
-    return (
-      <div className="h-full flex flex-col">
-        {/* Mermaid 预览链接 */}
-        {activeTab === 'mermaid' && content && (
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-tertiary)]/30">
+    // Mermaid 专用渲染
+    if (activeTab === 'mermaid') {
+      return (
+        <div className="h-full flex flex-col">
+          {/* Mermaid 工具栏 */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-tertiary)]/30">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowPreview(!showPreview)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors",
+                  showPreview
+                    ? "bg-[var(--accent)] text-white"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                )}
+              >
+                <Eye className="h-3 w-3" />
+                预览
+              </button>
+              <button
+                onClick={() => setShowPreview(false)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors",
+                  !showPreview
+                    ? "bg-[var(--accent)] text-white"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                )}
+              >
+                <FileCode className="h-3 w-3" />
+                代码
+              </button>
+            </div>
             <a
               href={`https://mermaid.live/edit#pako:${btoa(content)}`}
               target="_blank"
@@ -333,11 +412,31 @@ export function FlowExportPanel({ filePath, entryFunction, onClose }: FlowExport
               className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline"
             >
               <ExternalLink className="h-3 w-3" />
-              在 Mermaid Live 中打开
+              Mermaid Live
             </a>
           </div>
-        )}
 
+          {/* 内容区域 */}
+          <div className="flex-1 overflow-auto">
+            {showPreview && mermaidSvg ? (
+              <div 
+                ref={mermaidRef}
+                className="flex items-center justify-center min-h-full p-4"
+                dangerouslySetInnerHTML={{ __html: mermaidSvg }}
+              />
+            ) : (
+              <pre className="font-mono text-xs text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap p-4">
+                {content}
+              </pre>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // 其他格式的代码渲染
+    return (
+      <div className="h-full flex flex-col">
         {/* 代码块 */}
         <div className="flex-1 overflow-auto p-4">
           <pre className="font-mono text-xs text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
@@ -348,8 +447,17 @@ export function FlowExportPanel({ filePath, entryFunction, onClose }: FlowExport
     )
   }
 
+  // 刷新数据
+  const handleRefresh = useCallback(() => {
+    if (activeTab === 'summary') {
+      fetchDisplayData()
+    } else {
+      fetchFormattedContent(activeTab)
+    }
+  }, [activeTab, fetchDisplayData, fetchFormattedContent])
+
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-primary)] rounded-lg border border-[var(--border-light)]">
+    <div className="flex flex-col h-full bg-[var(--bg-primary)] rounded-lg border border-[var(--border-light)] shadow-2xl">
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
         <div className="flex items-center gap-2">
@@ -360,8 +468,22 @@ export function FlowExportPanel({ filePath, entryFunction, onClose }: FlowExport
               {entryFunction}()
             </span>
           )}
+          {filePath && (
+            <span className="text-[10px] text-[var(--text-muted)] truncate max-w-[200px]" title={filePath}>
+              {filePath.split('/').pop()}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
+          {/* 刷新 */}
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+            title="刷新"
+          >
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </button>
           {/* 复制 */}
           <button
             onClick={handleCopy}
