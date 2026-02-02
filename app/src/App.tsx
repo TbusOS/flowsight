@@ -7,6 +7,10 @@ import { MainLayout } from "./components/layout"
 import { initThemeAtom } from "./lib/atoms/layout-atoms"
 import { useAnalysisStore } from "./store/analysisStore"
 import { ErrorBoundary } from "./components/ErrorBoundary/ErrorBoundary"
+import { preloadMonaco } from "./lib/monaco-config"
+
+// 预加载 Monaco Editor（提前初始化，减少首次打开文件的延迟）
+preloadMonaco()
 
 // ============================================================================
 // Theme Initializer Component

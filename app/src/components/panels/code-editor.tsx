@@ -1,20 +1,19 @@
 "use client"
 
 import * as React from "react"
-import Editor, { OnMount, loader } from "@monaco-editor/react"
+import Editor, { OnMount } from "@monaco-editor/react"
 import { invoke } from "../../lib/tauri-api"
 import { Loader2, FileCode, X, Save, Check, AlertCircle } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAnalysisStore } from "../../store/analysisStore"
 import { useAtom } from "jotai"
 import { jumpTargetAtom } from "../../lib/atoms/layout-atoms"
-
-// 配置 Monaco 使用本地资源
-loader.config({
-  paths: {
-    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.55.1/min/vs"
-  }
-})
+import { 
+  getLanguageFromPath, 
+  getEditorOptions, 
+  cLanguageConfig,
+  flowsightDarkTheme,
+} from "../../lib/monaco-config"
 
 interface CodeEditorProps {
   className?: string
@@ -25,41 +24,13 @@ interface CodeEditorProps {
 
 type SaveStatus = "saved" | "modified" | "saving" | "error"
 
-// 获取语言模式
-function getLanguageFromPath(path: string): string {
-  const ext = path.split(".").pop()?.toLowerCase()
-  switch (ext) {
-    case "c":
-    case "h":
-      return "c"
-    case "cpp":
-    case "hpp":
-    case "cc":
-    case "cxx":
-      return "cpp"
-    case "rs":
-      return "rust"
-    case "ts":
-    case "tsx":
-      return "typescript"
-    case "js":
-    case "jsx":
-      return "javascript"
-    case "json":
-      return "json"
-    case "yaml":
-    case "yml":
-      return "yaml"
-    case "md":
-      return "markdown"
-    case "py":
-      return "python"
-    default:
-      return "plaintext"
-  }
-}
-
-export function CodeEditor({ className, filePath, onClose, readOnly = false }: CodeEditorProps) {
+// 使用 React.memo 优化重渲染
+export const CodeEditor = React.memo(function CodeEditor({ 
+  className, 
+  filePath, 
+  onClose, 
+  readOnly = false 
+}: CodeEditorProps) {
   const [content, setContent] = React.useState<string>("")
   const [originalContent, setOriginalContent] = React.useState<string>("")
   const [loading, setLoading] = React.useState(false)
@@ -200,31 +171,17 @@ export function CodeEditor({ className, filePath, onClose, readOnly = false }: C
     })
 
     // 配置 C 语言语法高亮增强
-    monaco.languages.setLanguageConfiguration("c", {
-      comments: {
-        lineComment: "//",
-        blockComment: ["/*", "*/"],
-      },
-      brackets: [
-        ["{", "}"],
-        ["[", "]"],
-        ["(", ")"],
-      ],
-      autoClosingPairs: [
-        { open: "{", close: "}" },
-        { open: "[", close: "]" },
-        { open: "(", close: ")" },
-        { open: '"', close: '"' },
-        { open: "'", close: "'" },
-      ],
-      folding: {
-        markers: {
-          start: /^\s*#pragma\s+region\b/,
-          end: /^\s*#pragma\s+endregion\b/,
-        },
-      },
-    })
+    monaco.languages.setLanguageConfiguration("c", cLanguageConfig)
+    
+    // 注册 FlowSight 主题
+    monaco.editor.defineTheme("flowsight-dark", flowsightDarkTheme)
   }
+
+  // 缓存编辑器选项（性能优化：根据文件大小自动调整）
+  const editorOptions = React.useMemo(() => 
+    getEditorOptions(content, { readOnly }),
+    [content, readOnly]
+  )
 
   // 获取保存状态图标和文本
   const getSaveStatusDisplay = () => {
@@ -363,46 +320,11 @@ export function CodeEditor({ className, filePath, onClose, readOnly = false }: C
           language={language}
           value={content}
           onChange={handleContentChange}
-          theme="vs-dark"
+          theme="flowsight-dark"
           onMount={handleEditorMount}
-          options={{
-            readOnly: readOnly,
-            fontSize: 13,
-            fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Monaco, 'Courier New', monospace",
-            fontLigatures: true,
-            minimap: {
-              enabled: true,
-              maxColumn: 80,
-            },
-            scrollBeyondLastLine: false,
-            wordWrap: "off",
-            lineNumbers: "on",
-            renderLineHighlight: "line",
-            cursorBlinking: "smooth",
-            smoothScrolling: true,
-            padding: { top: 8, bottom: 8 },
-            automaticLayout: true,
-            // 语法高亮增强
-            bracketPairColorization: { enabled: true },
-            guides: {
-              bracketPairs: true,
-              indentation: true,
-            },
-            "semanticHighlighting.enabled": true,
-            // 代码折叠
-            folding: true,
-            foldingStrategy: "auto",
-            foldingHighlight: true,
-            showFoldingControls: "always",
-            // 搜索功能
-            find: {
-              addExtraSpaceOnTop: true,
-              autoFindInSelection: "multiline",
-              seedSearchStringFromSelection: "selection",
-            },
-          }}
+          options={editorOptions}
         />
       </div>
     </div>
   )
-}
+})
