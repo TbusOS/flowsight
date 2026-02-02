@@ -1,0 +1,120 @@
+# Mailbox Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/mailbox.html
+
+# ============================================================
+# MAILBOX CONTROLLER
+# ============================================================
+mbox_controller:
+  description: "Mailbox Controller Driver"
+  header: "linux/mailbox_controller.h"
+  icon: "📬"
+  registration:
+    - pattern: 'devm_mbox_controller_register\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<mbox>\w+)\s*\)'
+      description: "托管注册邮箱控制器"
+    - pattern: 'mbox_controller_register\s*\(\s*(?P<mbox>\w+)\s*\)'
+      description: "注册邮箱控制器"
+  unregistration:
+    - pattern: 'mbox_controller_unregister\s*\(\s*(?P<mbox>\w+)\s*\)'
+      description: "注销邮箱控制器"
+  structure:
+    name: "mbox_chan_ops"
+    callbacks:
+      send_data:
+        pattern: '\.send_data\s*=\s*(?P<handler>\w+)'
+        description: "发送数据"
+        context: "process/atomic"
+        can_sleep: false
+      startup:
+        pattern: '\.startup\s*=\s*(?P<handler>\w+)'
+        description: "启动通道"
+        context: "process"
+        can_sleep: true
+      shutdown:
+        pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
+        description: "关闭通道"
+        context: "process"
+        can_sleep: true
+      last_tx_done:
+        pattern: '\.last_tx_done\s*=\s*(?P<handler>\w+)'
+        description: "检查上次发送是否完成"
+        context: "any"
+        can_sleep: false
+      peek_data:
+        pattern: '\.peek_data\s*=\s*(?P<handler>\w+)'
+        description: "检查是否有数据"
+        context: "any"
+        can_sleep: false
+  helpers:
+    - pattern: 'mbox_chan_received_data\s*\(\s*(?P<chan>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+      description: "通知接收到数据"
+    - pattern: 'mbox_chan_txdone\s*\(\s*(?P<chan>\w+)\s*,\s*(?P<r>\w+)\s*\)'
+      description: "通知发送完成"
+
+# ============================================================
+# MAILBOX CLIENT
+# ============================================================
+mbox_client:
+  description: "Mailbox Client"
+  header: "linux/mailbox_client.h"
+  icon: "📨"
+  usage:
+    - pattern: 'mbox_request_channel\s*\(\s*&(?P<client>\w+)\s*,\s*(?P<index>\w+)\s*\)'
+      description: "请求邮箱通道"
+    - pattern: 'mbox_request_channel_byname\s*\(\s*&(?P<client>\w+)\s*,'
+      description: "按名称请求通道"
+    - pattern: 'mbox_free_channel\s*\(\s*(?P<chan>\w+)\s*\)'
+      description: "释放邮箱通道"
+    - pattern: 'mbox_send_message\s*\(\s*(?P<chan>\w+)\s*,\s*(?P<data>\w+)\s*\)'
+      description: "发送消息"
+    - pattern: 'mbox_client_txdone\s*\(\s*(?P<chan>\w+)\s*,\s*(?P<r>\w+)\s*\)'
+      description: "客户端发送完成"
+  structure:
+    name: "mbox_client"
+    callbacks:
+      rx_callback:
+        pattern: '\.rx_callback\s*=\s*(?P<handler>\w+)'
+        description: "接收回调"
+        context: "process/softirq"
+        can_sleep: false
+      tx_done:
+        pattern: '\.tx_done\s*=\s*(?P<handler>\w+)'
+        description: "发送完成回调"
+        context: "process/softirq"
+        can_sleep: false
+      tx_block:
+        description: "发送是否阻塞"
+      tx_tout:
+        description: "发送超时（毫秒）"
+      knows_txdone:
+        description: "客户端是否知道发送完成"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  mbox_send:
+    description: "Mailbox Send Flow"
+    chain:
+      - caller: "client driver"
+        callee: "mbox_send_message"
+        description: "发送消息"
+      - caller: "mbox_send_message"
+        callee: "chan->mbox->ops->send_data"
+        description: "调用控制器发送"
+      - caller: "IRQ handler"
+        callee: "mbox_chan_txdone"
+        context: "hardirq"
+        description: "发送完成中断"
+      - caller: "mbox_chan_txdone"
+        callee: "client->tx_done"
+        description: "通知客户端"
+  mbox_receive:
+    description: "Mailbox Receive Flow"
+    chain:
+      - caller: "IRQ handler"
+        callee: "mbox_chan_received_data"
+        context: "hardirq"
+        description: "接收中断"
+      - caller: "mbox_chan_received_data"
+        callee: "client->rx_callback"
+        description: "调用客户端接收回调"

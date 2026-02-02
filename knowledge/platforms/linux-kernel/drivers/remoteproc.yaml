@@ -1,0 +1,157 @@
+# Remote Processor Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/staging/remoteproc.html
+
+# ============================================================
+# REMOTEPROC
+# ============================================================
+remoteproc:
+  description: "Remote Processor Driver"
+  header: "linux/remoteproc.h"
+  icon: "🤖"
+  registration:
+    - pattern: 'rproc_alloc\s*\(\s*(?P<dev>\w+)\s*,\s*"(?P<name>[^"]+)"\s*,\s*&(?P<ops>\w+)\s*,'
+      description: "分配远程处理器"
+    - pattern: 'rproc_add\s*\(\s*(?P<rproc>\w+)\s*\)'
+      description: "添加远程处理器"
+    - pattern: 'devm_rproc_add\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<rproc>\w+)\s*\)'
+      description: "托管添加远程处理器"
+  removal:
+    - pattern: 'rproc_del\s*\(\s*(?P<rproc>\w+)\s*\)'
+      description: "删除远程处理器"
+    - pattern: 'rproc_free\s*\(\s*(?P<rproc>\w+)\s*\)'
+      description: "释放远程处理器"
+  structure:
+    name: "rproc_ops"
+    callbacks:
+      prepare:
+        pattern: '\.prepare\s*=\s*(?P<handler>\w+)'
+        description: "准备启动"
+        context: "process"
+        can_sleep: true
+      unprepare:
+        pattern: '\.unprepare\s*=\s*(?P<handler>\w+)'
+        description: "停止后清理"
+        context: "process"
+        can_sleep: true
+      start:
+        pattern: '\.start\s*=\s*(?P<handler>\w+)'
+        description: "启动远程处理器"
+        context: "process"
+        can_sleep: true
+      stop:
+        pattern: '\.stop\s*=\s*(?P<handler>\w+)'
+        description: "停止远程处理器"
+        context: "process"
+        can_sleep: true
+      attach:
+        pattern: '\.attach\s*=\s*(?P<handler>\w+)'
+        description: "附加到运行中的处理器"
+        context: "process"
+        can_sleep: true
+      detach:
+        pattern: '\.detach\s*=\s*(?P<handler>\w+)'
+        description: "分离处理器"
+        context: "process"
+        can_sleep: true
+      kick:
+        pattern: '\.kick\s*=\s*(?P<handler>\w+)'
+        description: "触发远程处理器"
+        context: "any"
+        can_sleep: false
+      da_to_va:
+        pattern: '\.da_to_va\s*=\s*(?P<handler>\w+)'
+        description: "设备地址转虚拟地址"
+      load:
+        pattern: '\.load\s*=\s*(?P<handler>\w+)'
+        description: "加载固件"
+      parse_fw:
+        pattern: '\.parse_fw\s*=\s*(?P<handler>\w+)'
+        description: "解析固件"
+      find_loaded_rsc_table:
+        pattern: '\.find_loaded_rsc_table\s*=\s*(?P<handler>\w+)'
+        description: "查找资源表"
+      get_loaded_rsc_table:
+        pattern: '\.get_loaded_rsc_table\s*=\s*(?P<handler>\w+)'
+        description: "获取资源表"
+      sanity_check:
+        pattern: '\.sanity_check\s*=\s*(?P<handler>\w+)'
+        description: "固件检查"
+  helpers:
+    - pattern: 'rproc_boot\s*\(\s*(?P<rproc>\w+)\s*\)'
+      description: "启动远程处理器"
+    - pattern: 'rproc_shutdown\s*\(\s*(?P<rproc>\w+)\s*\)'
+      description: "关闭远程处理器"
+    - pattern: 'rproc_coredump_add_segment\s*\('
+      description: "添加 coredump 段"
+
+# ============================================================
+# RPMSG (Remote Processor Messaging)
+# ============================================================
+rpmsg:
+  description: "Remote Processor Messaging"
+  header: "linux/rpmsg.h"
+  icon: "💬"
+  registration:
+    - pattern: 'register_rpmsg_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注册 rpmsg 驱动"
+    - pattern: 'module_rpmsg_driver\s*\(\s*(?P<driver>\w+)\s*\)'
+      description: "模块 rpmsg 驱动宏"
+  unregistration:
+    - pattern: 'unregister_rpmsg_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注销 rpmsg 驱动"
+  structure:
+    name: "rpmsg_driver"
+    callbacks:
+      probe:
+        pattern: '\.probe\s*=\s*(?P<handler>\w+)'
+        description: "设备探测"
+        context: "process"
+        can_sleep: true
+      remove:
+        pattern: '\.remove\s*=\s*(?P<handler>\w+)'
+        description: "设备移除"
+        context: "process"
+        can_sleep: true
+      callback:
+        pattern: '\.callback\s*=\s*(?P<handler>\w+)'
+        description: "消息接收回调"
+        context: "process/softirq"
+        can_sleep: false
+  helpers:
+    - pattern: 'rpmsg_send\s*\(\s*(?P<ept>\w+)\s*,\s*(?P<data>\w+)\s*,\s*(?P<len>\w+)\s*\)'
+      description: "发送消息"
+    - pattern: 'rpmsg_trysend\s*\(\s*(?P<ept>\w+)\s*,\s*(?P<data>\w+)\s*,\s*(?P<len>\w+)\s*\)'
+      description: "尝试发送消息"
+    - pattern: 'rpmsg_create_ept\s*\('
+      description: "创建端点"
+    - pattern: 'rpmsg_destroy_ept\s*\(\s*(?P<ept>\w+)\s*\)'
+      description: "销毁端点"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  rproc_boot:
+    description: "Remote Processor Boot"
+    chain:
+      - caller: "rproc_boot"
+        callee: "rproc_fw_boot"
+        description: "固件启动"
+      - caller: "rproc_fw_boot"
+        callee: "rproc_ops->prepare"
+        description: "准备启动"
+      - caller: "rproc_fw_boot"
+        callee: "rproc_ops->start"
+        description: "启动远程处理器"
+  rpmsg_send:
+    description: "RPMSG Send Flow"
+    chain:
+      - caller: "driver"
+        callee: "rpmsg_send"
+        description: "发送消息"
+      - caller: "rpmsg_send"
+        callee: "ept->ops->send"
+        description: "调用端点发送"
+      - caller: "virtqueue"
+        callee: "rproc_ops->kick"
+        description: "触发远程处理器"

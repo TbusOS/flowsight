@@ -1,0 +1,124 @@
+# Firmware Framework Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/firmware/
+
+# ============================================================
+# FIRMWARE LOADING
+# ============================================================
+firmware:
+  description: "Firmware Loading API"
+  header: "linux/firmware.h"
+  icon: "📦"
+  sync_loading:
+    - pattern: 'request_firmware\s*\(\s*&(?P<fw>\w+)\s*,\s*"(?P<name>[^"]+)"\s*,\s*(?P<dev>\w+)\s*\)'
+      description: "同步请求固件"
+      context: "process"
+      can_sleep: true
+    - pattern: 'request_firmware_direct\s*\(\s*&(?P<fw>\w+)\s*,'
+      description: "直接请求固件（跳过缓存）"
+    - pattern: 'firmware_request_builtin\s*\(\s*&(?P<fw>\w+)\s*,'
+      description: "请求内置固件"
+  async_loading:
+    - pattern: 'request_firmware_nowait\s*\(\s*(?P<module>\w+)\s*,\s*(?P<uevent>\w+)\s*,\s*"(?P<name>[^"]+)"\s*,\s*(?P<dev>\w+)\s*,\s*(?P<gfp>\w+)\s*,\s*(?P<context>\w+)\s*,\s*(?P<cont>\w+)\s*\)'
+      description: "异步请求固件"
+      context: "process"
+      can_sleep: true
+  release:
+    - pattern: 'release_firmware\s*\(\s*(?P<fw>\w+)\s*\)'
+      description: "释放固件"
+  partial_loading:
+    - pattern: 'request_partial_firmware_into_buf\s*\('
+      description: "部分加载固件到缓冲区"
+    - pattern: 'firmware_request_cache\s*\('
+      description: "缓存固件请求"
+
+# ============================================================
+# FIRMWARE UPLOAD
+# ============================================================
+firmware_upload:
+  description: "Firmware Upload API"
+  header: "linux/firmware.h"
+  icon: "⬆️"
+  registration:
+    - pattern: 'firmware_upload_register\s*\(\s*(?P<module>\w+)\s*,\s*(?P<dev>\w+)\s*,\s*"(?P<name>[^"]+)"\s*,\s*&(?P<ops>\w+)\s*,'
+      description: "注册固件上传接口"
+  unregistration:
+    - pattern: 'firmware_upload_unregister\s*\(\s*(?P<fw_upload>\w+)\s*\)'
+      description: "注销固件上传接口"
+  structure:
+    name: "fw_upload_ops"
+    callbacks:
+      prepare:
+        pattern: '\.prepare\s*=\s*(?P<handler>\w+)'
+        description: "准备上传"
+        context: "process"
+        can_sleep: true
+      write:
+        pattern: '\.write\s*=\s*(?P<handler>\w+)'
+        description: "写入固件数据"
+        context: "process"
+        can_sleep: true
+      poll_complete:
+        pattern: '\.poll_complete\s*=\s*(?P<handler>\w+)'
+        description: "轮询上传完成"
+        context: "process"
+        can_sleep: true
+      cancel:
+        pattern: '\.cancel\s*=\s*(?P<handler>\w+)'
+        description: "取消上传"
+        context: "process"
+        can_sleep: true
+      cleanup:
+        pattern: '\.cleanup\s*=\s*(?P<handler>\w+)'
+        description: "清理"
+        context: "process"
+        can_sleep: true
+
+# ============================================================
+# EFI RUNTIME SERVICES
+# ============================================================
+efi:
+  description: "EFI Runtime Services"
+  header: "linux/efi.h"
+  icon: "🔐"
+  patterns:
+    - pattern: 'efi\.get_variable\s*\('
+      description: "获取 EFI 变量"
+    - pattern: 'efi\.set_variable\s*\('
+      description: "设置 EFI 变量"
+    - pattern: 'efi\.get_next_variable\s*\('
+      description: "枚举 EFI 变量"
+    - pattern: 'efi\.query_variable_info\s*\('
+      description: "查询变量存储信息"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  fw_load:
+    description: "Firmware Loading Flow"
+    chain:
+      - caller: "driver probe"
+        callee: "request_firmware"
+        description: "请求固件"
+      - caller: "request_firmware"
+        callee: "_request_firmware"
+        description: "内部请求"
+      - caller: "_request_firmware"
+        callee: "fw_get_filesystem_firmware"
+        description: "从文件系统加载"
+      - caller: "driver probe"
+        callee: "release_firmware"
+        description: "释放固件"
+  fw_async_load:
+    description: "Async Firmware Loading"
+    chain:
+      - caller: "driver probe"
+        callee: "request_firmware_nowait"
+        description: "异步请求"
+      - caller: "request_firmware_nowait"
+        callee: "request_firmware_work_func"
+        mechanism: "workqueue"
+        description: "工作队列加载"
+      - caller: "request_firmware_work_func"
+        callee: "cont callback"
+        description: "调用完成回调"

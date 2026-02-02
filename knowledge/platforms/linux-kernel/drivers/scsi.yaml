@@ -1,0 +1,149 @@
+# SCSI Subsystem Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/scsi/
+
+# ============================================================
+# SCSI HOST ADAPTER
+# ============================================================
+scsi_host:
+  description: "SCSI Host Adapter Driver"
+  header: "scsi/scsi_host.h"
+  icon: "💽"
+  registration:
+    - pattern: 'scsi_host_alloc\s*\(\s*&(?P<template>\w+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "分配 SCSI 主机"
+    - pattern: 'scsi_add_host\s*\(\s*(?P<host>\w+)\s*,\s*(?P<dev>\w+)\s*\)'
+      description: "添加 SCSI 主机"
+    - pattern: 'scsi_add_host_with_dma\s*\('
+      description: "带 DMA 设备添加主机"
+  removal:
+    - pattern: 'scsi_remove_host\s*\(\s*(?P<host>\w+)\s*\)'
+      description: "移除 SCSI 主机"
+    - pattern: 'scsi_host_put\s*\(\s*(?P<host>\w+)\s*\)'
+      description: "释放 SCSI 主机引用"
+  structure:
+    name: "scsi_host_template"
+    callbacks:
+      queuecommand:
+        pattern: '\.queuecommand\s*=\s*(?P<handler>\w+)'
+        description: "队列 SCSI 命令"
+        context: "process/softirq"
+        can_sleep: false
+      eh_abort_handler:
+        pattern: '\.eh_abort_handler\s*=\s*(?P<handler>\w+)'
+        description: "中止命令错误处理"
+        context: "process"
+        can_sleep: true
+      eh_device_reset_handler:
+        pattern: '\.eh_device_reset_handler\s*=\s*(?P<handler>\w+)'
+        description: "设备复位错误处理"
+        context: "process"
+        can_sleep: true
+      eh_bus_reset_handler:
+        pattern: '\.eh_bus_reset_handler\s*=\s*(?P<handler>\w+)'
+        description: "总线复位错误处理"
+        context: "process"
+        can_sleep: true
+      eh_host_reset_handler:
+        pattern: '\.eh_host_reset_handler\s*=\s*(?P<handler>\w+)'
+        description: "主机复位错误处理"
+        context: "process"
+        can_sleep: true
+      slave_alloc:
+        pattern: '\.slave_alloc\s*=\s*(?P<handler>\w+)'
+        description: "分配 SCSI 设备"
+        context: "process"
+        can_sleep: true
+      slave_configure:
+        pattern: '\.slave_configure\s*=\s*(?P<handler>\w+)'
+        description: "配置 SCSI 设备"
+        context: "process"
+        can_sleep: true
+      slave_destroy:
+        pattern: '\.slave_destroy\s*=\s*(?P<handler>\w+)'
+        description: "销毁 SCSI 设备"
+        context: "process"
+        can_sleep: true
+      scan_finished:
+        pattern: '\.scan_finished\s*=\s*(?P<handler>\w+)'
+        description: "扫描完成回调"
+      target_alloc:
+        pattern: '\.target_alloc\s*=\s*(?P<handler>\w+)'
+        description: "分配目标设备"
+      target_destroy:
+        pattern: '\.target_destroy\s*=\s*(?P<handler>\w+)'
+        description: "销毁目标设备"
+      bios_param:
+        pattern: '\.bios_param\s*=\s*(?P<handler>\w+)'
+        description: "BIOS 参数"
+  helpers:
+    - pattern: 'scsi_scan_host\s*\(\s*(?P<host>\w+)\s*\)'
+      description: "扫描 SCSI 主机"
+    - pattern: 'scsi_done\s*\(\s*(?P<cmd>\w+)\s*\)'
+      description: "命令完成回调"
+    - pattern: 'scsi_dma_map\s*\(\s*(?P<cmd>\w+)\s*\)'
+      description: "DMA 映射"
+    - pattern: 'scsi_dma_unmap\s*\(\s*(?P<cmd>\w+)\s*\)'
+      description: "DMA 解映射"
+
+# ============================================================
+# SCSI DEVICE HANDLER
+# ============================================================
+scsi_device_handler:
+  description: "SCSI Device Handler"
+  header: "scsi/scsi_dh.h"
+  icon: "🔧"
+  registration:
+    - pattern: 'scsi_register_device_handler\s*\(\s*&(?P<handler>\w+)\s*\)'
+      description: "注册设备处理器"
+  structure:
+    name: "scsi_device_handler"
+    callbacks:
+      check_sense:
+        pattern: '\.check_sense\s*=\s*(?P<handler>\w+)'
+        description: "检查 sense 数据"
+      attach:
+        pattern: '\.attach\s*=\s*(?P<handler>\w+)'
+        description: "附加设备"
+      detach:
+        pattern: '\.detach\s*=\s*(?P<handler>\w+)'
+        description: "分离设备"
+      activate:
+        pattern: '\.activate\s*=\s*(?P<handler>\w+)'
+        description: "激活路径"
+      prep_fn:
+        pattern: '\.prep_fn\s*=\s*(?P<handler>\w+)'
+        description: "准备请求"
+      set_params:
+        pattern: '\.set_params\s*=\s*(?P<handler>\w+)'
+        description: "设置参数"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  scsi_dispatch:
+    description: "SCSI Command Dispatch"
+    chain:
+      - caller: "scsi_queue_rq"
+        callee: "scsi_dispatch_cmd"
+        description: "分发 SCSI 命令"
+      - caller: "scsi_dispatch_cmd"
+        callee: "host->hostt->queuecommand"
+        description: "调用主机驱动队列命令"
+      - caller: "IRQ handler"
+        callee: "scsi_done"
+        context: "hardirq"
+        description: "命令完成中断"
+  scsi_error:
+    description: "SCSI Error Handling"
+    chain:
+      - caller: "scsi_eh_wakeup"
+        callee: "scsi_error_handler"
+        mechanism: "kthread"
+        description: "错误处理线程"
+      - caller: "scsi_error_handler"
+        callee: "hostt->eh_abort_handler"
+        description: "中止命令"
+      - caller: "scsi_error_handler"
+        callee: "hostt->eh_device_reset_handler"
+        description: "设备复位"
