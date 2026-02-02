@@ -60,6 +60,23 @@ export const viewModeAtom = atom<"code" | "flow" | "split">("code")
 // 当前打开的文件路径
 export const currentFileAtom = atom<string | null>(null)
 
+// 编辑器光标位置
+export interface CursorPosition {
+  line: number
+  column: number
+  selection?: {
+    startLine: number
+    startColumn: number
+    endLine: number
+    endColumn: number
+  }
+}
+
+export const cursorPositionAtom = atom<CursorPosition>({
+  line: 1,
+  column: 1,
+})
+
 // 代码跳转目标（文件路径 + 行号）
 export interface JumpTarget {
   filePath: string

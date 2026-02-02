@@ -6,8 +6,8 @@ import { invoke } from "../../lib/tauri-api"
 import { Loader2, FileCode, X, Save, Check, AlertCircle } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { useAnalysisStore } from "../../store/analysisStore"
-import { useAtom } from "jotai"
-import { jumpTargetAtom } from "../../lib/atoms/layout-atoms"
+import { useAtom, useSetAtom } from "jotai"
+import { jumpTargetAtom, cursorPositionAtom } from "../../lib/atoms/layout-atoms"
 import { 
   getLanguageFromPath, 
   getEditorOptions, 
@@ -40,6 +40,7 @@ export const CodeEditor = React.memo(function CodeEditor({
   const editorRef = React.useRef<any>(null)
   const monacoRef = React.useRef<any>(null)
   const [jumpTarget, setJumpTarget] = useAtom(jumpTargetAtom)
+  const setCursorPosition = useSetAtom(cursorPositionAtom)
 
   // 加载文件内容
   React.useEffect(() => {
@@ -175,6 +176,49 @@ export const CodeEditor = React.memo(function CodeEditor({
     
     // 注册 FlowSight 主题
     monaco.editor.defineTheme("flowsight-dark", flowsightDarkTheme)
+    
+    // 监听光标位置变化 - 更新状态栏
+    editor.onDidChangeCursorPosition((e: any) => {
+      const position = e.position
+      const selection = editor.getSelection()
+      
+      if (selection && !selection.isEmpty()) {
+        setCursorPosition({
+          line: position.lineNumber,
+          column: position.column,
+          selection: {
+            startLine: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLine: selection.endLineNumber,
+            endColumn: selection.endColumn,
+          }
+        })
+      } else {
+        setCursorPosition({
+          line: position.lineNumber,
+          column: position.column,
+        })
+      }
+    })
+    
+    // 监听选区变化
+    editor.onDidChangeCursorSelection((e: any) => {
+      const selection = e.selection
+      const position = editor.getPosition()
+      
+      if (selection && !selection.isEmpty()) {
+        setCursorPosition({
+          line: position?.lineNumber || 1,
+          column: position?.column || 1,
+          selection: {
+            startLine: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLine: selection.endLineNumber,
+            endColumn: selection.endColumn,
+          }
+        })
+      }
+    })
   }
 
   // 缓存编辑器选项（性能优化：根据文件大小自动调整）
