@@ -149,9 +149,14 @@ fn extract_patterns_recursive(value: &serde_yaml::Value, patterns: &mut Vec<Stri
     match value {
         serde_yaml::Value::Mapping(map) => {
             for (key, val) in map {
-                // Check if key contains "pattern"
+                // Check if key is exactly "pattern" (the actual regex field)
                 if let serde_yaml::Value::String(key_str) = key {
-                    if key_str.contains("pattern") {
+                    // Only match exact "pattern" key - this is the regex pattern field
+                    // Exclude keys like "usage_pattern", "irq_handler_pattern", "struct_pattern"
+                    // which contain code examples, not regex patterns
+                    let is_regex_pattern = key_str == "pattern";
+                    
+                    if is_regex_pattern {
                         if let serde_yaml::Value::String(pattern) = val {
                             patterns.push(pattern.clone());
                         } else if let serde_yaml::Value::Sequence(seq) = val {

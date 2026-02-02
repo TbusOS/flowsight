@@ -45,3 +45,6 @@ tracing = { workspace = true }
 # Placeholder for future local training support
 # Currently uses Python subprocess for training
 training = []
+
+[dev-dependencies]
+tempfile = "3.24.0"

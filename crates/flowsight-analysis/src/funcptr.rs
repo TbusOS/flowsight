@@ -144,40 +144,41 @@ impl FuncPtrResolver {
     ) -> Vec<(String, String)> {
         let mut mappings = Vec::new();
 
-        // Pattern to match struct initializers like:
+        // Pattern to match struct initializers start:
         // static struct file_operations my_fops = {
-        //     .open = my_open,
-        //     .read = my_read,
-        // };
-        let struct_init_re =
-            Regex::new(r"(?s)static\s+(?:const\s+)?struct\s+(\w+)\s+(\w+)\s*=\s*\{([^}]+)\}")
-                .unwrap();
+        let struct_start_re =
+            Regex::new(r"static\s+(?:const\s+)?struct\s+(\w+)\s+(\w+)\s*=\s*\{").unwrap();
 
-        // Pattern to match field assignments
+        // Pattern to match field assignments (handles function pointers)
         let field_assign_re = Regex::new(r"\.(\w+)\s*=\s*(\w+)").unwrap();
 
-        for caps in struct_init_re.captures_iter(source) {
+        for caps in struct_start_re.captures_iter(source) {
             let struct_type = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let var_name = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            let body = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
-            // Find matching ops pattern
-            for pattern in &self.ops_patterns {
-                if pattern
-                    .struct_pattern
-                    .is_match(&format!("struct {}", struct_type))
-                {
-                    // Extract field assignments
-                    for field_caps in field_assign_re.captures_iter(body) {
-                        let field = field_caps.get(1).map(|m| m.as_str()).unwrap_or("");
-                        let func_name = field_caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            // Find the position where this match ends
+            let match_end = caps.get(0).map(|m| m.end()).unwrap_or(0);
 
-                        // Check if it's a known callback field and function exists
-                        if pattern.field_mappings.contains_key(field)
-                            && functions.contains_key(func_name)
-                        {
-                            let context = format!("{}.{}", var_name, field);
-                            mappings.push((context, func_name.to_string()));
+            // Extract body by finding matching closing brace (handles nested braces)
+            if let Some(body) = Self::extract_struct_body(&source[match_end..]) {
+                // Find matching ops pattern
+                for pattern in &self.ops_patterns {
+                    if pattern
+                        .struct_pattern
+                        .is_match(&format!("struct {}", struct_type))
+                    {
+                        // Extract field assignments from the full body
+                        for field_caps in field_assign_re.captures_iter(&body) {
+                            let field = field_caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                            let func_name = field_caps.get(2).map(|m| m.as_str()).unwrap_or("");
+
+                            // Check if it's a known callback field and function exists
+                            if pattern.field_mappings.contains_key(field)
+                                && functions.contains_key(func_name)
+                            {
+                                let context = format!("{}.{}", var_name, field);
+                                mappings.push((context, func_name.to_string()));
+                            }
                         }
                     }
                 }
@@ -185,6 +186,32 @@ impl FuncPtrResolver {
         }
 
         mappings
+    }
+
+    /// Extract struct body handling nested braces
+    fn extract_struct_body(source: &str) -> Option<String> {
+        let mut depth = 1;
+        let mut end_pos = 0;
+
+        for (i, c) in source.char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end_pos = i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if depth == 0 && end_pos > 0 {
+            Some(source[..end_pos].to_string())
+        } else {
+            None
+        }
     }
 
     /// Analyze direct function pointer assignments

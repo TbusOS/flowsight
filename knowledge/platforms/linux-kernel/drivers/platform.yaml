@@ -507,7 +507,7 @@ device_matching:
     name_match:
       description: "名称匹配 (最低优先级)"
       patterns:
-        - pattern: '\.driver\.name\s*=\s*(?P<name>["\'][^"\']+["\'])'
+        - pattern: '\\.driver\\.name\\s*=\\s*(?P<name>["\x27][^"\x27]+["\x27])'
           description: "驱动名称匹配"
 
   of_device_id_structure:
