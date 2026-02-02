@@ -1,15 +1,16 @@
 # Linux Kernel V4L2 (Video4Linux2) Driver Framework Knowledge Base
 #
-# Reference: https://www.kernel.org/doc/html/latest/media/v4l-drivers/index.html
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/media/v4l2-core.html
 
 # ============================================================
-# V4L2 CORE
+# V4L2 DEVICE
 # ============================================================
 
-v4l2_core:
-  description: "V4L2 Core - 视频核心"
-  header: "linux/videodev2.h"
+v4l2_device:
+  description: "V4L2 Device - 视频设备容器"
+  header: "media/v4l2-device.h"
   icon: "📹"
+  kernel_version: "2.6.26+"
 
   context:
     type: "process"
@@ -17,46 +18,588 @@ v4l2_core:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # video_register_device - 注册视频设备
-    - pattern: 'video_register_device\s*\(\s*(?P<vdev>[^)]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<nr>\w+)\s*\)'
-      variable_capture: "vdev"
-      description: "注册视频设备"
-
-    # video_unregister_device - 注销视频设备
-    - pattern: 'video_unregister_device\s*\(\s*(?P<vdev>[^)]+)\s*\)'
-      variable_capture: "vdev"
-      description: "注销视频设备"
-
-    # devm_video_register_device - 资源管理注册
-    - pattern: 'devm_video_register_device\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<vdev>[^)]+)\s*,\s*(?P<type>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "资源管理方式注册视频设备"
-
-
-# ============================================================
-# V4L2 DEVICE
-# ============================================================
-
-v4l2_device:
-  description: "V4L2 Device - 视频设备"
-  header: "media/v4l2-device.h"
-
-  bind_patterns:
-    # v4l2_device_register - 注册 V4L2 设备
+  registration:
     - pattern: 'v4l2_device_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<v4l2_dev>[^)]+)\s*\)'
-      variable_capture: "dev"
       description: "注册 V4L2 设备"
-
-    # v4l2_device_unregister - 注销 V4L2 设备
     - pattern: 'v4l2_device_unregister\s*\(\s*(?P<v4l2_dev>[^)]+)\s*\)'
-      variable_capture: "v4l2_dev"
       description: "注销 V4L2 设备"
+    - pattern: 'v4l2_device_set_name\s*\(\s*(?P<v4l2_dev>[^)]+)\s*,\s*(?P<basename>[^)]+)\s*,\s*(?P<instance>[^)]+)\s*\)'
+      description: "设置设备名称"
 
-    # v4l2_device_register_subdev - 注册子设备
+  structure:
+    pattern: 'struct v4l2_device\s*(?P<name>\w+)\s*=?\s*\{?'
+    description: "V4L2 设备结构"
+    fields:
+      - name: "dev"
+        type: "struct device *"
+        description: "父设备"
+      - name: "mdev"
+        type: "struct media_device *"
+        description: "媒体设备"
+      - name: "subdevs"
+        type: "struct list_head"
+        description: "子设备链表"
+      - name: "lock"
+        type: "spinlock_t"
+        description: "保护子设备链表"
+      - name: "name"
+        type: "char[36]"
+        description: "设备名称"
+      - name: "notify"
+        type: "void (*)(struct v4l2_subdev *, unsigned int, void *)"
+        description: "通知回调"
+      - name: "ctrl_handler"
+        type: "struct v4l2_ctrl_handler *"
+        description: "控件处理器"
+      - name: "prio"
+        type: "struct v4l2_prio_state"
+        description: "优先级状态"
+      - name: "ref"
+        type: "struct kref"
+        description: "引用计数"
+      - name: "release"
+        type: "void (*)(struct v4l2_device *)"
+        description: "释放回调"
+
+  helper_functions:
     - pattern: 'v4l2_device_register_subdev\s*\(\s*(?P<v4l2_dev>[^)]+)\s*,\s*(?P<sd>[^)]+)\s*\)'
-      variable_capture: "v4l2_dev"
-      description: "注册 V4L2 子设备"
+      description: "注册子设备"
+      context: "process"
+    - pattern: 'v4l2_device_unregister_subdev\s*\(\s*(?P<sd>[^)]+)\s*\)'
+      description: "注销子设备"
+      context: "process"
+    - pattern: 'v4l2_device_register_subdev_nodes\s*\(\s*(?P<v4l2_dev>[^)]+)\s*\)'
+      description: "注册所有子设备节点"
+      context: "process"
+    - pattern: 'v4l2_device_call_all\s*\(\s*(?P<v4l2_dev>[^)]+)\s*,\s*(?P<grp_id>\w+)\s*,\s*(?P<ops>\w+)\s*,\s*(?P<func>\w+)\s*'
+      description: "调用所有子设备操作"
+      context: "process"
+    - pattern: 'v4l2_device_call_until_err\s*\(\s*(?P<v4l2_dev>[^)]+)\s*,\s*(?P<grp_id>\w+)\s*,\s*(?P<ops>\w+)\s*,\s*(?P<func>\w+)\s*'
+      description: "调用子设备直到出错"
+      context: "process"
+
+
+# ============================================================
+# VIDEO DEVICE
+# ============================================================
+
+video_device:
+  description: "Video Device - 视频设备节点"
+  header: "media/v4l2-dev.h"
+  icon: "🎬"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  registration:
+    - pattern: 'video_register_device\s*\(\s*(?P<vdev>[^)]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<nr>\w+)\s*\)'
+      description: "注册视频设备"
+    - pattern: 'video_register_device_no_warn\s*\(\s*(?P<vdev>[^)]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<nr>\w+)\s*\)'
+      description: "注册视频设备 (无警告)"
+    - pattern: '__video_register_device\s*\(\s*(?P<vdev>[^)]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<nr>\w+)\s*,\s*(?P<warn>\w+)\s*,\s*(?P<owner>[^)]+)\s*\)'
+      description: "内部注册视频设备"
+    - pattern: 'video_unregister_device\s*\(\s*(?P<vdev>[^)]+)\s*\)'
+      description: "注销视频设备"
+    - pattern: 'video_device_alloc\s*\(\s*\)'
+      description: "分配视频设备结构"
+    - pattern: 'video_device_release\s*\(\s*(?P<vdev>[^)]+)\s*\)'
+      description: "释放视频设备"
+    - pattern: 'video_device_release_empty\s*\(\s*(?P<vdev>[^)]+)\s*\)'
+      description: "空释放函数"
+
+  structure:
+    pattern: 'struct video_device\s*(?P<name>\w+)\s*=\s*\{'
+    description: "视频设备结构"
+    fields:
+      - name: "name"
+        type: "char[32]"
+        description: "设备名称"
+      - name: "vfl_type"
+        type: "enum vfl_devnode_type"
+        description: "设备类型"
+      - name: "vfl_dir"
+        type: "enum vfl_devnode_direction"
+        description: "设备方向"
+      - name: "fops"
+        type: "const struct v4l2_file_operations *"
+        description: "文件操作"
+      - name: "ioctl_ops"
+        type: "const struct v4l2_ioctl_ops *"
+        description: "IOCTL 操作"
+      - name: "v4l2_dev"
+        type: "struct v4l2_device *"
+        description: "父 V4L2 设备"
+      - name: "ctrl_handler"
+        type: "struct v4l2_ctrl_handler *"
+        description: "控件处理器"
+      - name: "queue"
+        type: "struct vb2_queue *"
+        description: "视频缓冲区队列"
+      - name: "prio"
+        type: "struct v4l2_prio_state *"
+        description: "优先级状态"
+      - name: "dev_parent"
+        type: "struct device *"
+        description: "父设备"
+      - name: "lock"
+        type: "struct mutex *"
+        description: "序列化锁"
+      - name: "num"
+        type: "int"
+        description: "设备号"
+      - name: "minor"
+        type: "int"
+        description: "次设备号"
+      - name: "flags"
+        type: "unsigned long"
+        description: "设备标志"
+      - name: "release"
+        type: "void (*)(struct video_device *)"
+        description: "释放回调"
+      - name: "device_caps"
+        type: "u32"
+        description: "设备能力"
+
+  device_types:
+    - name: "VFL_TYPE_VIDEO"
+      description: "视频捕获/输出设备 (/dev/videoX)"
+    - name: "VFL_TYPE_VBI"
+      description: "VBI 设备 (/dev/vbiX)"
+    - name: "VFL_TYPE_RADIO"
+      description: "收音机设备 (/dev/radioX)"
+    - name: "VFL_TYPE_SUBDEV"
+      description: "子设备节点 (/dev/v4l-subdevX)"
+    - name: "VFL_TYPE_SDR"
+      description: "SDR 设备"
+    - name: "VFL_TYPE_TOUCH"
+      description: "触摸设备"
+
+  helper_functions:
+    - pattern: 'video_get_drvdata\s*\(\s*(?P<vdev>[^)]+)\s*\)'
+      description: "获取驱动私有数据"
+      context: "any"
+    - pattern: 'video_set_drvdata\s*\(\s*(?P<vdev>[^)]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "设置驱动私有数据"
+      context: "any"
+    - pattern: 'video_devdata\s*\(\s*(?P<file>[^)]+)\s*\)'
+      description: "从文件获取视频设备"
+      context: "any"
+    - pattern: 'video_drvdata\s*\(\s*(?P<file>[^)]+)\s*\)'
+      description: "从文件获取驱动数据"
+      context: "any"
+    - pattern: 'video_is_registered\s*\(\s*(?P<vdev>[^)]+)\s*\)'
+      description: "检查设备是否已注册"
+      context: "any"
+
+
+# ============================================================
+# V4L2 FILE OPERATIONS
+# ============================================================
+
+v4l2_file_operations:
+  description: "V4L2 File Operations - 视频文件操作"
+  header: "media/v4l2-dev.h"
+  icon: "📁"
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct v4l2_file_operations\s+(?P<name>\w+)\s*=\s*\{'
+    description: "V4L2 文件操作结构"
+
+  callbacks:
+    owner:
+      pattern: '\.owner\s*=\s*(?P<owner>THIS_MODULE)'
+      description: "模块所有者"
+      context: "any"
+
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      description: "打开设备"
+      trigger: "用户打开 /dev/videoX"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "分配文件句柄"
+        - "初始化设备状态"
+        - "v4l2_fh_open()"
+
+    release:
+      pattern: '\.release\s*=\s*(?P<handler>\w+)'
+      description: "关闭设备"
+      trigger: "用户关闭文件"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file)"
+      typical_actions:
+        - "停止流"
+        - "释放资源"
+        - "v4l2_fh_release()"
+
+    read:
+      pattern: '\.read\s*=\s*(?P<handler>\w+)'
+      description: "读取数据 (read 模式)"
+      trigger: "用户调用 read()"
+      context: "process"
+      can_sleep: true
+      signature: "ssize_t (*)(struct file *file, char __user *buf, size_t count, loff_t *ppos)"
+
+    write:
+      pattern: '\.write\s*=\s*(?P<handler>\w+)'
+      description: "写入数据 (write 模式)"
+      trigger: "用户调用 write()"
+      context: "process"
+      can_sleep: true
+      signature: "ssize_t (*)(struct file *file, const char __user *buf, size_t count, loff_t *ppos)"
+
+    poll:
+      pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+      description: "轮询状态"
+      trigger: "用户调用 poll()/select()"
+      context: "process"
+      can_sleep: true
+      signature: "__poll_t (*)(struct file *file, struct poll_table_struct *wait)"
+      typical_actions:
+        - "检查缓冲区状态"
+        - "vb2_poll()"
+
+    unlocked_ioctl:
+      pattern: '\.unlocked_ioctl\s*=\s*(?P<handler>\w+)'
+      description: "IOCTL 处理"
+      trigger: "用户调用 ioctl()"
+      context: "process"
+      can_sleep: true
+      signature: "long (*)(struct file *file, unsigned int cmd, unsigned long arg)"
+      typical_actions:
+        - "video_ioctl2()"
+
+    compat_ioctl32:
+      pattern: '\.compat_ioctl32\s*=\s*(?P<handler>\w+)'
+      description: "32位兼容 IOCTL"
+      trigger: "32位用户空间调用 ioctl()"
+      context: "process"
+      can_sleep: true
+
+    mmap:
+      pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
+      description: "内存映射"
+      trigger: "用户调用 mmap()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, struct vm_area_struct *vma)"
+      typical_actions:
+        - "vb2_mmap()"
+
+    get_unmapped_area:
+      pattern: '\.get_unmapped_area\s*=\s*(?P<handler>\w+)'
+      description: "获取未映射区域"
+      trigger: "mmap 地址计算"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# V4L2 IOCTL OPS
+# ============================================================
+
+v4l2_ioctl_ops:
+  description: "V4L2 IOCTL Operations - IOCTL 操作"
+  header: "media/v4l2-ioctl.h"
+  icon: "🎛️"
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct v4l2_ioctl_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "V4L2 IOCTL 操作结构"
+
+  callbacks:
+    # 能力查询
+    vidioc_querycap:
+      pattern: '\.vidioc_querycap\s*=\s*(?P<handler>\w+)'
+      description: "查询设备能力 (必须实现)"
+      trigger: "VIDIOC_QUERYCAP"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, struct v4l2_capability *cap)"
+      typical_actions:
+        - "填充 driver, card, bus_info"
+        - "设置 capabilities"
+
+    # 格式操作
+    vidioc_enum_fmt_vid_cap:
+      pattern: '\.vidioc_enum_fmt_vid_cap\s*=\s*(?P<handler>\w+)'
+      description: "枚举捕获格式"
+      trigger: "VIDIOC_ENUM_FMT (capture)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, struct v4l2_fmtdesc *f)"
+
+    vidioc_enum_fmt_vid_out:
+      pattern: '\.vidioc_enum_fmt_vid_out\s*=\s*(?P<handler>\w+)'
+      description: "枚举输出格式"
+      trigger: "VIDIOC_ENUM_FMT (output)"
+      context: "process"
+      can_sleep: true
+
+    vidioc_g_fmt_vid_cap:
+      pattern: '\.vidioc_g_fmt_vid_cap\s*=\s*(?P<handler>\w+)'
+      description: "获取捕获格式"
+      trigger: "VIDIOC_G_FMT (capture)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, struct v4l2_format *f)"
+
+    vidioc_g_fmt_vid_cap_mplane:
+      pattern: '\.vidioc_g_fmt_vid_cap_mplane\s*=\s*(?P<handler>\w+)'
+      description: "获取多平面捕获格式"
+      trigger: "VIDIOC_G_FMT (capture mplane)"
+      context: "process"
+      can_sleep: true
+
+    vidioc_s_fmt_vid_cap:
+      pattern: '\.vidioc_s_fmt_vid_cap\s*=\s*(?P<handler>\w+)'
+      description: "设置捕获格式"
+      trigger: "VIDIOC_S_FMT (capture)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, struct v4l2_format *f)"
+      typical_actions:
+        - "验证格式参数"
+        - "配置硬件"
+
+    vidioc_s_fmt_vid_cap_mplane:
+      pattern: '\.vidioc_s_fmt_vid_cap_mplane\s*=\s*(?P<handler>\w+)'
+      description: "设置多平面捕获格式"
+      trigger: "VIDIOC_S_FMT (capture mplane)"
+      context: "process"
+      can_sleep: true
+
+    vidioc_try_fmt_vid_cap:
+      pattern: '\.vidioc_try_fmt_vid_cap\s*=\s*(?P<handler>\w+)'
+      description: "尝试捕获格式"
+      trigger: "VIDIOC_TRY_FMT (capture)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, struct v4l2_format *f)"
+
+    # 缓冲区操作
+    vidioc_reqbufs:
+      pattern: '\.vidioc_reqbufs\s*=\s*(?P<handler>\w+)'
+      description: "请求缓冲区"
+      trigger: "VIDIOC_REQBUFS"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, struct v4l2_requestbuffers *b)"
+      typical_actions:
+        - "vb2_reqbufs()"
+
+    vidioc_querybuf:
+      pattern: '\.vidioc_querybuf\s*=\s*(?P<handler>\w+)'
+      description: "查询缓冲区"
+      trigger: "VIDIOC_QUERYBUF"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, struct v4l2_buffer *b)"
+      typical_actions:
+        - "vb2_querybuf()"
+
+    vidioc_create_bufs:
+      pattern: '\.vidioc_create_bufs\s*=\s*(?P<handler>\w+)'
+      description: "创建缓冲区"
+      trigger: "VIDIOC_CREATE_BUFS"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "vb2_create_bufs()"
+
+    vidioc_prepare_buf:
+      pattern: '\.vidioc_prepare_buf\s*=\s*(?P<handler>\w+)'
+      description: "准备缓冲区"
+      trigger: "VIDIOC_PREPARE_BUF"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "vb2_prepare_buf()"
+
+    vidioc_qbuf:
+      pattern: '\.vidioc_qbuf\s*=\s*(?P<handler>\w+)'
+      description: "入队缓冲区"
+      trigger: "VIDIOC_QBUF"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, struct v4l2_buffer *b)"
+      typical_actions:
+        - "vb2_qbuf()"
+
+    vidioc_dqbuf:
+      pattern: '\.vidioc_dqbuf\s*=\s*(?P<handler>\w+)'
+      description: "出队缓冲区"
+      trigger: "VIDIOC_DQBUF"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, struct v4l2_buffer *b)"
+      typical_actions:
+        - "vb2_dqbuf()"
+
+    vidioc_expbuf:
+      pattern: '\.vidioc_expbuf\s*=\s*(?P<handler>\w+)'
+      description: "导出缓冲区 (DMABUF)"
+      trigger: "VIDIOC_EXPBUF"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "vb2_expbuf()"
+
+    # 流操作
+    vidioc_streamon:
+      pattern: '\.vidioc_streamon\s*=\s*(?P<handler>\w+)'
+      description: "开启流"
+      trigger: "VIDIOC_STREAMON"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, enum v4l2_buf_type i)"
+      typical_actions:
+        - "vb2_streamon()"
+        - "启动硬件捕获"
+
+    vidioc_streamoff:
+      pattern: '\.vidioc_streamoff\s*=\s*(?P<handler>\w+)'
+      description: "关闭流"
+      trigger: "VIDIOC_STREAMOFF"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *file, void *fh, enum v4l2_buf_type i)"
+      typical_actions:
+        - "vb2_streamoff()"
+        - "停止硬件捕获"
+
+    # 输入/输出选择
+    vidioc_enum_input:
+      pattern: '\.vidioc_enum_input\s*=\s*(?P<handler>\w+)'
+      description: "枚举输入"
+      trigger: "VIDIOC_ENUMINPUT"
+      context: "process"
+      can_sleep: true
+
+    vidioc_g_input:
+      pattern: '\.vidioc_g_input\s*=\s*(?P<handler>\w+)'
+      description: "获取当前输入"
+      trigger: "VIDIOC_G_INPUT"
+      context: "process"
+      can_sleep: true
+
+    vidioc_s_input:
+      pattern: '\.vidioc_s_input\s*=\s*(?P<handler>\w+)'
+      description: "设置输入"
+      trigger: "VIDIOC_S_INPUT"
+      context: "process"
+      can_sleep: true
+
+    # 控件操作
+    vidioc_queryctrl:
+      pattern: '\.vidioc_queryctrl\s*=\s*(?P<handler>\w+)'
+      description: "查询控件"
+      trigger: "VIDIOC_QUERYCTRL"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "v4l2_ctrl_query_fill()"
+
+    vidioc_g_ctrl:
+      pattern: '\.vidioc_g_ctrl\s*=\s*(?P<handler>\w+)'
+      description: "获取控件值"
+      trigger: "VIDIOC_G_CTRL"
+      context: "process"
+      can_sleep: true
+
+    vidioc_s_ctrl:
+      pattern: '\.vidioc_s_ctrl\s*=\s*(?P<handler>\w+)'
+      description: "设置控件值"
+      trigger: "VIDIOC_S_CTRL"
+      context: "process"
+      can_sleep: true
+
+    vidioc_g_ext_ctrls:
+      pattern: '\.vidioc_g_ext_ctrls\s*=\s*(?P<handler>\w+)'
+      description: "获取扩展控件"
+      trigger: "VIDIOC_G_EXT_CTRLS"
+      context: "process"
+      can_sleep: true
+
+    vidioc_s_ext_ctrls:
+      pattern: '\.vidioc_s_ext_ctrls\s*=\s*(?P<handler>\w+)'
+      description: "设置扩展控件"
+      trigger: "VIDIOC_S_EXT_CTRLS"
+      context: "process"
+      can_sleep: true
+
+    # 帧率/参数
+    vidioc_g_parm:
+      pattern: '\.vidioc_g_parm\s*=\s*(?P<handler>\w+)'
+      description: "获取流参数"
+      trigger: "VIDIOC_G_PARM"
+      context: "process"
+      can_sleep: true
+
+    vidioc_s_parm:
+      pattern: '\.vidioc_s_parm\s*=\s*(?P<handler>\w+)'
+      description: "设置流参数"
+      trigger: "VIDIOC_S_PARM"
+      context: "process"
+      can_sleep: true
+
+    vidioc_enum_framesizes:
+      pattern: '\.vidioc_enum_framesizes\s*=\s*(?P<handler>\w+)'
+      description: "枚举帧大小"
+      trigger: "VIDIOC_ENUM_FRAMESIZES"
+      context: "process"
+      can_sleep: true
+
+    vidioc_enum_frameintervals:
+      pattern: '\.vidioc_enum_frameintervals\s*=\s*(?P<handler>\w+)'
+      description: "枚举帧间隔"
+      trigger: "VIDIOC_ENUM_FRAMEINTERVALS"
+      context: "process"
+      can_sleep: true
+
+    # 选择/裁剪
+    vidioc_g_selection:
+      pattern: '\.vidioc_g_selection\s*=\s*(?P<handler>\w+)'
+      description: "获取选择区域"
+      trigger: "VIDIOC_G_SELECTION"
+      context: "process"
+      can_sleep: true
+
+    vidioc_s_selection:
+      pattern: '\.vidioc_s_selection\s*=\s*(?P<handler>\w+)'
+      description: "设置选择区域"
+      trigger: "VIDIOC_S_SELECTION"
+      context: "process"
+      can_sleep: true
+
+    # 订阅事件
+    vidioc_subscribe_event:
+      pattern: '\.vidioc_subscribe_event\s*=\s*(?P<handler>\w+)'
+      description: "订阅事件"
+      trigger: "VIDIOC_SUBSCRIBE_EVENT"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "v4l2_ctrl_subscribe_event()"
+        - "v4l2_src_change_event_subscribe()"
+
+    vidioc_unsubscribe_event:
+      pattern: '\.vidioc_unsubscribe_event\s*=\s*(?P<handler>\w+)'
+      description: "取消订阅事件"
+      trigger: "VIDIOC_UNSUBSCRIBE_EVENT"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "v4l2_event_unsubscribe()"
 
 
 # ============================================================
@@ -64,244 +607,1124 @@ v4l2_device:
 # ============================================================
 
 v4l2_subdev:
-  description: "V4L2 Subdev - 视频子设备"
+  description: "V4L2 Subdevice - 视频子设备"
+  header: "media/v4l2-subdev.h"
+  icon: "🔧"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  registration:
+    - pattern: 'v4l2_subdev_init\s*\(\s*(?P<sd>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "初始化子设备"
+    - pattern: 'v4l2_i2c_subdev_init\s*\(\s*(?P<sd>[^)]+)\s*,\s*(?P<client>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "初始化 I2C 子设备"
+    - pattern: 'v4l2_spi_subdev_init\s*\(\s*(?P<sd>[^)]+)\s*,\s*(?P<spi>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "初始化 SPI 子设备"
+    - pattern: 'v4l2_device_register_subdev\s*\(\s*(?P<v4l2_dev>[^)]+)\s*,\s*(?P<sd>[^)]+)\s*\)'
+      description: "注册子设备到 v4l2_device"
+    - pattern: 'v4l2_device_unregister_subdev\s*\(\s*(?P<sd>[^)]+)\s*\)'
+      description: "注销子设备"
+    - pattern: 'v4l2_async_register_subdev\s*\(\s*(?P<sd>[^)]+)\s*\)'
+      description: "异步注册子设备"
+    - pattern: 'v4l2_async_unregister_subdev\s*\(\s*(?P<sd>[^)]+)\s*\)'
+      description: "异步注销子设备"
+
+  structure:
+    pattern: 'struct v4l2_subdev\s*(?P<name>\w+)\s*=?\s*\{?'
+    description: "V4L2 子设备结构"
+    fields:
+      - name: "entity"
+        type: "struct media_entity"
+        description: "媒体实体"
+      - name: "list"
+        type: "struct list_head"
+        description: "子设备链表节点"
+      - name: "owner"
+        type: "struct module *"
+        description: "模块所有者"
+      - name: "owner_v4l2_dev"
+        type: "bool"
+        description: "是否拥有 v4l2_dev"
+      - name: "flags"
+        type: "u32"
+        description: "子设备标志"
+      - name: "v4l2_dev"
+        type: "struct v4l2_device *"
+        description: "父 V4L2 设备"
+      - name: "ops"
+        type: "const struct v4l2_subdev_ops *"
+        description: "子设备操作"
+      - name: "internal_ops"
+        type: "const struct v4l2_subdev_internal_ops *"
+        description: "内部操作"
+      - name: "ctrl_handler"
+        type: "struct v4l2_ctrl_handler *"
+        description: "控件处理器"
+      - name: "name"
+        type: "char[52]"
+        description: "子设备名称"
+      - name: "grp_id"
+        type: "u32"
+        description: "组 ID"
+      - name: "dev_priv"
+        type: "void *"
+        description: "设备私有数据"
+      - name: "host_priv"
+        type: "void *"
+        description: "主机私有数据"
+
+  helper_functions:
+    - pattern: 'v4l2_set_subdevdata\s*\(\s*(?P<sd>[^)]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "设置子设备私有数据"
+      context: "any"
+    - pattern: 'v4l2_get_subdevdata\s*\(\s*(?P<sd>[^)]+)\s*\)'
+      description: "获取子设备私有数据"
+      context: "any"
+    - pattern: 'v4l2_subdev_call\s*\(\s*(?P<sd>[^)]+)\s*,\s*(?P<ops>\w+)\s*,\s*(?P<func>\w+)\s*'
+      description: "调用子设备操作"
+      context: "process"
+
+
+# ============================================================
+# V4L2 SUBDEV OPS
+# ============================================================
+
+v4l2_subdev_ops:
+  description: "V4L2 Subdevice Operations - 子设备操作"
+  header: "media/v4l2-subdev.h"
+  icon: "⚙️"
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct v4l2_subdev_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "子设备操作结构"
+    fields:
+      - name: "core"
+        type: "const struct v4l2_subdev_core_ops *"
+        description: "核心操作"
+      - name: "tuner"
+        type: "const struct v4l2_subdev_tuner_ops *"
+        description: "调谐器操作"
+      - name: "audio"
+        type: "const struct v4l2_subdev_audio_ops *"
+        description: "音频操作"
+      - name: "video"
+        type: "const struct v4l2_subdev_video_ops *"
+        description: "视频操作"
+      - name: "vbi"
+        type: "const struct v4l2_subdev_vbi_ops *"
+        description: "VBI 操作"
+      - name: "ir"
+        type: "const struct v4l2_subdev_ir_ops *"
+        description: "红外操作"
+      - name: "sensor"
+        type: "const struct v4l2_subdev_sensor_ops *"
+        description: "传感器操作"
+      - name: "pad"
+        type: "const struct v4l2_subdev_pad_ops *"
+        description: "Pad 操作"
+
+v4l2_subdev_core_ops:
+  description: "V4L2 Subdev Core Operations - 核心操作"
   header: "media/v4l2-subdev.h"
 
-  bind_patterns:
-    # v4l2_subdev_init - 初始化子设备
-    - pattern: 'v4l2_subdev_init\s*\(\s*(?P<sd>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
-      variable_capture: "sd"
-      description: "初始化 V4L2 子设备"
+  callbacks:
+    log_status:
+      pattern: '\.log_status\s*=\s*(?P<handler>\w+)'
+      description: "打印状态日志"
+      signature: "int (*)(struct v4l2_subdev *sd)"
+
+    s_power:
+      pattern: '\.s_power\s*=\s*(?P<handler>\w+)'
+      description: "设置电源状态"
+      signature: "int (*)(struct v4l2_subdev *sd, int on)"
+
+    subscribe_event:
+      pattern: '\.subscribe_event\s*=\s*(?P<handler>\w+)'
+      description: "订阅事件"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_fh *fh, struct v4l2_event_subscription *sub)"
+
+    unsubscribe_event:
+      pattern: '\.unsubscribe_event\s*=\s*(?P<handler>\w+)'
+      description: "取消订阅事件"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_fh *fh, struct v4l2_event_subscription *sub)"
+
+v4l2_subdev_video_ops:
+  description: "V4L2 Subdev Video Operations - 视频操作"
+  header: "media/v4l2-subdev.h"
 
   callbacks:
-    core:
-      pattern: '\.core\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "核心操作"
+    s_stream:
+      pattern: '\.s_stream\s*=\s*(?P<handler>\w+)'
+      description: "启动/停止流"
+      trigger: "VIDIOC_STREAMON/STREAMOFF"
+      signature: "int (*)(struct v4l2_subdev *sd, int enable)"
+      typical_actions:
+        - "启动/停止传感器输出"
+        - "配置时序"
 
-    video:
-      pattern: '\.video\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "视频操作"
+    g_frame_interval:
+      pattern: '\.g_frame_interval\s*=\s*(?P<handler>\w+)'
+      description: "获取帧间隔"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_frame_interval *fi)"
 
-    subdev:
-      pattern: '\.subdev\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "子设备操作"
+    s_frame_interval:
+      pattern: '\.s_frame_interval\s*=\s*(?P<handler>\w+)'
+      description: "设置帧间隔"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_frame_interval *fi)"
 
-    sensor:
-      pattern: '\.sensor\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "传感器操作"
+    g_std:
+      pattern: '\.g_std\s*=\s*(?P<handler>\w+)'
+      description: "获取视频标准"
+      signature: "int (*)(struct v4l2_subdev *sd, v4l2_std_id *std)"
 
+    s_std:
+      pattern: '\.s_std\s*=\s*(?P<handler>\w+)'
+      description: "设置视频标准"
+      signature: "int (*)(struct v4l2_subdev *sd, v4l2_std_id std)"
 
-# ============================================================
-# V4L2 FILE OPERATIONS
-# ============================================================
-
-v4l2_file_ops:
-  description: "V4L2 File Operations - 视频文件操作"
-  header: "linux/videodev2.h"
-
-  bind_patterns:
-    # struct v4l2_file_operations
-    - pattern: 'struct v4l2_file_operations\s*\{[^}]+\}'
-      description: "V4L2 文件操作结构"
+v4l2_subdev_pad_ops:
+  description: "V4L2 Subdev Pad Operations - Pad 操作"
+  header: "media/v4l2-subdev.h"
 
   callbacks:
-    open:
-      pattern: '\.open\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "打开操作"
+    init_cfg:
+      pattern: '\.init_cfg\s*=\s*(?P<handler>\w+)'
+      description: "初始化配置"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_state *state)"
 
-    release:
-      pattern: '\.release\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "释放操作"
+    enum_mbus_code:
+      pattern: '\.enum_mbus_code\s*=\s*(?P<handler>\w+)'
+      description: "枚举媒体总线代码"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_state *state, struct v4l2_subdev_mbus_code_enum *code)"
 
-    read:
-      pattern: '\.read\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "读取操作"
+    enum_frame_size:
+      pattern: '\.enum_frame_size\s*=\s*(?P<handler>\w+)'
+      description: "枚举帧大小"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_state *state, struct v4l2_subdev_frame_size_enum *fse)"
 
-    write:
-      pattern: '\.write\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "写入操作"
+    enum_frame_interval:
+      pattern: '\.enum_frame_interval\s*=\s*(?P<handler>\w+)'
+      description: "枚举帧间隔"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_state *state, struct v4l2_subdev_frame_interval_enum *fie)"
 
-    poll:
-      pattern: '\.poll\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "轮询操作"
-
-    mmap:
-      pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "内存映射操作"
-
-    ioctl:
-      pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "IOCTL 操作"
-
-
-# ============================================================
-# V4L2 IOCTL
-# ============================================================
-
-v4l2_ioctl:
-  description: "V4L2 IOCTL - 视频控制"
-  header: "linux/videodev2.h"
-
-  bind_patterns:
-    # VIDIOC_*
-    - pattern: 'VIDIOC_(?P<cmd>\w+)'
-      description: "V4L2 IOCTL 命令"
-
-    # VIDIOC_QUERYCAP
-    - pattern: 'VIDIOC_QUERYCAP'
-      description: "查询设备能力"
-
-    # VIDIOC_ENUM_FMT
-    - pattern: 'VIDIOC_ENUM_FMT'
-      description: "枚举格式"
-
-    # VIDIOC_S_FMT
-    - pattern: 'VIDIOC_S_FMT'
-      description: "设置格式"
-
-    # VIDIOC_G_FMT
-    - pattern: 'VIDIOC_G_FMT'
+    get_fmt:
+      pattern: '\.get_fmt\s*=\s*(?P<handler>\w+)'
       description: "获取格式"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_state *state, struct v4l2_subdev_format *format)"
 
-    # VIDIOC_REQBUFS
-    - pattern: 'VIDIOC_REQBUFS'
-      description: "请求缓冲区"
+    set_fmt:
+      pattern: '\.set_fmt\s*=\s*(?P<handler>\w+)'
+      description: "设置格式"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_state *state, struct v4l2_subdev_format *format)"
 
-    # VIDIOC_QBUF
-    - pattern: 'VIDIOC_QBUF'
-      description: "入队缓冲区"
+    get_selection:
+      pattern: '\.get_selection\s*=\s*(?P<handler>\w+)'
+      description: "获取选择区域"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_state *state, struct v4l2_subdev_selection *sel)"
 
-    # VIDIOC_DQBUF
-    - pattern: 'VIDIOC_DQBUF'
-      description: "出队缓冲区"
-
-    # VIDIOC_STREAMON
-    - pattern: 'VIDIOC_STREAMON'
-      description: "开启流"
-
-    # VIDIOC_STREAMOFF
-    - pattern: 'VIDIOC_STREAMOFF'
-      description: "关闭流"
+    set_selection:
+      pattern: '\.set_selection\s*=\s*(?P<handler>\w+)'
+      description: "设置选择区域"
+      signature: "int (*)(struct v4l2_subdev *sd, struct v4l2_subdev_state *state, struct v4l2_subdev_selection *sel)"
 
 
 # ============================================================
-# V4L2 BUFFER
+# VB2 QUEUE (VIDEOBUF2)
 # ============================================================
 
-v4l2_buffer:
-  description: "V4L2 Buffer - 视频缓冲区"
-  header: "linux/videodev2.h"
+vb2_queue:
+  description: "Videobuf2 Queue - 视频缓冲区队列"
+  header: "media/videobuf2-core.h"
+  icon: "📦"
+  kernel_version: "2.6.37+"
 
-  bind_patterns:
-    # struct v4l2_buffer
-    - pattern: 'struct v4l2_buffer\s*\{[^}]+\}'
-      description: "V4L2 缓冲区结构"
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
-    # struct v4l2_plane
-    - pattern: 'struct v4l2_plane\s*\{[^}]+\}'
-      description: "V4L2 平面结构"
+  registration:
+    - pattern: 'vb2_queue_init\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "初始化 vb2 队列"
+    - pattern: 'vb2_queue_release\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "释放 vb2 队列"
+
+  structure:
+    pattern: 'struct vb2_queue\s*(?P<name>\w+)\s*=\s*\{'
+    description: "vb2 队列结构"
+    fields:
+      - name: "type"
+        type: "enum v4l2_buf_type"
+        description: "缓冲区类型"
+      - name: "io_modes"
+        type: "unsigned int"
+        description: "支持的 IO 模式"
+      - name: "dev"
+        type: "struct device *"
+        description: "设备"
+      - name: "dma_attrs"
+        type: "unsigned long"
+        description: "DMA 属性"
+      - name: "bidirectional"
+        type: "unsigned"
+        description: "双向 DMA"
+      - name: "fileio_read_once"
+        type: "unsigned"
+        description: "fileio 读取一次"
+      - name: "fileio_write_immediately"
+        type: "unsigned"
+        description: "fileio 立即写入"
+      - name: "allow_zero_bytesused"
+        type: "unsigned"
+        description: "允许零字节使用"
+      - name: "quirk_poll_must_check_waiting_for_buffers"
+        type: "unsigned"
+        description: "poll 必须检查等待缓冲区"
+      - name: "supports_requests"
+        type: "unsigned"
+        description: "支持请求 API"
+      - name: "requires_requests"
+        type: "unsigned"
+        description: "需要请求 API"
+      - name: "lock"
+        type: "struct mutex *"
+        description: "序列化锁"
+      - name: "owner"
+        type: "void *"
+        description: "所有者"
+      - name: "ops"
+        type: "const struct vb2_ops *"
+        description: "vb2 操作"
+      - name: "mem_ops"
+        type: "const struct vb2_mem_ops *"
+        description: "内存操作"
+      - name: "buf_ops"
+        type: "const struct vb2_buf_ops *"
+        description: "缓冲区操作"
+      - name: "drv_priv"
+        type: "void *"
+        description: "驱动私有数据"
+      - name: "buf_struct_size"
+        type: "unsigned int"
+        description: "缓冲区结构大小"
+      - name: "timestamp_flags"
+        type: "u32"
+        description: "时间戳标志"
+      - name: "min_queued_buffers"
+        type: "unsigned int"
+        description: "最小入队缓冲区数"
+
+  io_modes:
+    - name: "VB2_MMAP"
+      description: "MMAP 模式"
+    - name: "VB2_USERPTR"
+      description: "用户指针模式"
+    - name: "VB2_READ"
+      description: "read() 模式"
+    - name: "VB2_WRITE"
+      description: "write() 模式"
+    - name: "VB2_DMABUF"
+      description: "DMABUF 模式"
+
+vb2_ops:
+  description: "Videobuf2 Operations - vb2 操作"
+  header: "media/videobuf2-core.h"
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct vb2_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "vb2 操作结构"
+
+  callbacks:
+    queue_setup:
+      pattern: '\.queue_setup\s*=\s*(?P<handler>\w+)'
+      description: "设置队列 (必须实现)"
+      trigger: "VIDIOC_REQBUFS 或 VIDIOC_CREATE_BUFS"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct vb2_queue *q, unsigned int *num_buffers, unsigned int *num_planes, unsigned int sizes[], struct device *alloc_devs[])"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "计算缓冲区数量"
+        - "设置每个平面大小"
+        - "返回需要的缓冲区数"
+
+    wait_prepare:
+      pattern: '\.wait_prepare\s*=\s*(?P<handler>\w+)'
+      description: "等待准备 (释放锁)"
+      trigger: "vb2_wait_for_all_buffers()"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct vb2_queue *q)"
+      typical_actions:
+        - "vb2_ops_wait_prepare()"
+
+    wait_finish:
+      pattern: '\.wait_finish\s*=\s*(?P<handler>\w+)'
+      description: "等待完成 (获取锁)"
+      trigger: "vb2_wait_for_all_buffers() 返回"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct vb2_queue *q)"
+      typical_actions:
+        - "vb2_ops_wait_finish()"
+
+    buf_init:
+      pattern: '\.buf_init\s*=\s*(?P<handler>\w+)'
+      description: "初始化缓冲区"
+      trigger: "分配缓冲区后"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct vb2_buffer *vb)"
+      typical_actions:
+        - "映射 DMA 地址"
+        - "初始化驱动私有数据"
+
+    buf_prepare:
+      pattern: '\.buf_prepare\s*=\s*(?P<handler>\w+)'
+      description: "准备缓冲区"
+      trigger: "VIDIOC_QBUF 或 VIDIOC_PREPARE_BUF"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct vb2_buffer *vb)"
+      typical_actions:
+        - "验证缓冲区参数"
+        - "设置 DMA 同步"
+
+    buf_finish:
+      pattern: '\.buf_finish\s*=\s*(?P<handler>\w+)'
+      description: "完成缓冲区"
+      trigger: "缓冲区完成返回用户空间前"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct vb2_buffer *vb)"
+      typical_actions:
+        - "同步 DMA 到 CPU"
+        - "设置时间戳"
+
+    buf_cleanup:
+      pattern: '\.buf_cleanup\s*=\s*(?P<handler>\w+)'
+      description: "清理缓冲区"
+      trigger: "释放缓冲区前"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct vb2_buffer *vb)"
+
+    start_streaming:
+      pattern: '\.start_streaming\s*=\s*(?P<handler>\w+)'
+      description: "开始流 (必须实现)"
+      trigger: "VIDIOC_STREAMON"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct vb2_queue *q, unsigned int count)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO (必须调用 vb2_buffer_done 归还所有缓冲区)"
+      typical_actions:
+        - "启动硬件捕获"
+        - "启动 DMA"
+        - "开启中断"
+
+    stop_streaming:
+      pattern: '\.stop_streaming\s*=\s*(?P<handler>\w+)'
+      description: "停止流 (必须实现)"
+      trigger: "VIDIOC_STREAMOFF 或关闭设备"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct vb2_queue *q)"
+      typical_actions:
+        - "停止硬件"
+        - "等待 DMA 完成"
+        - "归还所有缓冲区 (vb2_buffer_done)"
+
+    buf_queue:
+      pattern: '\.buf_queue\s*=\s*(?P<handler>\w+)'
+      description: "入队缓冲区 (必须实现)"
+      trigger: "VIDIOC_QBUF 且流已开始"
+      context: "process/atomic (取决于锁)"
+      can_sleep: false
+      signature: "void (*)(struct vb2_buffer *vb)"
+      typical_actions:
+        - "添加到驱动队列"
+        - "启动 DMA (如果空闲)"
+
+    buf_request_complete:
+      pattern: '\.buf_request_complete\s*=\s*(?P<handler>\w+)'
+      description: "请求完成"
+      trigger: "请求 API 完成"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct vb2_buffer *vb)"
+
+  helper_functions:
+    - pattern: 'vb2_buffer_done\s*\(\s*(?P<vb>[^)]+)\s*,\s*(?P<state>\w+)\s*\)'
+      description: "缓冲区完成"
+      context: "softirq/hardirq"
+    - pattern: 'vb2_set_plane_payload\s*\(\s*(?P<vb>[^)]+)\s*,\s*(?P<plane>\w+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "设置平面有效数据大小"
+      context: "any"
+    - pattern: 'vb2_get_plane_payload\s*\(\s*(?P<vb>[^)]+)\s*,\s*(?P<plane>\w+)\s*\)'
+      description: "获取平面有效数据大小"
+      context: "any"
+    - pattern: 'vb2_plane_vaddr\s*\(\s*(?P<vb>[^)]+)\s*,\s*(?P<plane>\w+)\s*\)'
+      description: "获取平面虚拟地址"
+      context: "any"
+    - pattern: 'vb2_plane_cookie\s*\(\s*(?P<vb>[^)]+)\s*,\s*(?P<plane>\w+)\s*\)'
+      description: "获取平面 cookie (DMA 地址)"
+      context: "any"
+    - pattern: 'vb2_dma_contig_plane_dma_addr\s*\(\s*(?P<vb>[^)]+)\s*,\s*(?P<plane>\w+)\s*\)'
+      description: "获取连续 DMA 地址"
+      context: "any"
+    - pattern: 'vb2_dma_sg_plane_desc\s*\(\s*(?P<vb>[^)]+)\s*,\s*(?P<plane>\w+)\s*\)'
+      description: "获取 scatter-gather 描述符"
+      context: "any"
 
 
 # ============================================================
-# V4L2 FORMAT
+# MEDIA CONTROLLER
 # ============================================================
 
-v4l2_format:
-  description: "V4L2 Format - 视频格式"
-  header: "linux/videodev2.h"
+media_device:
+  description: "Media Device - 媒体设备"
+  header: "media/media-device.h"
+  icon: "🎞️"
 
-  bind_patterns:
-    # struct v4l2_format
-    - pattern: 'struct v4l2_format\s*\{[^}]+\}'
-      description: "V4L2 格式结构"
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
-    # struct v4l2_pix_format
-    - pattern: 'struct v4l2_pix_format\s*\{[^}]+\}'
-      description: "像素格式结构"
+  registration:
+    - pattern: 'media_device_init\s*\(\s*(?P<mdev>[^)]+)\s*\)'
+      description: "初始化媒体设备"
+    - pattern: 'media_device_register\s*\(\s*(?P<mdev>[^)]+)\s*\)'
+      description: "注册媒体设备"
+    - pattern: '__media_device_register\s*\(\s*(?P<mdev>[^)]+)\s*,\s*(?P<owner>[^)]+)\s*\)'
+      description: "内部注册媒体设备"
+    - pattern: 'media_device_unregister\s*\(\s*(?P<mdev>[^)]+)\s*\)'
+      description: "注销媒体设备"
+    - pattern: 'media_device_cleanup\s*\(\s*(?P<mdev>[^)]+)\s*\)'
+      description: "清理媒体设备"
 
-    # V4L2_PIX_FMT_*
-    - pattern: 'V4L2_PIX_FMT_(?P<fmt>\w+)'
-      description: "像素格式定义"
+  structure:
+    pattern: 'struct media_device\s*(?P<name>\w+)\s*=?\s*\{?'
+    description: "媒体设备结构"
+    fields:
+      - name: "dev"
+        type: "struct device *"
+        description: "父设备"
+      - name: "devnode"
+        type: "struct media_devnode"
+        description: "设备节点"
+      - name: "model"
+        type: "char[32]"
+        description: "设备型号"
+      - name: "driver_name"
+        type: "const char *"
+        description: "驱动名称"
+      - name: "driver_version"
+        type: "u32"
+        description: "驱动版本"
+      - name: "hw_revision"
+        type: "u32"
+        description: "硬件版本"
+      - name: "serial"
+        type: "char[40]"
+        description: "序列号"
+      - name: "bus_info"
+        type: "char[32]"
+        description: "总线信息"
+      - name: "entity_id"
+        type: "u32"
+        description: "实体 ID 计数器"
+      - name: "pad_id"
+        type: "u32"
+        description: "Pad ID 计数器"
+      - name: "link_id"
+        type: "u32"
+        description: "Link ID 计数器"
+      - name: "entities"
+        type: "struct list_head"
+        description: "实体链表"
+      - name: "ops"
+        type: "const struct media_device_ops *"
+        description: "设备操作"
+
+media_entity:
+  description: "Media Entity - 媒体实体"
+  header: "media/media-entity.h"
+
+  registration:
+    - pattern: 'media_entity_pads_init\s*\(\s*(?P<entity>[^)]+)\s*,\s*(?P<num_pads>\w+)\s*,\s*(?P<pads>[^)]+)\s*\)'
+      description: "初始化实体 pads"
+    - pattern: 'media_device_register_entity\s*\(\s*(?P<mdev>[^)]+)\s*,\s*(?P<entity>[^)]+)\s*\)'
+      description: "注册实体"
+    - pattern: 'media_device_unregister_entity\s*\(\s*(?P<entity>[^)]+)\s*\)'
+      description: "注销实体"
+
+  structure:
+    pattern: 'struct media_entity\s*\{'
+    description: "媒体实体结构"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "实体名称"
+      - name: "function"
+        type: "u32"
+        description: "实体功能"
+      - name: "flags"
+        type: "unsigned long"
+        description: "实体标志"
+      - name: "num_pads"
+        type: "u16"
+        description: "pad 数量"
+      - name: "num_links"
+        type: "u16"
+        description: "链接数量"
+      - name: "num_backlinks"
+        type: "u16"
+        description: "反向链接数量"
+      - name: "pads"
+        type: "struct media_pad *"
+        description: "pads 数组"
+      - name: "links"
+        type: "struct media_link *"
+        description: "链接数组"
+      - name: "ops"
+        type: "const struct media_entity_operations *"
+        description: "实体操作"
+
+  helper_functions:
+    - pattern: 'media_create_pad_link\s*\(\s*(?P<source>[^)]+)\s*,\s*(?P<source_pad>\w+)\s*,\s*(?P<sink>[^)]+)\s*,\s*(?P<sink_pad>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      description: "创建 pad 链接"
+      context: "process"
+    - pattern: 'media_create_pad_links\s*\('
+      description: "创建多个 pad 链接"
+      context: "process"
+    - pattern: 'media_entity_remote_pad\s*\(\s*(?P<pad>[^)]+)\s*\)'
+      description: "获取远程 pad"
+      context: "any"
+    - pattern: 'media_graph_walk_start\s*\(\s*(?P<graph>[^)]+)\s*,\s*(?P<entity>[^)]+)\s*\)'
+      description: "开始图遍历"
+      context: "process"
+    - pattern: 'media_graph_walk_next\s*\(\s*(?P<graph>[^)]+)\s*\)'
+      description: "图遍历下一个"
+      context: "process"
 
 
 # ============================================================
-# V4L2 EXAMPLES
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  v4l2_open_chain:
+    description: "视频设备打开调用链"
+    trigger: "用户打开 /dev/videoX"
+    chain:
+      - function: "v4l2_open"
+        file: "drivers/media/v4l2-core/v4l2-dev.c"
+        description: "V4L2 打开入口"
+        context: "process"
+      - function: "v4l2_fh_open"
+        file: "drivers/media/v4l2-core/v4l2-fh.c"
+        description: "打开文件句柄"
+      - function: "vdev->fops->open"
+        file: "驱动代码"
+        description: "驱动打开回调"
+        is_user_entry: true
+
+  v4l2_streaming_chain:
+    description: "视频流开启调用链"
+    trigger: "用户调用 VIDIOC_STREAMON"
+    chain:
+      - function: "video_ioctl2"
+        file: "drivers/media/v4l2-core/v4l2-ioctl.c"
+        description: "IOCTL 入口"
+        context: "process"
+      - function: "v4l_streamon"
+        file: "drivers/media/v4l2-core/v4l2-ioctl.c"
+        description: "streamon 处理"
+      - function: "vb2_streamon"
+        file: "drivers/media/common/videobuf2/videobuf2-core.c"
+        description: "vb2 开始流"
+      - function: "vb2_start_streaming"
+        file: "drivers/media/common/videobuf2/videobuf2-core.c"
+        description: "内部开始流"
+      - function: "q->ops->start_streaming"
+        file: "驱动代码"
+        description: "驱动开始流回调"
+        is_user_entry: true
+
+  v4l2_buffer_done_chain:
+    description: "缓冲区完成调用链"
+    trigger: "硬件捕获完成"
+    chain:
+      - function: "irq_handler"
+        file: "驱动代码"
+        description: "硬件中断"
+        context: "hardirq"
+        is_user_entry: true
+      - function: "vb2_buffer_done"
+        file: "drivers/media/common/videobuf2/videobuf2-core.c"
+        description: "标记缓冲区完成"
+        context: "hardirq/softirq"
+      - function: "__vb2_queue_done"
+        file: "drivers/media/common/videobuf2/videobuf2-core.c"
+        description: "内部完成处理"
+      - function: "wake_up"
+        file: "kernel/sched/wait.c"
+        description: "唤醒等待进程"
+
+  v4l2_subdev_streamon_chain:
+    description: "子设备流开启调用链"
+    trigger: "主设备开启流"
+    chain:
+      - function: "v4l2_subdev_call(sd, video, s_stream, 1)"
+        file: "驱动代码"
+        description: "调用子设备 s_stream"
+        context: "process"
+      - function: "sensor_s_stream"
+        file: "传感器驱动"
+        description: "传感器开始输出"
+        is_user_entry: true
+
+
+# ============================================================
+# EXAMPLES
 # ============================================================
 
 examples:
-  - description: "V4L2 设备驱动"
+  - description: "完整视频捕获驱动 (使用 vb2)"
+    kernel_version: "5.0+"
     code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <media/v4l2-device.h>
+      #include <media/v4l2-ioctl.h>
+      #include <media/v4l2-fh.h>
+      #include <media/v4l2-event.h>
+      #include <media/videobuf2-dma-contig.h>
+
+      #define MY_WIDTH  640
+      #define MY_HEIGHT 480
+
+      struct my_buffer {
+          struct vb2_v4l2_buffer vb;
+          struct list_head list;
+      };
+
+      struct my_device {
+          struct v4l2_device v4l2_dev;
+          struct video_device vdev;
+          struct vb2_queue queue;
+          struct mutex lock;
+          
+          /* 缓冲区管理 */
+          struct list_head buf_list;
+          spinlock_t buf_lock;
+          unsigned int sequence;
+          
+          /* 格式 */
+          u32 pixelformat;
+          u32 width;
+          u32 height;
+          u32 bytesperline;
+          u32 sizeimage;
+      };
+
+      /* vb2 操作 */
+      static int my_queue_setup(struct vb2_queue *q,
+                                unsigned int *nbuffers,
+                                unsigned int *nplanes,
+                                unsigned int sizes[],
+                                struct device *alloc_devs[])
+      {
+          struct my_device *dev = vb2_get_drv_priv(q);
+          
+          if (*nplanes)
+              return sizes[0] < dev->sizeimage ? -EINVAL : 0;
+          
+          *nplanes = 1;
+          sizes[0] = dev->sizeimage;
+          
+          return 0;
+      }
+
+      static int my_buf_prepare(struct vb2_buffer *vb)
+      {
+          struct my_device *dev = vb2_get_drv_priv(vb->vb2_queue);
+          
+          if (vb2_plane_size(vb, 0) < dev->sizeimage)
+              return -EINVAL;
+          
+          vb2_set_plane_payload(vb, 0, dev->sizeimage);
+          return 0;
+      }
+
+      static void my_buf_queue(struct vb2_buffer *vb)
+      {
+          struct my_device *dev = vb2_get_drv_priv(vb->vb2_queue);
+          struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+          struct my_buffer *buf = container_of(vbuf, struct my_buffer, vb);
+          unsigned long flags;
+          
+          spin_lock_irqsave(&dev->buf_lock, flags);
+          list_add_tail(&buf->list, &dev->buf_list);
+          spin_unlock_irqrestore(&dev->buf_lock, flags);
+      }
+
+      static int my_start_streaming(struct vb2_queue *q, unsigned int count)
+      {
+          struct my_device *dev = vb2_get_drv_priv(q);
+          
+          dev->sequence = 0;
+          /* 启动硬件捕获 */
+          return 0;
+      }
+
+      static void my_stop_streaming(struct vb2_queue *q)
+      {
+          struct my_device *dev = vb2_get_drv_priv(q);
+          struct my_buffer *buf, *tmp;
+          unsigned long flags;
+          
+          /* 停止硬件 */
+          
+          /* 归还所有缓冲区 */
+          spin_lock_irqsave(&dev->buf_lock, flags);
+          list_for_each_entry_safe(buf, tmp, &dev->buf_list, list) {
+              list_del(&buf->list);
+              vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
+          }
+          spin_unlock_irqrestore(&dev->buf_lock, flags);
+      }
+
+      static const struct vb2_ops my_vb2_ops = {
+          .queue_setup     = my_queue_setup,
+          .buf_prepare     = my_buf_prepare,
+          .buf_queue       = my_buf_queue,
+          .start_streaming = my_start_streaming,
+          .stop_streaming  = my_stop_streaming,
+          .wait_prepare    = vb2_ops_wait_prepare,
+          .wait_finish     = vb2_ops_wait_finish,
+      };
+
+      /* V4L2 IOCTL */
       static int my_querycap(struct file *file, void *priv,
-                             struct v4l2_capability *cap) {
-          strlcpy(cap->driver, "my-video", sizeof(cap->driver));
-          strlcpy(cap->card, "My Video Device", sizeof(cap->card));
-          cap->capabilities = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+                             struct v4l2_capability *cap)
+      {
+          strscpy(cap->driver, "my-video", sizeof(cap->driver));
+          strscpy(cap->card, "My Video Device", sizeof(cap->card));
           return 0;
       }
 
       static int my_enum_fmt(struct file *file, void *priv,
-                             struct v4l2_fmtdesc *f) {
-          if (f->index >= NUM_FORMATS)
+                             struct v4l2_fmtdesc *f)
+      {
+          if (f->index > 0)
               return -EINVAL;
-          f->pixelformat = my_formats[f->index];
+          
+          f->pixelformat = V4L2_PIX_FMT_YUYV;
+          return 0;
+      }
+
+      static int my_g_fmt(struct file *file, void *priv,
+                          struct v4l2_format *f)
+      {
+          struct my_device *dev = video_drvdata(file);
+          
+          f->fmt.pix.width = dev->width;
+          f->fmt.pix.height = dev->height;
+          f->fmt.pix.pixelformat = dev->pixelformat;
+          f->fmt.pix.bytesperline = dev->bytesperline;
+          f->fmt.pix.sizeimage = dev->sizeimage;
+          f->fmt.pix.field = V4L2_FIELD_NONE;
+          f->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
+          
           return 0;
       }
 
       static int my_s_fmt(struct file *file, void *priv,
-                          struct v4l2_format *f) {
-          my_dev->width = f->fmt.pix.width;
-          my_dev->height = f->fmt.pix.height;
-          my_dev->format = f->fmt.pix.pixelformat;
-          return 0;
+                          struct v4l2_format *f)
+      {
+          struct my_device *dev = video_drvdata(file);
+          
+          if (vb2_is_busy(&dev->queue))
+              return -EBUSY;
+          
+          dev->width = f->fmt.pix.width;
+          dev->height = f->fmt.pix.height;
+          dev->pixelformat = V4L2_PIX_FMT_YUYV;
+          dev->bytesperline = dev->width * 2;
+          dev->sizeimage = dev->bytesperline * dev->height;
+          
+          return my_g_fmt(file, priv, f);
       }
 
       static const struct v4l2_ioctl_ops my_ioctl_ops = {
-          .vidioc_querycap = my_querycap,
+          .vidioc_querycap         = my_querycap,
           .vidioc_enum_fmt_vid_cap = my_enum_fmt,
-          .vidioc_s_fmt_vid_cap = my_s_fmt,
-          .vidioc_g_fmt_vid_cap = my_g_fmt,
-          .vidioc_reqbufs = my_reqbufs,
-          .vidioc_qbuf = my_qbuf,
-          .vidioc_dqbuf = my_dqbuf,
-          .vidioc_streamon = my_streamon,
-          .vidioc_streamoff = my_streamoff,
+          .vidioc_g_fmt_vid_cap    = my_g_fmt,
+          .vidioc_s_fmt_vid_cap    = my_s_fmt,
+          .vidioc_try_fmt_vid_cap  = my_s_fmt,
+          
+          .vidioc_reqbufs          = vb2_ioctl_reqbufs,
+          .vidioc_querybuf         = vb2_ioctl_querybuf,
+          .vidioc_qbuf             = vb2_ioctl_qbuf,
+          .vidioc_dqbuf            = vb2_ioctl_dqbuf,
+          .vidioc_expbuf           = vb2_ioctl_expbuf,
+          .vidioc_create_bufs      = vb2_ioctl_create_bufs,
+          .vidioc_prepare_buf      = vb2_ioctl_prepare_buf,
+          .vidioc_streamon         = vb2_ioctl_streamon,
+          .vidioc_streamoff        = vb2_ioctl_streamoff,
+          
+          .vidioc_subscribe_event  = v4l2_ctrl_subscribe_event,
+          .vidioc_unsubscribe_event = v4l2_event_unsubscribe,
       };
 
       static const struct v4l2_file_operations my_fops = {
-          .owner = THIS_MODULE,
-          .open = my_open,
-          .release = my_release,
-          .read = my_read,
-          .poll = my_poll,
-          .ioctl = video_ioctl2,
-          .mmap = my_mmap,
+          .owner          = THIS_MODULE,
+          .open           = v4l2_fh_open,
+          .release        = vb2_fop_release,
+          .read           = vb2_fop_read,
+          .poll           = vb2_fop_poll,
+          .unlocked_ioctl = video_ioctl2,
+          .mmap           = vb2_fop_mmap,
       };
 
-      static struct video_device my_vdev = {
-          .name = "my-video",
-          .fops = &my_fops,
-          .ioctl_ops = &my_ioctl_ops,
-          .release = video_device_release,
-      };
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev;
+          struct vb2_queue *q;
+          int ret;
 
-      static int __init my_init(void) {
-          struct video_device *vdev;
-
-          vdev = video_device_alloc();
-          if (!vdev)
+          dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
               return -ENOMEM;
-          *vdev = my_vdev;
 
-          return video_register_device(vdev, VFL_TYPE_VIDEO, -1);
+          /* 初始化 */
+          mutex_init(&dev->lock);
+          spin_lock_init(&dev->buf_lock);
+          INIT_LIST_HEAD(&dev->buf_list);
+
+          dev->width = MY_WIDTH;
+          dev->height = MY_HEIGHT;
+          dev->pixelformat = V4L2_PIX_FMT_YUYV;
+          dev->bytesperline = dev->width * 2;
+          dev->sizeimage = dev->bytesperline * dev->height;
+
+          /* 注册 v4l2_device */
+          ret = v4l2_device_register(&pdev->dev, &dev->v4l2_dev);
+          if (ret)
+              return ret;
+
+          /* 初始化 vb2 队列 */
+          q = &dev->queue;
+          q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+          q->io_modes = VB2_MMAP | VB2_DMABUF | VB2_READ;
+          q->dev = &pdev->dev;
+          q->drv_priv = dev;
+          q->ops = &my_vb2_ops;
+          q->mem_ops = &vb2_dma_contig_memops;
+          q->buf_struct_size = sizeof(struct my_buffer);
+          q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+          q->lock = &dev->lock;
+          q->min_queued_buffers = 2;
+
+          ret = vb2_queue_init(q);
+          if (ret)
+              goto err_v4l2;
+
+          /* 初始化 video_device */
+          dev->vdev.v4l2_dev = &dev->v4l2_dev;
+          dev->vdev.queue = &dev->queue;
+          dev->vdev.fops = &my_fops;
+          dev->vdev.ioctl_ops = &my_ioctl_ops;
+          dev->vdev.release = video_device_release_empty;
+          dev->vdev.lock = &dev->lock;
+          dev->vdev.device_caps = V4L2_CAP_VIDEO_CAPTURE | 
+                                   V4L2_CAP_STREAMING |
+                                   V4L2_CAP_READWRITE;
+          strscpy(dev->vdev.name, "my-video", sizeof(dev->vdev.name));
+          video_set_drvdata(&dev->vdev, dev);
+
+          ret = video_register_device(&dev->vdev, VFL_TYPE_VIDEO, -1);
+          if (ret)
+              goto err_vb2;
+
+          platform_set_drvdata(pdev, dev);
+          dev_info(&pdev->dev, "registered as /dev/video%d\n", dev->vdev.num);
+          return 0;
+
+      err_vb2:
+          vb2_queue_release(&dev->queue);
+      err_v4l2:
+          v4l2_device_unregister(&dev->v4l2_dev);
+          return ret;
+      }
+
+  - description: "V4L2 子设备驱动 (传感器)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/i2c.h>
+      #include <media/v4l2-subdev.h>
+      #include <media/v4l2-ctrls.h>
+
+      struct my_sensor {
+          struct v4l2_subdev sd;
+          struct media_pad pad;
+          struct v4l2_ctrl_handler hdl;
+          
+          struct v4l2_mbus_framefmt fmt;
+          bool streaming;
+      };
+
+      static inline struct my_sensor *to_sensor(struct v4l2_subdev *sd)
+      {
+          return container_of(sd, struct my_sensor, sd);
+      }
+
+      /* 视频操作 */
+      static int my_s_stream(struct v4l2_subdev *sd, int enable)
+      {
+          struct my_sensor *sensor = to_sensor(sd);
+          struct i2c_client *client = v4l2_get_subdevdata(sd);
+          
+          if (enable) {
+              /* 启动传感器输出 */
+              /* ... 写寄存器 ... */
+          } else {
+              /* 停止传感器输出 */
+          }
+          
+          sensor->streaming = enable;
+          return 0;
+      }
+
+      static const struct v4l2_subdev_video_ops my_video_ops = {
+          .s_stream = my_s_stream,
+      };
+
+      /* Pad 操作 */
+      static int my_enum_mbus_code(struct v4l2_subdev *sd,
+                                    struct v4l2_subdev_state *state,
+                                    struct v4l2_subdev_mbus_code_enum *code)
+      {
+          if (code->index > 0)
+              return -EINVAL;
+          
+          code->code = MEDIA_BUS_FMT_YUYV8_2X8;
+          return 0;
+      }
+
+      static int my_get_fmt(struct v4l2_subdev *sd,
+                            struct v4l2_subdev_state *state,
+                            struct v4l2_subdev_format *format)
+      {
+          struct my_sensor *sensor = to_sensor(sd);
+          
+          format->format = sensor->fmt;
+          return 0;
+      }
+
+      static int my_set_fmt(struct v4l2_subdev *sd,
+                            struct v4l2_subdev_state *state,
+                            struct v4l2_subdev_format *format)
+      {
+          struct my_sensor *sensor = to_sensor(sd);
+          
+          /* 验证并调整格式 */
+          format->format.code = MEDIA_BUS_FMT_YUYV8_2X8;
+          format->format.field = V4L2_FIELD_NONE;
+          
+          if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE)
+              sensor->fmt = format->format;
+          
+          return 0;
+      }
+
+      static const struct v4l2_subdev_pad_ops my_pad_ops = {
+          .enum_mbus_code = my_enum_mbus_code,
+          .get_fmt = my_get_fmt,
+          .set_fmt = my_set_fmt,
+      };
+
+      static const struct v4l2_subdev_ops my_subdev_ops = {
+          .video = &my_video_ops,
+          .pad = &my_pad_ops,
+      };
+
+      /* 控件 */
+      static int my_s_ctrl(struct v4l2_ctrl *ctrl)
+      {
+          struct my_sensor *sensor = 
+              container_of(ctrl->handler, struct my_sensor, hdl);
+          
+          switch (ctrl->id) {
+          case V4L2_CID_BRIGHTNESS:
+              /* 设置亮度 */
+              return 0;
+          case V4L2_CID_CONTRAST:
+              /* 设置对比度 */
+              return 0;
+          }
+          
+          return -EINVAL;
+      }
+
+      static const struct v4l2_ctrl_ops my_ctrl_ops = {
+          .s_ctrl = my_s_ctrl,
+      };
+
+      static int my_sensor_probe(struct i2c_client *client)
+      {
+          struct my_sensor *sensor;
+          int ret;
+
+          sensor = devm_kzalloc(&client->dev, sizeof(*sensor), GFP_KERNEL);
+          if (!sensor)
+              return -ENOMEM;
+
+          /* 初始化子设备 */
+          v4l2_i2c_subdev_init(&sensor->sd, client, &my_subdev_ops);
+          sensor->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
+
+          /* 初始化媒体 pad */
+          sensor->pad.flags = MEDIA_PAD_FL_SOURCE;
+          ret = media_entity_pads_init(&sensor->sd.entity, 1, &sensor->pad);
+          if (ret)
+              return ret;
+
+          /* 初始化控件 */
+          v4l2_ctrl_handler_init(&sensor->hdl, 2);
+          v4l2_ctrl_new_std(&sensor->hdl, &my_ctrl_ops,
+                            V4L2_CID_BRIGHTNESS, 0, 255, 1, 128);
+          v4l2_ctrl_new_std(&sensor->hdl, &my_ctrl_ops,
+                            V4L2_CID_CONTRAST, 0, 255, 1, 128);
+          sensor->sd.ctrl_handler = &sensor->hdl;
+
+          /* 默认格式 */
+          sensor->fmt.width = 640;
+          sensor->fmt.height = 480;
+          sensor->fmt.code = MEDIA_BUS_FMT_YUYV8_2X8;
+          sensor->fmt.field = V4L2_FIELD_NONE;
+
+          /* 异步注册 */
+          ret = v4l2_async_register_subdev(&sensor->sd);
+          if (ret)
+              goto err_ctrl;
+
+          return 0;
+
+      err_ctrl:
+          v4l2_ctrl_handler_free(&sensor->hdl);
+          media_entity_cleanup(&sensor->sd.entity);
+          return ret;
       }

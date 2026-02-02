@@ -1,15 +1,16 @@
 # Linux Kernel Block Device Driver Framework Knowledge Base
 #
-# Reference: https://www.kernel.org/doc/html/latest/block-driver-api.html
+# Reference: https://www.kernel.org/doc/html/latest/block/index.html
 
 # ============================================================
-# BLOCK DEVICE
+# GENDISK
 # ============================================================
 
-block_device:
-  description: "Block Device - 块设备"
-  header: "linux/genhd.h"
+gendisk:
+  description: "Generic Disk - 通用磁盘结构"
+  header: "linux/blkdev.h"
   icon: "💾"
+  kernel_version: "5.0+"
 
   context:
     type: "process"
@@ -17,110 +18,398 @@ block_device:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # alloc_disk - 分配块设备
-    - pattern: 'alloc_disk\s*\(\s*(?P<nr_parts>\d+)\s*\)'
-      description: "分配块设备"
-
-    # del_gendisk - 删除通用磁盘
-    - pattern: 'del_gendisk\s*\(\s*(?P<disk>[^)]+)\s*\)'
-      variable_capture: "disk"
-      description: "删除通用磁盘"
-
-    # add_disk - 添加磁盘
+  registration:
+    - pattern: 'alloc_disk\s*\(\s*(?P<minors>\d+)\s*\)'
+      description: "分配 gendisk 结构 (已废弃，使用 blk_alloc_disk)"
+    - pattern: 'blk_alloc_disk\s*\(\s*(?P<lim>[^)]*)\s*,\s*(?P<node>\w+)\s*\)'
+      description: "分配带限制的 gendisk (5.14+)"
+    - pattern: '__alloc_disk_node\s*\(\s*(?P<minors>\d+)\s*,\s*(?P<node>\w+)\s*\)'
+      description: "分配指定 NUMA 节点的 gendisk"
     - pattern: 'add_disk\s*\(\s*(?P<disk>[^)]+)\s*\)'
-      variable_capture: "disk"
-      description: "添加磁盘到系统"
-
-    # put_disk - 释放磁盘
+      description: "将磁盘添加到系统"
+    - pattern: 'device_add_disk\s*\(\s*(?P<parent>[^)]+)\s*,\s*(?P<disk>[^)]+)\s*,\s*(?P<groups>[^)]*)\s*\)'
+      description: "带父设备添加磁盘"
+    - pattern: 'del_gendisk\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "从系统删除磁盘"
     - pattern: 'put_disk\s*\(\s*(?P<disk>[^)]+)\s*\)'
-      variable_capture: "disk"
-      description: "释放磁盘结构"
+      description: "减少磁盘引用计数"
+    - pattern: 'get_disk_and_module\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "增加磁盘和模块引用"
 
-    # register_blkdev - 注册块设备
-    - pattern: 'register_blkdev\s*\(\s*(?P<major>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
-      variable_capture: "major"
-      description: "注册块设备号"
+  structure:
+    pattern: 'struct gendisk\s*\{'
+    description: "通用磁盘结构"
+    fields:
+      - name: "major"
+        type: "int"
+        description: "主设备号"
+      - name: "first_minor"
+        type: "int"
+        description: "第一个次设备号"
+      - name: "minors"
+        type: "int"
+        description: "分区数 (最大次设备号)"
+      - name: "disk_name"
+        type: "char[32]"
+        description: "磁盘名称 (如 sda)"
+      - name: "fops"
+        type: "struct block_device_operations *"
+        description: "块设备操作"
+      - name: "queue"
+        type: "struct request_queue *"
+        description: "请求队列"
+      - name: "private_data"
+        type: "void *"
+        description: "驱动私有数据"
+      - name: "flags"
+        type: "unsigned long"
+        description: "磁盘标志"
+      - name: "state"
+        type: "unsigned long"
+        description: "磁盘状态"
 
-    # unregister_blkdev - 注销块设备
-    - pattern: 'unregister_blkdev\s*\(\s*(?P<major>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
-      variable_capture: "major"
-      description: "注销块设备号"
+  helper_functions:
+    - pattern: 'set_capacity\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "设置磁盘容量 (扇区数)"
+      context: "process"
+    - pattern: 'set_capacity_and_notify\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "设置容量并通知用户空间"
+      context: "process"
+    - pattern: 'get_capacity\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "获取磁盘容量"
+      context: "any"
+    - pattern: 'set_disk_ro\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<flag>\w+)\s*\)'
+      description: "设置磁盘只读"
+      context: "process"
+    - pattern: 'bdev_check_media_change\s*\(\s*(?P<bdev>[^)]+)\s*\)'
+      description: "检查介质变化"
+      context: "process"
 
 
 # ============================================================
 # BLOCK DEVICE OPERATIONS
 # ============================================================
 
-block_ops:
-  description: "Block Device Operations - 块设备操作"
-  header: "linux/blk_types.h"
+block_device_operations:
+  description: "Block Device Operations - 块设备操作结构"
+  header: "linux/blkdev.h"
+  icon: "⚙️"
 
-  bind_patterns:
-    # struct block_device_operations
-    - pattern: 'static const struct block_device_operations\s+(?P<name>\w+)\s*=\s*\{'
-      variable_capture: "name"
-      description: "块设备操作结构"
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct block_device_operations\s+(?P<name>\w+)\s*=\s*\{'
+    description: "块设备操作结构定义"
 
   callbacks:
-    # 打开/释放
     owner:
       pattern: '\.owner\s*=\s*(?P<owner>THIS_MODULE)'
       description: "模块所有者"
+      trigger: "模块引用计数"
+      context: "any"
 
     open:
       pattern: '\.open\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "打开设备"
+      description: "打开块设备"
+      trigger: "用户打开设备节点 (open /dev/sdX)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct gendisk *disk, blk_mode_t mode)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "增加使用计数"
+        - "检查设备状态"
+        - "初始化设备 (如首次打开)"
 
     release:
       pattern: '\.release\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "释放设备"
+      description: "释放块设备"
+      trigger: "用户关闭设备"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct gendisk *disk)"
+      typical_actions:
+        - "减少使用计数"
+        - "同步缓存到设备"
+        - "释放资源"
 
-    # IOCTL
     ioctl:
       pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "IOCTL 命令"
+      description: "处理设备特定的 IOCTL"
+      trigger: "用户调用 ioctl()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct block_device *bdev, blk_mode_t mode, unsigned cmd, unsigned long arg)"
+      return_value:
+        success: "0 或正值"
+        failure: "-ERRNO (-ENOTTY 表示不支持)"
+      typical_actions:
+        - "处理设备特定命令"
+        - "获取/设置设备参数"
 
-    # 读写
-    read:
-      pattern: '\.read\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "读取数据"
+    compat_ioctl:
+      pattern: '\.compat_ioctl\s*=\s*(?P<handler>\w+)'
+      description: "32位兼容 IOCTL"
+      trigger: "32位用户空间调用 ioctl()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct block_device *bdev, blk_mode_t mode, unsigned cmd, unsigned long arg)"
 
-    write:
-      pattern: '\.write\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "写入数据"
-
-    # 介质操作
-    media_changed:
-      pattern: '\.media_changed\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "检查介质变化"
-
-    revalidate_disk:
-      pattern: '\.revalidate_disk\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "重新验证磁盘"
-
-    # 电源管理
     getgeo:
       pattern: '\.getgeo\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取几何信息"
+      description: "获取磁盘几何信息"
+      trigger: "HDIO_GETGEO ioctl"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct block_device *bdev, struct hd_geometry *geo)"
+      typical_actions:
+        - "填充 cylinders, heads, sectors"
+        - "设置 start 偏移"
 
-    freeze:
-      pattern: '\.freeze\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "冻结设备"
+    check_events:
+      pattern: '\.check_events\s*=\s*(?P<handler>\w+)'
+      description: "检查介质事件 (插入/弹出)"
+      trigger: "轮询或介质变化检测"
+      context: "process"
+      can_sleep: true
+      signature: "unsigned int (*)(struct gendisk *disk, unsigned int clearing)"
+      return_value:
+        success: "DISK_EVENT_* 位掩码"
 
-    thaw:
-      pattern: '\.thaw\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "解冻设备"
+    unlock_native_capacity:
+      pattern: '\.unlock_native_capacity\s*=\s*(?P<handler>\w+)'
+      description: "解锁设备原始容量"
+      trigger: "检测到 HPA (Host Protected Area)"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct gendisk *disk)"
+
+    alternative_gpt_sector:
+      pattern: '\.alternative_gpt_sector\s*=\s*(?P<handler>\w+)'
+      description: "获取备用 GPT 扇区位置"
+      trigger: "GPT 分区表解析"
+      context: "process"
+      can_sleep: true
+      signature: "sector_t (*)(struct gendisk *disk, sector_t capacity)"
+
+    submit_bio:
+      pattern: '\.submit_bio\s*=\s*(?P<handler>\w+)'
+      description: "提交 BIO (用于堆叠设备)"
+      trigger: "bio 提交"
+      context: "process/softirq"
+      can_sleep: false
+      signature: "void (*)(struct bio *bio)"
+
+    pr_ops:
+      pattern: '\.pr_ops\s*=\s*(?P<handler>\w+)'
+      description: "持久预留操作"
+      trigger: "PR IOCTL 命令"
+      context: "process"
+      can_sleep: true
+
+    free_disk:
+      pattern: '\.free_disk\s*=\s*(?P<handler>\w+)'
+      description: "释放磁盘时的清理"
+      trigger: "磁盘引用计数归零"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct gendisk *disk)"
+
+
+# ============================================================
+# BLK-MQ TAG SET
+# ============================================================
+
+blk_mq_tag_set:
+  description: "Block Multi-Queue Tag Set - 多队列标签集"
+  header: "linux/blk-mq.h"
+  icon: "🏷️"
+  kernel_version: "3.13+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  registration:
+    - pattern: 'blk_mq_alloc_tag_set\s*\(\s*(?P<set>[^)]+)\s*\)'
+      description: "分配多队列标签集"
+    - pattern: 'blk_mq_free_tag_set\s*\(\s*(?P<set>[^)]+)\s*\)'
+      description: "释放多队列标签集"
+
+  structure:
+    pattern: 'struct blk_mq_tag_set\s*(?P<name>\w+)\s*=\s*\{'
+    description: "多队列标签集结构"
+    fields:
+      - name: "ops"
+        type: "const struct blk_mq_ops *"
+        description: "多队列操作"
+      - name: "nr_hw_queues"
+        type: "unsigned int"
+        description: "硬件队列数"
+      - name: "queue_depth"
+        type: "unsigned int"
+        description: "每队列深度"
+      - name: "reserved_tags"
+        type: "unsigned int"
+        description: "保留标签数"
+      - name: "cmd_size"
+        type: "unsigned int"
+        description: "驱动命令结构大小"
+      - name: "numa_node"
+        type: "int"
+        description: "NUMA 节点"
+      - name: "timeout"
+        type: "unsigned int"
+        description: "请求超时 (jiffies)"
+      - name: "flags"
+        type: "unsigned int"
+        description: "BLK_MQ_F_* 标志"
+      - name: "driver_data"
+        type: "void *"
+        description: "驱动私有数据"
+
+
+# ============================================================
+# BLK-MQ OPS
+# ============================================================
+
+blk_mq_ops:
+  description: "Block Multi-Queue Operations - 多队列操作"
+  header: "linux/blk-mq.h"
+  icon: "⚡"
+  kernel_version: "3.13+"
+
+  context:
+    type: "varies"
+    can_sleep: "depends on callback"
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct blk_mq_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "多队列操作结构定义"
+
+  callbacks:
+    queue_rq:
+      pattern: '\.queue_rq\s*=\s*(?P<handler>\w+)'
+      description: "处理请求 (必须实现)"
+      trigger: "请求分发到硬件队列"
+      context: "softirq/process"
+      can_sleep: false
+      signature: "blk_status_t (*)(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue_data *bd)"
+      return_value:
+        success: "BLK_STS_OK"
+        failure: "BLK_STS_* 错误码"
+      typical_actions:
+        - "从 bd->rq 获取请求"
+        - "设置 DMA 映射"
+        - "将命令发送到硬件"
+        - "调用 blk_mq_start_request()"
+
+    commit_rqs:
+      pattern: '\.commit_rqs\s*=\s*(?P<handler>\w+)'
+      description: "提交批量请求"
+      trigger: "批量请求需要提交到硬件"
+      context: "softirq"
+      can_sleep: false
+      signature: "void (*)(struct blk_mq_hw_ctx *hctx)"
+      typical_actions:
+        - "触发硬件门铃"
+        - "启动 DMA"
+
+    complete:
+      pattern: '\.complete\s*=\s*(?P<handler>\w+)'
+      description: "完成请求 (可选)"
+      trigger: "请求完成处理"
+      context: "softirq/hardirq"
+      can_sleep: false
+      signature: "void (*)(struct request *rq)"
+
+    timeout:
+      pattern: '\.timeout\s*=\s*(?P<handler>\w+)'
+      description: "处理请求超时"
+      trigger: "请求超过 tag_set.timeout"
+      context: "softirq"
+      can_sleep: false
+      signature: "enum blk_eh_timer_return (*)(struct request *rq)"
+      return_value:
+        BLK_EH_DONE: "超时已处理"
+        BLK_EH_RESET_TIMER: "重置定时器"
+      typical_actions:
+        - "中止硬件命令"
+        - "重置设备"
+        - "记录错误日志"
+
+    poll:
+      pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+      description: "轮询完成 (io_uring)"
+      trigger: "io_uring 轮询模式"
+      context: "process"
+      can_sleep: false
+      signature: "int (*)(struct blk_mq_hw_ctx *hctx, struct io_comp_batch *iob)"
+
+    init_hctx:
+      pattern: '\.init_hctx\s*=\s*(?P<handler>\w+)'
+      description: "初始化硬件队列上下文"
+      trigger: "创建硬件队列"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct blk_mq_hw_ctx *hctx, void *data, unsigned int hctx_idx)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "分配队列私有数据"
+        - "初始化硬件队列"
+
+    exit_hctx:
+      pattern: '\.exit_hctx\s*=\s*(?P<handler>\w+)'
+      description: "清理硬件队列上下文"
+      trigger: "销毁硬件队列"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct blk_mq_hw_ctx *hctx, unsigned int hctx_idx)"
+
+    init_request:
+      pattern: '\.init_request\s*=\s*(?P<handler>\w+)'
+      description: "初始化请求私有数据"
+      trigger: "分配请求"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct blk_mq_tag_set *set, struct request *rq, unsigned int hctx_idx, unsigned int numa_node)"
+
+    exit_request:
+      pattern: '\.exit_request\s*=\s*(?P<handler>\w+)'
+      description: "清理请求私有数据"
+      trigger: "释放请求"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct blk_mq_tag_set *set, struct request *rq, unsigned int hctx_idx)"
+
+    map_queues:
+      pattern: '\.map_queues\s*=\s*(?P<handler>\w+)'
+      description: "映射 CPU 到硬件队列"
+      trigger: "设置 CPU 到队列映射"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct blk_mq_tag_set *set)"
+      typical_actions:
+        - "使用 blk_mq_map_queues()"
+        - "设置 NUMA 感知映射"
+
+    show_rq:
+      pattern: '\.show_rq\s*=\s*(?P<handler>\w+)'
+      description: "显示请求调试信息"
+      trigger: "debugfs 读取"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct seq_file *m, struct request *rq)"
 
 
 # ============================================================
@@ -132,53 +421,58 @@ request_queue:
   header: "linux/blkdev.h"
   icon: "📋"
 
-  bind_patterns:
-    # blk_init_queue - 初始化请求队列
-    - pattern: 'blk_init_queue\s*\(\s*(?P<fn>[^)]+)\s*,\s*(?P<lock>[^)]+)\s*\)'
-      variable_capture: "fn"
-      description: "初始化请求队列"
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
-    # blk_cleanup_queue - 清理请求队列
-    - pattern: 'blk_cleanup_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
-      variable_capture: "q"
-      description: "清理请求队列"
+  registration:
+    - pattern: 'blk_mq_init_queue\s*\(\s*(?P<set>[^)]+)\s*\)'
+      description: "初始化多队列请求队列"
+    - pattern: 'blk_mq_alloc_queue\s*\(\s*(?P<set>[^)]+)\s*,\s*(?P<lim>[^)]*)\s*,\s*(?P<data>[^)]*)\s*\)'
+      description: "分配多队列请求队列 (6.0+)"
+    - pattern: 'blk_mq_destroy_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "销毁多队列请求队列"
+    - pattern: 'blk_put_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "减少队列引用"
+    - pattern: 'blk_get_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "增加队列引用"
 
-    # blk_mq_init_queue - 初始化多队列
-    - pattern: 'blk_mq_init_queue\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "初始化多队列请求"
-
-    # blk_alloc_queue - 分配队列
-    - pattern: 'blk_alloc_queue\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "分配请求队列"
-
-    # blk_queue_max_hw_sectors - 设置最大扇区
-    - pattern: 'blk_queue_max_hw_sectors\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<sectors>\w+)\s*\)'
-      variable_capture: "q"
-      description: "设置最大硬件扇区"
-
-    # blk_queue_logical_block_size - 设置逻辑块大小
+  helper_functions:
     - pattern: 'blk_queue_logical_block_size\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
-      variable_capture: "q"
       description: "设置逻辑块大小"
-
-    # blk_queue_physical_block_size - 设置物理块大小
+      context: "process"
     - pattern: 'blk_queue_physical_block_size\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
-      variable_capture: "q"
       description: "设置物理块大小"
-
-    # blk_queue_io_opt - 设置 IO 选项
+      context: "process"
+    - pattern: 'blk_queue_max_hw_sectors\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<max>\w+)\s*\)'
+      description: "设置最大硬件扇区数"
+      context: "process"
+    - pattern: 'blk_queue_max_segments\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<max>\w+)\s*\)'
+      description: "设置最大段数"
+      context: "process"
+    - pattern: 'blk_queue_max_segment_size\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<max>\w+)\s*\)'
+      description: "设置最大段大小"
+      context: "process"
+    - pattern: 'blk_queue_max_discard_sectors\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<max>\w+)\s*\)'
+      description: "设置最大丢弃扇区数"
+      context: "process"
+    - pattern: 'blk_queue_flag_set\s*\(\s*(?P<flag>\w+)\s*,\s*(?P<q>[^)]+)\s*\)'
+      description: "设置队列标志"
+      context: "process"
+    - pattern: 'blk_queue_flag_clear\s*\(\s*(?P<flag>\w+)\s*,\s*(?P<q>[^)]+)\s*\)'
+      description: "清除队列标志"
+      context: "process"
+    - pattern: 'blk_queue_chunk_sectors\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "设置分块扇区数"
+      context: "process"
+    - pattern: 'blk_queue_io_min\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<min>\w+)\s*\)'
+      description: "设置最小 IO 大小"
+      context: "process"
     - pattern: 'blk_queue_io_opt\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<opt>\w+)\s*\)'
-      variable_capture: "q"
-      description: "设置 IO 选项"
-
-  callbacks:
-    # blk_init_queue request handler callback
-    request_fn:
-      pattern: 'blk_init_queue\s*\(\s*(?P<handler>\w+)\s*,\s*'
-      handler_capture: "handler"
-      description: "请求处理函数"
+      description: "设置最优 IO 大小"
+      context: "process"
 
 
 # ============================================================
@@ -186,44 +480,60 @@ request_queue:
 # ============================================================
 
 request:
-  description: "Request - 请求"
-  header: "linux/blk_types.h"
+  description: "Request - 块设备请求"
+  header: "linux/blk-mq.h"
+  icon: "📝"
 
-  bind_patterns:
-    # blk_mq_alloc_request - 分配请求
-    - pattern: 'blk_mq_alloc_request\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<start>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "q"
-      description: "分配请求"
+  context:
+    type: "varies"
+    can_sleep: "depends on operation"
 
-    # blk_mq_end_request - 结束请求
-    - pattern: 'blk_mq_end_request\s*\(\s*(?P<rq>[^)]+)\s*,\s*(?P<error>\w+)\s*\)'
-      variable_capture: "rq"
-      description: "结束请求"
-
-    # blk_mq_complete_request - 完成请求
-    - pattern: 'blk_mq_complete_request\s*\(\s*(?P<rq>[^)]+)\s*\)'
-      variable_capture: "rq"
+  helper_functions:
+    - pattern: 'blk_mq_start_request\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "开始处理请求 (必须在 queue_rq 中调用)"
+      context: "softirq"
+    - pattern: 'blk_mq_end_request\s*\(\s*(?P<rq>[^)]+)\s*,\s*(?P<status>\w+)\s*\)'
       description: "完成请求"
-
-    # blk_mq_requeue_request - 重新入队
-    - pattern: 'blk_mq_requeue_request\s*\(\s*(?P<rq>[^)]+)\s*\)'
-      variable_capture: "rq"
+      context: "softirq/hardirq"
+    - pattern: 'blk_mq_complete_request\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "异步完成请求"
+      context: "hardirq"
+    - pattern: 'blk_mq_requeue_request\s*\(\s*(?P<rq>[^)]+)\s*,\s*(?P<kick>\w+)\s*\)'
       description: "重新入队请求"
-
-    # blk_update_request - 更新请求
-    - pattern: 'blk_update_request\s*\(\s*(?P<rq>[^)]+)\s*,\s*(?P<error>\w+)\s*,\s*(?P<nr_bytes>\w+)\s*\)'
-      variable_capture: "rq"
-      description: "更新请求"
-
-    # blk_rq_bytes - 获取请求字节数
+      context: "softirq"
+    - pattern: 'blk_mq_delay_kick_requeue_list\s*\(\s*(?P<hctx>[^)]+)\s*,\s*(?P<delay>\w+)\s*\)'
+      description: "延迟启动重入队列表"
+      context: "softirq"
     - pattern: 'blk_rq_bytes\s*\(\s*(?P<rq>[^)]+)\s*\)'
-      variable_capture: "rq"
       description: "获取请求字节数"
-
-    # blk_rq_sectors - 获取请求扇区数
+      context: "any"
     - pattern: 'blk_rq_sectors\s*\(\s*(?P<rq>[^)]+)\s*\)'
-      variable_capture: "rq"
       description: "获取请求扇区数"
+      context: "any"
+    - pattern: 'blk_rq_pos\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求起始扇区"
+      context: "any"
+    - pattern: 'blk_rq_cur_bytes\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取当前段字节数"
+      context: "any"
+    - pattern: 'blk_rq_cur_sectors\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取当前段扇区数"
+      context: "any"
+    - pattern: 'rq_data_dir\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求方向 (READ/WRITE)"
+      context: "any"
+    - pattern: 'req_op\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求操作类型"
+      context: "any"
+    - pattern: 'blk_rq_map_sg\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<rq>[^)]+)\s*,\s*(?P<sg>[^)]+)\s*\)'
+      description: "映射请求到 scatter-gather 列表"
+      context: "softirq"
+    - pattern: 'blk_mq_rq_to_pdu\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求的驱动私有数据"
+      context: "any"
+    - pattern: 'blk_mq_rq_from_pdu\s*\(\s*(?P<pdu>[^)]+)\s*\)'
+      description: "从驱动私有数据获取请求"
+      context: "any"
 
 
 # ============================================================
@@ -231,309 +541,393 @@ request:
 # ============================================================
 
 bio:
-  description: "BIO - 块 IO"
-  header: "linux/blk_types.h"
+  description: "Block I/O - 块 IO 结构"
+  header: "linux/bio.h"
   icon: "🧬"
 
-  bind_patterns:
-    # bio_alloc - 分配 BIO
-    - pattern: 'bio_alloc\s*\(\s*(?P<q>[^)]+)\s*,\s*(?P<nr_vecs>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
-      variable_capture: "q"
+  context:
+    type: "varies"
+    can_sleep: "depends on allocation flags"
+
+  registration:
+    - pattern: 'bio_alloc\s*\(\s*(?P<bdev>[^)]+)\s*,\s*(?P<nr_vecs>\w+)\s*,\s*(?P<opf>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
       description: "分配 BIO"
-
-    # bio_free - 释放 BIO
-    - pattern: 'bio_free\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<q>[^)]+)\s*\)'
-      variable_capture: "bio"
+    - pattern: 'bio_alloc_bioset\s*\(\s*(?P<bdev>[^)]+)\s*,\s*(?P<nr_vecs>\w+)\s*,\s*(?P<opf>\w+)\s*,\s*(?P<gfp>\w+)\s*,\s*(?P<bs>[^)]+)\s*\)'
+      description: "从 bioset 分配 BIO"
+    - pattern: 'bio_put\s*\(\s*(?P<bio>[^)]+)\s*\)'
       description: "释放 BIO"
+    - pattern: 'bio_chain\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+      description: "链接 BIO"
 
-    # bio_add_page - 添加页
-    - pattern: 'bio_add_page\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<page>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<offset>\w+)\s*\)'
-      variable_capture: "bio"
+  helper_functions:
+    - pattern: 'bio_add_page\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<page>[^)]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<off>\w+)\s*\)'
       description: "添加页到 BIO"
-
-    # bio_add_vmalloc - 添加 vmalloc 页
-    - pattern: 'bio_add_vmalloc\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<data>[^)]+)\s*,\s*(?P<size>\w+)\s*\)'
-      variable_capture: "bio"
-      description: "添加 vmalloc 页"
-
-    # bio_endio - 结束 BIO
-    - pattern: 'bio_endio\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<error>\w+)\s*\)'
-      variable_capture: "bio"
-      description: "结束 BIO"
-
-    # bio_io_error - IO 错误
-    - pattern: 'bio_io_error\s*\(\s*(?P<bio>[^)]+)\s*\)'
-      variable_capture: "bio"
-      description: "BIO IO 错误"
-
-    # bio_copy_data - 复制数据
-    - pattern: 'bio_copy_data\s*\(\s*(?P<dst>[^)]+)\s*,\s*(?P<src>[^)]+)\s*,\s*(?P<gfp>\w+)\s*\)'
-      variable_capture: "dst"
-      description: "复制 BIO 数据"
-
-    # bio_advance - 推进 BIO
-    - pattern: 'bio_advance\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<bytes>\w+)\s*\)'
-      variable_capture: "bio"
-      description: "推进 BIO"
-
-
-# ============================================================
-# BIO OPERATIONS
-# ============================================================
-
-bio_ops:
-  description: "BIO Operations - BIO 操作"
-  header: "linux/blk_types.h"
-
-  bind_patterns:
-    # struct bio_ops
-    - pattern: 'struct bio_ops\s*\{[^}]+\}'
-      description: "BIO 操作结构"
-
-    # submit_bio - 提交 BIO
+      context: "process"
+    - pattern: 'bio_add_folio\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<folio>[^)]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<off>\w+)\s*\)'
+      description: "添加 folio 到 BIO"
+      context: "process"
     - pattern: 'submit_bio\s*\(\s*(?P<bio>[^)]+)\s*\)'
-      variable_capture: "bio"
       description: "提交 BIO"
-
-    # submit_bio_wait - 等待 BIO 完成
+      context: "process/softirq"
     - pattern: 'submit_bio_wait\s*\(\s*(?P<bio>[^)]+)\s*\)'
-      variable_capture: "bio"
-      description: "提交并等待 BIO"
+      description: "同步提交 BIO"
+      context: "process"
+    - pattern: 'bio_endio\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "完成 BIO"
+      context: "softirq/hardirq"
+    - pattern: 'bio_set_dev\s*\(\s*(?P<bio>[^)]+)\s*,\s*(?P<bdev>[^)]+)\s*\)'
+      description: "设置 BIO 目标设备"
+      context: "any"
+    - pattern: 'bio_for_each_segment\s*\(\s*(?P<bvec>\w+)\s*,\s*(?P<bio>[^)]+)\s*,\s*(?P<iter>\w+)\s*\)'
+      description: "遍历 BIO 段"
+      context: "any"
+    - pattern: 'bio_for_each_bvec\s*\(\s*(?P<bvec>\w+)\s*,\s*(?P<bio>[^)]+)\s*,\s*(?P<iter>\w+)\s*\)'
+      description: "遍历 BIO bvec"
+      context: "any"
 
 
 # ============================================================
-# DISK GEOMETRY
+# CALL CHAINS
 # ============================================================
 
-disk_geometry:
-  description: "Disk Geometry - 磁盘几何"
-  header: "hdreg.h"
+call_chains:
+  submit_bio_chain:
+    description: "BIO 提交调用链"
+    trigger: "用户/文件系统提交 bio"
+    chain:
+      - function: "submit_bio"
+        file: "block/blk-core.c"
+        description: "BIO 提交入口"
+        context: "process"
+      - function: "submit_bio_noacct"
+        file: "block/blk-core.c"
+        description: "无统计提交"
+      - function: "__submit_bio"
+        file: "block/blk-core.c"
+        description: "内部提交"
+      - function: "blk_mq_submit_bio"
+        file: "block/blk-mq.c"
+        description: "多队列提交"
+      - function: "blk_mq_get_request"
+        file: "block/blk-mq.c"
+        description: "获取请求"
+      - function: "blk_mq_try_issue_directly"
+        file: "block/blk-mq.c"
+        description: "尝试直接发送"
+      - function: "queue_rq"
+        file: "驱动代码"
+        description: "驱动请求处理"
+        is_user_entry: true
 
-  bind_patterns:
-    # struct hd_geometry
-    - pattern: 'struct hd_geometry\s*\{[^}]+\}'
-      description: "磁盘几何结构"
+  request_completion_chain:
+    description: "请求完成调用链"
+    trigger: "硬件完成中断"
+    chain:
+      - function: "irq_handler"
+        file: "驱动代码"
+        description: "硬件中断处理"
+        context: "hardirq"
+      - function: "blk_mq_complete_request"
+        file: "block/blk-mq.c"
+        description: "请求完成"
+      - function: "__blk_mq_complete_request"
+        file: "block/blk-mq.c"
+        description: "内部完成处理"
+        context: "softirq"
+      - function: "blk_mq_end_request"
+        file: "block/blk-mq.c"
+        description: "结束请求"
+      - function: "blk_update_request"
+        file: "block/blk-core.c"
+        description: "更新请求状态"
+      - function: "bio_endio"
+        file: "block/bio.c"
+        description: "完成 BIO"
 
-    # set_capacity - 设置容量
-    - pattern: 'set_capacity\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<sectors>\w+)\s*\)'
-      variable_capture: "disk"
-      description: "设置磁盘容量"
+  blk_open_chain:
+    description: "块设备打开调用链"
+    trigger: "用户打开 /dev/sdX"
+    chain:
+      - function: "blkdev_open"
+        file: "block/bdev.c"
+        description: "块设备打开"
+        context: "process"
+      - function: "blkdev_get_by_dev"
+        file: "block/bdev.c"
+        description: "通过设备号获取"
+      - function: "blkdev_get_whole"
+        file: "block/bdev.c"
+        description: "获取整个设备"
+      - function: "disk->fops->open"
+        file: "驱动代码"
+        description: "驱动打开回调"
+        is_user_entry: true
 
 
 # ============================================================
-# PARTITION
+# BLOCK DEVICE FLAGS
 # ============================================================
 
-partition:
-  description: "Partition - 分区"
-  header: "linux/genhd.h"
-
-  bind_patterns:
-    # add_partition - 添加分区
-    - pattern: 'add_partition\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<part>\d+)\s*,\s*(?P<start>\w+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<state>\w+)\s*\)'
-      variable_capture: "disk"
-      description: "添加分区"
-
-    # delete_partition - 删除分区
-    - pattern: 'delete_partition\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<part>\d+)\s*\)'
-      variable_capture: "disk"
-      description: "删除分区"
-
-    # alloc_part - 分配分区
-    - pattern: 'alloc_part\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<partno>\d+)\s*\)'
-      variable_capture: "disk"
-      description: "分配分区"
-
-    # free_part - 释放分区
-    - pattern: 'free_part\s*\(\s*(?P<part>[^)]+)\s*\)'
-      variable_capture: "part"
-      description: "释放分区"
-
-
-# ============================================================
-# DISK STATS
-# ============================================================
-
-disk_stats:
-  description: "Disk Statistics - 磁盘统计"
-  header: "linux/genhd.h"
-
-  bind_patterns:
-    # disk_stat_all - 收集所有统计
-    - pattern: 'disk_stat_all\s*\(\s*(?P<disk>[^)]+)\s*\)'
-      variable_capture: "disk"
-      description: "收集所有统计"
-
-    # disk_stat_part - 收集分区统计
-    - pattern: 'disk_stat_part\s*\(\s*(?P<part>[^)]+)\s*\)'
-      variable_capture: "part"
-      description: "收集分区统计"
-
-    # part_stat_* - 分区统计函数
-    - pattern: 'part_stat_\w+\s*\([^)]+\)'
-      description: "分区统计操作"
-
-    # disk_inc_* - 增加统计
-    - pattern: 'disk_\w+\s*\(\s*(?P<disk>[^)]+)\s*\)'
-      variable_capture: "disk"
-      description: "更新磁盘统计"
-
-
-# ============================================================
-# BLK ZONE
-# ============================================================
-
-blk_zone:
-  description: "Block Zone - 块区域 (ZBC/ZBD)"
+block_flags:
+  description: "Block Device Flags - 块设备标志"
   header: "linux/blkdev.h"
 
-  bind_patterns:
-    # blkdev_report_zones - 报告区域
-    - pattern: 'blkdev_report_zones\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<zone>\w+)\s*,\s*(?P<nr_zones>\w+)\s*,\s*(?P<zones>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "报告块区域"
+  queue_flags:
+    - name: "QUEUE_FLAG_STOPPED"
+      description: "队列已停止"
+    - name: "QUEUE_FLAG_DYING"
+      description: "队列正在销毁"
+    - name: "QUEUE_FLAG_NOMERGES"
+      description: "禁止合并请求"
+    - name: "QUEUE_FLAG_SAME_COMP"
+      description: "完成在同一 CPU"
+    - name: "QUEUE_FLAG_NONROT"
+      description: "非旋转设备 (SSD)"
+    - name: "QUEUE_FLAG_IO_STAT"
+      description: "启用 IO 统计"
+    - name: "QUEUE_FLAG_DISCARD"
+      description: "支持丢弃"
+    - name: "QUEUE_FLAG_NOXMERGES"
+      description: "禁止跨段合并"
+    - name: "QUEUE_FLAG_ADD_RANDOM"
+      description: "贡献熵池"
+    - name: "QUEUE_FLAG_SYNCHRONOUS"
+      description: "同步队列"
+    - name: "QUEUE_FLAG_NOWAIT"
+      description: "支持 NOWAIT"
 
-    # blkdev_reset_zones - 重置区域
-    - pattern: 'blkdev_reset_zones\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<zone>\w+)\s*,\s*(?P<nr_zones>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "重置块区域"
+  blk_mq_flags:
+    - name: "BLK_MQ_F_SHOULD_MERGE"
+      description: "应该合并请求"
+    - name: "BLK_MQ_F_TAG_QUEUE_SHARED"
+      description: "标签队列共享"
+    - name: "BLK_MQ_F_STACKING"
+      description: "堆叠设备"
+    - name: "BLK_MQ_F_TAG_HCTX_SHARED"
+      description: "硬件上下文共享标签"
+    - name: "BLK_MQ_F_BLOCKING"
+      description: "允许阻塞"
+    - name: "BLK_MQ_F_NO_SCHED"
+      description: "不使用调度器"
+    - name: "BLK_MQ_F_NO_SCHED_BY_DEFAULT"
+      description: "默认不使用调度器"
 
 
 # ============================================================
-# BLK INTEGRITY
-# ============================================================
-
-blk_integrity:
-  description: "Block Integrity - 块完整性"
-  header: "linux/blk-integrity.h"
-
-  bind_patterns:
-    # blk_integrity_register - 注册完整性
-    - pattern: 'blk_integrity_register\s*\(\s*(?P<disk>[^)]+)\s*,\s*(?P<integrity>[^)]+)\s*\)'
-      variable_capture: "disk"
-      description: "注册块完整性"
-
-    # blk_integrity_unregister - 注销完整性
-    - pattern: 'blk_integrity_unregister\s*\(\s*(?P<disk>[^)]+)\s*\)'
-      variable_capture: "disk"
-      description: "注销块完整性"
-
-    # bio_integrity_prep - 准备完整性
-    - pattern: 'bio_integrity_prep\s*\(\s*(?P<bio>[^)]+)\s*\)'
-      variable_capture: "bio"
-      description: "准备 BIO 完整性"
-
-
-# ============================================================
-# BLK EXAMPLES
+# EXAMPLES
 # ============================================================
 
 examples:
-  - description: "简单块设备驱动"
+  - description: "现代多队列块设备驱动 (blk-mq)"
+    kernel_version: "5.0+"
     code: |
-      static struct my_dev {
-          struct request_queue *queue;
+      #include <linux/module.h>
+      #include <linux/blkdev.h>
+      #include <linux/blk-mq.h>
+
+      #define MY_SECTOR_SIZE 512
+      #define MY_NR_SECTORS (1024 * 1024 * 2)  /* 1GB */
+
+      struct my_device {
           struct gendisk *disk;
+          struct blk_mq_tag_set tag_set;
           spinlock_t lock;
-          sector_t capacity;
-      } my_dev;
+          void *data;
+      };
 
-      static void my_request(struct request_queue *q) {
+      struct my_cmd {
           struct request *rq;
+          /* 驱动特定数据 */
+      };
 
-          /* 遍历请求 */
-          rq = blk_mq_start_request(rq);
+      static struct my_device my_dev;
 
-          /* 处理请求 */
-          if (rq->cmd_flags & REQ_OP_READ) {
-              /* 读取数据 */
-              memcpy(rq->bio_data(rq), my_dev.data, blk_rq_bytes(rq));
-          } else {
-              /* 写入数据 */
-              memcpy(my_dev.data, rq->bio_data(rq), blk_rq_bytes(rq));
+      static blk_status_t my_queue_rq(struct blk_mq_hw_ctx *hctx,
+                                      const struct blk_mq_queue_data *bd)
+      {
+          struct request *rq = bd->rq;
+          struct my_cmd *cmd = blk_mq_rq_to_pdu(rq);
+          struct bio_vec bvec;
+          struct req_iterator iter;
+          sector_t sector = blk_rq_pos(rq);
+          void *buf;
+
+          blk_mq_start_request(rq);
+
+          cmd->rq = rq;
+
+          rq_for_each_segment(bvec, rq, iter) {
+              buf = page_address(bvec.bv_page) + bvec.bv_offset;
+
+              if (rq_data_dir(rq) == READ)
+                  memcpy(buf, my_dev.data + sector * MY_SECTOR_SIZE,
+                         bvec.bv_len);
+              else
+                  memcpy(my_dev.data + sector * MY_SECTOR_SIZE, buf,
+                         bvec.bv_len);
+
+              sector += bvec.bv_len / MY_SECTOR_SIZE;
           }
 
-          /* 完成请求 */
-          blk_mq_end_request(rq, 0);
+          blk_mq_end_request(rq, BLK_STS_OK);
+          return BLK_STS_OK;
       }
 
-      static int my_open(struct block_device *bdev, fmode_t mode) {
+      static int my_init_hctx(struct blk_mq_hw_ctx *hctx,
+                              void *data, unsigned int hctx_idx)
+      {
+          /* 初始化硬件队列 */
           return 0;
       }
 
-      static void my_release(struct gendisk *disk, fmode_t mode) {
+      static const struct blk_mq_ops my_mq_ops = {
+          .queue_rq = my_queue_rq,
+          .init_hctx = my_init_hctx,
+      };
+
+      static int my_open(struct gendisk *disk, blk_mode_t mode)
+      {
+          return 0;
       }
 
-      static int my_ioctl(struct block_device *bdev, fmode_t mode,
-                          unsigned int cmd, unsigned long arg) {
-          return -ENOTTY;
+      static void my_release(struct gendisk *disk)
+      {
       }
 
       static const struct block_device_operations my_fops = {
           .owner = THIS_MODULE,
           .open = my_open,
           .release = my_release,
-          .ioctl = my_ioctl,
       };
 
-      static int __init my_init(void) {
-          /* 分配请求队列 */
-          my_dev.queue = blk_init_queue(my_request, &my_dev.lock);
-          if (!my_dev.queue)
+      static int __init my_init(void)
+      {
+          int ret;
+
+          my_dev.data = vzalloc(MY_NR_SECTORS * MY_SECTOR_SIZE);
+          if (!my_dev.data)
               return -ENOMEM;
 
-          /* 设置队列参数 */
-          blk_queue_max_hw_sectors(my_dev.queue, 256);
+          spin_lock_init(&my_dev.lock);
+
+          /* 设置标签集 */
+          my_dev.tag_set.ops = &my_mq_ops;
+          my_dev.tag_set.nr_hw_queues = 1;
+          my_dev.tag_set.queue_depth = 128;
+          my_dev.tag_set.numa_node = NUMA_NO_NODE;
+          my_dev.tag_set.cmd_size = sizeof(struct my_cmd);
+          my_dev.tag_set.flags = BLK_MQ_F_SHOULD_MERGE;
+
+          ret = blk_mq_alloc_tag_set(&my_dev.tag_set);
+          if (ret)
+              goto err_data;
 
           /* 分配磁盘 */
-          my_dev.disk = alloc_disk(16);
-          if (!my_dev.disk) {
-              blk_cleanup_queue(my_dev.queue);
-              return -ENOMEM;
+          my_dev.disk = blk_mq_alloc_disk(&my_dev.tag_set, NULL, NULL);
+          if (IS_ERR(my_dev.disk)) {
+              ret = PTR_ERR(my_dev.disk);
+              goto err_tag;
           }
 
           /* 设置磁盘参数 */
-          my_dev.disk->major = MY_MAJOR;
+          my_dev.disk->major = 0;  /* 动态分配 */
           my_dev.disk->first_minor = 0;
+          my_dev.disk->minors = 1;
           my_dev.disk->fops = &my_fops;
-          my_dev.disk->queue = my_dev.queue;
           my_dev.disk->private_data = &my_dev;
-          sprintf(my_dev.disk->disk_name, "mydisk");
+          snprintf(my_dev.disk->disk_name, DISK_NAME_LEN, "myblk");
 
-          /* 设置容量 */
-          my_dev.capacity = 1024 * 1024;  /* 1MB */
-          set_capacity(my_dev.disk, my_dev.capacity);
+          /* 设置队列参数 */
+          blk_queue_logical_block_size(my_dev.disk->queue, MY_SECTOR_SIZE);
+          blk_queue_physical_block_size(my_dev.disk->queue, MY_SECTOR_SIZE);
+          blk_queue_max_hw_sectors(my_dev.disk->queue, 1024);
 
-          /* 添加磁盘 */
-          add_disk(my_dev.disk);
+          /* 设置容量并添加磁盘 */
+          set_capacity(my_dev.disk, MY_NR_SECTORS);
 
+          ret = add_disk(my_dev.disk);
+          if (ret)
+              goto err_disk;
+
+          pr_info("myblk: registered\n");
           return 0;
+
+      err_disk:
+          put_disk(my_dev.disk);
+      err_tag:
+          blk_mq_free_tag_set(&my_dev.tag_set);
+      err_data:
+          vfree(my_dev.data);
+          return ret;
       }
 
-  - description: "多队列块设备驱动"
+      static void __exit my_exit(void)
+      {
+          del_gendisk(my_dev.disk);
+          put_disk(my_dev.disk);
+          blk_mq_free_tag_set(&my_dev.tag_set);
+          vfree(my_dev.data);
+          pr_info("myblk: unregistered\n");
+      }
+
+      module_init(my_init);
+      module_exit(my_exit);
+      MODULE_LICENSE("GPL");
+      MODULE_DESCRIPTION("Simple blk-mq block device");
+
+  - description: "NVMe 风格多队列驱动框架"
+    kernel_version: "5.0+"
     code: |
-      static int my_mq_init(struct blk_mq_tag_set *set) {
-          struct my_dev *dev = container_of(set, struct my_dev, tag_set);
+      /* 带超时和多队列的驱动框架 */
+      static enum blk_eh_timer_return my_timeout(struct request *rq)
+      {
+          struct my_cmd *cmd = blk_mq_rq_to_pdu(rq);
 
-          set->ops = &my_mq_ops;
-          set->nr_hw_queues = 4;
-          set->queue_depth = 128;
-          set->numa_node = NUMA_NO_NODE;
+          pr_warn("request timeout: cmd=%p\n", cmd);
 
-          return blk_mq_alloc_tag_set(set);
+          /* 尝试中止命令 */
+          if (my_abort_cmd(cmd) == 0) {
+              /* 成功中止 */
+              blk_mq_end_request(rq, BLK_STS_TIMEOUT);
+              return BLK_EH_DONE;
+          }
+
+          /* 重置定时器等待硬件 */
+          return BLK_EH_RESET_TIMER;
       }
 
-      static blk_status_t my_queue_rq(struct blk_mq_ctx *ctx,
-                                      const struct blk_mq_queue_data *qd) {
-          struct request *rq = qd->rq;
+      static void my_complete_rq(struct request *rq)
+      {
+          struct my_cmd *cmd = blk_mq_rq_to_pdu(rq);
+          blk_status_t status = cmd->status;
 
-          /* 处理请求 */
-          ...
+          blk_mq_end_request(rq, status);
+      }
 
-          blk_mq_end_request(rq, BLK_STS_OK);
-          return BLK_STS_OK;
+      /* 中断处理 (模拟) */
+      static irqreturn_t my_irq_handler(int irq, void *data)
+      {
+          struct blk_mq_hw_ctx *hctx = data;
+          struct request *rq;
+          struct my_cmd *cmd;
+
+          /* 获取完成的请求 */
+          rq = my_get_completed_request(hctx);
+          if (!rq)
+              return IRQ_NONE;
+
+          cmd = blk_mq_rq_to_pdu(rq);
+          cmd->status = BLK_STS_OK;
+
+          blk_mq_complete_request(rq);
+          return IRQ_HANDLED;
       }
 
       static const struct blk_mq_ops my_mq_ops = {
           .queue_rq = my_queue_rq,
+          .complete = my_complete_rq,
+          .timeout = my_timeout,
+          .init_hctx = my_init_hctx,
+          .exit_hctx = my_exit_hctx,
+          .map_queues = blk_mq_map_queues,
       };

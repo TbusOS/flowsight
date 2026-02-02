@@ -1,15 +1,16 @@
-# Linux Kernel DMA Framework Knowledge Base
+# Linux Kernel DMA Engine Framework Knowledge Base
 #
-# Reference: https://www.kernel.org/doc/html/latest/driver-api/dmaengine.html
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/dmaengine/index.html
 
 # ============================================================
-# DMA ENGINE
+# DMA DEVICE
 # ============================================================
 
-dma_engine:
-  description: "DMA Engine - DMA 引擎"
+dma_device:
+  description: "DMA Device - DMA 控制器设备"
   header: "linux/dmaengine.h"
   icon: "🚀"
+  kernel_version: "2.6.18+"
 
   context:
     type: "process"
@@ -17,58 +18,281 @@ dma_engine:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # dmaengine_get - 获取 DMA 引擎
-    - pattern: 'dmaengine_get\s*\(\s*\)'
-      description: "获取 DMA 引擎"
+  registration:
+    - pattern: 'dma_async_device_register\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "注册 DMA 设备"
+    - pattern: 'dmaenginem_async_device_register\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "资源管理方式注册 DMA 设备"
+    - pattern: 'dma_async_device_unregister\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "注销 DMA 设备"
 
-    # dmaengine_put - 释放 DMA 引擎
-    - pattern: 'dmaengine_put\s*\(\s*\)'
-      description: "释放 DMA 引擎"
+  structure:
+    pattern: 'struct dma_device\s*(?P<name>\w+)\s*=\s*\{'
+    description: "DMA 设备结构"
+    fields:
+      - name: "chancnt"
+        type: "unsigned int"
+        description: "通道数量"
+      - name: "privatecnt"
+        type: "unsigned int"
+        description: "私有通道数"
+      - name: "channels"
+        type: "struct list_head"
+        description: "通道链表"
+      - name: "cap_mask"
+        type: "dma_cap_mask_t"
+        description: "能力掩码"
+      - name: "max_xfer_len"
+        type: "unsigned int"
+        description: "最大传输长度"
+      - name: "max_burst"
+        type: "unsigned int"
+        description: "最大突发长度"
+      - name: "residue_granularity"
+        type: "enum dma_residue_granularity"
+        description: "残留粒度"
+      - name: "dev"
+        type: "struct device *"
+        description: "父设备"
+      - name: "src_addr_widths"
+        type: "u32"
+        description: "支持的源地址宽度"
+      - name: "dst_addr_widths"
+        type: "u32"
+        description: "支持的目标地址宽度"
+      - name: "directions"
+        type: "u32"
+        description: "支持的传输方向"
 
-    # dma_async_issue_pending - 启动传输
-    - pattern: 'dma_async_issue_pending\s*\(\s*(?P<chan>[^)]+)\s*\)'
-      variable_capture: "chan"
+  callbacks:
+    device_alloc_chan_resources:
+      pattern: '\.device_alloc_chan_resources\s*=\s*(?P<handler>\w+)'
+      description: "分配通道资源"
+      trigger: "dma_request_channel() 或首次使用通道"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct dma_chan *chan)"
+      return_value:
+        success: "通道数或 0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "分配描述符池"
+        - "初始化硬件通道"
+        - "设置 DMA 映射"
+
+    device_free_chan_resources:
+      pattern: '\.device_free_chan_resources\s*=\s*(?P<handler>\w+)'
+      description: "释放通道资源"
+      trigger: "dma_release_channel() 或最后一个用户释放"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct dma_chan *chan)"
+      typical_actions:
+        - "释放描述符池"
+        - "停止硬件通道"
+        - "清理 DMA 映射"
+
+    device_prep_dma_memcpy:
+      pattern: '\.device_prep_dma_memcpy\s*=\s*(?P<handler>\w+)'
+      description: "准备内存拷贝传输"
+      trigger: "dmaengine_prep_dma_memcpy()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "struct dma_async_tx_descriptor *(*)(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src, size_t len, unsigned long flags)"
+      return_value:
+        success: "描述符指针"
+        failure: "NULL"
+
+    device_prep_slave_sg:
+      pattern: '\.device_prep_slave_sg\s*=\s*(?P<handler>\w+)'
+      description: "准备从设备 scatter-gather 传输"
+      trigger: "dmaengine_prep_slave_sg()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "struct dma_async_tx_descriptor *(*)(struct dma_chan *chan, struct scatterlist *sgl, unsigned int sg_len, enum dma_transfer_direction direction, unsigned long flags, void *context)"
+      return_value:
+        success: "描述符指针"
+        failure: "NULL"
+
+    device_prep_dma_cyclic:
+      pattern: '\.device_prep_dma_cyclic\s*=\s*(?P<handler>\w+)'
+      description: "准备循环 DMA 传输"
+      trigger: "dmaengine_prep_dma_cyclic()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "struct dma_async_tx_descriptor *(*)(struct dma_chan *chan, dma_addr_t buf_addr, size_t buf_len, size_t period_len, enum dma_transfer_direction direction, unsigned long flags)"
+      typical_actions:
+        - "设置循环缓冲区"
+        - "配置周期中断"
+
+    device_prep_interleaved_dma:
+      pattern: '\.device_prep_interleaved_dma\s*=\s*(?P<handler>\w+)'
+      description: "准备交错 DMA 传输"
+      trigger: "dmaengine_prep_interleaved_dma()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "struct dma_async_tx_descriptor *(*)(struct dma_chan *chan, struct dma_interleaved_template *xt, unsigned long flags)"
+
+    device_config:
+      pattern: '\.device_config\s*=\s*(?P<handler>\w+)'
+      description: "配置通道参数"
+      trigger: "dmaengine_slave_config()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct dma_chan *chan, struct dma_slave_config *config)"
+      typical_actions:
+        - "设置总线宽度"
+        - "配置地址"
+        - "设置突发长度"
+
+    device_pause:
+      pattern: '\.device_pause\s*=\s*(?P<handler>\w+)'
+      description: "暂停通道传输"
+      trigger: "dmaengine_pause()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "int (*)(struct dma_chan *chan)"
+
+    device_resume:
+      pattern: '\.device_resume\s*=\s*(?P<handler>\w+)'
+      description: "恢复通道传输"
+      trigger: "dmaengine_resume()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "int (*)(struct dma_chan *chan)"
+
+    device_terminate_all:
+      pattern: '\.device_terminate_all\s*=\s*(?P<handler>\w+)'
+      description: "终止所有待处理传输"
+      trigger: "dmaengine_terminate_all()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "int (*)(struct dma_chan *chan)"
+      typical_actions:
+        - "停止硬件 DMA"
+        - "取消所有描述符"
+        - "释放资源"
+
+    device_synchronize:
+      pattern: '\.device_synchronize\s*=\s*(?P<handler>\w+)'
+      description: "同步通道状态"
+      trigger: "dmaengine_synchronize()"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct dma_chan *chan)"
+
+    device_tx_status:
+      pattern: '\.device_tx_status\s*=\s*(?P<handler>\w+)'
+      description: "获取传输状态"
+      trigger: "dmaengine_tx_status()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "enum dma_status (*)(struct dma_chan *chan, dma_cookie_t cookie, struct dma_tx_state *txstate)"
+      return_value:
+        DMA_COMPLETE: "传输完成"
+        DMA_IN_PROGRESS: "传输进行中"
+        DMA_PAUSED: "传输暂停"
+        DMA_ERROR: "传输错误"
+
+    device_issue_pending:
+      pattern: '\.device_issue_pending\s*=\s*(?P<handler>\w+)'
       description: "启动待处理传输"
-
-    # dma_async_terminate_all - 终止所有传输
-    - pattern: 'dma_async_terminate_all\s*\(\s*(?P<chan>[^)]+)\s*\)'
-      variable_capture: "chan"
-      description: "终止所有传输"
-
-    # dma_async_terminate - 终止传输
-    - pattern: 'dma_async_terminate\s*\(\s*(?P<desc>[^)]+)\s*\)'
-      variable_capture: "desc"
-      description: "终止指定传输"
+      trigger: "dma_async_issue_pending()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "void (*)(struct dma_chan *chan)"
+      typical_actions:
+        - "触发硬件启动"
+        - "设置门铃寄存器"
 
 
 # ============================================================
-# DMA CHANNEL REQUEST
+# DMA CHANNEL
 # ============================================================
 
-dma_channel:
+dma_chan:
   description: "DMA Channel - DMA 通道"
   header: "linux/dmaengine.h"
+  icon: "📡"
 
-  bind_patterns:
-    # dma_request_channel - 请求通道
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  registration:
+    - pattern: 'dma_request_chan\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "按名称请求 DMA 通道 (推荐)"
+    - pattern: 'dma_request_slave_channel\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "请求从设备通道 (已废弃)"
     - pattern: 'dma_request_channel\s*\(\s*(?P<mask>[^)]+)\s*,\s*(?P<fn>[^)]*)\s*,\s*(?P<data>[^)]*)\s*\)'
-      variable_capture: "mask"
-      description: "请求 DMA 通道"
-
-    # dma_request_chan_by_name - 按名称请求
-    - pattern: 'dma_request_chan_by_name\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "按名称请求通道"
-
-    # dma_release_channel - 释放通道
+      description: "通过过滤函数请求通道"
     - pattern: 'dma_release_channel\s*\(\s*(?P<chan>[^)]+)\s*\)'
-      variable_capture: "chan"
       description: "释放 DMA 通道"
+    - pattern: 'devm_dma_request_chan\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "资源管理方式请求通道"
 
-    # dma_get_any_channel - 获取任意通道
-    - pattern: 'dma_get_any_channel\s*\(\s*\)'
-      description: "获取任意 DMA 通道"
+  structure:
+    pattern: 'struct dma_chan\s*\{'
+    description: "DMA 通道结构"
+    fields:
+      - name: "device"
+        type: "struct dma_device *"
+        description: "所属 DMA 设备"
+      - name: "cookie"
+        type: "dma_cookie_t"
+        description: "最后提交的 cookie"
+      - name: "completed_cookie"
+        type: "dma_cookie_t"
+        description: "最后完成的 cookie"
+      - name: "chan_id"
+        type: "int"
+        description: "通道 ID"
+      - name: "dev_node"
+        type: "struct list_head"
+        description: "设备通道链表节点"
+      - name: "local"
+        type: "struct dma_chan_percpu __percpu *"
+        description: "每 CPU 数据"
+      - name: "private"
+        type: "void *"
+        description: "驱动私有数据"
+
+  helper_functions:
+    - pattern: 'dmaengine_slave_config\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<config>[^)]+)\s*\)'
+      description: "配置从设备通道"
+      context: "process"
+    - pattern: 'dmaengine_prep_slave_sg\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<sgl>[^)]+)\s*,\s*(?P<sg_len>\w+)\s*,\s*(?P<dir>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      description: "准备从设备 scatter-gather 传输"
+      context: "process/atomic"
+    - pattern: 'dmaengine_prep_dma_memcpy\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<dest>\w+)\s*,\s*(?P<src>\w+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      description: "准备内存拷贝"
+      context: "process/atomic"
+    - pattern: 'dmaengine_prep_dma_cyclic\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<buf>\w+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<period>\w+)\s*,\s*(?P<dir>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      description: "准备循环传输"
+      context: "process/atomic"
+    - pattern: 'dmaengine_submit\s*\(\s*(?P<desc>[^)]+)\s*\)'
+      description: "提交描述符"
+      context: "process/atomic"
+    - pattern: 'dma_async_issue_pending\s*\(\s*(?P<chan>[^)]+)\s*\)'
+      description: "启动待处理传输"
+      context: "process/atomic"
+    - pattern: 'dmaengine_tx_status\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<cookie>\w+)\s*,\s*(?P<state>[^)]*)\s*\)'
+      description: "获取传输状态"
+      context: "process/atomic"
+    - pattern: 'dmaengine_terminate_sync\s*\(\s*(?P<chan>[^)]+)\s*\)'
+      description: "同步终止所有传输"
+      context: "process"
+    - pattern: 'dmaengine_terminate_async\s*\(\s*(?P<chan>[^)]+)\s*\)'
+      description: "异步终止所有传输"
+      context: "process/atomic"
+    - pattern: 'dmaengine_pause\s*\(\s*(?P<chan>[^)]+)\s*\)'
+      description: "暂停通道"
+      context: "process/atomic"
+    - pattern: 'dmaengine_resume\s*\(\s*(?P<chan>[^)]+)\s*\)'
+      description: "恢复通道"
+      context: "process/atomic"
 
 
 # ============================================================
@@ -78,156 +302,205 @@ dma_channel:
 dma_slave_config:
   description: "DMA Slave Configuration - DMA 从设备配置"
   header: "linux/dmaengine.h"
+  icon: "⚙️"
 
-  bind_patterns:
-    # struct dma_slave_config
-    - pattern: 'struct dma_slave_config\s*\{[^}]+\}'
-      description: "从设备配置结构"
-
-    # 配置字段
-    - pattern: '\.direction\s*=\s*DMA_'
-      description: "传输方向"
-
-    - pattern: '\.src_addr\s*=\s*(?P<addr>\w+)'
-      description: "源地址"
-
-    - pattern: '\.dst_addr\s*=\s*(?P<addr>\w+)'
-      description: "目标地址"
-
-    - pattern: '\.src_addr_width\s*=\s*DMA_SLAVE_BUSWIDTH_'
-      description: "源总线宽度"
-
-    - pattern: '\.dst_addr_width\s*=\s*DMA_SLAVE_BUSWIDTH_'
-      description: "目标总线宽度"
-
-    - pattern: '\.src_maxburst\s*=\s*(?P<burst>\w+)'
-      description: "源最大突发"
-
-    - pattern: '\.dst_maxburst\s*=\s*(?P<burst>\w+)'
-      description: "目标最大突发"
-
-    # device_config - 配置通道
-    - pattern: 'dmaengine_slave_config\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<config>[^)]+)\s*\)'
-      variable_capture: "chan"
-      description: "配置 DMA 从设备"
+  structure:
+    pattern: 'struct dma_slave_config\s*(?P<name>\w+)\s*=\s*\{'
+    description: "从设备配置结构"
+    fields:
+      - name: "direction"
+        type: "enum dma_transfer_direction"
+        description: "传输方向"
+      - name: "src_addr"
+        type: "dma_addr_t"
+        description: "源物理地址 (DEV_TO_MEM)"
+      - name: "dst_addr"
+        type: "dma_addr_t"
+        description: "目标物理地址 (MEM_TO_DEV)"
+      - name: "src_addr_width"
+        type: "enum dma_slave_buswidth"
+        description: "源总线宽度"
+      - name: "dst_addr_width"
+        type: "enum dma_slave_buswidth"
+        description: "目标总线宽度"
+      - name: "src_maxburst"
+        type: "u32"
+        description: "源最大突发长度"
+      - name: "dst_maxburst"
+        type: "u32"
+        description: "目标最大突发长度"
+      - name: "src_port_window_size"
+        type: "u32"
+        description: "源端口窗口大小"
+      - name: "dst_port_window_size"
+        type: "u32"
+        description: "目标端口窗口大小"
+      - name: "device_fc"
+        type: "bool"
+        description: "设备流控"
+      - name: "peripheral_config"
+        type: "void *"
+        description: "外设特定配置"
+      - name: "peripheral_size"
+        type: "size_t"
+        description: "外设配置大小"
 
 
 # ============================================================
-# DMA TRANSFER
+# DMA ASYNC TX DESCRIPTOR
 # ============================================================
 
-dma_transfer:
-  description: "DMA Transfer - DMA 传输"
+dma_async_tx_descriptor:
+  description: "DMA Async Transaction Descriptor - 异步传输描述符"
   header: "linux/dmaengine.h"
+  icon: "📋"
 
-  bind_patterns:
-    # dma_prep_cyclic - 循环传输
-    - pattern: 'dma_prep_cyclic\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<buf>[^)]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<period_len>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "chan"
-      description: "准备循环传输"
+  structure:
+    pattern: 'struct dma_async_tx_descriptor\s*\{'
+    description: "异步传输描述符结构"
+    fields:
+      - name: "cookie"
+        type: "dma_cookie_t"
+        description: "传输标识 cookie"
+      - name: "flags"
+        type: "enum dma_ctrl_flags"
+        description: "控制标志"
+      - name: "phys"
+        type: "dma_addr_t"
+        description: "描述符物理地址"
+      - name: "chan"
+        type: "struct dma_chan *"
+        description: "所属通道"
+      - name: "tx_submit"
+        type: "dma_cookie_t (*)(struct dma_async_tx_descriptor *)"
+        description: "提交函数"
+      - name: "callback"
+        type: "dma_async_tx_callback"
+        description: "完成回调"
+      - name: "callback_param"
+        type: "void *"
+        description: "回调参数"
+      - name: "callback_result"
+        type: "dma_async_tx_callback_result"
+        description: "带结果的回调"
 
-    # dma_prep_interleaved - 交错传输
-    - pattern: 'dma_prep_interleaved\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<desc>[^)]+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "chan"
-      description: "准备交错传输"
+  callbacks:
+    tx_submit:
+      pattern: '(?P<desc>\w+)->tx_submit\s*\(\s*(?P<desc2>\w+)\s*\)'
+      description: "提交描述符到队列"
+      trigger: "dmaengine_submit()"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "dma_cookie_t (*)(struct dma_async_tx_descriptor *tx)"
+      return_value:
+        success: "正整数 cookie"
+        failure: "负值错误码"
 
-    # dma_prep_slave_sg - 从设备散射传输
-    - pattern: 'dma_prep_slave_sg\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<sg>[^)]+)\s*,\s*(?P<sg_len>\w+)\s*,\s*(?P<dir>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "chan"
-      description: "准备从设备散射传输"
-
-    # dma_prep_memcpy_sg - 内存拷贝散射传输
-    - pattern: 'dma_prep_memcpy_sg\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<dst_sg>[^)]+)\s*,\s*(?P<src_sg>[^)]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "chan"
-      description: "准备内存拷贝散射传输"
-
-    # dma_prep_dma_memcpy - 内存拷贝
-    - pattern: 'dma_prep_dma_memcpy\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<dest>[^)]+)\s*,\s*(?P<src>[^)]+)\s*,\s*(?P<len>\w+)\s*\)'
-      variable_capture: "chan"
-      description: "准备内存拷贝"
-
-    # dma_async_memcpy_buf_to_buf - 缓冲区到缓冲区
-    - pattern: 'dma_async_memcpy_buf_to_buf\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<dest>[^)]+)\s*,\s*(?P<src>[^)]+)\s*,\s*(?P<len>\w+)\s*\)'
-      variable_capture: "chan"
-      description: "缓冲区到缓冲区拷贝"
-
-
-# ============================================================
-# DMA DESCRIPTOR
-# ============================================================
-
-dma_descriptor:
-  description: "DMA Descriptor - DMA 描述符"
-  header: "linux/dmaengine.h"
-
-  bind_patterns:
-    # tx_submit - 提交传输
-    - pattern: 'tx_submit\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "提交传输描述符"
-
-    # dma_submit_error - 检查提交错误
-    - pattern: 'dma_submit_error\s*\(\s*(?P<cookie>\w+)\s*\)'
-      variable_capture: "cookie"
-      description: "检查提交错误"
-
-    # cookie - DMA cookie
-    - pattern: 'dma_cookie_init\s*\(\s*\)'
-      description: "初始化 DMA cookie"
-
-    # 描述符回调
-    - pattern: '\.callback\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
+    callback:
+      pattern: '(?P<desc>\w+)->callback\s*=\s*(?P<handler>\w+)'
       description: "传输完成回调"
+      trigger: "DMA 传输完成"
+      context: "softirq/tasklet"
+      can_sleep: false
+      signature: "void (*)(void *param)"
+      typical_actions:
+        - "唤醒等待进程"
+        - "处理下一个缓冲区"
+        - "更新状态"
 
-    - pattern: '\.callback_param\s*='
-      description: "回调参数"
-
-
-# ============================================================
-# DMA DIRECTION
-# ============================================================
-
-dma_direction:
-  description: "DMA Direction - 传输方向"
-  header: "linux/dmaengine.h"
-
-  bind_patterns:
-    DMA_MEM_TO_MEM:
-      pattern: 'DMA_MEM_TO_MEM'
-      description: "内存到内存"
-
-    DMA_MEM_TO_DEV:
-      pattern: 'DMA_MEM_TO_DEV'
-      description: "内存到设备"
-
-    DMA_DEV_TO_MEM:
-      pattern: 'DMA_DEV_TO_MEM'
-      description: "设备到内存"
-
-    DMA_DEV_TO_DEV:
-      pattern: 'DMA_DEV_TO_DEV'
-      description: "设备到设备"
+    callback_result:
+      pattern: '(?P<desc>\w+)->callback_result\s*=\s*(?P<handler>\w+)'
+      description: "带结果的完成回调"
+      trigger: "DMA 传输完成"
+      context: "softirq/tasklet"
+      can_sleep: false
+      signature: "void (*)(void *param, const struct dmaengine_result *result)"
 
 
 # ============================================================
-# DMA TRANSFER RESULT
+# DMA MAPPING API
 # ============================================================
 
-dma_result:
-  description: "DMA Transfer Result - 传输结果"
-  header: "linux/dmaengine.h"
+dma_mapping:
+  description: "DMA Mapping API - DMA 内存映射"
+  header: "linux/dma-mapping.h"
+  icon: "🗺️"
 
-  bind_patterns:
-    # dma_async_is_tx_complete - 检查传输完成
-    - pattern: 'dma_async_is_tx_complete\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<cookie>\w+)\s*,\s*(?P<last>\w*)\s*,\s*(?P<used>\w*)\s*\)'
-      variable_capture: "chan"
-      description: "检查传输是否完成"
+  context:
+    type: "varies"
+    can_sleep: "depends on GFP flags"
 
-    # dma_async_is_complete - 检查完成状态
-    - pattern: 'dma_async_is_complete\s*\(\s*(?P<cookie>\w+)\s*,\s*(?P<last>\w+)\s*,\s*(?P<used>\w+)\s*\)'
-      variable_capture: "cookie"
-      description: "检查完成状态"
+  coherent_allocation:
+    - pattern: 'dma_alloc_coherent\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dma_handle>[^)]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配一致性 DMA 内存"
+      context: "process (GFP_KERNEL) 或 atomic (GFP_ATOMIC)"
+    - pattern: 'dma_free_coherent\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<cpu_addr>[^)]+)\s*,\s*(?P<dma_handle>\w+)\s*\)'
+      description: "释放一致性 DMA 内存"
+      context: "process"
+    - pattern: 'dma_alloc_attrs\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dma_handle>[^)]+)\s*,\s*(?P<gfp>\w+)\s*,\s*(?P<attrs>\w+)\s*\)'
+      description: "带属性分配 DMA 内存"
+      context: "process/atomic"
+    - pattern: 'dmam_alloc_coherent\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dma_handle>[^)]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "资源管理方式分配一致性内存"
+      context: "process"
+
+  streaming_single:
+    - pattern: 'dma_map_single\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<cpu_addr>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "映射单个缓冲区 (流式)"
+      context: "process/atomic"
+    - pattern: 'dma_unmap_single\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<dma_addr>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "取消映射单个缓冲区"
+      context: "process/atomic"
+    - pattern: 'dma_map_single_attrs\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<cpu_addr>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*,\s*(?P<attrs>\w+)\s*\)'
+      description: "带属性映射单个缓冲区"
+      context: "process/atomic"
+
+  streaming_page:
+    - pattern: 'dma_map_page\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<page>[^)]+)\s*,\s*(?P<offset>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "映射页"
+      context: "process/atomic"
+    - pattern: 'dma_unmap_page\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<dma_addr>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "取消映射页"
+      context: "process/atomic"
+
+  scatter_gather:
+    - pattern: 'dma_map_sg\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<sg>[^)]+)\s*,\s*(?P<nents>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "映射 scatter-gather 列表"
+      context: "process/atomic"
+    - pattern: 'dma_unmap_sg\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<sg>[^)]+)\s*,\s*(?P<nents>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "取消映射 scatter-gather 列表"
+      context: "process/atomic"
+    - pattern: 'dma_map_sg_attrs\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<sg>[^)]+)\s*,\s*(?P<nents>\w+)\s*,\s*(?P<dir>\w+)\s*,\s*(?P<attrs>\w+)\s*\)'
+      description: "带属性映射 scatter-gather"
+      context: "process/atomic"
+
+  sync_operations:
+    - pattern: 'dma_sync_single_for_cpu\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<dma_addr>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "同步缓冲区到 CPU (读取前)"
+      context: "process/atomic"
+    - pattern: 'dma_sync_single_for_device\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<dma_addr>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "同步缓冲区到设备 (传输前)"
+      context: "process/atomic"
+    - pattern: 'dma_sync_sg_for_cpu\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<sg>[^)]+)\s*,\s*(?P<nents>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "同步 scatter-gather 到 CPU"
+      context: "process/atomic"
+    - pattern: 'dma_sync_sg_for_device\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<sg>[^)]+)\s*,\s*(?P<nents>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
+      description: "同步 scatter-gather 到设备"
+      context: "process/atomic"
+
+  checking:
+    - pattern: 'dma_mapping_error\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<dma_addr>\w+)\s*\)'
+      description: "检查映射错误"
+      context: "any"
+    - pattern: 'dma_set_mask\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<mask>\w+)\s*\)'
+      description: "设置 DMA 地址掩码"
+      context: "process"
+    - pattern: 'dma_set_coherent_mask\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<mask>\w+)\s*\)'
+      description: "设置一致性 DMA 掩码"
+      context: "process"
+    - pattern: 'dma_set_mask_and_coherent\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<mask>\w+)\s*\)'
+      description: "同时设置两种掩码"
+      context: "process"
 
 
 # ============================================================
@@ -235,256 +508,530 @@ dma_result:
 # ============================================================
 
 dma_pool:
-  description: "DMA Pool - DMA 池"
+  description: "DMA Pool - DMA 内存池"
   header: "linux/dmapool.h"
   icon: "💧"
 
-  bind_patterns:
-    # dma_pool_create - 创建池
+  context:
+    type: "process"
+    can_sleep: true
+
+  registration:
     - pattern: 'dma_pool_create\s*\(\s*(?P<name>[^)]+)\s*,\s*(?P<dev>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<align>\w+)\s*,\s*(?P<boundary>\w+)\s*\)'
-      variable_capture: "name"
       description: "创建 DMA 池"
-
-    # dma_pool_destroy - 销毁池
     - pattern: 'dma_pool_destroy\s*\(\s*(?P<pool>[^)]+)\s*\)'
-      variable_capture: "pool"
       description: "销毁 DMA 池"
+    - pattern: 'dmam_pool_create\s*\(\s*(?P<name>[^)]+)\s*,\s*(?P<dev>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<align>\w+)\s*,\s*(?P<boundary>\w+)\s*\)'
+      description: "资源管理方式创建池"
 
-    # dma_pool_alloc - 分配
-    - pattern: 'dma_pool_alloc\s*\(\s*(?P<pool>[^)]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<addr>[^)]+)\s*\)'
-      variable_capture: "pool"
+  helper_functions:
+    - pattern: 'dma_pool_alloc\s*\(\s*(?P<pool>[^)]+)\s*,\s*(?P<gfp>\w+)\s*,\s*(?P<dma_handle>[^)]+)\s*\)'
       description: "从池分配"
-
-    # dma_pool_free - 释放
-    - pattern: 'dma_pool_free\s*\(\s*(?P<pool>[^)]+)\s*,\s*(?P<vaddr>[^)]+)\s*,\s*(?P<paddr>\w+)\s*\)'
-      variable_capture: "pool"
-      description: "释放到池"
-
-
-# ============================================================
-# DMA MAPPING
-# ============================================================
-
-dma_mapping:
-  description: "DMA Mapping - DMA 映射"
-  header: "linux/dma-mapping.h"
-
-  bind_patterns:
-    # dma_alloc_coherent - 分配一致性内存
-    - pattern: 'dma_alloc_coherent\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<addr>[^)]+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "分配一致性 DMA 内存"
-
-    # dma_free_coherent - 释放一致性内存
-    - pattern: 'dma_free_coherent\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<vaddr>[^)]+)\s*,\s*(?P<addr>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "释放一致性 DMA 内存"
-
-    # dma_map_single - 映射单个缓冲区
-    - pattern: 'dma_map_single\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<addr>[^)]+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "映射单个缓冲区"
-
-    # dma_unmap_single - 取消映射
-    - pattern: 'dma_unmap_single\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<addr>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "取消映射缓冲区"
-
-    # dma_map_page - 映射页
-    - pattern: 'dma_map_page\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<page>[^)]+)\s*,\s*(?P<offset>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "映射页"
-
-    # dma_unmap_page - 取消映射页
-    - pattern: 'dma_unmap_page\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<addr>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "取消映射页"
-
-    # dma_sync_single_for_cpu - 同步到 CPU
-    - pattern: 'dma_sync_single_for_cpu\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<addr>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "同步到 CPU"
-
-    # dma_sync_single_for_device - 同步到设备
-    - pattern: 'dma_sync_single_for_device\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<addr>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<dir>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "同步到设备"
+      context: "process (GFP_KERNEL) 或 atomic (GFP_ATOMIC)"
+    - pattern: 'dma_pool_zalloc\s*\(\s*(?P<pool>[^)]+)\s*,\s*(?P<gfp>\w+)\s*,\s*(?P<dma_handle>[^)]+)\s*\)'
+      description: "从池分配并清零"
+      context: "process/atomic"
+    - pattern: 'dma_pool_free\s*\(\s*(?P<pool>[^)]+)\s*,\s*(?P<vaddr>[^)]+)\s*,\s*(?P<dma_handle>\w+)\s*\)'
+      description: "归还到池"
+      context: "process/atomic"
 
 
 # ============================================================
-# DMA BUSWIDTH
+# DMA DIRECTION AND FLAGS
 # ============================================================
 
-dma_buswidth:
-  description: "DMA Bus Width - 总线宽度"
+dma_direction:
+  description: "DMA Transfer Direction - 传输方向"
   header: "linux/dmaengine.h"
 
-  bind_patterns:
-    DMA_SLAVE_BUSWIDTH_1_BYTE:
-      pattern: 'DMA_SLAVE_BUSWIDTH_1_BYTE'
+  directions:
+    - name: "DMA_MEM_TO_MEM"
+      description: "内存到内存"
+    - name: "DMA_MEM_TO_DEV"
+      description: "内存到设备 (发送)"
+    - name: "DMA_DEV_TO_MEM"
+      description: "设备到内存 (接收)"
+    - name: "DMA_DEV_TO_DEV"
+      description: "设备到设备"
+
+dma_slave_buswidth:
+  description: "DMA Slave Bus Width - 从设备总线宽度"
+  header: "linux/dmaengine.h"
+
+  widths:
+    - name: "DMA_SLAVE_BUSWIDTH_UNDEFINED"
+      description: "未定义"
+    - name: "DMA_SLAVE_BUSWIDTH_1_BYTE"
       description: "1 字节"
-    DMA_SLAVE_BUSWIDTH_2_BYTES:
-      pattern: 'DMA_SLAVE_BUSWIDTH_2_BYTES'
+    - name: "DMA_SLAVE_BUSWIDTH_2_BYTES"
       description: "2 字节"
-    DMA_SLAVE_BUSWIDTH_4_BYTES:
-      pattern: 'DMA_SLAVE_BUSWIDTH_4_BYTES'
+    - name: "DMA_SLAVE_BUSWIDTH_3_BYTES"
+      description: "3 字节"
+    - name: "DMA_SLAVE_BUSWIDTH_4_BYTES"
       description: "4 字节"
-    DMA_SLAVE_BUSWIDTH_8_BYTES:
-      pattern: 'DMA_SLAVE_BUSWIDTH_8_BYTES'
+    - name: "DMA_SLAVE_BUSWIDTH_8_BYTES"
       description: "8 字节"
+    - name: "DMA_SLAVE_BUSWIDTH_16_BYTES"
+      description: "16 字节"
+    - name: "DMA_SLAVE_BUSWIDTH_32_BYTES"
+      description: "32 字节"
+    - name: "DMA_SLAVE_BUSWIDTH_64_BYTES"
+      description: "64 字节"
 
-
-# ============================================================
-# DMA FLAG
-# ============================================================
-
-dma_flags:
-  description: "DMA Flags - DMA 标志"
+dma_ctrl_flags:
+  description: "DMA Control Flags - DMA 控制标志"
   header: "linux/dmaengine.h"
 
-  bind_patterns:
-    DMA_CTRL_ACK:
-      pattern: 'DMA_CTRL_ACK'
-      description: "确认标志"
-    DMA_PREP_INTERRUPT:
-      pattern: 'DMA_PREP_INTERRUPT'
-      description: "准备中断"
-    DMA_PREP_FENCE:
-      pattern: 'DMA_PREP_FENCE'
-      description: "栅栏标志"
-    DMA_PREP_DISABLE:
-      pattern: 'DMA_PREP_DISABLE'
-      description: "禁用标志"
+  flags:
+    - name: "DMA_PREP_INTERRUPT"
+      description: "传输完成后触发中断"
+    - name: "DMA_CTRL_ACK"
+      description: "描述符可被重用"
+    - name: "DMA_PREP_PQ_DISABLE_P"
+      description: "禁用 P 计算"
+    - name: "DMA_PREP_PQ_DISABLE_Q"
+      description: "禁用 Q 计算"
+    - name: "DMA_PREP_CONTINUE"
+      description: "继续上一次传输"
+    - name: "DMA_PREP_FENCE"
+      description: "内存栅栏"
+    - name: "DMA_PREP_CMD"
+      description: "命令传输"
 
 
 # ============================================================
-# DMA ASYNC TX
+# CALL CHAINS
 # ============================================================
 
-dma_async_tx:
-  description: "DMA Async Transaction - 异步传输"
-  header: "linux/async_tx.h"
+call_chains:
+  dma_slave_transfer:
+    description: "从设备 DMA 传输调用链"
+    trigger: "驱动发起 DMA 传输"
+    chain:
+      - function: "dma_request_chan"
+        file: "drivers/dma/dmaengine.c"
+        description: "请求通道"
+        context: "process"
+      - function: "dmaengine_slave_config"
+        file: "drivers/dma/dmaengine.c"
+        description: "配置从设备参数"
+      - function: "device_config"
+        file: "驱动代码"
+        description: "驱动配置回调"
+        is_user_entry: true
+      - function: "dmaengine_prep_slave_sg"
+        file: "drivers/dma/dmaengine.c"
+        description: "准备 scatter-gather 传输"
+      - function: "device_prep_slave_sg"
+        file: "驱动代码"
+        description: "驱动准备回调"
+        is_user_entry: true
+      - function: "dmaengine_submit"
+        file: "drivers/dma/dmaengine.c"
+        description: "提交描述符"
+      - function: "tx_submit"
+        file: "驱动代码"
+        description: "驱动提交回调"
+        is_user_entry: true
+      - function: "dma_async_issue_pending"
+        file: "drivers/dma/dmaengine.c"
+        description: "启动传输"
+      - function: "device_issue_pending"
+        file: "驱动代码"
+        description: "驱动启动回调"
+        is_user_entry: true
 
-  bind_patterns:
-    # async_memcpy - 异步内存拷贝
-    - pattern: 'async_memcpy\s*\(\s*(?P<dest>[^)]+)\s*,\s*(?P<src>[^)]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<cb>[^)]*)\s*\)'
-      variable_capture: "dest"
-      description: "异步内存拷贝"
+  dma_completion_chain:
+    description: "DMA 完成调用链"
+    trigger: "DMA 硬件完成传输"
+    chain:
+      - function: "dma_irq_handler"
+        file: "驱动代码"
+        description: "DMA 中断处理"
+        context: "hardirq"
+        is_user_entry: true
+      - function: "dmaengine_desc_callback_invoke"
+        file: "drivers/dma/dmaengine.h"
+        description: "调用完成回调"
+        context: "tasklet/softirq"
+      - function: "callback"
+        file: "客户端代码"
+        description: "客户端完成回调"
+        is_user_entry: true
 
-    # async_xor - 异步 XOR
-    - pattern: 'async_xor\s*\(\s*(?P<dest>[^)]+)\s*,\s*(?P<src>[^)]+)\s*,\s*(?P<src_cnt>\w+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<cb>[^)]*)\s*\)'
-      variable_capture: "dest"
-      description: "异步 XOR"
-
-    # async_xor_val - 异步 XOR 校验
-    - pattern: 'async_xor_val\s*\(\s*(?P<src>[^)]+)\s*,\s*(?P<src_cnt>\w+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<cb>[^)]*)\s*\)'
-      variable_capture: "src"
-      description: "异步 XOR 校验"
-
-    # async_trigger_callbacks - 触发回调
-    - pattern: 'async_trigger_callbacks\s*\(\s*(?P<cb>[^)]+)\s*,\s*(?P<fn>[^)]+)\s*\)'
-      variable_capture: "cb"
-      description: "触发异步回调"
+  dma_memcpy_chain:
+    description: "DMA 内存拷贝调用链"
+    trigger: "请求 DMA 内存拷贝"
+    chain:
+      - function: "dmaengine_prep_dma_memcpy"
+        file: "drivers/dma/dmaengine.c"
+        description: "准备内存拷贝"
+        context: "process"
+      - function: "device_prep_dma_memcpy"
+        file: "驱动代码"
+        description: "驱动准备回调"
+        is_user_entry: true
+      - function: "dmaengine_submit"
+        file: "drivers/dma/dmaengine.c"
+        description: "提交描述符"
+      - function: "dma_async_issue_pending"
+        file: "drivers/dma/dmaengine.c"
+        description: "启动传输"
 
 
 # ============================================================
-# DMA EXAMPLES
+# SCATTER-GATHER
+# ============================================================
+
+scatterlist:
+  description: "Scatter-Gather List - 散列表"
+  header: "linux/scatterlist.h"
+  icon: "📊"
+
+  helper_functions:
+    - pattern: 'sg_init_table\s*\(\s*(?P<sg>[^)]+)\s*,\s*(?P<nents>\w+)\s*\)'
+      description: "初始化 scatter-gather 表"
+      context: "any"
+    - pattern: 'sg_init_one\s*\(\s*(?P<sg>[^)]+)\s*,\s*(?P<buf>[^)]+)\s*,\s*(?P<buflen>\w+)\s*\)'
+      description: "初始化单个 scatter-gather 项"
+      context: "any"
+    - pattern: 'sg_set_buf\s*\(\s*(?P<sg>[^)]+)\s*,\s*(?P<buf>[^)]+)\s*,\s*(?P<buflen>\w+)\s*\)'
+      description: "设置 scatter-gather 缓冲区"
+      context: "any"
+    - pattern: 'sg_set_page\s*\(\s*(?P<sg>[^)]+)\s*,\s*(?P<page>[^)]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<offset>\w+)\s*\)'
+      description: "设置 scatter-gather 页"
+      context: "any"
+    - pattern: 'sg_dma_address\s*\(\s*(?P<sg>[^)]+)\s*\)'
+      description: "获取 DMA 地址"
+      context: "any"
+    - pattern: 'sg_dma_len\s*\(\s*(?P<sg>[^)]+)\s*\)'
+      description: "获取 DMA 长度"
+      context: "any"
+    - pattern: 'for_each_sg\s*\(\s*(?P<sglist>[^)]+)\s*,\s*(?P<sg>\w+)\s*,\s*(?P<nr>\w+)\s*,\s*(?P<i>\w+)\s*\)'
+      description: "遍历 scatter-gather 列表"
+      context: "any"
+    - pattern: 'sg_next\s*\(\s*(?P<sg>[^)]+)\s*\)'
+      description: "获取下一个 scatter-gather 项"
+      context: "any"
+
+
+# ============================================================
+# EXAMPLES
 # ============================================================
 
 examples:
-  - description: "简单 DMA 传输"
+  - description: "完整 DMA 从设备传输示例"
+    kernel_version: "5.0+"
     code: |
-      static void dma_callback(void *completion) {
-          complete(completion);
+      #include <linux/dmaengine.h>
+      #include <linux/dma-mapping.h>
+      #include <linux/completion.h>
+
+      struct my_dma_data {
+          struct dma_chan *chan;
+          struct completion done;
+          dma_addr_t dma_addr;
+          void *buf;
+          size_t len;
+      };
+
+      /* DMA 完成回调 */
+      static void my_dma_callback(void *param)
+      {
+          struct my_dma_data *data = param;
+          complete(&data->done);
       }
 
-      static int do_dma_transfer(struct device *dev,
-                                 dma_addr_t src, dma_addr_t dst,
-                                 size_t len) {
-          struct dma_async_tx_descriptor *tx;
-          struct dma_chan *chan;
-          DECLARE_COMPLETION_ONSTACK(done);
-          enum dma_ctrl_flags flags;
+      static int my_dma_transfer(struct device *dev, void __iomem *fifo_reg,
+                                 void *buf, size_t len, bool to_device)
+      {
+          struct my_dma_data data;
+          struct dma_async_tx_descriptor *desc;
+          struct dma_slave_config config = {};
+          struct scatterlist sg;
+          enum dma_transfer_direction dir;
           dma_cookie_t cookie;
+          int ret;
 
-          /* 请求通道 */
-          chan = dma_request_chan(dev, "tx");
-          if (IS_ERR(chan))
-              return PTR_ERR(chan);
+          init_completion(&data.done);
+          data.buf = buf;
+          data.len = len;
 
-          /* 配置从设备 */
-          struct dma_slave_config config = {
-              .direction = DMA_MEM_TO_DEV,
-              .dst_addr = dst,
-              .dst_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES,
-          };
-          dmaengine_slave_config(chan, &config);
+          /* 请求 DMA 通道 */
+          data.chan = dma_request_chan(dev, to_device ? "tx" : "rx");
+          if (IS_ERR(data.chan))
+              return PTR_ERR(data.chan);
+
+          /* 配置从设备参数 */
+          if (to_device) {
+              config.direction = DMA_MEM_TO_DEV;
+              config.dst_addr = (dma_addr_t)fifo_reg;
+              config.dst_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
+              config.dst_maxburst = 16;
+              dir = DMA_MEM_TO_DEV;
+          } else {
+              config.direction = DMA_DEV_TO_MEM;
+              config.src_addr = (dma_addr_t)fifo_reg;
+              config.src_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
+              config.src_maxburst = 16;
+              dir = DMA_DEV_TO_MEM;
+          }
+
+          ret = dmaengine_slave_config(data.chan, &config);
+          if (ret)
+              goto err_release;
+
+          /* 映射 DMA 缓冲区 */
+          data.dma_addr = dma_map_single(dev, buf, len, 
+                                          to_device ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+          if (dma_mapping_error(dev, data.dma_addr)) {
+              ret = -ENOMEM;
+              goto err_release;
+          }
+
+          /* 设置 scatter-gather */
+          sg_init_one(&sg, buf, len);
+          sg_dma_address(&sg) = data.dma_addr;
+          sg_dma_len(&sg) = len;
 
           /* 准备传输 */
-          tx = dmaengine_prep_slave_sg(chan, &src, 1,
-                                       DMA_TO_DEVICE,
-                                       DMA_PREP_INTERRUPT);
-          if (!tx) {
-              dma_release_channel(chan);
-              return -ENOMEM;
+          desc = dmaengine_prep_slave_sg(data.chan, &sg, 1, dir,
+                                          DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+          if (!desc) {
+              ret = -ENOMEM;
+              goto err_unmap;
           }
 
           /* 设置回调 */
-          tx->callback = dma_callback;
-          tx->callback_param = &done;
+          desc->callback = my_dma_callback;
+          desc->callback_param = &data;
 
-          /* 提交传输 */
-          cookie = tx->tx_submit(tx);
+          /* 提交并启动 */
+          cookie = dmaengine_submit(desc);
           if (dma_submit_error(cookie)) {
-              dma_release_channel(chan);
-              return -EIO;
+              ret = -EIO;
+              goto err_unmap;
           }
 
-          /* 启动传输 */
-          dma_async_issue_pending(chan);
+          dma_async_issue_pending(data.chan);
 
           /* 等待完成 */
-          wait_for_completion(&done);
+          ret = wait_for_completion_timeout(&data.done, 
+                                             msecs_to_jiffies(5000));
+          if (ret == 0) {
+              dmaengine_terminate_sync(data.chan);
+              ret = -ETIMEDOUT;
+              goto err_unmap;
+          }
 
-          /* 释放通道 */
-          dma_release_channel(chan);
+          ret = 0;
+
+      err_unmap:
+          dma_unmap_single(dev, data.dma_addr, len,
+                           to_device ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+      err_release:
+          dma_release_channel(data.chan);
+          return ret;
+      }
+
+  - description: "循环 DMA 传输 (音频)"
+    kernel_version: "5.0+"
+    code: |
+      /* 音频 DMA 循环传输示例 */
+      struct audio_stream {
+          struct dma_chan *chan;
+          dma_addr_t dma_addr;
+          void *buf;
+          size_t buf_size;
+          size_t period_size;
+          unsigned int periods;
+          volatile unsigned int pos;
+          spinlock_t lock;
+      };
+
+      static void audio_dma_callback(void *param)
+      {
+          struct audio_stream *stream = param;
+          unsigned long flags;
+
+          spin_lock_irqsave(&stream->lock, flags);
+          stream->pos += stream->period_size;
+          if (stream->pos >= stream->buf_size)
+              stream->pos = 0;
+          spin_unlock_irqrestore(&stream->lock, flags);
+
+          /* 通知 ALSA PCM */
+          snd_pcm_period_elapsed(stream->substream);
+      }
+
+      static int audio_dma_start(struct device *dev, struct audio_stream *stream,
+                                  void __iomem *fifo_reg, bool playback)
+      {
+          struct dma_async_tx_descriptor *desc;
+          struct dma_slave_config config = {};
+          dma_cookie_t cookie;
+
+          /* 配置从设备 */
+          if (playback) {
+              config.direction = DMA_MEM_TO_DEV;
+              config.dst_addr = (dma_addr_t)fifo_reg;
+              config.dst_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
+              config.dst_maxburst = 8;
+          } else {
+              config.direction = DMA_DEV_TO_MEM;
+              config.src_addr = (dma_addr_t)fifo_reg;
+              config.src_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
+              config.src_maxburst = 8;
+          }
+
+          dmaengine_slave_config(stream->chan, &config);
+
+          /* 准备循环 DMA */
+          desc = dmaengine_prep_dma_cyclic(stream->chan,
+                                            stream->dma_addr,
+                                            stream->buf_size,
+                                            stream->period_size,
+                                            playback ? DMA_MEM_TO_DEV : DMA_DEV_TO_MEM,
+                                            DMA_PREP_INTERRUPT);
+          if (!desc)
+              return -ENOMEM;
+
+          desc->callback = audio_dma_callback;
+          desc->callback_param = stream;
+
+          cookie = dmaengine_submit(desc);
+          if (dma_submit_error(cookie))
+              return -EIO;
+
+          dma_async_issue_pending(stream->chan);
 
           return 0;
       }
 
-  - description: "循环 DMA 传输"
-    code: |
-      static void audio_dma_callback(void *param) {
-          struct audio_stream *s = param;
-
-          /* 处理缓冲区 */
-          process_audio_buffer(s);
-
-          /* 重新提交 */
-          s->cookie = audio_tx_submit(s);
+      static void audio_dma_stop(struct audio_stream *stream)
+      {
+          dmaengine_terminate_sync(stream->chan);
+          stream->pos = 0;
       }
 
-      static int start_audio_dma(struct audio_stream *s,
-                                 void *buffer, size_t size) {
-          struct dma_async_tx_descriptor *tx;
+  - description: "DMA 控制器驱动框架"
+    kernel_version: "5.0+"
+    code: |
+      /* 简化的 DMA 控制器驱动 */
+      struct my_dma_chan {
+          struct dma_chan chan;
+          struct my_dma_device *dmadev;
+          void __iomem *regs;
+          struct list_head desc_list;
+          spinlock_t lock;
+          struct tasklet_struct tasklet;
+      };
 
-          /* 准备循环传输 */
-          tx = dmaengine_prep_dma_cyclic(s->chan, buffer,
-                                          size, size / 2,
-                                          DMA_TO_DEVICE,
-                                          DMA_PREP_INTERRUPT);
-          if (!tx)
+      struct my_dma_device {
+          struct dma_device dmadev;
+          void __iomem *regs;
+          struct my_dma_chan chans[4];
+      };
+
+      static int my_dma_alloc_chan_resources(struct dma_chan *chan)
+      {
+          struct my_dma_chan *mchan = to_my_dma_chan(chan);
+
+          /* 初始化通道 */
+          INIT_LIST_HEAD(&mchan->desc_list);
+          spin_lock_init(&mchan->lock);
+
+          return 0;
+      }
+
+      static void my_dma_free_chan_resources(struct dma_chan *chan)
+      {
+          struct my_dma_chan *mchan = to_my_dma_chan(chan);
+
+          /* 终止所有传输 */
+          my_dma_terminate_all(chan);
+
+          /* 清理描述符 */
+          /* ... */
+      }
+
+      static struct dma_async_tx_descriptor *
+      my_dma_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
+                           unsigned int sg_len, enum dma_transfer_direction dir,
+                           unsigned long flags, void *context)
+      {
+          struct my_dma_chan *mchan = to_my_dma_chan(chan);
+          struct my_dma_desc *desc;
+          struct scatterlist *sg;
+          int i;
+
+          desc = kzalloc(sizeof(*desc), GFP_NOWAIT);
+          if (!desc)
+              return NULL;
+
+          /* 设置 scatter-gather */
+          for_each_sg(sgl, sg, sg_len, i) {
+              desc->sg[i].addr = sg_dma_address(sg);
+              desc->sg[i].len = sg_dma_len(sg);
+          }
+          desc->sg_len = sg_len;
+          desc->dir = dir;
+
+          return &desc->txd;
+      }
+
+      static void my_dma_issue_pending(struct dma_chan *chan)
+      {
+          struct my_dma_chan *mchan = to_my_dma_chan(chan);
+          unsigned long flags;
+
+          spin_lock_irqsave(&mchan->lock, flags);
+          /* 启动 DMA 硬件 */
+          writel(DMA_START, mchan->regs + DMA_CTRL);
+          spin_unlock_irqrestore(&mchan->lock, flags);
+      }
+
+      static int my_dma_probe(struct platform_device *pdev)
+      {
+          struct my_dma_device *mdev;
+          struct dma_device *dmadev;
+          int i, ret;
+
+          mdev = devm_kzalloc(&pdev->dev, sizeof(*mdev), GFP_KERNEL);
+          if (!mdev)
               return -ENOMEM;
 
-          tx->callback = audio_dma_callback;
-          tx->callback_param = s;
+          dmadev = &mdev->dmadev;
+          dmadev->dev = &pdev->dev;
 
-          /* 提交并启动 */
-          s->cookie = tx->tx_submit(tx);
-          if (dma_submit_error(s->cookie))
-              return -EIO;
+          /* 设置能力 */
+          dma_cap_set(DMA_SLAVE, dmadev->cap_mask);
+          dma_cap_set(DMA_PRIVATE, dmadev->cap_mask);
 
-          dma_async_issue_pending(s->chan);
+          /* 设置操作函数 */
+          dmadev->device_alloc_chan_resources = my_dma_alloc_chan_resources;
+          dmadev->device_free_chan_resources = my_dma_free_chan_resources;
+          dmadev->device_prep_slave_sg = my_dma_prep_slave_sg;
+          dmadev->device_config = my_dma_config;
+          dmadev->device_pause = my_dma_pause;
+          dmadev->device_resume = my_dma_resume;
+          dmadev->device_terminate_all = my_dma_terminate_all;
+          dmadev->device_tx_status = my_dma_tx_status;
+          dmadev->device_issue_pending = my_dma_issue_pending;
 
+          /* 初始化通道 */
+          INIT_LIST_HEAD(&dmadev->channels);
+          for (i = 0; i < 4; i++) {
+              struct my_dma_chan *mchan = &mdev->chans[i];
+              mchan->chan.device = dmadev;
+              list_add_tail(&mchan->chan.device_node, &dmadev->channels);
+          }
+
+          /* 注册 DMA 设备 */
+          ret = dma_async_device_register(dmadev);
+          if (ret)
+              return ret;
+
+          platform_set_drvdata(pdev, mdev);
           return 0;
       }

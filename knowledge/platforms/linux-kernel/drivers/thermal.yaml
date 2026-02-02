@@ -1,15 +1,40 @@
-# Linux Kernel Thermal Driver Framework Knowledge Base
+# Linux Kernel Thermal Framework Knowledge Base
 #
-# Reference: https://www.kernel.org/doc/html/latest/driver-api/thermal.html
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/thermal/index.html
+# Header: include/linux/thermal.h
 
 # ============================================================
-# THERMAL CORE
+# THERMAL FRAMEWORK OVERVIEW
 # ============================================================
 
-thermal_core:
-  description: "Thermal Core - 散热管理核心"
+thermal_overview:
+  description: "Thermal Framework Overview - 热管理框架概述"
   header: "linux/thermal.h"
   icon: "🌡️"
+  kernel_version: "2.6.26+"
+
+  concepts:
+    thermal_zone:
+      description: "热区 - 代表一个温度传感器区域"
+    cooling_device:
+      description: "冷却设备 - 可降低温度的设备（风扇、CPU 降频等）"
+    trip_point:
+      description: "触发点 - 温度阈值，触发特定动作"
+    governor:
+      description: "调节策略 - 决定冷却设备如何响应温度变化"
+    thermal_instance:
+      description: "热实例 - 热区和冷却设备之间的绑定关系"
+
+
+# ============================================================
+# THERMAL ZONE DEVICE
+# ============================================================
+
+thermal_zone_device:
+  description: "Thermal Zone Device - 热区设备"
+  header: "linux/thermal.h"
+  icon: "📍"
+  kernel_version: "2.6.26+"
 
   context:
     type: "process"
@@ -17,49 +42,261 @@ thermal_core:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # thermal_zone_device_register - 注册热区
-    - pattern: 'thermal_zone_device_register\s*\(\s*(?P<type>[^)]+)\s*,\s*(?P<trips>\w+)\s*,\s*(?P<devdata>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+  registration:
+    - pattern: 'thermal_zone_device_register\s*\(\s*(?P<type>[^,]+)\s*,\s*(?P<trips>[^,]+)\s*,\s*(?P<mask>[^,]+)\s*,\s*(?P<devdata>[^,]+)\s*,\s*(?P<ops>[^,]+)\s*,\s*(?P<tzp>[^,]+)\s*,\s*(?P<passive_delay>[^,]+)\s*,\s*(?P<polling_delay>[^)]+)\s*\)'
       description: "注册热区设备"
-
-    # thermal_zone_device_unregister - 注销热区
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "struct thermal_zone_device *"
+        failure: "ERR_PTR(-ERRNO)"
+    - pattern: 'thermal_zone_device_register_with_trips\s*\('
+      description: "使用触发点数组注册热区设备"
+      context: "process"
+      can_sleep: true
+    - pattern: 'devm_thermal_zone_of_sensor_register\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<sensor_id>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "设备管理的设备树热区传感器注册"
+      context: "process"
+      can_sleep: true
+    - pattern: 'thermal_zone_of_sensor_register\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<sensor_id>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "设备树热区传感器注册"
+      context: "process"
+      can_sleep: true
     - pattern: 'thermal_zone_device_unregister\s*\(\s*(?P<tz>[^)]+)\s*\)'
-      variable_capture: "tz"
       description: "注销热区设备"
+      context: "process"
+      can_sleep: true
+    - pattern: 'thermal_zone_of_sensor_unregister\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<tz>[^)]+)\s*\)'
+      description: "注销设备树热区传感器"
+      context: "process"
+      can_sleep: true
 
-    # devm_thermal_zone_device_register - 资源管理注册
-    - pattern: 'devm_thermal_zone_device_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<type>[^)]+)\s*,\s*(?P<trips>\w+)\s*,\s*(?P<devdata>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*,\s*(?P<crit_trip_pri>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "资源管理方式注册热区设备"
+  structure:
+    pattern: 'struct\s+thermal_zone_device\s*\*\s*(?P<name>\w+)'
+    description: "热区设备指针"
+
+  fields:
+    - name: "type"
+      type: "char[THERMAL_NAME_LENGTH]"
+      description: "热区类型名称"
+    - name: "device"
+      type: "struct device"
+      description: "内嵌设备结构"
+    - name: "devdata"
+      type: "void *"
+      description: "驱动私有数据"
+    - name: "trips"
+      type: "int"
+      description: "触发点数量"
+    - name: "trips_disabled"
+      type: "unsigned long"
+      description: "禁用的触发点位图"
+    - name: "passive_delay"
+      type: "int"
+      description: "被动冷却轮询延迟 (ms)"
+    - name: "polling_delay"
+      type: "int"
+      description: "正常轮询延迟 (ms)"
+    - name: "temperature"
+      type: "int"
+      description: "当前温度 (milli-Celsius)"
+    - name: "last_temperature"
+      type: "int"
+      description: "上次读取温度"
+    - name: "emul_temperature"
+      type: "int"
+      description: "模拟温度（调试用）"
+    - name: "passive"
+      type: "int"
+      description: "被动冷却激活标志"
+    - name: "forced_passive"
+      type: "unsigned int"
+      description: "强制被动冷却"
+    - name: "ops"
+      type: "struct thermal_zone_device_ops *"
+      description: "操作函数"
+    - name: "tzp"
+      type: "struct thermal_zone_params *"
+      description: "热区参数"
+    - name: "governor"
+      type: "struct thermal_governor *"
+      description: "当前调节策略"
+    - name: "governor_data"
+      type: "void *"
+      description: "调节策略私有数据"
+    - name: "thermal_instances"
+      type: "struct list_head"
+      description: "绑定的热实例列表"
+    - name: "lock"
+      type: "struct mutex"
+      description: "保护锁"
+
+  helper_functions:
+    - pattern: 'thermal_zone_device_update\s*\(\s*(?P<tz>[^,]+)\s*,\s*(?P<event>[^)]+)\s*\)'
+      description: "更新热区状态（轮询温度并执行调节）"
+      context: "process"
+      can_sleep: true
+    - pattern: 'thermal_zone_get_temp\s*\(\s*(?P<tz>[^,]+)\s*,\s*(?P<temp>[^)]+)\s*\)'
+      description: "获取热区当前温度"
+      context: "process"
+      can_sleep: true
+    - pattern: 'thermal_zone_get_zone_by_name\s*\(\s*(?P<name>[^)]+)\s*\)'
+      description: "按名称查找热区"
+      context: "process"
+      can_sleep: true
+    - pattern: 'thermal_zone_bind_cooling_device\s*\(\s*(?P<tz>[^,]+)\s*,\s*(?P<trip>[^,]+)\s*,\s*(?P<cdev>[^,]+)\s*,\s*(?P<upper>[^,]+)\s*,\s*(?P<lower>[^,]+)\s*,\s*(?P<weight>[^)]+)\s*\)'
+      description: "绑定冷却设备到热区触发点"
+      context: "process"
+      can_sleep: true
+    - pattern: 'thermal_zone_unbind_cooling_device\s*\(\s*(?P<tz>[^,]+)\s*,\s*(?P<trip>[^,]+)\s*,\s*(?P<cdev>[^)]+)\s*\)'
+      description: "解绑冷却设备"
+      context: "process"
+      can_sleep: true
+    - pattern: 'thermal_zone_set_trips\s*\(\s*(?P<tz>[^)]+)\s*\)'
+      description: "设置硬件触发点"
+      context: "process"
+      can_sleep: true
+    - pattern: 'thermal_notify_framework\s*\(\s*(?P<tz>[^,]+)\s*,\s*(?P<trip>[^)]+)\s*\)'
+      description: "通知框架触发点被触发"
+      context: "any"
+      can_sleep: false
 
 
 # ============================================================
-# THERMAL ZONE
+# THERMAL ZONE DEVICE OPS
 # ============================================================
 
-thermal_zone:
-  description: "Thermal Zone - 热区"
+thermal_zone_device_ops:
+  description: "Thermal Zone Device Operations - 热区操作函数"
   header: "linux/thermal.h"
 
-  bind_patterns:
-    # thermal_zone_get_zone - 获取热区
-    - pattern: 'thermal_zone_get_zone\s*\(\s*(?P<name>[^)]+)\s*\)'
-      description: "获取热区设备"
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct\s+thermal_zone_device_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "热区操作结构体定义"
 
-    # thermal_zone_bind_cooling_device - 绑定冷却设备
-    - pattern: 'thermal_zone_bind_cooling_device\s*\(\s*(?P<tz>[^)]+)\s*,\s*(?P<trip>\w+)\s*,\s*(?P<cdev>[^)]+)\s*,\s*(?P<upper>\w+)\s*,\s*(?P<lower>\w+)\s*,\s*(?P<weight>\w+)\s*\)'
-      variable_capture: "tz"
-      description: "绑定冷却设备到热区"
+  callbacks:
+    bind:
+      pattern: '\.bind\s*=\s*(?P<handler>\w+)'
+      description: "绑定冷却设备回调"
+      signature: "int (*)(struct thermal_zone_device *tz, struct thermal_cooling_device *cdev)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "检查冷却设备是否适用于此热区"
+        - "调用 thermal_zone_bind_cooling_device"
 
-    # thermal_zone_unbind_cooling_device - 解绑冷却设备
-    - pattern: 'thermal_zone_unbind_cooling_device\s*\(\s*(?P<tz>[^)]+)\s*,\s*(?P<trip>\w+)\s*,\s*(?P<cdev>[^)]+)\s*\)'
-      variable_capture: "tz"
-      description: "解绑冷却设备"
+    unbind:
+      pattern: '\.unbind\s*=\s*(?P<handler>\w+)'
+      description: "解绑冷却设备回调"
+      signature: "int (*)(struct thermal_zone_device *tz, struct thermal_cooling_device *cdev)"
+      context: "process"
+      can_sleep: true
 
-    # thermal_zone_update - 更新热区
-    - pattern: 'thermal_zone_update\s*\(\s*(?P<tz>[^)]+)\s*\)'
-      variable_capture: "tz"
-      description: "更新热区温度"
+    get_temp:
+      pattern: '\.get_temp\s*=\s*(?P<handler>\w+)'
+      description: "获取当前温度（必需）"
+      signature: "int (*)(struct thermal_zone_device *tz, int *temp)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0，温度存入 *temp (milli-Celsius)"
+        failure: "-ERRNO"
+      typical_actions:
+        - "读取温度传感器寄存器"
+        - "转换为 milli-Celsius"
+
+    set_trips:
+      pattern: '\.set_trips\s*=\s*(?P<handler>\w+)'
+      description: "设置硬件触发点"
+      signature: "int (*)(struct thermal_zone_device *tz, int low, int high)"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "配置硬件中断阈值"
+        - "设置温度比较器"
+
+    get_mode:
+      pattern: '\.get_mode\s*=\s*(?P<handler>\w+)'
+      description: "获取热区模式"
+      signature: "int (*)(struct thermal_zone_device *tz, enum thermal_device_mode *mode)"
+      context: "process"
+      can_sleep: true
+
+    set_mode:
+      pattern: '\.set_mode\s*=\s*(?P<handler>\w+)'
+      description: "设置热区模式"
+      signature: "int (*)(struct thermal_zone_device *tz, enum thermal_device_mode mode)"
+      context: "process"
+      can_sleep: true
+
+    get_trip_type:
+      pattern: '\.get_trip_type\s*=\s*(?P<handler>\w+)'
+      description: "获取触发点类型"
+      signature: "int (*)(struct thermal_zone_device *tz, int trip, enum thermal_trip_type *type)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0，类型存入 *type"
+        failure: "-EINVAL"
+
+    get_trip_temp:
+      pattern: '\.get_trip_temp\s*=\s*(?P<handler>\w+)'
+      description: "获取触发点温度"
+      signature: "int (*)(struct thermal_zone_device *tz, int trip, int *temp)"
+      context: "process"
+      can_sleep: true
+
+    set_trip_temp:
+      pattern: '\.set_trip_temp\s*=\s*(?P<handler>\w+)'
+      description: "设置触发点温度"
+      signature: "int (*)(struct thermal_zone_device *tz, int trip, int temp)"
+      context: "process"
+      can_sleep: true
+
+    get_trip_hyst:
+      pattern: '\.get_trip_hyst\s*=\s*(?P<handler>\w+)'
+      description: "获取触发点滞后"
+      signature: "int (*)(struct thermal_zone_device *tz, int trip, int *hyst)"
+      context: "process"
+      can_sleep: true
+
+    set_trip_hyst:
+      pattern: '\.set_trip_hyst\s*=\s*(?P<handler>\w+)'
+      description: "设置触发点滞后"
+      signature: "int (*)(struct thermal_zone_device *tz, int trip, int hyst)"
+      context: "process"
+      can_sleep: true
+
+    get_crit_temp:
+      pattern: '\.get_crit_temp\s*=\s*(?P<handler>\w+)'
+      description: "获取临界温度"
+      signature: "int (*)(struct thermal_zone_device *tz, int *temp)"
+      context: "process"
+      can_sleep: true
+
+    set_emul_temp:
+      pattern: '\.set_emul_temp\s*=\s*(?P<handler>\w+)'
+      description: "设置模拟温度（调试）"
+      signature: "int (*)(struct thermal_zone_device *tz, int temp)"
+      context: "process"
+      can_sleep: true
+
+    get_trend:
+      pattern: '\.get_trend\s*=\s*(?P<handler>\w+)'
+      description: "获取温度趋势"
+      signature: "int (*)(struct thermal_zone_device *tz, int trip, enum thermal_trend *trend)"
+      context: "process"
+      can_sleep: true
+
+    notify:
+      pattern: '\.notify\s*=\s*(?P<handler>\w+)'
+      description: "触发点通知回调"
+      signature: "int (*)(struct thermal_zone_device *tz, int trip, enum thermal_trip_type type)"
+      context: "process"
+      can_sleep: true
 
 
 # ============================================================
@@ -67,199 +304,810 @@ thermal_zone:
 # ============================================================
 
 thermal_cooling_device:
-  description: "Thermal Cooling Device - 散热设备"
+  description: "Thermal Cooling Device - 冷却设备"
   header: "linux/thermal.h"
+  icon: "❄️"
+  kernel_version: "2.6.26+"
 
-  bind_patterns:
-    # thermal_cooling_device_register - 注册散热设备
-    - pattern: 'thermal_cooling_device_register\s*\(\s*(?P<type>[^)]+)\s*,\s*(?P<devdata>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
-      description: "注册散热设备"
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
-    # thermal_cooling_device_unregister - 注销散热设备
+  registration:
+    - pattern: 'thermal_cooling_device_register\s*\(\s*(?P<type>[^,]+)\s*,\s*(?P<devdata>[^,]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "注册冷却设备"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "struct thermal_cooling_device *"
+        failure: "ERR_PTR(-ERRNO)"
+    - pattern: 'thermal_of_cooling_device_register\s*\(\s*(?P<np>[^,]+)\s*,\s*(?P<type>[^,]+)\s*,\s*(?P<devdata>[^,]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "设备树冷却设备注册"
+      context: "process"
+      can_sleep: true
+    - pattern: 'devm_thermal_of_cooling_device_register\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<np>[^,]+)\s*,\s*(?P<type>[^,]+)\s*,\s*(?P<devdata>[^,]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+      description: "设备管理的设备树冷却设备注册"
+      context: "process"
+      can_sleep: true
     - pattern: 'thermal_cooling_device_unregister\s*\(\s*(?P<cdev>[^)]+)\s*\)'
-      variable_capture: "cdev"
-      description: "注销散热设备"
+      description: "注销冷却设备"
+      context: "process"
+      can_sleep: true
 
-    # devm_thermal_cooling_device_register - 资源管理注册
-    - pattern: 'devm_thermal_cooling_device_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<type>[^)]+)\s*,\s*(?P<devdata>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "资源管理方式注册散热设备"
+  structure:
+    pattern: 'struct\s+thermal_cooling_device\s*\*\s*(?P<name>\w+)'
+    description: "冷却设备指针"
+
+  fields:
+    - name: "id"
+      type: "int"
+      description: "冷却设备 ID"
+    - name: "type"
+      type: "char[THERMAL_NAME_LENGTH]"
+      description: "冷却设备类型名称"
+    - name: "device"
+      type: "struct device"
+      description: "内嵌设备结构"
+    - name: "np"
+      type: "struct device_node *"
+      description: "设备树节点"
+    - name: "devdata"
+      type: "void *"
+      description: "驱动私有数据"
+    - name: "ops"
+      type: "const struct thermal_cooling_device_ops *"
+      description: "操作函数"
+    - name: "updated"
+      type: "bool"
+      description: "是否已更新（不需要再次更新）"
+    - name: "lock"
+      type: "struct mutex"
+      description: "保护锁"
+    - name: "thermal_instances"
+      type: "struct list_head"
+      description: "关联的热实例列表"
+    - name: "node"
+      type: "struct list_head"
+      description: "全局冷却设备链表节点"
 
 
 # ============================================================
 # THERMAL COOLING DEVICE OPS
 # ============================================================
 
-thermal_cooling_ops:
-  description: "Thermal Cooling Operations - 散热操作"
+thermal_cooling_device_ops:
+  description: "Thermal Cooling Device Operations - 冷却设备操作函数"
   header: "linux/thermal.h"
 
-  bind_patterns:
-    # struct thermal_cooling_device_ops
-    - pattern: 'struct thermal_cooling_device_ops\s*\{[^}]+\}'
-      description: "散热设备操作结构"
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct\s+thermal_cooling_device_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "冷却设备操作结构体定义"
 
   callbacks:
     get_max_state:
       pattern: '\.get_max_state\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取最大状态"
+      description: "获取最大冷却状态（必需）"
+      signature: "int (*)(struct thermal_cooling_device *cdev, unsigned long *state)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0，最大状态存入 *state"
+        failure: "-ERRNO"
+      typical_actions:
+        - "返回支持的最大冷却级别"
+        - "如风扇：最高转速级别"
+        - "如 CPU：可降频的最大级数"
 
     get_cur_state:
       pattern: '\.get_cur_state\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取当前状态"
+      description: "获取当前冷却状态（必需）"
+      signature: "int (*)(struct thermal_cooling_device *cdev, unsigned long *state)"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "读取当前冷却级别"
+        - "0 表示最低冷却（最高性能）"
 
     set_cur_state:
       pattern: '\.set_cur_state\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "设置当前状态"
+      description: "设置当前冷却状态（必需）"
+      signature: "int (*)(struct thermal_cooling_device *cdev, unsigned long state)"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "应用指定的冷却级别"
+        - "调整风扇转速或 CPU 频率"
 
     get_requested_power:
       pattern: '\.get_requested_power\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取请求功率"
+      description: "获取请求功率（用于 IPA）"
+      signature: "int (*)(struct thermal_cooling_device *cdev, struct thermal_zone_device *tz, u32 *power)"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "返回当前请求的功率 (mW)"
+        - "用于 Intelligent Power Allocation"
 
-    power_off:
-      pattern: '\.power_off\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "关闭电源"
+    state2power:
+      pattern: '\.state2power\s*=\s*(?P<handler>\w+)'
+      description: "冷却状态转功率"
+      signature: "int (*)(struct thermal_cooling_device *cdev, struct thermal_zone_device *tz, unsigned long state, u32 *power)"
+      context: "process"
+      can_sleep: true
+
+    power2state:
+      pattern: '\.power2state\s*=\s*(?P<handler>\w+)'
+      description: "功率转冷却状态"
+      signature: "int (*)(struct thermal_cooling_device *cdev, struct thermal_zone_device *tz, u32 power, unsigned long *state)"
+      context: "process"
+      can_sleep: true
 
 
 # ============================================================
-# THERMAL ZONE OPS
+# THERMAL TRIP TYPES
 # ============================================================
 
-thermal_zone_ops:
-  description: "Thermal Zone Operations - 热区操作"
+thermal_trip_types:
+  description: "Thermal Trip Types - 热触发点类型"
   header: "linux/thermal.h"
 
-  bind_patterns:
-    # struct thermal_zone_device_ops
-    - pattern: 'struct thermal_zone_device_ops\s*\{[^}]+\}'
-      description: "热区操作结构"
+  constants:
+    THERMAL_TRIP_ACTIVE:
+      value: 0
+      description: "主动冷却触发点 - 启动主动冷却（如风扇）"
+    THERMAL_TRIP_PASSIVE:
+      value: 1
+      description: "被动冷却触发点 - 启动被动冷却（如降频）"
+    THERMAL_TRIP_HOT:
+      value: 2
+      description: "高温触发点 - 警告温度过高"
+    THERMAL_TRIP_CRITICAL:
+      value: 3
+      description: "临界触发点 - 系统关机保护"
+
+
+# ============================================================
+# THERMAL DEVICE MODE
+# ============================================================
+
+thermal_device_mode:
+  description: "Thermal Device Mode - 热区模式"
+  header: "linux/thermal.h"
+
+  constants:
+    THERMAL_DEVICE_ENABLED:
+      description: "热区已启用"
+    THERMAL_DEVICE_DISABLED:
+      description: "热区已禁用"
+
+
+# ============================================================
+# THERMAL TREND
+# ============================================================
+
+thermal_trend:
+  description: "Thermal Trend - 温度趋势"
+  header: "linux/thermal.h"
+
+  constants:
+    THERMAL_TREND_STABLE:
+      description: "温度稳定"
+    THERMAL_TREND_RAISING:
+      description: "温度上升"
+    THERMAL_TREND_DROPPING:
+      description: "温度下降"
+    THERMAL_TREND_RAISE_FULL:
+      description: "温度快速上升"
+    THERMAL_TREND_DROP_FULL:
+      description: "温度快速下降"
+
+
+# ============================================================
+# THERMAL ZONE PARAMS
+# ============================================================
+
+thermal_zone_params:
+  description: "Thermal Zone Parameters - 热区参数"
+  header: "linux/thermal.h"
+
+  fields:
+    - name: "governor_name"
+      type: "char *"
+      description: "调节策略名称"
+    - name: "no_hwmon"
+      type: "bool"
+      description: "不注册到 hwmon 子系统"
+    - name: "num_tbps"
+      type: "int"
+      description: "绑定参数数量"
+    - name: "tbp"
+      type: "struct thermal_bind_params *"
+      description: "绑定参数数组"
+    - name: "sustainable_power"
+      type: "u32"
+      description: "可持续功率 (mW)"
+    - name: "k_po"
+      type: "s32"
+      description: "PID 比例超调系数"
+    - name: "k_pu"
+      type: "s32"
+      description: "PID 比例欠调系数"
+    - name: "k_i"
+      type: "s32"
+      description: "PID 积分系数"
+    - name: "k_d"
+      type: "s32"
+      description: "PID 微分系数"
+    - name: "integral_cutoff"
+      type: "s32"
+      description: "积分截止温度"
+    - name: "slope"
+      type: "int"
+      description: "温度斜率"
+    - name: "offset"
+      type: "int"
+      description: "温度偏移"
+
+
+# ============================================================
+# THERMAL BIND PARAMS
+# ============================================================
+
+thermal_bind_params:
+  description: "Thermal Bind Parameters - 热绑定参数"
+  header: "linux/thermal.h"
+
+  fields:
+    - name: "cdev"
+      type: "struct thermal_cooling_device *"
+      description: "冷却设备指针"
+    - name: "weight"
+      type: "int"
+      description: "冷却设备权重"
+    - name: "trip_mask"
+      type: "int"
+      description: "触发点绑定掩码"
+    - name: "binding_limits"
+      type: "unsigned long *"
+      description: "绑定限制（上/下限）"
+    - name: "match"
+      type: "int (*)(struct thermal_zone_device *, struct thermal_cooling_device *)"
+      description: "匹配回调"
+
+
+# ============================================================
+# THERMAL GOVERNORS
+# ============================================================
+
+thermal_governors:
+  description: "Thermal Governors - 热调节策略"
+  header: "linux/thermal.h"
+
+  builtin_governors:
+    step_wise:
+      description: "逐级调节 - 超过触发点逐级增加冷却"
+      default: true
+    fair_share:
+      description: "公平分配 - 按权重分配冷却能力"
+    bang_bang:
+      description: "开关控制 - 简单开/关控制"
+    user_space:
+      description: "用户空间 - 由用户空间程序控制"
+    power_allocator:
+      description: "功率分配器 (IPA) - 智能功率分配"
+      features:
+        - "基于 PID 控制"
+        - "支持可持续功率目标"
+        - "需要冷却设备支持 get_requested_power"
+
+  registration:
+    - pattern: 'thermal_register_governor\s*\(\s*(?P<governor>[^)]+)\s*\)'
+      description: "注册热调节策略"
+    - pattern: 'thermal_unregister_governor\s*\(\s*(?P<governor>[^)]+)\s*\)'
+      description: "注销热调节策略"
+
+
+# ============================================================
+# CPUFREQ COOLING
+# ============================================================
+
+cpufreq_cooling:
+  description: "CPU Frequency Cooling - CPU 频率冷却设备"
+  header: "linux/cpu_cooling.h"
+  icon: "🖥️"
+
+  registration:
+    - pattern: 'cpufreq_cooling_register\s*\(\s*(?P<policy>[^)]+)\s*\)'
+      description: "注册 CPU 频率冷却设备"
+      context: "process"
+      can_sleep: true
+    - pattern: 'of_cpufreq_cooling_register\s*\(\s*(?P<policy>[^)]+)\s*\)'
+      description: "设备树方式注册"
+      context: "process"
+      can_sleep: true
+    - pattern: 'cpufreq_cooling_unregister\s*\(\s*(?P<cdev>[^)]+)\s*\)'
+      description: "注销 CPU 频率冷却设备"
+      context: "process"
+      can_sleep: true
+
+  description_long: |
+    CPU 频率冷却设备通过降低 CPU 频率来减少功耗和发热。
+    冷却状态 0 表示最高频率（无冷却），
+    最大状态表示最低频率（最强冷却）。
+
+
+# ============================================================
+# DEVFREQ COOLING
+# ============================================================
+
+devfreq_cooling:
+  description: "Devfreq Cooling - 设备频率冷却"
+  header: "linux/devfreq_cooling.h"
+
+  registration:
+    - pattern: 'devfreq_cooling_register\s*\(\s*(?P<devfreq>[^)]+)\s*\)'
+      description: "注册设备频率冷却设备"
+    - pattern: 'of_devfreq_cooling_register\s*\(\s*(?P<np>[^,]+)\s*,\s*(?P<devfreq>[^)]+)\s*\)'
+      description: "设备树方式注册"
+    - pattern: 'devfreq_cooling_unregister\s*\(\s*(?P<cdev>[^)]+)\s*\)'
+      description: "注销设备频率冷却设备"
+
+
+# ============================================================
+# THERMAL OF HELPERS
+# ============================================================
+
+thermal_of:
+  description: "Thermal Device Tree Helpers - 热管理设备树辅助函数"
+  header: "linux/thermal.h"
+
+  functions:
+    - pattern: 'thermal_zone_of_sensor_register\s*\('
+      description: "从设备树注册热区传感器"
+    - pattern: 'thermal_zone_of_sensor_unregister\s*\('
+      description: "注销设备树热区传感器"
+    - pattern: 'devm_thermal_zone_of_sensor_register\s*\('
+      description: "设备管理方式注册"
+    - pattern: 'thermal_of_cooling_device_register\s*\('
+      description: "从设备树注册冷却设备"
+
+
+# ============================================================
+# THERMAL OF SENSOR OPS
+# ============================================================
+
+thermal_zone_of_device_ops:
+  description: "Thermal Zone OF Device Operations - 设备树热区操作"
+  header: "linux/thermal.h"
 
   callbacks:
-    bind:
-      pattern: '\.bind\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "绑定回调"
-
-    unbind:
-      pattern: '\.unbind\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "解绑回调"
-
     get_temp:
       pattern: '\.get_temp\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取温度"
+      description: "获取温度（必需）"
+      signature: "int (*)(void *data, int *temp)"
+      typical_actions:
+        - "从私有数据获取设备句柄"
+        - "读取温度传感器"
 
-    get_trip_temp:
-      pattern: '\.get_trip_temp\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取触发温度"
+    get_trend:
+      pattern: '\.get_trend\s*=\s*(?P<handler>\w+)'
+      description: "获取温度趋势"
+      signature: "int (*)(void *data, int trip, enum thermal_trend *trend)"
 
-    get_trip_type:
-      pattern: '\.get_trip_type\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取触发类型"
+    set_trips:
+      pattern: '\.set_trips\s*=\s*(?P<handler>\w+)'
+      description: "设置硬件触发点"
+      signature: "int (*)(void *data, int low, int high)"
 
-    get_trip_hyst:
-      pattern: '\.get_trip_hyst\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取触发滞后"
-
-    set_trip_temp:
-      pattern: '\.set_trip_temp\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "设置触发温度"
-
-    get_crit_temp:
-      pattern: '\.get_crit_temp\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取临界温度"
-
-    notify:
-      pattern: '\.notify\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "通知回调"
+    set_emul_temp:
+      pattern: '\.set_emul_temp\s*=\s*(?P<handler>\w+)'
+      description: "设置模拟温度"
+      signature: "int (*)(void *data, int temp)"
 
 
 # ============================================================
-# THERMAL TRIP
+# THERMAL EVENTS
 # ============================================================
 
-thermal_trip:
-  description: "Thermal Trip - 热触发点"
+thermal_events:
+  description: "Thermal Events - 热管理事件"
   header: "linux/thermal.h"
 
-  bind_patterns:
-    # THERMAL_TRIP_*
-    - pattern: 'THERMAL_TRIP_(?P<type>\w+)'
-      description: "热触发类型"
-
-    # THERMAL_CRITICAL
-    - pattern: 'THERMAL_CRITICAL'
-      description: "临界温度触发"
-
-    # THERMAL_HOT
-    - pattern: 'THERMAL_HOT'
-      description: "高温触发"
-
-    # THERMAL_PASSIVE
-    - pattern: 'THERMAL_PASSIVE'
-      description: "被动散热触发"
+  constants:
+    THERMAL_EVENT_UNSPECIFIED:
+      description: "未指定事件"
+    THERMAL_EVENT_TEMP_SAMPLE:
+      description: "温度采样事件"
+    THERMAL_TRIP_VIOLATED:
+      description: "触发点被触发"
+    THERMAL_TRIP_CHANGED:
+      description: "触发点已更改"
+    THERMAL_DEVICE_DOWN:
+      description: "设备关闭"
+    THERMAL_DEVICE_UP:
+      description: "设备启动"
+    THERMAL_DEVICE_POWER_CAPABILITY_CHANGED:
+      description: "功率能力已更改"
+    THERMAL_TABLE_CHANGED:
+      description: "温度表已更改"
+    THERMAL_EVENT_KEEP_ALIVE:
+      description: "保活事件"
 
 
 # ============================================================
-# THERMAL EXAMPLES
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  thermal_zone_update_flow:
+    description: "热区更新调用链"
+    trigger: "定时轮询或 thermal_zone_device_update()"
+    chain:
+      - function: "thermal_zone_device_update"
+        file: "drivers/thermal/thermal_core.c"
+        description: "热区更新入口"
+        context: "process"
+      - function: "update_temperature"
+        file: "drivers/thermal/thermal_core.c"
+        description: "更新温度"
+      - function: "tz->ops->get_temp"
+        file: "驱动代码"
+        description: "调用驱动获取温度"
+        is_user_entry: true
+      - function: "handle_thermal_trip"
+        file: "drivers/thermal/thermal_core.c"
+        description: "处理触发点"
+      - function: "thermal_governor->throttle"
+        file: "drivers/thermal/gov_*.c"
+        description: "调用调节策略"
+      - function: "cdev->ops->set_cur_state"
+        file: "冷却设备驱动"
+        description: "设置冷却状态"
+        is_user_entry: true
+
+  thermal_zone_register_flow:
+    description: "热区注册调用链"
+    trigger: "驱动调用 thermal_zone_device_register()"
+    chain:
+      - function: "thermal_zone_device_register"
+        file: "drivers/thermal/thermal_core.c"
+        description: "注册 API 入口"
+        context: "process"
+      - function: "device_register"
+        file: "drivers/base/core.c"
+        description: "注册设备"
+      - function: "thermal_zone_create_device_groups"
+        file: "drivers/thermal/thermal_core.c"
+        description: "创建 sysfs 属性"
+      - function: "thermal_set_governor"
+        file: "drivers/thermal/thermal_core.c"
+        description: "设置调节策略"
+      - function: "bind_cdev"
+        file: "drivers/thermal/thermal_core.c"
+        description: "绑定冷却设备"
+      - function: "tz->ops->bind"
+        file: "驱动代码"
+        description: "调用驱动绑定回调"
+        is_user_entry: true
+
+  thermal_cooling_register_flow:
+    description: "冷却设备注册调用链"
+    trigger: "驱动调用 thermal_cooling_device_register()"
+    chain:
+      - function: "thermal_cooling_device_register"
+        file: "drivers/thermal/thermal_core.c"
+        description: "注册 API 入口"
+        context: "process"
+      - function: "device_register"
+        file: "drivers/base/core.c"
+        description: "注册设备"
+      - function: "bind_cdev"
+        file: "drivers/thermal/thermal_core.c"
+        description: "尝试绑定到所有热区"
+
+
+# ============================================================
+# EXAMPLES
 # ============================================================
 
 examples:
-  - description: "热区驱动"
+  - description: "热区驱动实现"
+    kernel_version: "4.0+"
     code: |
-      static int my_get_temp(void *data, int *temp) {
-          *temp = read_cpu_temperature();
-          return 0;
-      }
-
-      static int my_get_trip_temp(struct thermal_zone_device *tz,
-                                  int trip, int *temp) {
-          *temp = trip_temps[trip];
-          return 0;
-      }
-
-      static int my_get_trip_type(struct thermal_zone_device *tz,
-                                  int trip, enum thermal_trip_type *type) {
-          *type = trip_types[trip];
-          return 0;
-      }
-
-      static struct thermal_zone_device_ops my_tz_ops = {
-          .get_temp = my_get_temp,
-          .get_trip_temp = my_get_trip_temp,
-          .get_trip_type = my_get_trip_type,
-      };
-
-      static struct thermal_zone_params my_tz_params = {
-          .passive_delay = 5000,
-          .hwmon = true,
-      };
-
-      static int __init my_init(void) {
+      #include <linux/thermal.h>
+      
+      struct my_thermal_data {
+          void __iomem *base;
           struct thermal_zone_device *tz;
-
-          tz = thermal_zone_device_register("my-thermal",
-                                            3, 0, NULL,
-                                            &my_tz_ops, NULL, 0, 0);
-          if (IS_ERR(tz))
-              return PTR_ERR(tz);
-
-          /* 绑定风扇 */
-          thermal_zone_bind_cooling_device(tz, 0, my_cdev,
-                                           THERMAL_NO_LIMIT,
-                                           THERMAL_NO_LIMIT,
-                                           THERMAL_WEIGHT_DEFAULT);
+          int trip_temps[3];
+      };
+      
+      static int my_get_temp(struct thermal_zone_device *tz, int *temp)
+      {
+          struct my_thermal_data *data = tz->devdata;
+          u32 val;
+          
+          /* 读取温度寄存器 */
+          val = readl(data->base + TEMP_REG);
+          
+          /* 转换为 milli-Celsius */
+          *temp = (val - 25) * 1000;
+          
           return 0;
       }
+      
+      static int my_get_trip_type(struct thermal_zone_device *tz,
+                                  int trip, enum thermal_trip_type *type)
+      {
+          switch (trip) {
+          case 0:
+              *type = THERMAL_TRIP_ACTIVE;
+              break;
+          case 1:
+              *type = THERMAL_TRIP_PASSIVE;
+              break;
+          case 2:
+              *type = THERMAL_TRIP_CRITICAL;
+              break;
+          default:
+              return -EINVAL;
+          }
+          return 0;
+      }
+      
+      static int my_get_trip_temp(struct thermal_zone_device *tz,
+                                  int trip, int *temp)
+      {
+          struct my_thermal_data *data = tz->devdata;
+          
+          if (trip < 0 || trip >= ARRAY_SIZE(data->trip_temps))
+              return -EINVAL;
+          
+          *temp = data->trip_temps[trip];
+          return 0;
+      }
+      
+      static int my_set_trip_temp(struct thermal_zone_device *tz,
+                                  int trip, int temp)
+      {
+          struct my_thermal_data *data = tz->devdata;
+          
+          if (trip < 0 || trip >= ARRAY_SIZE(data->trip_temps))
+              return -EINVAL;
+          
+          data->trip_temps[trip] = temp;
+          return 0;
+      }
+      
+      static int my_bind(struct thermal_zone_device *tz,
+                         struct thermal_cooling_device *cdev)
+      {
+          /* 绑定风扇到 ACTIVE 触发点 */
+          if (strstr(cdev->type, "fan"))
+              return thermal_zone_bind_cooling_device(tz, 0, cdev,
+                          THERMAL_NO_LIMIT, THERMAL_NO_LIMIT,
+                          THERMAL_WEIGHT_DEFAULT);
+          
+          /* 绑定 CPU 冷却到 PASSIVE 触发点 */
+          if (strstr(cdev->type, "cpu"))
+              return thermal_zone_bind_cooling_device(tz, 1, cdev,
+                          THERMAL_NO_LIMIT, THERMAL_NO_LIMIT,
+                          THERMAL_WEIGHT_DEFAULT);
+          
+          return 0;
+      }
+      
+      static int my_unbind(struct thermal_zone_device *tz,
+                           struct thermal_cooling_device *cdev)
+      {
+          if (strstr(cdev->type, "fan"))
+              return thermal_zone_unbind_cooling_device(tz, 0, cdev);
+          
+          if (strstr(cdev->type, "cpu"))
+              return thermal_zone_unbind_cooling_device(tz, 1, cdev);
+          
+          return 0;
+      }
+      
+      static const struct thermal_zone_device_ops my_tz_ops = {
+          .get_temp      = my_get_temp,
+          .get_trip_type = my_get_trip_type,
+          .get_trip_temp = my_get_trip_temp,
+          .set_trip_temp = my_set_trip_temp,
+          .bind          = my_bind,
+          .unbind        = my_unbind,
+      };
+      
+      static int my_thermal_probe(struct platform_device *pdev)
+      {
+          struct my_thermal_data *data;
+          
+          data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
+          if (!data)
+              return -ENOMEM;
+          
+          data->base = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(data->base))
+              return PTR_ERR(data->base);
+          
+          /* 初始化触发点温度 */
+          data->trip_temps[0] = 70000;   /* 70°C - ACTIVE */
+          data->trip_temps[1] = 85000;   /* 85°C - PASSIVE */
+          data->trip_temps[2] = 100000;  /* 100°C - CRITICAL */
+          
+          data->tz = thermal_zone_device_register("my-thermal",
+                      3,                      /* trips */
+                      0x7,                    /* mask */
+                      data,                   /* devdata */
+                      &my_tz_ops,
+                      NULL,                   /* tzp */
+                      1000,                   /* passive_delay */
+                      5000);                  /* polling_delay */
+          if (IS_ERR(data->tz)) {
+              dev_err(&pdev->dev, "Failed to register thermal zone\n");
+              return PTR_ERR(data->tz);
+          }
+          
+          platform_set_drvdata(pdev, data);
+          
+          thermal_zone_device_enable(data->tz);
+          
+          return 0;
+      }
+      
+      static int my_thermal_remove(struct platform_device *pdev)
+      {
+          struct my_thermal_data *data = platform_get_drvdata(pdev);
+          
+          thermal_zone_device_unregister(data->tz);
+          return 0;
+      }
+
+  - description: "风扇冷却设备实现"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/thermal.h>
+      #include <linux/pwm.h>
+      
+      struct my_fan_data {
+          struct pwm_device *pwm;
+          struct thermal_cooling_device *cdev;
+          unsigned int max_state;
+          unsigned int cur_state;
+      };
+      
+      static int my_fan_get_max_state(struct thermal_cooling_device *cdev,
+                                      unsigned long *state)
+      {
+          struct my_fan_data *fan = cdev->devdata;
+          
+          *state = fan->max_state;
+          return 0;
+      }
+      
+      static int my_fan_get_cur_state(struct thermal_cooling_device *cdev,
+                                      unsigned long *state)
+      {
+          struct my_fan_data *fan = cdev->devdata;
+          
+          *state = fan->cur_state;
+          return 0;
+      }
+      
+      static int my_fan_set_cur_state(struct thermal_cooling_device *cdev,
+                                      unsigned long state)
+      {
+          struct my_fan_data *fan = cdev->devdata;
+          unsigned int duty_ns;
+          
+          if (state > fan->max_state)
+              return -EINVAL;
+          
+          fan->cur_state = state;
+          
+          /* 计算 PWM 占空比 */
+          /* state 0 = 关闭, state max = 全速 */
+          if (state == 0) {
+              pwm_disable(fan->pwm);
+          } else {
+              duty_ns = (fan->pwm->period * state) / fan->max_state;
+              pwm_config(fan->pwm, duty_ns, fan->pwm->period);
+              pwm_enable(fan->pwm);
+          }
+          
+          return 0;
+      }
+      
+      static const struct thermal_cooling_device_ops my_fan_ops = {
+          .get_max_state = my_fan_get_max_state,
+          .get_cur_state = my_fan_get_cur_state,
+          .set_cur_state = my_fan_set_cur_state,
+      };
+      
+      static int my_fan_probe(struct platform_device *pdev)
+      {
+          struct my_fan_data *fan;
+          
+          fan = devm_kzalloc(&pdev->dev, sizeof(*fan), GFP_KERNEL);
+          if (!fan)
+              return -ENOMEM;
+          
+          fan->pwm = devm_pwm_get(&pdev->dev, NULL);
+          if (IS_ERR(fan->pwm))
+              return PTR_ERR(fan->pwm);
+          
+          fan->max_state = 10;  /* 10 级风速 */
+          fan->cur_state = 0;
+          
+          fan->cdev = thermal_of_cooling_device_register(
+                          pdev->dev.of_node,
+                          "fan",
+                          fan,
+                          &my_fan_ops);
+          if (IS_ERR(fan->cdev))
+              return PTR_ERR(fan->cdev);
+          
+          platform_set_drvdata(pdev, fan);
+          
+          return 0;
+      }
+
+  - description: "设备树配置示例"
+    kernel_version: "4.0+"
+    code: |
+      /* 设备树 DTS 示例 */
+      /*
+      thermal_zones {
+          cpu_thermal: cpu-thermal {
+              polling-delay-passive = <1000>;
+              polling-delay = <5000>;
+              thermal-sensors = <&tmu 0>;
+              
+              trips {
+                  cpu_alert0: trip-point0 {
+                      temperature = <70000>;
+                      hysteresis = <2000>;
+                      type = "active";
+                  };
+                  
+                  cpu_alert1: trip-point1 {
+                      temperature = <85000>;
+                      hysteresis = <2000>;
+                      type = "passive";
+                  };
+                  
+                  cpu_crit: trip-point2 {
+                      temperature = <100000>;
+                      hysteresis = <0>;
+                      type = "critical";
+                  };
+              };
+              
+              cooling-maps {
+                  map0 {
+                      trip = <&cpu_alert0>;
+                      cooling-device = <&fan 0 5>;
+                  };
+                  
+                  map1 {
+                      trip = <&cpu_alert1>;
+                      cooling-device = <&cpu_cooling THERMAL_NO_LIMIT 
+                                                     THERMAL_NO_LIMIT>;
+                  };
+              };
+          };
+      };
+      
+      fan: fan {
+          compatible = "pwm-fan";
+          pwms = <&pwm0 0 10000 0>;
+          #cooling-cells = <2>;
+          cooling-levels = <0 25 50 75 100 125 150 175 200 225 255>;
+      };
+      
+      cpu_cooling: cpu-cooling {
+          #cooling-cells = <2>;
+      };
+      */

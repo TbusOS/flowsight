@@ -1,15 +1,17 @@
 # Linux Kernel Platform Driver Framework Knowledge Base
 #
 # Reference: https://www.kernel.org/doc/html/latest/driver-api/platform.html
+# Kernel Version: 5.0+
 
 # ============================================================
 # PLATFORM DRIVER
 # ============================================================
 
 platform_driver:
-  description: "Platform Driver - 平台设备驱动"
+  description: "Platform Driver - 平台设备驱动，用于 SoC 外设和非 discoverable 设备"
   header: "linux/platform_device.h"
   icon: "🔌"
+  kernel_version: "2.6+"
 
   context:
     type: "process"
@@ -17,107 +19,316 @@ platform_driver:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # platform_driver_register - 注册驱动
-    - pattern: 'platform_driver_register\s*\(\s*(?P<driver>[^)]+)\s*\)'
-      variable_capture: "driver"
+  registration:
+    # 标准注册
+    - pattern: 'platform_driver_register\s*\(\s*&?(?P<driver>[\w\.\->]+)\s*\)'
       description: "注册 platform 驱动"
+      context: "process"
+      can_sleep: true
 
-    # module_platform_driver - 模块宏
-    - pattern: 'module_platform_driver\s*\(\s*(?P<name>\w+)\s*\)'
-      variable_capture: "name"
-      description: "模块化的 platform 驱动注册"
+    - pattern: 'platform_driver_unregister\s*\(\s*&?(?P<driver>[\w\.\->]+)\s*\)'
+      description: "注销 platform 驱动"
+      context: "process"
+      can_sleep: true
 
-    # platform_driver_probe - 探测式注册
-    - pattern: 'platform_driver_probe\s*\(\s*(?P<driver>[^)]+)\s*,\s*(?P<probe>\w+)\s*\)'
-      variable_capture: "driver"
+    # 模块宏 (最常用)
+    - pattern: 'module_platform_driver\s*\(\s*(?P<driver>\w+)\s*\)'
+      description: "模块化 platform 驱动注册宏"
+      notes: "自动生成 module_init/exit"
+
+    - pattern: 'module_platform_driver_probe\s*\(\s*(?P<driver>\w+)\s*,\s*(?P<probe>\w+)\s*\)'
+      description: "用于单设备的模块宏"
+      notes: "probe 函数被标记为 __init"
+
+    # 内建驱动宏
+    - pattern: 'builtin_platform_driver\s*\(\s*(?P<driver>\w+)\s*\)'
+      description: "内建 platform 驱动宏"
+      notes: "用于编译进内核的驱动"
+
+    - pattern: 'builtin_platform_driver_probe\s*\(\s*(?P<driver>\w+)\s*,\s*(?P<probe>\w+)\s*\)'
+      description: "内建驱动宏 (带探测函数)"
+
+    # 探测式注册 (用于单设备优化)
+    - pattern: 'platform_driver_probe\s*\(\s*&?(?P<driver>[\w\.\->]+)\s*,\s*(?P<probe>\w+)\s*\)'
       description: "探测式注册 (用于单设备)"
+      notes: "probe 可以是 __init，减少内存占用"
 
-  driver_structure:
-    - pattern: 'static struct platform_driver\s+(?P<name>\w+)\s*=\s*\{'
-      variable_capture: "name"
-      description: "Platform driver 结构体定义"
+  structure:
+    pattern: 'static\s+(const\s+)?struct platform_driver\s+(?P<name>\w+)\s*=\s*\{'
+    description: "Platform driver 结构体定义"
+    fields:
+      - name: "probe"
+        type: "int (*)(struct platform_device *)"
+        description: "设备探测回调"
+      - name: "remove"
+        type: "void (*)(struct platform_device *)"  # 5.18+ 改为 void
+        description: "设备移除回调"
+      - name: "shutdown"
+        type: "void (*)(struct platform_device *)"
+        description: "系统关机回调"
+      - name: "suspend"
+        type: "int (*)(struct platform_device *, pm_message_t)"
+        description: "旧版挂起回调 (已废弃)"
+      - name: "resume"
+        type: "int (*)(struct platform_device *)"
+        description: "旧版恢复回调 (已废弃)"
+      - name: "driver"
+        type: "struct device_driver"
+        description: "内嵌的设备驱动结构"
+      - name: "id_table"
+        type: "const struct platform_device_id *"
+        description: "设备 ID 表"
+      - name: "prevent_deferred_probe"
+        type: "bool"
+        description: "禁止延迟探测"
+      - name: "driver.name"
+        type: "const char *"
+        description: "驱动名称"
+      - name: "driver.of_match_table"
+        type: "const struct of_device_id *"
+        description: "设备树匹配表"
+      - name: "driver.acpi_match_table"
+        type: "const struct acpi_device_id *"
+        description: "ACPI 匹配表"
+      - name: "driver.pm"
+        type: "const struct dev_pm_ops *"
+        description: "电源管理操作"
 
   callbacks:
     probe:
       pattern: '\.probe\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Probe 回调"
+      description: "设备探测回调 - 设备与驱动匹配后调用"
+      trigger: "设备与驱动匹配成功"
+      context: "process"
+      can_sleep: true
+      signature: "int (*probe)(struct platform_device *pdev)"
+      return_value:
+        success: "0"
+        failure: "负数错误码 (-ENOMEM, -ENODEV, -EPROBE_DEFER)"
+      typical_actions:
+        - "获取资源 (platform_get_resource)"
+        - "映射 IO 内存 (devm_ioremap_resource)"
+        - "获取中断 (platform_get_irq)"
+        - "获取时钟 (devm_clk_get)"
+        - "分配私有数据 (devm_kzalloc)"
+        - "设置 drvdata (platform_set_drvdata)"
 
     remove:
       pattern: '\.remove\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Remove 回调"
+      description: "设备移除回调"
+      trigger: "设备移除或驱动卸载"
+      context: "process"
+      can_sleep: true
+      signature: "void (*remove)(struct platform_device *pdev)"  # 5.18+
+      typical_actions:
+        - "释放非 devm 管理的资源"
+        - "关闭硬件"
 
     shutdown:
       pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Shutdown 回调"
+      description: "系统关机回调"
+      trigger: "系统关机或重启"
+      context: "process"
+      can_sleep: true
+      signature: "void (*shutdown)(struct platform_device *pdev)"
+      typical_actions:
+        - "安全关闭硬件"
+        - "保存状态"
 
-    suspend:
+    # PM 操作 (现代方式)
+    pm_suspend:
       pattern: '\.suspend\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Suspend 回调"
+      description: "PM suspend 回调"
+      context: "process"
+      can_sleep: true
+      signature: "int (*suspend)(struct device *dev)"
 
-    resume:
+    pm_resume:
       pattern: '\.resume\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Resume 回调"
+      description: "PM resume 回调"
+      context: "process"
+      can_sleep: true
+      signature: "int (*resume)(struct device *dev)"
 
-    suspend_late:
-      pattern: '\.suspend_late\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Late suspend 回调"
+    pm_freeze:
+      pattern: '\.freeze\s*=\s*(?P<handler>\w+)'
+      description: "PM freeze 回调 (hibernation)"
+      context: "process"
+      can_sleep: true
 
-    resume_early:
-      pattern: '\.resume_early\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Early resume 回调"
+    pm_thaw:
+      pattern: '\.thaw\s*=\s*(?P<handler>\w+)'
+      description: "PM thaw 回调 (hibernation)"
+      context: "process"
+      can_sleep: true
 
-    driver_groups:
-      pattern: '\.driver\.groups\s*='
-      description: "驱动属性组"
+    pm_poweroff:
+      pattern: '\.poweroff\s*=\s*(?P<handler>\w+)'
+      description: "PM poweroff 回调"
+      context: "process"
+      can_sleep: true
 
-  probe_signature:
-    return_type: "int"
-    parameters:
-      - name: "dev"
-        type: "struct platform_device *"
-        description: "Platform 设备"
+    pm_restore:
+      pattern: '\.restore\s*=\s*(?P<handler>\w+)'
+      description: "PM restore 回调"
+      context: "process"
+      can_sleep: true
 
-  remove_signature:
-    return_type: "int"
-    parameters:
-      - name: "dev"
-        type: "struct platform_device *"
-        description: "Platform 设备"
+    pm_runtime_suspend:
+      pattern: '\.runtime_suspend\s*=\s*(?P<handler>\w+)'
+      description: "Runtime PM suspend 回调"
+      context: "process"
+      can_sleep: true
 
-  kernel_call_chain:
-    trigger: "Platform 设备与驱动匹配"
-    chain:
-      - function: "platform_bus_type.match"
-        file: "drivers/base/platform.c"
-        description: "匹配设备与驱动"
-      - function: "platform_bus_type.probe"
-        file: "drivers/base/platform.c"
-        description: "调用驱动 probe"
-      - function: "my_probe(dev)"
-        file: "用户代码"
-        description: "用户 probe 函数"
-        is_user_entry: true
+    pm_runtime_resume:
+      pattern: '\.runtime_resume\s*=\s*(?P<handler>\w+)'
+      description: "Runtime PM resume 回调"
+      context: "process"
+      can_sleep: true
 
-      # Remove 路径
-      - function: "platform_bus_type.remove"
-        file: "drivers/base/platform.c"
-      - function: "my_remove(dev)"
-        file: "用户代码"
-        description: "用户 remove 函数"
-        is_user_entry: true
+    pm_runtime_idle:
+      pattern: '\.runtime_idle\s*=\s*(?P<handler>\w+)'
+      description: "Runtime PM idle 回调"
+      context: "process"
+      can_sleep: true
+
+  call_chains:
+    device_discovery_dt:
+      description: "设备树设备发现路径"
+      trigger: "系统启动，解析设备树"
+      chain:
+        - function: "of_platform_populate"
+          file: "drivers/of/platform.c"
+          description: "遍历设备树创建设备"
+        - function: "of_platform_device_create_pdata"
+          file: "drivers/of/platform.c"
+          description: "创建 platform_device"
+        - function: "platform_device_add"
+          file: "drivers/base/platform.c"
+          description: "添加到总线"
+        - function: "bus_probe_device"
+          file: "drivers/base/bus.c"
+          description: "尝试匹配驱动"
+
+    device_discovery_acpi:
+      description: "ACPI 设备发现路径"
+      trigger: "系统启动，枚举 ACPI 设备"
+      chain:
+        - function: "acpi_bus_scan"
+          file: "drivers/acpi/scan.c"
+          description: "扫描 ACPI 命名空间"
+        - function: "acpi_create_platform_device"
+          file: "drivers/acpi/acpi_platform.c"
+          description: "创建 platform_device"
+        - function: "platform_device_add"
+          file: "drivers/base/platform.c"
+          description: "添加到总线"
+
+    probe_path:
+      description: "设备探测调用路径"
+      trigger: "设备与驱动匹配成功"
+      chain:
+        - function: "platform_match"
+          file: "drivers/base/platform.c"
+          description: "匹配函数 (of/acpi/id_table/name)"
+        - function: "really_probe"
+          file: "drivers/base/dd.c"
+          description: "执行探测"
+        - function: "platform_probe"
+          file: "drivers/base/platform.c"
+          description: "平台总线探测"
+        - function: "drv->probe(pdev)"
+          file: "用户代码"
+          description: "用户 probe 函数"
+          is_user_entry: true
+
+    remove_path:
+      description: "设备移除调用路径"
+      trigger: "设备移除或驱动卸载"
+      chain:
+        - function: "platform_device_del"
+          file: "drivers/base/platform.c"
+          description: "删除设备"
+        - function: "device_release_driver"
+          file: "drivers/base/dd.c"
+          description: "释放驱动"
+        - function: "platform_remove"
+          file: "drivers/base/platform.c"
+          description: "平台总线移除"
+        - function: "drv->remove(pdev)"
+          file: "用户代码"
+          description: "用户 remove 函数"
+          is_user_entry: true
+
+    suspend_path:
+      description: "系统挂起路径"
+      trigger: "系统进入睡眠状态"
+      chain:
+        - function: "dpm_suspend"
+          file: "drivers/base/power/main.c"
+          description: "设备 PM 挂起入口"
+        - function: "platform_pm_suspend"
+          file: "drivers/base/platform.c"
+          description: "平台总线 PM suspend"
+        - function: "pm_generic_suspend"
+          file: "drivers/base/power/generic_ops.c"
+          description: "通用 PM suspend"
+        - function: "drv->pm->suspend(dev)"
+          file: "用户代码"
+          description: "用户 suspend 函数"
+          is_user_entry: true
+
+  helper_functions:
+    - pattern: 'platform_get_resource\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<num>\d+)\s*\)'
+      description: "获取设备资源"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'platform_get_resource_byname\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "按名称获取资源"
+      context: "process"
+
+    - pattern: 'platform_get_irq\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<num>\d+)\s*\)'
+      description: "获取中断号"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'platform_get_irq_byname\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "按名称获取中断号"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'platform_get_irq_optional\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<num>\d+)\s*\)'
+      description: "获取可选中断号 (不打印错误)"
+      context: "process"
+
+    - pattern: 'platform_set_drvdata\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "设置驱动私有数据"
+      context: "any"
+
+    - pattern: 'platform_get_drvdata\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取驱动私有数据"
+      context: "any"
+
+    - pattern: 'devm_platform_ioremap_resource\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<index>\d+)\s*\)'
+      description: "devm 版本: 获取并映射 IO 资源"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_platform_ioremap_resource_byname\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "devm 版本: 按名称获取并映射 IO 资源"
+      context: "process"
+
+    - pattern: 'devm_platform_get_and_ioremap_resource\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<index>\d+)\s*,\s*(?P<res>[^)]+)\s*\)'
+      description: "devm 版本: 获取资源指针并映射"
+      context: "process"
 
   notes:
-    - "Platform 设备包括 SoC 外设、platform 总线设备等"
-    - "可以通过设备树、ACPI 或板级文件注册设备"
-    - "driver.of_match_table 用于设备树匹配"
+    - "Platform 设备用于 SoC 外设和非 discoverable 设备"
+    - "优先使用 devm_* 资源管理 API"
+    - "设备匹配优先级: of > acpi > id_table > name"
+    - "现代驱动应使用 dev_pm_ops 而非旧版 suspend/resume"
+    - "5.18+ 版本 remove 回调改为返回 void"
 
 
 # ============================================================
@@ -127,187 +338,609 @@ platform_driver:
 platform_device:
   description: "Platform Device - 平台设备"
   header: "linux/platform_device.h"
+  kernel_version: "2.6+"
 
-  bind_patterns:
-    # platform_device_alloc - 分配设备
-    - pattern: "platform_device_alloc\\s*\\(\\s*(?P<name>[\"']?[\\w\\-]+[\"']?)\\s*,\\s*(?P<id>\\w+)\\s*\\)"
-      variable_capture: "name"
-      description: "分配 platform device"
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
 
-    # platform_device_add - 添加设备
-    - pattern: 'platform_device_add\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "添加 platform device"
+  registration:
+    # 动态分配
+    - pattern: 'platform_device_alloc\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "动态分配 platform_device"
+      context: "process"
+      can_sleep: true
 
-    # platform_get_resource - 获取资源
-    - pattern: 'platform_get_resource\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<num>\d+)\s*\)'
-      extra_captures:
-        - name: "type"
-          description: "资源类型 (IORESOURCE_MEM, IORESOURCE_IO, IORESOURCE_IRQ)"
-        - name: "num"
-          description: "资源索引"
+    - pattern: 'platform_device_add\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "添加已分配的 platform_device"
+      context: "process"
+      can_sleep: true
 
-    # platform_get_irq - 获取中断
-    - pattern: 'platform_get_irq\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<num>\d+)\s*\)'
-      variable_capture: "dev"
-      description: "获取中断号"
+    - pattern: 'platform_device_del\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "删除 platform_device"
+      context: "process"
+
+    - pattern: 'platform_device_put\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "释放 platform_device 引用"
+      context: "process"
+
+    # 一步注册
+    - pattern: 'platform_device_register\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "注册静态定义的 platform_device"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'platform_device_unregister\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "注销 platform_device"
+      context: "process"
+      can_sleep: true
+
+    # 便捷函数
+    - pattern: 'platform_device_register_simple\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<res>[^,]+)\s*,\s*(?P<num>\d+)\s*\)'
+      description: "简单注册 platform_device"
+      context: "process"
+
+    - pattern: 'platform_device_register_resndata\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<res>[^,]+)\s*,\s*(?P<num>\w+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "注册带资源和数据的 platform_device"
+      context: "process"
+
+    - pattern: 'platform_device_register_data\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "注册带平台数据的 platform_device"
+      context: "process"
+
+  structure:
+    pattern: 'struct platform_device\s+(?P<name>\w+)\s*=\s*\{'
+    description: "Platform device 结构体"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "设备名称"
+      - name: "id"
+        type: "int"
+        description: "设备实例 ID (-1 表示唯一)"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌的设备结构"
+      - name: "resource"
+        type: "struct resource *"
+        description: "设备资源数组"
+      - name: "num_resources"
+        type: "u32"
+        description: "资源数量"
+      - name: "id_entry"
+        type: "const struct platform_device_id *"
+        description: "匹配的 ID 条目"
+      - name: "driver_override"
+        type: "const char *"
+        description: "强制绑定的驱动名"
+      - name: "mfd_cell"
+        type: "struct mfd_cell *"
+        description: "MFD 父设备信息"
+      - name: "pdata"
+        type: "void *"
+        description: "平台特定数据"
 
   resource_types:
     - name: "IORESOURCE_MEM"
-      description: "内存资源"
+      value: "0x00000200"
+      description: "内存映射 IO 资源"
     - name: "IORESOURCE_IO"
+      value: "0x00000100"
       description: "I/O 端口资源"
     - name: "IORESOURCE_IRQ"
+      value: "0x00000400"
       description: "中断资源"
     - name: "IORESOURCE_DMA"
+      value: "0x00000800"
       description: "DMA 通道资源"
+    - name: "IORESOURCE_BUS"
+      value: "0x00001000"
+      description: "总线号资源"
 
 
 # ============================================================
-# PLATFORM DRIVER API
+# PLATFORM DATA
 # ============================================================
 
-platform_api:
-  description: "Platform Driver API Functions"
+platform_data:
+  description: "Platform Data - 平台特定数据"
   header: "linux/platform_device.h"
 
-  functions:
-    # 资源获取
-    platform_get_resource:
-      pattern: 'platform_get_resource\s*\([^)]+\)'
-      description: "获取设备资源"
+  patterns:
+    # 设置平台数据
+    - pattern: 'platform_device_add_data\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "添加平台数据到设备"
+      context: "process"
 
-    platform_get_irq:
-      pattern: 'platform_get_irq\s*\([^)]+\)'
-      description: "获取中断号"
+    # 获取平台数据
+    - pattern: 'dev_get_platdata\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "获取平台数据"
+      context: "any"
 
-    platform_get_irq_byname:
-      pattern: 'platform_get_irq_byname\s*\([^)]+\)'
-      description: "按名称获取中断号"
-
-    platform_get_resource_byname:
-      pattern: 'platform_get_resource_byname\s*\([^)]+\)'
-      description: "按名称获取资源"
-
-    # 设备信息
-    platform_get_device_id:
-      pattern: 'platform_get_device_id\s*\([^)]+\)'
-      description: "获取设备 ID"
-
-    platform_get_match_data:
-      pattern: 'platform_get_match_data\s*\([^)]+\)'
-      description: "获取匹配数据"
-
-    # 设备操作
-    platform_device_unregister:
-      pattern: 'platform_device_unregister\s*\([^)]+\)'
-      description: "注销设备"
-
-    platform_device_put:
-      pattern: 'platform_device_put\s*\([^)]+\)'
-      description: "释放设备引用"
-
-    # 驱动操作
-    platform_driver_unregister:
-      pattern: 'platform_driver_unregister\s*\([^)]+\)'
-      description: "注销驱动"
+    # 设置资源
+    - pattern: 'platform_device_add_resources\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<res>[^,]+)\s*,\s*(?P<num>[^)]+)\s*\)'
+      description: "添加资源到设备"
+      context: "process"
 
 
 # ============================================================
-# DEVICE TREE MATCH
+# DEVICE MATCHING
 # ============================================================
 
-device_tree_match:
-  description: "Device Tree Matching"
+device_matching:
+  description: "Device Matching - 设备与驱动匹配"
   header: "linux/mod_devicetable.h"
 
-  bind_patterns:
-    # OF match table
-    - pattern: '\.of_match_table\s*=\s*(?P<table>\w+)'
-      description: "设备树匹配表"
+  match_types:
+    of_match:
+      description: "设备树匹配 (最高优先级)"
+      patterns:
+        - pattern: '\.of_match_table\s*=\s*(?P<table>[\w\.\->]+)'
+          description: "设备树匹配表"
+        - pattern: 'of_match_ptr\s*\(\s*(?P<table>\w+)\s*\)'
+          description: "条件编译的设备树匹配表"
+        - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*of\s*,\s*(?P<table>\w+)\s*\)'
+          description: "导出设备树匹配表"
 
-    # compatible string matching
-    - pattern: 'of_match_ptr\s*\(\s*\[(?P<matches>[\w\s,\-]+)\]\s*\)'
-      extra_captures:
-        - name: "matches"
-          description: "匹配的 compatible 字符串"
+    acpi_match:
+      description: "ACPI 匹配"
+      patterns:
+        - pattern: '\.acpi_match_table\s*=\s*(?P<table>[\w\.\->]+)'
+          description: "ACPI 匹配表"
+        - pattern: 'ACPI_PTR\s*\(\s*(?P<table>\w+)\s*\)'
+          description: "条件编译的 ACPI 匹配表"
+        - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*acpi\s*,\s*(?P<table>\w+)\s*\)'
+          description: "导出 ACPI 匹配表"
 
-    # MODULE_DEVICE_TABLE(of, ...)
-    - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*of\s*,\s*(?P<table>\w+)\s*\)'
-      variable_capture: "table"
-      description: "模块设备表导出"
+    id_table_match:
+      description: "ID 表匹配"
+      patterns:
+        - pattern: '\.id_table\s*=\s*(?P<table>\w+)'
+          description: "平台设备 ID 表"
+        - pattern: 'static\s+(const\s+)?struct platform_device_id\s+(?P<name>\w+)\s*\[\]\s*='
+          description: "定义 ID 表"
+        - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*platform\s*,\s*(?P<table>\w+)\s*\)'
+          description: "导出平台设备 ID 表"
+
+    name_match:
+      description: "名称匹配 (最低优先级)"
+      patterns:
+        - pattern: '\.driver\.name\s*=\s*(?P<name>["\'][^"\']+["\'])'
+          description: "驱动名称匹配"
+
+  of_device_id_structure:
+    pattern: 'static\s+(const\s+)?struct of_device_id\s+(?P<name>\w+)\s*\[\]\s*='
+    fields:
+      - name: "compatible"
+        type: "char[128]"
+        description: "compatible 字符串"
+      - name: "type"
+        type: "char[32]"
+        description: "设备类型 (可选)"
+      - name: "data"
+        type: "const void *"
+        description: "匹配数据"
+
+  helper_functions:
+    - pattern: 'of_match_device\s*\(\s*(?P<matches>[^,]+)\s*,\s*(?P<dev>[^)]+)\s*\)'
+      description: "手动进行设备树匹配"
+
+    - pattern: 'of_device_get_match_data\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "获取设备树匹配数据"
+
+    - pattern: 'device_get_match_data\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "获取匹配数据 (通用)"
 
 
 # ============================================================
-# PLATFORM EXAMPLES
+# DEV_PM_OPS
+# ============================================================
+
+dev_pm_ops:
+  description: "Device Power Management Operations - 设备电源管理"
+  header: "linux/pm.h"
+  kernel_version: "2.6.32+"
+
+  patterns:
+    # PM ops 定义
+    - pattern: 'static\s+(const\s+)?struct dev_pm_ops\s+(?P<name>\w+)\s*='
+      description: "定义 PM 操作结构"
+
+    # PM ops 宏
+    - pattern: 'SIMPLE_DEV_PM_OPS\s*\(\s*(?P<name>\w+)\s*,\s*(?P<suspend>\w+)\s*,\s*(?P<resume>\w+)\s*\)'
+      description: "简单 PM ops (suspend/resume)"
+
+    - pattern: 'SET_SYSTEM_SLEEP_PM_OPS\s*\(\s*(?P<suspend>\w+)\s*,\s*(?P<resume>\w+)\s*\)'
+      description: "系统睡眠 PM ops"
+
+    - pattern: 'SET_RUNTIME_PM_OPS\s*\(\s*(?P<suspend>\w+)\s*,\s*(?P<resume>\w+)\s*,\s*(?P<idle>\w+)\s*\)'
+      description: "Runtime PM ops"
+
+    - pattern: 'SET_LATE_SYSTEM_SLEEP_PM_OPS\s*\(\s*(?P<suspend>\w+)\s*,\s*(?P<resume>\w+)\s*\)'
+      description: "Late 系统睡眠 PM ops"
+
+    - pattern: 'SET_NOIRQ_SYSTEM_SLEEP_PM_OPS\s*\(\s*(?P<suspend>\w+)\s*,\s*(?P<resume>\w+)\s*\)'
+      description: "NoIRQ 系统睡眠 PM ops"
+
+    - pattern: 'DEFINE_SIMPLE_DEV_PM_OPS\s*\(\s*(?P<name>\w+)\s*,\s*(?P<suspend>\w+)\s*,\s*(?P<resume>\w+)\s*\)'
+      description: "定义简单 PM ops (5.17+)"
+
+    - pattern: 'pm_ptr\s*\(\s*&?(?P<pm_ops>\w+)\s*\)'
+      description: "条件编译 PM ops 指针 (5.17+)"
+
+    - pattern: 'pm_sleep_ptr\s*\(\s*&?(?P<pm_ops>\w+)\s*\)'
+      description: "条件编译睡眠 PM ops 指针"
+
+  callbacks:
+    # 系统 PM
+    suspend:
+      signature: "int (*suspend)(struct device *dev)"
+      description: "系统挂起"
+      context: "process"
+      can_sleep: true
+
+    resume:
+      signature: "int (*resume)(struct device *dev)"
+      description: "系统恢复"
+      context: "process"
+      can_sleep: true
+
+    freeze:
+      signature: "int (*freeze)(struct device *dev)"
+      description: "休眠冻结"
+      context: "process"
+
+    thaw:
+      signature: "int (*thaw)(struct device *dev)"
+      description: "休眠解冻"
+      context: "process"
+
+    poweroff:
+      signature: "int (*poweroff)(struct device *dev)"
+      description: "关机"
+      context: "process"
+
+    restore:
+      signature: "int (*restore)(struct device *dev)"
+      description: "休眠恢复"
+      context: "process"
+
+    # Late/Early/NoIRQ
+    suspend_late:
+      signature: "int (*suspend_late)(struct device *dev)"
+      description: "Late 挂起 (中断禁用前)"
+      context: "process"
+
+    resume_early:
+      signature: "int (*resume_early)(struct device *dev)"
+      description: "Early 恢复 (中断启用后)"
+      context: "process"
+
+    suspend_noirq:
+      signature: "int (*suspend_noirq)(struct device *dev)"
+      description: "NoIRQ 挂起 (中断已禁用)"
+      context: "process"
+      notes: "此时设备中断已禁用"
+
+    resume_noirq:
+      signature: "int (*resume_noirq)(struct device *dev)"
+      description: "NoIRQ 恢复 (中断禁用时)"
+      context: "process"
+
+    # Runtime PM
+    runtime_suspend:
+      signature: "int (*runtime_suspend)(struct device *dev)"
+      description: "Runtime 挂起"
+      context: "process"
+      can_sleep: true
+
+    runtime_resume:
+      signature: "int (*runtime_resume)(struct device *dev)"
+      description: "Runtime 恢复"
+      context: "process"
+      can_sleep: true
+
+    runtime_idle:
+      signature: "int (*runtime_idle)(struct device *dev)"
+      description: "Runtime 空闲检查"
+      context: "process"
+      can_sleep: true
+
+  notes:
+    - "现代驱动应使用 dev_pm_ops 而非旧版 platform_driver 回调"
+    - "Runtime PM 需要调用 pm_runtime_enable() 启用"
+    - "使用 DEFINE_SIMPLE_DEV_PM_OPS 减少 #ifdef CONFIG_PM"
+
+
+# ============================================================
+# RUNTIME PM
+# ============================================================
+
+runtime_pm:
+  description: "Runtime Power Management - 运行时电源管理"
+  header: "linux/pm_runtime.h"
+  kernel_version: "2.6.32+"
+
+  patterns:
+    # 启用/禁用
+    - pattern: 'pm_runtime_enable\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "启用 Runtime PM"
+      context: "process"
+
+    - pattern: 'pm_runtime_disable\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "禁用 Runtime PM"
+      context: "process"
+
+    # 同步操作
+    - pattern: 'pm_runtime_get_sync\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "同步恢复设备 (增加引用计数)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pm_runtime_put_sync\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "同步减少引用计数"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pm_runtime_put\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "异步减少引用计数"
+      context: "any"
+
+    - pattern: 'pm_runtime_put_autosuspend\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "带自动挂起的减少引用计数"
+      context: "any"
+
+    # 自动挂起
+    - pattern: 'pm_runtime_use_autosuspend\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "启用自动挂起"
+      context: "process"
+
+    - pattern: 'pm_runtime_set_autosuspend_delay\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*,\s*(?P<delay>\d+)\s*\)'
+      description: "设置自动挂起延迟 (ms)"
+      context: "process"
+
+    # 状态设置
+    - pattern: 'pm_runtime_set_active\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "设置设备为活动状态"
+      context: "process"
+
+    - pattern: 'pm_runtime_set_suspended\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*\)'
+      description: "设置设备为挂起状态"
+      context: "process"
+
+
+# ============================================================
+# EXAMPLES
 # ============================================================
 
 examples:
-  - description: "简单 Platform 驱动"
+  - description: "基本 Platform 驱动 (使用 devm)"
+    kernel_version: "5.0+"
     code: |
-      static int my_probe(struct platform_device *pdev) {
-          struct my_device *dev;
-          struct resource *res;
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/io.h>
+      #include <linux/of.h>
+      
+      struct my_device {
+          void __iomem *regs;
           int irq;
-
-          /* 获取内存资源 */
-          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-          if (!res)
-              return -ENODEV;
-
-          /* 获取中断 */
-          irq = platform_get_irq(pdev, 0);
-          if (irq < 0)
-              return irq;
-
-          /* 分配设备结构 */
-          dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
-          if (!dev)
+          struct clk *clk;
+      };
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct my_device *priv;
+          int ret;
+          
+          /* 分配私有数据 */
+          priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+          if (!priv)
               return -ENOMEM;
-
-          dev->regs = devm_ioremap_resource(&pdev->dev, res);
-          if (IS_ERR(dev->regs))
-              return PTR_ERR(dev->regs);
-
-          dev->irq = irq;
-
-          /* 初始化并注册 */
-          platform_set_drvdata(pdev, dev);
-
+          
+          /* 获取并映射 IO 资源 */
+          priv->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(priv->regs))
+              return PTR_ERR(priv->regs);
+          
+          /* 获取中断 */
+          priv->irq = platform_get_irq(pdev, 0);
+          if (priv->irq < 0)
+              return priv->irq;
+          
+          /* 获取时钟 */
+          priv->clk = devm_clk_get(dev, NULL);
+          if (IS_ERR(priv->clk))
+              return PTR_ERR(priv->clk);
+          
+          ret = clk_prepare_enable(priv->clk);
+          if (ret)
+              return ret;
+          
+          /* 请求中断 */
+          ret = devm_request_irq(dev, priv->irq, my_irq_handler,
+                                 0, dev_name(dev), priv);
+          if (ret) {
+              clk_disable_unprepare(priv->clk);
+              return ret;
+          }
+          
+          platform_set_drvdata(pdev, priv);
+          dev_info(dev, "probed successfully\n");
           return 0;
       }
-
-      static int my_remove(struct platform_device *pdev) {
-          struct my_device *dev = platform_get_drvdata(pdev);
-          /* 清理资源 */
-          return 0;
+      
+      static void my_remove(struct platform_device *pdev)
+      {
+          struct my_device *priv = platform_get_drvdata(pdev);
+          clk_disable_unprepare(priv->clk);
       }
-
+      
+      static const struct of_device_id my_of_match[] = {
+          { .compatible = "vendor,my-device" },
+          { .compatible = "vendor,my-device-v2", .data = &my_v2_data },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_of_match);
+      
       static struct platform_driver my_driver = {
           .probe = my_probe,
           .remove = my_remove,
-          .driver = {
-              .name = "my-platform-driver",
-              .of_match_table = my_of_match,
-          },
-      };
-
-      module_platform_driver(my_driver);
-
-  - description: "设备树匹配"
-    code: |
-      static const struct of_device_id my_of_match[] = {
-          { .compatible = "vendor,my-device" },
-          { .compatible = "vendor,my-device-v2" },
-          { },
-      };
-      MODULE_DEVICE_TABLE(of, my_of_match);
-
-      static struct platform_driver my_driver = {
           .driver = {
               .name = "my-device",
               .of_match_table = my_of_match,
           },
+      };
+      module_platform_driver(my_driver);
+      
+      MODULE_LICENSE("GPL");
+      MODULE_AUTHOR("Author");
+      MODULE_DESCRIPTION("My Platform Driver");
+
+  - description: "带 PM 操作的驱动"
+    kernel_version: "5.0+"
+    code: |
+      static int my_suspend(struct device *dev)
+      {
+          struct my_device *priv = dev_get_drvdata(dev);
+          
+          /* 保存状态 */
+          priv->saved_reg = readl(priv->regs + REG_CTRL);
+          
+          /* 关闭时钟 */
+          clk_disable_unprepare(priv->clk);
+          return 0;
+      }
+      
+      static int my_resume(struct device *dev)
+      {
+          struct my_device *priv = dev_get_drvdata(dev);
+          int ret;
+          
+          /* 恢复时钟 */
+          ret = clk_prepare_enable(priv->clk);
+          if (ret)
+              return ret;
+          
+          /* 恢复状态 */
+          writel(priv->saved_reg, priv->regs + REG_CTRL);
+          return 0;
+      }
+      
+      static int my_runtime_suspend(struct device *dev)
+      {
+          struct my_device *priv = dev_get_drvdata(dev);
+          clk_disable(priv->clk);
+          return 0;
+      }
+      
+      static int my_runtime_resume(struct device *dev)
+      {
+          struct my_device *priv = dev_get_drvdata(dev);
+          return clk_enable(priv->clk);
+      }
+      
+      static const struct dev_pm_ops my_pm_ops = {
+          SET_SYSTEM_SLEEP_PM_OPS(my_suspend, my_resume)
+          SET_RUNTIME_PM_OPS(my_runtime_suspend,
+                             my_runtime_resume, NULL)
+      };
+      
+      /* probe 中启用 Runtime PM */
+      static int my_probe(struct platform_device *pdev)
+      {
+          /* ... 初始化 ... */
+          
+          pm_runtime_set_active(&pdev->dev);
+          pm_runtime_enable(&pdev->dev);
+          pm_runtime_use_autosuspend(&pdev->dev);
+          pm_runtime_set_autosuspend_delay(&pdev->dev, 200);
+          
+          return 0;
+      }
+      
+      static void my_remove(struct platform_device *pdev)
+      {
+          pm_runtime_disable(&pdev->dev);
+      }
+      
+      static struct platform_driver my_driver = {
+          .driver = {
+              .name = "my-device",
+              .pm = &my_pm_ops,
+              .of_match_table = my_of_match,
+          },
           .probe = my_probe,
           .remove = my_remove,
       };
+
+  - description: "ACPI 和设备树双支持"
+    kernel_version: "5.0+"
+    code: |
+      /* 设备树匹配表 */
+      static const struct of_device_id my_of_match[] = {
+          { .compatible = "vendor,my-device" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_of_match);
+      
+      /* ACPI 匹配表 */
+      static const struct acpi_device_id my_acpi_match[] = {
+          { "VNDR0001", 0 },
+          { "PNP0C01", 0 },
+          { }
+      };
+      MODULE_DEVICE_TABLE(acpi, my_acpi_match);
+      
+      static struct platform_driver my_driver = {
+          .driver = {
+              .name = "my-device",
+              .of_match_table = of_match_ptr(my_of_match),
+              .acpi_match_table = ACPI_PTR(my_acpi_match),
+          },
+          .probe = my_probe,
+          .remove = my_remove,
+      };
+
+  - description: "获取匹配数据"
+    code: |
+      struct my_chip_data {
+          u32 version;
+          u32 features;
+      };
+      
+      static const struct my_chip_data chip_v1 = {
+          .version = 1,
+          .features = 0,
+      };
+      
+      static const struct my_chip_data chip_v2 = {
+          .version = 2,
+          .features = FEATURE_DMA | FEATURE_IRQ,
+      };
+      
+      static const struct of_device_id my_of_match[] = {
+          { .compatible = "vendor,chip-v1", .data = &chip_v1 },
+          { .compatible = "vendor,chip-v2", .data = &chip_v2 },
+          { }
+      };
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          const struct my_chip_data *data;
+          
+          /* 方式 1: 通过 device */
+          data = device_get_match_data(&pdev->dev);
+          
+          /* 方式 2: 通过 of API */
+          data = of_device_get_match_data(&pdev->dev);
+          
+          if (!data)
+              return -ENODEV;
+          
+          dev_info(&pdev->dev, "chip version %u\n", data->version);
+          return 0;
+      }

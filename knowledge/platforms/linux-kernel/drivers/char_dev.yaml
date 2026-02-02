@@ -1,113 +1,873 @@
-# Character Device Framework Knowledge Base
+# Linux Kernel Character Device Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/index.html
 
-file_operations:
-  description: "Character Device File Operations"
-  header: "linux/fs.h"
+# ============================================================
+# CHARACTER DEVICE CORE
+# ============================================================
+
+char_dev_core:
+  description: "Character Device Core - 字符设备核心"
+  header: "linux/cdev.h"
+  icon: "📄"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  overview: |
+    字符设备是 Linux 中最常见的设备类型，通过字符流进行 I/O。
+    用户空间通过 /dev/ 下的设备文件访问字符设备。
+    主设备号标识驱动，次设备号标识具体设备。
+
+
+# ============================================================
+# CDEV STRUCTURE
+# ============================================================
+
+cdev:
+  description: "cdev - 字符设备结构"
+  header: "linux/cdev.h"
+
+  structure:
+    pattern: 'struct cdev\s+(?P<name>\w+)'
+    description: "字符设备结构体"
+    fields:
+      - name: "kobj"
+        type: "struct kobject"
+        description: "内嵌的 kobject"
+      - name: "owner"
+        type: "struct module *"
+        description: "所属模块 (通常设为 THIS_MODULE)"
+      - name: "ops"
+        type: "const struct file_operations *"
+        description: "文件操作函数表"
+      - name: "list"
+        type: "struct list_head"
+        description: "内部链表"
+      - name: "dev"
+        type: "dev_t"
+        description: "设备号 (主+次)"
+      - name: "count"
+        type: "unsigned int"
+        description: "管理的次设备号数量"
+
   registration:
-    - "cdev_add"
-    - "register_chrdev"
-    - "misc_register"
-  
-  callbacks:
-    owner:
-      description: "Module owner (not a callback)"
-      trigger: "N/A"
-      context: "N/A"
-      notes: "Usually set to THIS_MODULE"
+    # cdev 初始化
+    - pattern: 'cdev_init\s*\(\s*&?(?P<cdev>\w+)\s*,\s*&?(?P<fops>\w+)\s*\)'
+      description: "初始化 cdev 结构 (静态分配的 cdev)"
+      context: "process"
 
-    open:
-      description: "Called when the device file is opened"
-      trigger: "User space open() system call"
-      context: "Process context, can sleep"
-      signature: "int (*)(struct inode *, struct file *)"
+    # cdev 分配
+    - pattern: 'cdev_alloc\s*\(\s*\)'
+      description: "动态分配 cdev 结构"
+      context: "process"
+
+    # cdev 添加
+    - pattern: 'cdev_add\s*\(\s*&?(?P<cdev>\w+)\s*,\s*(?P<dev>[^,]+)\s*,\s*(?P<count>\w+)\s*\)'
+      description: "向系统添加字符设备"
+      context: "process"
+      notes: "此后设备可被访问，确保驱动已准备好"
+
+    # cdev 删除
+    - pattern: 'cdev_del\s*\(\s*&?(?P<cdev>\w+)\s*\)'
+      description: "从系统删除字符设备"
+      context: "process"
+
+    # cdev_device 一体化
+    - pattern: 'cdev_device_add\s*\(\s*(?P<cdev>[^,]+)\s*,\s*(?P<dev>[^)]+)\s*\)'
+      description: "同时添加 cdev 和 device"
+      context: "process"
+
+    - pattern: 'cdev_device_del\s*\(\s*(?P<cdev>[^,]+)\s*,\s*(?P<dev>[^)]+)\s*\)'
+      description: "同时删除 cdev 和 device"
+      context: "process"
+
+
+# ============================================================
+# DEVICE NUMBER MANAGEMENT
+# ============================================================
+
+dev_number:
+  description: "Device Number - 设备号管理"
+  header: "linux/fs.h"
+
+  macros:
+    - pattern: 'MAJOR\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "从 dev_t 提取主设备号"
+    - pattern: 'MINOR\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "从 dev_t 提取次设备号"
+    - pattern: 'MKDEV\s*\(\s*(?P<major>\w+)\s*,\s*(?P<minor>\w+)\s*\)'
+      description: "组合主/次设备号为 dev_t"
+
+  registration:
+    # 静态分配设备号
+    - pattern: 'register_chrdev_region\s*\(\s*(?P<from>[^,]+)\s*,\s*(?P<count>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "注册指定的设备号范围"
+      context: "process"
       return_value:
         success: "0"
-        failure: "Negative error code"
+        failure: "-ERRNO (如 -EBUSY)"
+      notes: "用于已知主设备号的情况"
+
+    # 动态分配设备号
+    - pattern: 'alloc_chrdev_region\s*\(\s*&?(?P<dev>\w+)\s*,\s*(?P<baseminor>\w+)\s*,\s*(?P<count>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "动态分配设备号 (推荐)"
+      context: "process"
+      return_value:
+        success: "0, 设备号存入 dev 参数"
+        failure: "-ERRNO"
+      notes: "内核自动分配可用的主设备号"
+
+    # 注销设备号
+    - pattern: 'unregister_chrdev_region\s*\(\s*(?P<from>[^,]+)\s*,\s*(?P<count>\w+)\s*\)'
+      description: "注销设备号范围"
+      context: "process"
+
+    # 简化版注册 (不推荐)
+    - pattern: 'register_chrdev\s*\(\s*(?P<major>\w+)\s*,\s*(?P<name>[^,]+)\s*,\s*&?(?P<fops>\w+)\s*\)'
+      description: "旧式字符设备注册 (一次性完成所有操作)"
+      deprecated: true
+      notes: "不推荐，使用 cdev 系列 API"
+
+    - pattern: 'unregister_chrdev\s*\(\s*(?P<major>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "旧式字符设备注销"
+      deprecated: true
+
+
+# ============================================================
+# FILE OPERATIONS
+# ============================================================
+
+file_operations:
+  description: "file_operations - 字符设备文件操作"
+  header: "linux/fs.h"
+
+  structure:
+    pattern: 'static const struct file_operations\s+(?P<name>\w+)\s*=\s*\{'
+    description: "文件操作结构体定义"
+
+  callbacks:
+    owner:
+      pattern: '\.owner\s*=\s*(?P<module>\w+)'
+      description: "模块所有者 (通常是 THIS_MODULE)"
+      notes: "防止模块在使用时被卸载"
+
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      description: "打开设备"
+      trigger: "用户空间 open() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct inode *inode, struct file *filp)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO (如 -EBUSY, -ENOMEM)"
       typical_actions:
-        - "Increment usage counter"
-        - "Allocate per-file private data"
-        - "Initialize hardware if first open"
+        - "分配并初始化 filp->private_data"
+        - "检查设备状态"
+        - "增加引用计数"
+        - "首次打开时初始化硬件"
 
     release:
-      description: "Called when the device file is closed"
-      trigger: "User space close() when refcount reaches 0"
-      context: "Process context, can sleep"
-      signature: "int (*)(struct inode *, struct file *)"
+      pattern: '\.release\s*=\s*(?P<handler>\w+)'
+      description: "关闭设备"
+      trigger: "文件描述符最后一次关闭"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct inode *inode, struct file *filp)"
+      return_value:
+        success: "0"
+        failure: "通常忽略返回值"
       typical_actions:
-        - "Decrement usage counter"
-        - "Free per-file private data"
-        - "Shutdown hardware if last close"
+        - "释放 filp->private_data"
+        - "减少引用计数"
+        - "最后关闭时关闭硬件"
 
     read:
-      description: "Called to read data from the device"
-      trigger: "User space read() system call"
-      context: "Process context, can sleep"
-      signature: "ssize_t (*)(struct file *, char __user *, size_t, loff_t *)"
+      pattern: '\.read\s*=\s*(?P<handler>\w+)'
+      description: "从设备读取数据"
+      trigger: "用户空间 read() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "ssize_t (*)(struct file *filp, char __user *buf, size_t count, loff_t *pos)"
       return_value:
-        success: "Number of bytes read"
-        failure: "Negative error code"
+        success: "读取的字节数"
+        failure: "-ERRNO (如 -EFAULT, -EINTR)"
+        eof: "0"
       typical_actions:
-        - "Copy data to user space with copy_to_user()"
-        - "May block waiting for data"
-        - "Update file position"
+        - "使用 copy_to_user() 复制数据到用户空间"
+        - "更新文件位置 *pos"
+        - "可能阻塞等待数据"
 
     write:
-      description: "Called to write data to the device"
-      trigger: "User space write() system call"
-      context: "Process context, can sleep"
-      signature: "ssize_t (*)(struct file *, const char __user *, size_t, loff_t *)"
+      pattern: '\.write\s*=\s*(?P<handler>\w+)'
+      description: "向设备写入数据"
+      trigger: "用户空间 write() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "ssize_t (*)(struct file *filp, const char __user *buf, size_t count, loff_t *pos)"
       return_value:
-        success: "Number of bytes written"
-        failure: "Negative error code"
+        success: "写入的字节数"
+        failure: "-ERRNO (如 -EFAULT, -ENOSPC)"
       typical_actions:
-        - "Copy data from user space with copy_from_user()"
-        - "Send data to hardware"
-        - "Update file position"
+        - "使用 copy_from_user() 从用户空间复制数据"
+        - "发送数据到硬件"
+        - "更新文件位置 *pos"
 
     unlocked_ioctl:
-      description: "Called for device-specific control operations"
-      trigger: "User space ioctl() system call"
-      context: "Process context, can sleep"
-      signature: "long (*)(struct file *, unsigned int, unsigned long)"
+      pattern: '\.unlocked_ioctl\s*=\s*(?P<handler>\w+)'
+      description: "设备控制命令"
+      trigger: "用户空间 ioctl() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "long (*)(struct file *filp, unsigned int cmd, unsigned long arg)"
       return_value:
-        success: "0 or positive value"
-        failure: "Negative error code"
+        success: "0 或正值"
+        failure: "-ERRNO (如 -EINVAL, -ENOTTY)"
       notes:
-        - "Does not hold BKL (Big Kernel Lock)"
-        - "Command is the ioctl number"
-        - "Arg can be a value or a pointer"
+        - "不持有 BKL (Big Kernel Lock)"
+        - "cmd 是 ioctl 命令号"
+        - "arg 可以是值或指针"
+      typical_actions:
+        - "使用 switch(cmd) 分发命令"
+        - "使用 copy_from_user/copy_to_user 传递数据"
+        - "配置硬件参数"
 
     compat_ioctl:
-      description: "Called for 32-bit ioctl on 64-bit kernel"
-      trigger: "User space ioctl() from 32-bit process on 64-bit kernel"
-      context: "Process context"
-      signature: "long (*)(struct file *, unsigned int, unsigned long)"
+      pattern: '\.compat_ioctl\s*=\s*(?P<handler>\w+)'
+      description: "32 位兼容 ioctl"
+      trigger: "64 位内核上 32 位进程调用 ioctl"
+      context: "process"
+      signature: "long (*)(struct file *filp, unsigned int cmd, unsigned long arg)"
+      notes: "处理 32/64 位数据结构差异"
 
     poll:
-      description: "Called to check if I/O is possible"
-      trigger: "User space poll()/select()/epoll()"
-      context: "Process context"
-      signature: "__poll_t (*)(struct file *, struct poll_table_struct *)"
-      return_value: "Bitmask of POLLIN, POLLOUT, etc."
+      pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+      description: "检查 I/O 状态"
+      trigger: "用户空间 poll()/select()/epoll()"
+      context: "process"
+      can_sleep: false
+      signature: "__poll_t (*)(struct file *filp, struct poll_table_struct *wait)"
+      return_value: "POLLIN, POLLOUT, POLLERR 等的组合"
       typical_actions:
-        - "Register wait queues with poll_wait()"
-        - "Return current ready state"
+        - "调用 poll_wait() 注册等待队列"
+        - "检查设备状态返回当前可用操作"
 
     mmap:
-      description: "Called to map device memory to user space"
-      trigger: "User space mmap() system call"
-      context: "Process context"
-      signature: "int (*)(struct file *, struct vm_area_struct *)"
+      pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
+      description: "内存映射"
+      trigger: "用户空间 mmap() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *filp, struct vm_area_struct *vma)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "使用 remap_pfn_range() 或 io_remap_pfn_range()"
+        - "设置 vma->vm_ops"
 
     llseek:
-      description: "Called to change file position"
-      trigger: "User space lseek() system call"
-      context: "Process context"
-      signature: "loff_t (*)(struct file *, loff_t, int)"
+      pattern: '\.llseek\s*=\s*(?P<handler>\w+)'
+      description: "改变文件位置"
+      trigger: "用户空间 lseek() 系统调用"
+      context: "process"
+      signature: "loff_t (*)(struct file *filp, loff_t offset, int whence)"
+      return_value:
+        success: "新的文件位置"
+        failure: "-ERRNO"
+      common_implementations:
+        - "default_llseek - 默认实现"
+        - "no_llseek - 不支持 seek"
+        - "noop_llseek - 总是成功但不做任何事"
 
     fasync:
-      description: "Called to enable/disable async notification"
-      trigger: "User space fcntl(F_SETFL, O_ASYNC)"
-      context: "Process context"
-      signature: "int (*)(int, struct file *, int)"
+      pattern: '\.fasync\s*=\s*(?P<handler>\w+)'
+      description: "异步通知设置"
+      trigger: "用户空间 fcntl(F_SETFL, O_ASYNC)"
+      context: "process"
+      signature: "int (*)(int fd, struct file *filp, int on)"
+      typical_actions:
+        - "调用 fasync_helper() 管理异步列表"
 
+    flush:
+      pattern: '\.flush\s*=\s*(?P<handler>\w+)'
+      description: "刷新"
+      trigger: "close() 时，即使有多个 fd 引用"
+      context: "process"
+      signature: "int (*)(struct file *filp, fl_owner_t id)"
+
+    fsync:
+      pattern: '\.fsync\s*=\s*(?P<handler>\w+)'
+      description: "同步数据到设备"
+      trigger: "用户空间 fsync() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct file *filp, loff_t start, loff_t end, int datasync)"
+
+
+# ============================================================
+# MISCDEVICE - 简化的字符设备
+# ============================================================
+
+miscdevice:
+  description: "Miscellaneous Device - 杂项设备 (简化版字符设备)"
+  header: "linux/miscdevice.h"
+  icon: "🔧"
+
+  overview: |
+    miscdevice 是简化的字符设备框架，共享主设备号 10。
+    自动处理设备号分配、cdev 管理和设备节点创建。
+    适合简单的设备驱动。
+
+  structure:
+    pattern: 'static struct miscdevice\s+(?P<name>\w+)\s*=\s*\{'
+    description: "杂项设备结构体定义"
+    fields:
+      - name: "minor"
+        type: "int"
+        description: "次设备号 (MISC_DYNAMIC_MINOR 为动态分配)"
+      - name: "name"
+        type: "const char *"
+        description: "设备名称 (/dev/ 下的文件名)"
+      - name: "fops"
+        type: "const struct file_operations *"
+        description: "文件操作"
+      - name: "parent"
+        type: "struct device *"
+        description: "父设备 (可选)"
+      - name: "mode"
+        type: "umode_t"
+        description: "设备文件权限"
+
+  registration:
+    - pattern: 'misc_register\s*\(\s*&?(?P<misc>\w+)\s*\)'
+      description: "注册杂项设备"
+      context: "process"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    - pattern: 'misc_deregister\s*\(\s*&?(?P<misc>\w+)\s*\)'
+      description: "注销杂项设备"
+      context: "process"
+
+  minor_numbers:
+    MISC_DYNAMIC_MINOR: "动态分配次设备号"
+    WATCHDOG_MINOR: "看门狗设备 (130)"
+    TEMP_MINOR: "温度传感器"
+    RTC_MINOR: "RTC 设备 (135)"
+    NVRAM_MINOR: "NVRAM (144)"
+
+
+# ============================================================
+# DEVICE CLASS AND NODE
+# ============================================================
+
+device_class:
+  description: "Device Class - 设备类 (用于 udev 创建设备节点)"
+  header: "linux/device.h"
+
+  registration:
+    - pattern: 'class_create\s*\(\s*THIS_MODULE\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "创建设备类 (旧 API)"
+      deprecated: true
+
+    - pattern: 'class_create\s*\(\s*(?P<name>[^)]+)\s*\)'
+      description: "创建设备类"
+      context: "process"
+
+    - pattern: 'class_destroy\s*\(\s*(?P<class>\w+)\s*\)'
+      description: "销毁设备类"
+      context: "process"
+
+    - pattern: 'device_create\s*\(\s*(?P<class>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<devt>[^,]+)\s*,\s*(?P<drvdata>[^,]+)\s*,\s*(?P<fmt>[^)]+)\s*\)'
+      description: "创建设备节点 (触发 udev 创建 /dev/xxx)"
+      context: "process"
+
+    - pattern: 'device_destroy\s*\(\s*(?P<class>[^,]+)\s*,\s*(?P<devt>[^)]+)\s*\)'
+      description: "销毁设备节点"
+      context: "process"
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+helper_functions:
+  user_space_access:
+    - pattern: 'copy_to_user\s*\(\s*(?P<to>[^,]+)\s*,\s*(?P<from>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+      description: "复制数据到用户空间"
+      return_value: "未复制的字节数 (0 表示成功)"
+      can_sleep: true
+
+    - pattern: 'copy_from_user\s*\(\s*(?P<to>[^,]+)\s*,\s*(?P<from>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+      description: "从用户空间复制数据"
+      return_value: "未复制的字节数 (0 表示成功)"
+      can_sleep: true
+
+    - pattern: 'get_user\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<ptr>[^)]+)\s*\)'
+      description: "从用户空间读取简单类型"
+      return_value: "0 成功, -EFAULT 失败"
+
+    - pattern: 'put_user\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<ptr>[^)]+)\s*\)'
+      description: "向用户空间写入简单类型"
+      return_value: "0 成功, -EFAULT 失败"
+
+    - pattern: 'access_ok\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "检查用户空间地址是否有效"
+      return_value: "非零=有效, 0=无效"
+
+  ioctl_helpers:
+    - pattern: '_IOC\s*\(\s*(?P<dir>[^,]+)\s*,\s*(?P<type>[^,]+)\s*,\s*(?P<nr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "生成 ioctl 命令号"
+
+    - pattern: '_IO\s*\(\s*(?P<type>[^,]+)\s*,\s*(?P<nr>[^)]+)\s*\)'
+      description: "无数据的 ioctl 命令"
+
+    - pattern: '_IOR\s*\(\s*(?P<type>[^,]+)\s*,\s*(?P<nr>[^,]+)\s*,\s*(?P<datatype>[^)]+)\s*\)'
+      description: "读取数据的 ioctl 命令"
+
+    - pattern: '_IOW\s*\(\s*(?P<type>[^,]+)\s*,\s*(?P<nr>[^,]+)\s*,\s*(?P<datatype>[^)]+)\s*\)'
+      description: "写入数据的 ioctl 命令"
+
+    - pattern: '_IOWR\s*\(\s*(?P<type>[^,]+)\s*,\s*(?P<nr>[^,]+)\s*,\s*(?P<datatype>[^)]+)\s*\)'
+      description: "读写数据的 ioctl 命令"
+
+  wait_queue:
+    - pattern: 'wait_event_interruptible\s*\(\s*(?P<wq>[^,]+)\s*,\s*(?P<condition>[^)]+)\s*\)'
+      description: "可中断等待"
+      can_sleep: true
+
+    - pattern: 'wake_up_interruptible\s*\(\s*&?(?P<wq>\w+)\s*\)'
+      description: "唤醒等待队列"
+      context: "any"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  char_dev_open:
+    description: "字符设备打开流程"
+    trigger: "用户空间 open(/dev/xxx)"
+    chain:
+      - function: "do_sys_open"
+        file: "fs/open.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "do_filp_open"
+        file: "fs/namei.c"
+        description: "路径查找和打开"
+      - function: "vfs_open"
+        file: "fs/open.c"
+        description: "VFS 层打开"
+      - function: "chrdev_open"
+        file: "fs/char_dev.c"
+        description: "字符设备打开"
+      - function: "cdev_get"
+        file: "fs/char_dev.c"
+        description: "获取 cdev 引用"
+      - function: "fops->open"
+        file: "用户代码"
+        description: "驱动 open 回调"
+        is_user_entry: true
+
+  char_dev_read:
+    description: "字符设备读取流程"
+    trigger: "用户空间 read(fd, buf, count)"
+    chain:
+      - function: "ksys_read"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_read"
+        file: "fs/read_write.c"
+        description: "VFS 层读取"
+      - function: "__vfs_read"
+        file: "fs/read_write.c"
+        description: "调用文件操作"
+      - function: "fops->read"
+        file: "用户代码"
+        description: "驱动 read 回调"
+        is_user_entry: true
+
+  char_dev_ioctl:
+    description: "字符设备 ioctl 流程"
+    trigger: "用户空间 ioctl(fd, cmd, arg)"
+    chain:
+      - function: "do_vfs_ioctl"
+        file: "fs/ioctl.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_ioctl"
+        file: "fs/ioctl.c"
+        description: "VFS 层 ioctl"
+      - function: "fops->unlocked_ioctl"
+        file: "用户代码"
+        description: "驱动 ioctl 回调"
+        is_user_entry: true
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "完整的字符设备驱动 (使用 cdev)"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/fs.h>
+      #include <linux/cdev.h>
+      #include <linux/device.h>
+      #include <linux/uaccess.h>
+      
+      #define DEVICE_NAME "mychar"
+      #define CLASS_NAME  "mychar_class"
+      #define BUFFER_SIZE 1024
+      
+      static dev_t dev_num;
+      static struct cdev my_cdev;
+      static struct class *my_class;
+      static struct device *my_device;
+      static char device_buffer[BUFFER_SIZE];
+      static int buffer_size = 0;
+      
+      static int my_open(struct inode *inode, struct file *filp)
+      {
+          pr_info("Device opened\n");
+          return 0;
+      }
+      
+      static int my_release(struct inode *inode, struct file *filp)
+      {
+          pr_info("Device closed\n");
+          return 0;
+      }
+      
+      static ssize_t my_read(struct file *filp, char __user *buf,
+                             size_t count, loff_t *pos)
+      {
+          int bytes_to_read;
+          
+          if (*pos >= buffer_size)
+              return 0;  /* EOF */
+          
+          bytes_to_read = min((int)count, buffer_size - (int)*pos);
+          
+          if (copy_to_user(buf, device_buffer + *pos, bytes_to_read))
+              return -EFAULT;
+          
+          *pos += bytes_to_read;
+          return bytes_to_read;
+      }
+      
+      static ssize_t my_write(struct file *filp, const char __user *buf,
+                              size_t count, loff_t *pos)
+      {
+          int bytes_to_write;
+          
+          bytes_to_write = min((int)count, BUFFER_SIZE - 1);
+          
+          if (copy_from_user(device_buffer, buf, bytes_to_write))
+              return -EFAULT;
+          
+          device_buffer[bytes_to_write] = '\0';
+          buffer_size = bytes_to_write;
+          
+          return bytes_to_write;
+      }
+      
+      static const struct file_operations my_fops = {
+          .owner   = THIS_MODULE,
+          .open    = my_open,
+          .release = my_release,
+          .read    = my_read,
+          .write   = my_write,
+      };
+      
+      static int __init my_init(void)
+      {
+          int ret;
+          
+          /* 1. 分配设备号 */
+          ret = alloc_chrdev_region(&dev_num, 0, 1, DEVICE_NAME);
+          if (ret < 0) {
+              pr_err("Failed to allocate device number\n");
+              return ret;
+          }
+          
+          /* 2. 初始化 cdev */
+          cdev_init(&my_cdev, &my_fops);
+          my_cdev.owner = THIS_MODULE;
+          
+          /* 3. 添加 cdev */
+          ret = cdev_add(&my_cdev, dev_num, 1);
+          if (ret < 0) {
+              unregister_chrdev_region(dev_num, 1);
+              return ret;
+          }
+          
+          /* 4. 创建设备类 */
+          my_class = class_create(CLASS_NAME);
+          if (IS_ERR(my_class)) {
+              cdev_del(&my_cdev);
+              unregister_chrdev_region(dev_num, 1);
+              return PTR_ERR(my_class);
+          }
+          
+          /* 5. 创建设备节点 (/dev/mychar) */
+          my_device = device_create(my_class, NULL, dev_num, NULL, DEVICE_NAME);
+          if (IS_ERR(my_device)) {
+              class_destroy(my_class);
+              cdev_del(&my_cdev);
+              unregister_chrdev_region(dev_num, 1);
+              return PTR_ERR(my_device);
+          }
+          
+          pr_info("Device registered: /dev/%s (major=%d, minor=%d)\n",
+                  DEVICE_NAME, MAJOR(dev_num), MINOR(dev_num));
+          
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          device_destroy(my_class, dev_num);
+          class_destroy(my_class);
+          cdev_del(&my_cdev);
+          unregister_chrdev_region(dev_num, 1);
+          pr_info("Device unregistered\n");
+      }
+      
+      module_init(my_init);
+      module_exit(my_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "使用 miscdevice (简化版)"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/miscdevice.h>
+      #include <linux/fs.h>
+      #include <linux/uaccess.h>
+      
+      static char message[256] = "Hello from misc device!\n";
+      
+      static ssize_t misc_read(struct file *filp, char __user *buf,
+                               size_t count, loff_t *pos)
+      {
+          return simple_read_from_buffer(buf, count, pos,
+                                         message, strlen(message));
+      }
+      
+      static ssize_t misc_write(struct file *filp, const char __user *buf,
+                                size_t count, loff_t *pos)
+      {
+          ssize_t ret;
+          
+          if (count >= sizeof(message))
+              return -EINVAL;
+          
+          ret = simple_write_to_buffer(message, sizeof(message) - 1,
+                                       pos, buf, count);
+          if (ret > 0)
+              message[ret] = '\0';
+          
+          return ret;
+      }
+      
+      static const struct file_operations misc_fops = {
+          .owner = THIS_MODULE,
+          .read  = misc_read,
+          .write = misc_write,
+      };
+      
+      static struct miscdevice my_misc = {
+          .minor = MISC_DYNAMIC_MINOR,
+          .name  = "my_misc",
+          .fops  = &misc_fops,
+          .mode  = 0666,
+      };
+      
+      static int __init misc_init(void)
+      {
+          return misc_register(&my_misc);
+      }
+      
+      static void __exit misc_exit(void)
+      {
+          misc_deregister(&my_misc);
+      }
+      
+      module_init(misc_init);
+      module_exit(misc_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "带 ioctl 的字符设备"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/fs.h>
+      #include <linux/miscdevice.h>
+      #include <linux/uaccess.h>
+      
+      /* ioctl 命令定义 */
+      #define MY_IOC_MAGIC 'k'
+      #define MY_IOC_RESET    _IO(MY_IOC_MAGIC, 0)
+      #define MY_IOC_GET_VAL  _IOR(MY_IOC_MAGIC, 1, int)
+      #define MY_IOC_SET_VAL  _IOW(MY_IOC_MAGIC, 2, int)
+      
+      static int device_value = 0;
+      
+      static long my_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+      {
+          int ret = 0;
+          int tmp;
+          
+          /* 验证命令 */
+          if (_IOC_TYPE(cmd) != MY_IOC_MAGIC)
+              return -ENOTTY;
+          
+          switch (cmd) {
+          case MY_IOC_RESET:
+              device_value = 0;
+              break;
+              
+          case MY_IOC_GET_VAL:
+              if (put_user(device_value, (int __user *)arg))
+                  return -EFAULT;
+              break;
+              
+          case MY_IOC_SET_VAL:
+              if (get_user(tmp, (int __user *)arg))
+                  return -EFAULT;
+              device_value = tmp;
+              break;
+              
+          default:
+              return -ENOTTY;
+          }
+          
+          return ret;
+      }
+      
+      static const struct file_operations my_fops = {
+          .owner          = THIS_MODULE,
+          .unlocked_ioctl = my_ioctl,
+      };
+      
+      static struct miscdevice my_misc = {
+          .minor = MISC_DYNAMIC_MINOR,
+          .name  = "my_ioctl",
+          .fops  = &my_fops,
+      };
+      
+      module_misc_device(my_misc);
+      MODULE_LICENSE("GPL");
+
+  - description: "带阻塞 I/O 的字符设备"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/fs.h>
+      #include <linux/cdev.h>
+      #include <linux/wait.h>
+      #include <linux/sched.h>
+      #include <linux/poll.h>
+      
+      static DECLARE_WAIT_QUEUE_HEAD(read_queue);
+      static DECLARE_WAIT_QUEUE_HEAD(write_queue);
+      
+      #define BUFFER_SIZE 1024
+      static char buffer[BUFFER_SIZE];
+      static int read_pos, write_pos;
+      static int data_available;
+      
+      static ssize_t my_read(struct file *filp, char __user *buf,
+                             size_t count, loff_t *pos)
+      {
+          int ret;
+          
+          /* 阻塞等待数据 */
+          ret = wait_event_interruptible(read_queue, data_available > 0);
+          if (ret)
+              return ret;  /* 被信号中断 */
+          
+          /* 读取数据 */
+          count = min((size_t)data_available, count);
+          if (copy_to_user(buf, buffer + read_pos, count))
+              return -EFAULT;
+          
+          data_available -= count;
+          read_pos = (read_pos + count) % BUFFER_SIZE;
+          
+          /* 唤醒写者 */
+          wake_up_interruptible(&write_queue);
+          
+          return count;
+      }
+      
+      static ssize_t my_write(struct file *filp, const char __user *buf,
+                              size_t count, loff_t *pos)
+      {
+          int space_available;
+          int ret;
+          
+          space_available = BUFFER_SIZE - data_available;
+          
+          /* 阻塞等待空间 */
+          if (space_available == 0) {
+              if (filp->f_flags & O_NONBLOCK)
+                  return -EAGAIN;
+              
+              ret = wait_event_interruptible(write_queue, 
+                          BUFFER_SIZE - data_available > 0);
+              if (ret)
+                  return ret;
+              
+              space_available = BUFFER_SIZE - data_available;
+          }
+          
+          /* 写入数据 */
+          count = min(count, (size_t)space_available);
+          if (copy_from_user(buffer + write_pos, buf, count))
+              return -EFAULT;
+          
+          data_available += count;
+          write_pos = (write_pos + count) % BUFFER_SIZE;
+          
+          /* 唤醒读者 */
+          wake_up_interruptible(&read_queue);
+          
+          return count;
+      }
+      
+      static __poll_t my_poll(struct file *filp, poll_table *wait)
+      {
+          __poll_t mask = 0;
+          
+          poll_wait(filp, &read_queue, wait);
+          poll_wait(filp, &write_queue, wait);
+          
+          if (data_available > 0)
+              mask |= POLLIN | POLLRDNORM;  /* 可读 */
+          
+          if (data_available < BUFFER_SIZE)
+              mask |= POLLOUT | POLLWRNORM; /* 可写 */
+          
+          return mask;
+      }
+      
+      static const struct file_operations my_fops = {
+          .owner = THIS_MODULE,
+          .read  = my_read,
+          .write = my_write,
+          .poll  = my_poll,
+      };

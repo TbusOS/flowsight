@@ -7,9 +7,20 @@
 # ============================================================
 
 iio_core:
-  description: "IIO Core - 工业 I/O 核心"
+  description: "IIO Core - 工业 I/O 核心框架"
   header: "linux/iio/iio.h"
   icon: "📊"
+  kernel_version: "3.0+"
+
+  overview: |
+    IIO (Industrial I/O) 子系统为各种传感器和转换器提供统一的内核接口:
+    - ADC (模数转换器)
+    - DAC (数模转换器)
+    - 加速度计、陀螺仪、磁力计
+    - 光传感器、距离传感器
+    - 温度、湿度、压力传感器
+    
+    用户空间通过 sysfs 属性或字符设备 (/dev/iio:deviceX) 访问数据。
 
   context:
     type: "process"
@@ -17,65 +28,370 @@ iio_core:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # iio_device_register - 注册 IIO 设备
-    - pattern: 'iio_device_register\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
-      variable_capture: "indio_dev"
-      description: "注册 IIO 设备"
-
-    # iio_device_unregister - 注销 IIO 设备
-    - pattern: 'iio_device_unregister\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
-      variable_capture: "indio_dev"
-      description: "注销 IIO 设备"
-
-    # devm_iio_device_register - 资源管理注册
-    - pattern: 'devm_iio_device_register\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<indio_dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "资源管理方式注册 IIO 设备"
-
 
 # ============================================================
-# IIO DEVICE
+# IIO DEVICE ALLOCATION
 # ============================================================
 
-iio_device:
-  description: "IIO Device - IIO 设备"
+iio_device_alloc:
+  description: "IIO Device Allocation - IIO 设备分配"
   header: "linux/iio/iio.h"
 
   bind_patterns:
-    # iio_allocate_device - 分配 IIO 设备
-    - pattern: 'iio_allocate_device\s*\(\s*(?P<sizeof_priv>\w+)\s*\)'
-      description: "分配 IIO 设备"
+    - pattern: 'iio_device_alloc\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<sizeof_priv>\w+)\s*\)'
+      description: "分配 IIO 设备 (新 API, 5.x+)"
+      context: "process"
 
-    # iio_free_device - 释放 IIO 设备
-    - pattern: 'iio_free_device\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
-      variable_capture: "indio_dev"
+    - pattern: 'iio_device_alloc\s*\(\s*(?P<sizeof_priv>\w+)\s*\)'
+      description: "分配 IIO 设备 (旧 API)"
+      context: "process"
+      deprecated: true
+
+    - pattern: 'devm_iio_device_alloc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<sizeof_priv>\w+)\s*\)'
+      description: "分配 IIO 设备 (资源管理版，推荐)"
+      context: "process"
+
+    - pattern: 'iio_device_free\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
       description: "释放 IIO 设备"
+      context: "process"
+
+  helper_functions:
+    - pattern: 'iio_priv\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      description: "获取驱动私有数据指针"
+      context: "any"
+
+    - pattern: 'iio_device_set_drvdata\s*\(\s*(?P<indio_dev>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "设置驱动数据"
+      context: "process"
+
+    - pattern: 'iio_device_get_drvdata\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      description: "获取驱动数据"
+      context: "any"
 
 
 # ============================================================
-# IIO CHANNEL
+# IIO DEVICE REGISTRATION
 # ============================================================
 
-iio_channel:
-  description: "IIO Channel - IIO 通道"
+iio_device_register:
+  description: "IIO Device Registration - IIO 设备注册"
   header: "linux/iio/iio.h"
 
   bind_patterns:
-    # iio_channel_get - 获取 IIO 通道
-    - pattern: 'iio_channel_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "获取 IIO 通道"
+    - pattern: 'iio_device_register\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      description: "注册 IIO 设备"
+      context: "process"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
 
-    # iio_channel_release - 释放 IIO 通道
-    - pattern: 'iio_channel_release\s*\(\s*(?P<chan>[^)]+)\s*\)'
-      variable_capture: "chan"
-      description: "释放 IIO 通道"
+    - pattern: 'devm_iio_device_register\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<indio_dev>[^)]+)\s*\)'
+      description: "注册 IIO 设备 (资源管理版，推荐)"
+      context: "process"
 
-    # iio_channel_get_all - 获取所有通道
-    - pattern: 'iio_channel_get_all\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "获取所有 IIO 通道"
+    - pattern: 'iio_device_unregister\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      description: "注销 IIO 设备"
+      context: "process"
+
+
+# ============================================================
+# IIO_DEV STRUCTURE
+# ============================================================
+
+iio_dev:
+  description: "IIO Device Structure - IIO 设备结构"
+  header: "linux/iio/iio.h"
+
+  structure:
+    pattern: 'struct iio_dev\s*\*\s*(?P<name>\w+)'
+    description: "IIO 设备指针"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "设备名称"
+      - name: "info"
+        type: "const struct iio_info *"
+        description: "设备操作回调"
+      - name: "channels"
+        type: "const struct iio_chan_spec *"
+        description: "通道定义数组"
+      - name: "num_channels"
+        type: "int"
+        description: "通道数量"
+      - name: "modes"
+        type: "int"
+        description: "支持的操作模式 (INDIO_DIRECT_MODE, INDIO_BUFFER_*)"
+      - name: "currentmode"
+        type: "int"
+        description: "当前操作模式"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌的设备结构"
+      - name: "buffer"
+        type: "struct iio_buffer *"
+        description: "数据缓冲区"
+      - name: "trig"
+        type: "struct iio_trigger *"
+        description: "关联的触发器"
+      - name: "available_scan_masks"
+        type: "const unsigned long *"
+        description: "可用的扫描掩码"
+
+  modes:
+    INDIO_DIRECT_MODE: "直接模式 - 通过 sysfs 单次读取"
+    INDIO_BUFFER_TRIGGERED: "触发缓冲模式"
+    INDIO_BUFFER_SOFTWARE: "软件缓冲模式"
+    INDIO_BUFFER_HARDWARE: "硬件缓冲模式"
+
+
+# ============================================================
+# IIO_INFO STRUCTURE - 核心回调
+# ============================================================
+
+iio_info:
+  description: "IIO Info - IIO 设备操作回调"
+  header: "linux/iio/iio.h"
+
+  structure:
+    pattern: 'static const struct iio_info\s+(?P<name>\w+)\s*=\s*\{'
+    description: "IIO 信息结构体定义"
+
+  callbacks:
+    read_raw:
+      pattern: '\.read_raw\s*=\s*(?P<handler>\w+)'
+      description: "读取通道原始值"
+      trigger: "sysfs 读取或用户空间请求"
+      context: "process"
+      can_sleep: true
+      signature: |
+        int (*)(struct iio_dev *indio_dev,
+                struct iio_chan_spec const *chan,
+                int *val, int *val2, long mask)
+      return_value:
+        IIO_VAL_INT: "整数值，使用 *val"
+        IIO_VAL_INT_PLUS_MICRO: "val + val2/1000000"
+        IIO_VAL_INT_PLUS_NANO: "val + val2/1000000000"
+        IIO_VAL_FRACTIONAL: "val/val2"
+        IIO_VAL_FRACTIONAL_LOG2: "val >> val2"
+        negative: "-ERRNO"
+      typical_actions:
+        - "从硬件读取传感器数据"
+        - "根据 mask 返回不同类型的值"
+
+    read_raw_multi:
+      pattern: '\.read_raw_multi\s*=\s*(?P<handler>\w+)'
+      description: "批量读取通道值"
+      context: "process"
+      can_sleep: true
+      signature: |
+        int (*)(struct iio_dev *indio_dev,
+                struct iio_chan_spec const *chan,
+                int max_len, int *vals, int *val_len, long mask)
+
+    read_avail:
+      pattern: '\.read_avail\s*=\s*(?P<handler>\w+)'
+      description: "读取可用值列表 (用于 _available sysfs)"
+      context: "process"
+      signature: |
+        int (*)(struct iio_dev *indio_dev,
+                struct iio_chan_spec const *chan,
+                const int **vals, int *type, int *length, long mask)
+
+    write_raw:
+      pattern: '\.write_raw\s*=\s*(?P<handler>\w+)'
+      description: "写入通道配置"
+      trigger: "sysfs 写入"
+      context: "process"
+      can_sleep: true
+      signature: |
+        int (*)(struct iio_dev *indio_dev,
+                struct iio_chan_spec const *chan,
+                int val, int val2, long mask)
+      typical_actions:
+        - "设置采样率"
+        - "设置增益/比例"
+        - "配置硬件参数"
+
+    write_raw_get_fmt:
+      pattern: '\.write_raw_get_fmt\s*=\s*(?P<handler>\w+)'
+      description: "获取写入值的格式"
+      context: "process"
+      signature: |
+        int (*)(struct iio_dev *indio_dev,
+                struct iio_chan_spec const *chan, long mask)
+
+    read_event_config:
+      pattern: '\.read_event_config\s*=\s*(?P<handler>\w+)'
+      description: "读取事件配置"
+      context: "process"
+      signature: |
+        int (*)(struct iio_dev *indio_dev,
+                const struct iio_chan_spec *chan,
+                enum iio_event_type type,
+                enum iio_event_direction dir)
+
+    write_event_config:
+      pattern: '\.write_event_config\s*=\s*(?P<handler>\w+)'
+      description: "写入事件配置"
+      context: "process"
+      signature: |
+        int (*)(struct iio_dev *indio_dev,
+                const struct iio_chan_spec *chan,
+                enum iio_event_type type,
+                enum iio_event_direction dir, int state)
+
+    read_event_value:
+      pattern: '\.read_event_value\s*=\s*(?P<handler>\w+)'
+      description: "读取事件阈值"
+      context: "process"
+
+    write_event_value:
+      pattern: '\.write_event_value\s*=\s*(?P<handler>\w+)'
+      description: "写入事件阈值"
+      context: "process"
+
+    validate_trigger:
+      pattern: '\.validate_trigger\s*=\s*(?P<handler>\w+)'
+      description: "验证触发器"
+      context: "process"
+      signature: |
+        int (*)(struct iio_dev *indio_dev, struct iio_trigger *trig)
+
+    update_scan_mode:
+      pattern: '\.update_scan_mode\s*=\s*(?P<handler>\w+)'
+      description: "更新扫描模式"
+      trigger: "缓冲使能前"
+      context: "process"
+
+    debugfs_reg_access:
+      pattern: '\.debugfs_reg_access\s*=\s*(?P<handler>\w+)'
+      description: "debugfs 寄存器访问"
+      context: "process"
+      signature: |
+        int (*)(struct iio_dev *indio_dev,
+                unsigned reg, unsigned writeval,
+                unsigned *readval)
+
+
+# ============================================================
+# IIO_CHAN_SPEC - 通道定义
+# ============================================================
+
+iio_chan_spec:
+  description: "IIO Channel Specification - IIO 通道定义"
+  header: "linux/iio/iio.h"
+
+  structure:
+    pattern: 'static const struct iio_chan_spec\s+(?P<name>\w+)\[\]'
+    description: "IIO 通道规格数组"
+    fields:
+      - name: "type"
+        type: "enum iio_chan_type"
+        description: "通道类型 (IIO_VOLTAGE, IIO_ACCEL, etc.)"
+      - name: "channel"
+        type: "int"
+        description: "通道索引"
+      - name: "channel2"
+        type: "int"
+        description: "差分通道的第二个索引，或修饰符 (X, Y, Z)"
+      - name: "address"
+        type: "unsigned long"
+        description: "驱动私有地址 (如寄存器地址)"
+      - name: "scan_index"
+        type: "int"
+        description: "缓冲区中的位置 (-1 表示不参与扫描)"
+      - name: "scan_type"
+        type: "struct {...}"
+        description: "扫描类型定义"
+      - name: "info_mask_separate"
+        type: "long"
+        description: "独立属性掩码"
+      - name: "info_mask_shared_by_type"
+        type: "long"
+        description: "同类型共享属性掩码"
+      - name: "info_mask_shared_by_dir"
+        type: "long"
+        description: "同方向共享属性掩码"
+      - name: "info_mask_shared_by_all"
+        type: "long"
+        description: "全局共享属性掩码"
+      - name: "modified"
+        type: "unsigned:1"
+        description: "是否使用修饰符 (X, Y, Z)"
+      - name: "indexed"
+        type: "unsigned:1"
+        description: "是否使用索引"
+      - name: "output"
+        type: "unsigned:1"
+        description: "是否为输出通道"
+      - name: "differential"
+        type: "unsigned:1"
+        description: "是否为差分通道"
+
+  scan_type_fields:
+    - name: "sign"
+      type: "char"
+      description: "'s' 有符号, 'u' 无符号"
+    - name: "realbits"
+      type: "u8"
+      description: "有效数据位数"
+    - name: "storagebits"
+      type: "u8"
+      description: "存储位数 (含填充)"
+    - name: "shift"
+      type: "u8"
+      description: "数据在存储中的位移"
+    - name: "repeat"
+      type: "u8"
+      description: "重复次数 (0=1次)"
+    - name: "endianness"
+      type: "enum iio_endian"
+      description: "字节序"
+
+  channel_types:
+    IIO_VOLTAGE: "电压"
+    IIO_CURRENT: "电流"
+    IIO_POWER: "功率"
+    IIO_ACCEL: "加速度"
+    IIO_ANGL_VEL: "角速度 (陀螺仪)"
+    IIO_MAGN: "磁场强度"
+    IIO_LIGHT: "光照强度"
+    IIO_INTENSITY: "强度"
+    IIO_PROXIMITY: "接近度"
+    IIO_TEMP: "温度"
+    IIO_INCLI: "倾角"
+    IIO_ROT: "旋转"
+    IIO_ANGL: "角度"
+    IIO_TIMESTAMP: "时间戳"
+    IIO_CAPACITANCE: "电容"
+    IIO_ALTVOLTAGE: "交流电压"
+    IIO_PRESSURE: "压力"
+    IIO_HUMIDITYRELATIVE: "相对湿度"
+    IIO_STEPS: "步数"
+    IIO_DISTANCE: "距离"
+
+  info_masks:
+    IIO_CHAN_INFO_RAW: "原始值"
+    IIO_CHAN_INFO_PROCESSED: "处理后的值"
+    IIO_CHAN_INFO_SCALE: "比例因子"
+    IIO_CHAN_INFO_OFFSET: "偏移量"
+    IIO_CHAN_INFO_CALIBSCALE: "校准比例"
+    IIO_CHAN_INFO_CALIBBIAS: "校准偏置"
+    IIO_CHAN_INFO_PEAK: "峰值"
+    IIO_CHAN_INFO_PEAK_SCALE: "峰值比例"
+    IIO_CHAN_INFO_SAMP_FREQ: "采样频率"
+    IIO_CHAN_INFO_FREQUENCY: "频率"
+    IIO_CHAN_INFO_AVERAGE_RAW: "平均原始值"
+    IIO_CHAN_INFO_OVERSAMPLING_RATIO: "过采样率"
+
+  modifiers:
+    IIO_MOD_X: "X 轴"
+    IIO_MOD_Y: "Y 轴"
+    IIO_MOD_Z: "Z 轴"
+    IIO_MOD_LIGHT_RED: "红光"
+    IIO_MOD_LIGHT_GREEN: "绿光"
+    IIO_MOD_LIGHT_BLUE: "蓝光"
+    IIO_MOD_LIGHT_IR: "红外光"
 
 
 # ============================================================
@@ -83,28 +399,94 @@ iio_channel:
 # ============================================================
 
 iio_buffer:
-  description: "IIO Buffer - IIO 缓冲区"
+  description: "IIO Buffer - IIO 数据缓冲区"
   header: "linux/iio/buffer.h"
 
+  overview: |
+    IIO 缓冲区用于连续数据采集，支持:
+    - kfifo 缓冲区 (软件)
+    - DMA 缓冲区 (硬件)
+    - 触发器驱动的采样
+
   bind_patterns:
-    # iio_allocate_buffer - 分配缓冲区
-    - pattern: 'iio_allocate_buffer\s*\(\s*(?P<length>\w+)\s*\)'
-      description: "分配 IIO 缓冲区"
+    - pattern: 'iio_triggered_buffer_setup\s*\(\s*(?P<indio_dev>[^,]+)\s*,'
+      description: "设置触发缓冲区 (简化版)"
+      context: "process"
 
-    # iio_free_buffer - 释放缓冲区
-    - pattern: 'iio_free_buffer\s*\(\s*(?P<buffer>[^)]+)\s*\)'
-      variable_capture: "buffer"
-      description: "释放 IIO 缓冲区"
+    - pattern: 'iio_triggered_buffer_setup_ext\s*\(\s*(?P<indio_dev>[^,]+)\s*,'
+      description: "设置触发缓冲区 (扩展版)"
+      context: "process"
 
-    # iio_buffer_register - 注册缓冲区
-    - pattern: 'iio_buffer_register\s*\(\s*(?P<indio_dev>[^)]+)\s*,\s*(?P<channels>[^)]+)\s*,\s*(?P<num_channels>\w+)\s*\)'
-      variable_capture: "indio_dev"
-      description: "注册 IIO 缓冲区"
+    - pattern: 'devm_iio_triggered_buffer_setup\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<indio_dev>[^,]+)\s*,'
+      description: "设置触发缓冲区 (资源管理版)"
+      context: "process"
 
-    # iio_buffer_unregister - 注销缓冲区
-    - pattern: 'iio_buffer_unregister\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
-      variable_capture: "indio_dev"
-      description: "注销 IIO 缓冲区"
+    - pattern: 'iio_triggered_buffer_cleanup\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
+      description: "清理触发缓冲区"
+      context: "process"
+
+    - pattern: 'iio_push_to_buffers_with_timestamp\s*\(\s*(?P<indio_dev>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<timestamp>[^)]+)\s*\)'
+      description: "推送数据到缓冲区 (带时间戳)"
+      context: "any"
+
+    - pattern: 'iio_push_to_buffers\s*\(\s*(?P<indio_dev>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "推送数据到缓冲区"
+      context: "any"
+
+  buffer_setup_ops:
+    description: "缓冲区设置操作"
+    structure:
+      pattern: 'static const struct iio_buffer_setup_ops\s+(?P<name>\w+)'
+      description: "缓冲区设置操作结构体"
+
+    callbacks:
+      preenable:
+        pattern: '\.preenable\s*=\s*(?P<handler>\w+)'
+        description: "缓冲区使能前回调"
+        trigger: "用户使能缓冲区前"
+        context: "process"
+        can_sleep: true
+        signature: "int (*)(struct iio_dev *)"
+        typical_actions:
+          - "配置硬件采样模式"
+          - "设置 DMA"
+
+      postenable:
+        pattern: '\.postenable\s*=\s*(?P<handler>\w+)'
+        description: "缓冲区使能后回调"
+        trigger: "缓冲区使能后"
+        context: "process"
+        can_sleep: true
+        signature: "int (*)(struct iio_dev *)"
+        typical_actions:
+          - "启动采样"
+          - "使能触发器"
+
+      predisable:
+        pattern: '\.predisable\s*=\s*(?P<handler>\w+)'
+        description: "缓冲区禁用前回调"
+        trigger: "用户禁用缓冲区前"
+        context: "process"
+        can_sleep: true
+        typical_actions:
+          - "停止采样"
+          - "禁用触发器"
+
+      postdisable:
+        pattern: '\.postdisable\s*=\s*(?P<handler>\w+)'
+        description: "缓冲区禁用后回调"
+        trigger: "缓冲区禁用后"
+        context: "process"
+        can_sleep: true
+        typical_actions:
+          - "清理 DMA"
+          - "关闭硬件采样"
+
+      validate_scan_mask:
+        pattern: '\.validate_scan_mask\s*=\s*(?P<handler>\w+)'
+        description: "验证扫描掩码"
+        context: "process"
+        signature: "bool (*)(struct iio_dev *, const unsigned long *)"
 
 
 # ============================================================
@@ -115,47 +497,75 @@ iio_trigger:
   description: "IIO Trigger - IIO 触发器"
   header: "linux/iio/trigger.h"
 
+  overview: |
+    触发器控制数据采集的时机:
+    - 硬件触发 (中断、定时器)
+    - 软件触发 (sysfs)
+    - 数据就绪触发
+
   bind_patterns:
-    # iio_trigger_register - 注册触发器
+    - pattern: 'iio_trigger_alloc\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<fmt>[^)]+)\s*\)'
+      description: "分配触发器"
+      context: "process"
+
+    - pattern: 'devm_iio_trigger_alloc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<fmt>[^)]+)\s*\)'
+      description: "分配触发器 (资源管理版)"
+      context: "process"
+
+    - pattern: 'iio_trigger_free\s*\(\s*(?P<trig>[^)]+)\s*\)'
+      description: "释放触发器"
+      context: "process"
+
     - pattern: 'iio_trigger_register\s*\(\s*(?P<trig>[^)]+)\s*\)'
-      variable_capture: "trig"
-      description: "注册 IIO 触发器"
+      description: "注册触发器"
+      context: "process"
 
-    # iio_trigger_unregister - 注销触发器
+    - pattern: 'devm_iio_trigger_register\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<trig>[^)]+)\s*\)'
+      description: "注册触发器 (资源管理版)"
+      context: "process"
+
     - pattern: 'iio_trigger_unregister\s*\(\s*(?P<trig>[^)]+)\s*\)'
-      variable_capture: "trig"
-      description: "注销 IIO 触发器"
+      description: "注销触发器"
+      context: "process"
 
-    # iio_trigger_set_ops - 设置触发器操作
-    - pattern: 'iio_trigger_set_ops\s*\(\s*(?P<trig>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
-      variable_capture: "trig"
-      description: "设置触发器操作"
+    - pattern: 'iio_trigger_poll\s*\(\s*(?P<trig>[^)]+)\s*\)'
+      description: "触发采样"
+      context: "any (including hardirq)"
 
-  callbacks:
-    validate_device:
-      pattern: '\.validate_device\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "验证设备回调"
+    - pattern: 'iio_trigger_poll_chained\s*\(\s*(?P<trig>[^)]+)\s*\)'
+      description: "链式触发采样"
+      context: "hardirq"
 
+  trigger_ops:
+    description: "触发器操作"
+    structure:
+      pattern: 'static const struct iio_trigger_ops\s+(?P<name>\w+)'
+      description: "触发器操作结构体"
 
-# ============================================================
-# IIO TRIGGERED BUFFER
-# ============================================================
+    callbacks:
+      set_trigger_state:
+        pattern: '\.set_trigger_state\s*=\s*(?P<handler>\w+)'
+        description: "设置触发器状态 (使能/禁用)"
+        trigger: "触发器绑定到设备时"
+        context: "process"
+        can_sleep: true
+        signature: "int (*)(struct iio_trigger *trig, bool state)"
+        typical_actions:
+          - "使能/禁用硬件中断"
+          - "启动/停止定时器"
 
-iio_triggered_buffer:
-  description: "IIO Triggered Buffer - 触发缓冲区"
-  header: "linux/iio/triggered_buffer.h"
+      try_reenable:
+        pattern: '\.try_reenable\s*=\s*(?P<handler>\w+)'
+        description: "尝试重新使能触发器"
+        context: "process"
+        signature: "int (*)(struct iio_trigger *trig)"
+        notes: "处理所有消费者后调用"
 
-  bind_patterns:
-    # iio_triggered_buffer_setup - 设置触发缓冲区
-    - pattern: 'iio_triggered_buffer_setup\s*\(\s*(?P<indio_dev>[^)]+)\s*,\s*(?P<preenable>\w+)\s*,\s*(?P<postenable>\w+)\s*,\s*(?P<buffer_setup_ops>\w+)\s*\)'
-      variable_capture: "indio_dev"
-      description: "设置触发缓冲区"
-
-    # iio_triggered_buffer_cleanup - 清理触发缓冲区
-    - pattern: 'iio_triggered_buffer_cleanup\s*\(\s*(?P<indio_dev>[^)]+)\s*\)'
-      variable_capture: "indio_dev"
-      description: "清理触发缓冲区"
+      validate_device:
+        pattern: '\.validate_device\s*=\s*(?P<handler>\w+)'
+        description: "验证设备是否可使用此触发器"
+        context: "process"
+        signature: "int (*)(struct iio_trigger *trig, struct iio_dev *indio_dev)"
 
 
 # ============================================================
@@ -166,90 +576,415 @@ iio_event:
   description: "IIO Event - IIO 事件"
   header: "linux/iio/events.h"
 
-  bind_patterns:
-    # iio_push_event - 推送事件
-    - pattern: 'iio_push_event\s*\(\s*(?P<indio_dev>[^)]+)\s*,\s*(?P<event_code>\w+)\s*,\s*(?P<timestamp>\w+)\s*\)'
-      variable_capture: "indio_dev"
-      description: "推送 IIO 事件"
-
-
-# ============================================================
-# IIO SENSORHUB
-# ============================================================
-
-iio_sensorhub:
-  description: "IIO Sensor Hub - IIO 传感器中枢"
-  header: "linux/iio/sensorhub.h"
+  overview: |
+    IIO 事件用于通知用户空间发生了特定条件:
+    - 阈值超限
+    - 数据就绪
+    - 周期性事件
 
   bind_patterns:
-    # iio_read_channel_raw - 读取通道原始值
-    - pattern: 'iio_read_channel_raw\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<val>[^)]+)\s*\)'
-      variable_capture: "chan"
-      description: "读取通道原始值"
+    - pattern: 'iio_push_event\s*\(\s*(?P<indio_dev>[^,]+)\s*,\s*(?P<event_code>[^,]+)\s*,\s*(?P<timestamp>[^)]+)\s*\)'
+      description: "推送事件到用户空间"
+      context: "any"
 
-    # iio_read_channel_attribute - 读取通道属性
-    - pattern: 'iio_read_channel_attribute\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<attr>[^)]+)\s*,\s*(?P<val>[^)]+)\s*\)'
-      variable_capture: "chan"
-      description: "读取通道属性"
+    - pattern: 'IIO_EVENT_CODE\s*\(\s*(?P<chan_type>[^,]+)\s*,\s*(?P<diff>[^,]+)\s*,\s*(?P<modifier>[^,]+)\s*,\s*(?P<direction>[^,]+)\s*,\s*(?P<type>[^,]+)\s*,\s*(?P<chan>[^,]+)\s*,\s*(?P<chan1>[^,]+)\s*,\s*(?P<chan2>[^)]+)\s*\)'
+      description: "生成事件代码"
 
-    # iio_write_channel_attribute - 写入通道属性
-    - pattern: 'iio_write_channel_attribute\s*\(\s*(?P<chan>[^)]+)\s*,\s*(?P<attr>[^)]+)\s*,\s*(?P<val>\w+)\s*\)'
-      variable_capture: "chan"
-      description: "写入通道属性"
+    - pattern: 'IIO_UNMOD_EVENT_CODE\s*\('
+      description: "生成无修饰符的事件代码"
+
+    - pattern: 'IIO_MOD_EVENT_CODE\s*\('
+      description: "生成带修饰符的事件代码"
+
+  event_types:
+    IIO_EV_TYPE_THRESH: "阈值事件"
+    IIO_EV_TYPE_MAG: "幅度事件"
+    IIO_EV_TYPE_ROC: "变化率事件"
+    IIO_EV_TYPE_THRESH_ADAPTIVE: "自适应阈值"
+    IIO_EV_TYPE_MAG_ADAPTIVE: "自适应幅度"
+
+  event_directions:
+    IIO_EV_DIR_EITHER: "双向"
+    IIO_EV_DIR_RISING: "上升"
+    IIO_EV_DIR_FALLING: "下降"
 
 
 # ============================================================
-# IIO EXAMPLES
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  iio_read_channel:
+    description: "用户空间读取 IIO 通道"
+    trigger: "读取 sysfs 属性 (如 in_voltage0_raw)"
+    chain:
+      - function: "iio_read_channel_info"
+        file: "drivers/iio/industrialio-core.c"
+        description: "sysfs 读取入口"
+        context: "process"
+      - function: "iio_read_channel_info_type"
+        file: "drivers/iio/industrialio-core.c"
+        description: "确定读取类型"
+      - function: "indio_dev->info->read_raw"
+        file: "用户代码"
+        description: "驱动 read_raw 回调"
+        is_user_entry: true
+
+  iio_triggered_read:
+    description: "触发器驱动的数据采集"
+    trigger: "触发器触发 (中断、定时器等)"
+    chain:
+      - function: "iio_trigger_poll"
+        file: "drivers/iio/industrialio-trigger.c"
+        description: "触发器触发"
+        context: "hardirq or softirq"
+      - function: "iio_trigger_notify_done"
+        file: "drivers/iio/industrialio-trigger.c"
+        description: "通知触发完成"
+      - function: "iio_pollfunc_store_time"
+        file: "drivers/iio/industrialio-trigger.c"
+        description: "存储时间戳 (top half)"
+        context: "hardirq"
+      - function: "trigger_handler (threaded)"
+        file: "用户代码"
+        description: "用户触发处理函数 (bottom half)"
+        context: "process (threaded irq)"
+        is_user_entry: true
+      - function: "iio_push_to_buffers_with_timestamp"
+        file: "drivers/iio/industrialio-buffer.c"
+        description: "数据推送到缓冲区"
+
+  buffer_enable:
+    description: "缓冲区使能流程"
+    trigger: "用户写入 buffer/enable sysfs"
+    chain:
+      - function: "iio_buffer_store_enable"
+        file: "drivers/iio/industrialio-buffer.c"
+        description: "sysfs 写入入口"
+        context: "process"
+      - function: "iio_update_buffers"
+        file: "drivers/iio/industrialio-buffer.c"
+        description: "更新缓冲区状态"
+      - function: "setup_ops->preenable"
+        file: "用户代码"
+        description: "预使能回调"
+        is_user_entry: true
+      - function: "iio_trigger_attach_poll_func"
+        file: "drivers/iio/industrialio-trigger.c"
+        description: "绑定触发器"
+      - function: "setup_ops->postenable"
+        file: "用户代码"
+        description: "后使能回调"
+        is_user_entry: true
+
+
+# ============================================================
+# EXAMPLES
 # ============================================================
 
 examples:
-  - description: "IIO 设备驱动"
+  - description: "简单 ADC 驱动 (直接模式)"
+    kernel_version: "5.0+"
     code: |
-      static int my_sensor_read_raw(struct iio_dev *indio_dev,
-                                    struct iio_chan_spec const *chan,
-                                    int *val, int *val2, long mask) {
+      #include <linux/module.h>
+      #include <linux/iio/iio.h>
+      #include <linux/i2c.h>
+      
+      struct my_adc_data {
+          struct i2c_client *client;
+          struct mutex lock;
+      };
+      
+      static int my_adc_read_raw(struct iio_dev *indio_dev,
+                                  struct iio_chan_spec const *chan,
+                                  int *val, int *val2, long mask)
+      {
+          struct my_adc_data *data = iio_priv(indio_dev);
+          int ret;
+          
           switch (mask) {
           case IIO_CHAN_INFO_RAW:
-              *val = read_sensor_data();
+              mutex_lock(&data->lock);
+              /* 从硬件读取原始值 */
+              ret = i2c_smbus_read_word_data(data->client,
+                                              0x00 + chan->channel);
+              mutex_unlock(&data->lock);
+              
+              if (ret < 0)
+                  return ret;
+              
+              *val = ret & 0xFFF;  /* 12-bit ADC */
               return IIO_VAL_INT;
+              
           case IIO_CHAN_INFO_SCALE:
-              *val = 1;
-              *val2 = 1000;
-              return IIO_VAL_INT_PLUS_MICRO;
+              /* 3.3V 参考电压, 12-bit */
+              *val = 3300;
+              *val2 = 12;
+              return IIO_VAL_FRACTIONAL_LOG2;
+              
+          default:
+              return -EINVAL;
           }
-          return -EINVAL;
       }
-
-      static const struct iio_chan_spec my_channels[] = {
+      
+      static const struct iio_chan_spec my_adc_channels[] = {
           {
-              .type = IIO_ACCEL,
-              .modified = 1,
-              .channel2 = IIO_MOD_X,
+              .type = IIO_VOLTAGE,
+              .indexed = 1,
+              .channel = 0,
+              .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+              .info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
+          },
+          {
+              .type = IIO_VOLTAGE,
+              .indexed = 1,
+              .channel = 1,
               .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
               .info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
           },
       };
-
-      static const struct iio_info my_info = {
-          .read_raw = my_sensor_read_raw,
+      
+      static const struct iio_info my_adc_info = {
+          .read_raw = my_adc_read_raw,
       };
-
-      static int my_probe(struct iio_dev *indio_dev,
-                          const struct iio_device_id *id) {
-          struct my_data *data;
-
-          data = devm_kzalloc(&indio_dev->dev, sizeof(*data), GFP_KERNEL);
-          if (!data)
+      
+      static int my_adc_probe(struct i2c_client *client)
+      {
+          struct iio_dev *indio_dev;
+          struct my_adc_data *data;
+          
+          indio_dev = devm_iio_device_alloc(&client->dev, sizeof(*data));
+          if (!indio_dev)
               return -ENOMEM;
-
-          indio_dev->info = &my_info;
-          indio_dev->channels = my_channels;
-          indio_dev->num_channels = ARRAY_SIZE(my_channels);
+          
+          data = iio_priv(indio_dev);
+          data->client = client;
+          mutex_init(&data->lock);
+          
+          indio_dev->name = "my-adc";
+          indio_dev->info = &my_adc_info;
+          indio_dev->channels = my_adc_channels;
+          indio_dev->num_channels = ARRAY_SIZE(my_adc_channels);
           indio_dev->modes = INDIO_DIRECT_MODE;
-
-          return iio_device_register(indio_dev);
+          
+          return devm_iio_device_register(&client->dev, indio_dev);
       }
 
-      static void my_remove(struct iio_dev *indio_dev) {
-          iio_device_unregister(indio_dev);
+  - description: "加速度计驱动 (带缓冲区和触发器)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/iio/iio.h>
+      #include <linux/iio/buffer.h>
+      #include <linux/iio/trigger.h>
+      #include <linux/iio/trigger_consumer.h>
+      #include <linux/iio/triggered_buffer.h>
+      #include <linux/spi/spi.h>
+      
+      struct accel_data {
+          struct spi_device *spi;
+          struct iio_trigger *trig;
+          /* 数据缓冲区: 3x16bit + padding + 64bit timestamp */
+          struct {
+              __be16 channels[3];
+              s64 timestamp __aligned(8);
+          } scan;
+      };
+      
+      #define ACCEL_CHANNEL(axis, idx) {                       \
+          .type = IIO_ACCEL,                                   \
+          .modified = 1,                                       \
+          .channel2 = IIO_MOD_##axis,                          \
+          .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),        \
+          .info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE) \
+                                    | BIT(IIO_CHAN_INFO_SAMP_FREQ), \
+          .scan_index = idx,                                   \
+          .scan_type = {                                       \
+              .sign = 's',                                     \
+              .realbits = 16,                                  \
+              .storagebits = 16,                               \
+              .endianness = IIO_BE,                            \
+          },                                                   \
       }
+      
+      static const struct iio_chan_spec accel_channels[] = {
+          ACCEL_CHANNEL(X, 0),
+          ACCEL_CHANNEL(Y, 1),
+          ACCEL_CHANNEL(Z, 2),
+          IIO_CHAN_SOFT_TIMESTAMP(3),
+      };
+      
+      static irqreturn_t accel_trigger_handler(int irq, void *p)
+      {
+          struct iio_poll_func *pf = p;
+          struct iio_dev *indio_dev = pf->indio_dev;
+          struct accel_data *data = iio_priv(indio_dev);
+          int ret;
+          
+          /* 从硬件读取 X, Y, Z */
+          ret = spi_read(data->spi, data->scan.channels,
+                         sizeof(data->scan.channels));
+          if (ret)
+              goto done;
+          
+          /* 推送到缓冲区 */
+          iio_push_to_buffers_with_timestamp(indio_dev, &data->scan,
+                                             iio_get_time_ns(indio_dev));
+      done:
+          iio_trigger_notify_done(indio_dev->trig);
+          return IRQ_HANDLED;
+      }
+      
+      static int accel_read_raw(struct iio_dev *indio_dev,
+                                struct iio_chan_spec const *chan,
+                                int *val, int *val2, long mask)
+      {
+          struct accel_data *data = iio_priv(indio_dev);
+          __be16 raw;
+          int ret;
+          
+          switch (mask) {
+          case IIO_CHAN_INFO_RAW:
+              ret = iio_device_claim_direct_mode(indio_dev);
+              if (ret)
+                  return ret;
+              
+              /* 读取单个轴 */
+              ret = spi_read(data->spi, &raw, sizeof(raw));
+              
+              iio_device_release_direct_mode(indio_dev);
+              
+              if (ret)
+                  return ret;
+              
+              *val = sign_extend32(be16_to_cpu(raw), 15);
+              return IIO_VAL_INT;
+              
+          case IIO_CHAN_INFO_SCALE:
+              /* 2g 满量程, 16-bit */
+              *val = 0;
+              *val2 = 598;  /* 2 * 9.8 / 32768 * 1000000 */
+              return IIO_VAL_INT_PLUS_MICRO;
+              
+          case IIO_CHAN_INFO_SAMP_FREQ:
+              *val = 100;  /* 100 Hz */
+              return IIO_VAL_INT;
+          }
+          
+          return -EINVAL;
+      }
+      
+      static const struct iio_info accel_info = {
+          .read_raw = accel_read_raw,
+      };
+      
+      static int accel_probe(struct spi_device *spi)
+      {
+          struct iio_dev *indio_dev;
+          struct accel_data *data;
+          int ret;
+          
+          indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*data));
+          if (!indio_dev)
+              return -ENOMEM;
+          
+          data = iio_priv(indio_dev);
+          data->spi = spi;
+          
+          indio_dev->name = "my-accel";
+          indio_dev->info = &accel_info;
+          indio_dev->channels = accel_channels;
+          indio_dev->num_channels = ARRAY_SIZE(accel_channels);
+          indio_dev->modes = INDIO_DIRECT_MODE | INDIO_BUFFER_TRIGGERED;
+          
+          /* 设置触发缓冲区 */
+          ret = devm_iio_triggered_buffer_setup(&spi->dev, indio_dev,
+                                                NULL, /* top half */
+                                                accel_trigger_handler,
+                                                NULL); /* buffer ops */
+          if (ret)
+              return ret;
+          
+          /* 分配数据就绪触发器 */
+          data->trig = devm_iio_trigger_alloc(&spi->dev, "%s-dev%d",
+                                              indio_dev->name, indio_dev->id);
+          if (!data->trig)
+              return -ENOMEM;
+          
+          ret = devm_iio_trigger_register(&spi->dev, data->trig);
+          if (ret)
+              return ret;
+          
+          /* 设置默认触发器 */
+          indio_dev->trig = iio_trigger_get(data->trig);
+          
+          return devm_iio_device_register(&spi->dev, indio_dev);
+      }
+
+  - description: "DAC 驱动 (输出通道)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/iio/iio.h>
+      #include <linux/spi/spi.h>
+      
+      struct dac_data {
+          struct spi_device *spi;
+          unsigned int vref_mv;
+      };
+      
+      static int dac_write_raw(struct iio_dev *indio_dev,
+                               struct iio_chan_spec const *chan,
+                               int val, int val2, long mask)
+      {
+          struct dac_data *data = iio_priv(indio_dev);
+          u8 buf[2];
+          
+          switch (mask) {
+          case IIO_CHAN_INFO_RAW:
+              if (val < 0 || val > 4095)
+                  return -EINVAL;
+              
+              /* 12-bit DAC */
+              buf[0] = (val >> 8) & 0x0F;
+              buf[1] = val & 0xFF;
+              
+              return spi_write(data->spi, buf, sizeof(buf));
+          
+          default:
+              return -EINVAL;
+          }
+      }
+      
+      static int dac_read_raw(struct iio_dev *indio_dev,
+                              struct iio_chan_spec const *chan,
+                              int *val, int *val2, long mask)
+      {
+          struct dac_data *data = iio_priv(indio_dev);
+          
+          switch (mask) {
+          case IIO_CHAN_INFO_SCALE:
+              *val = data->vref_mv;
+              *val2 = 12;  /* 12-bit */
+              return IIO_VAL_FRACTIONAL_LOG2;
+          
+          default:
+              return -EINVAL;
+          }
+      }
+      
+      static const struct iio_chan_spec dac_channels[] = {
+          {
+              .type = IIO_VOLTAGE,
+              .indexed = 1,
+              .channel = 0,
+              .output = 1,  /* 输出通道 */
+              .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+              .info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),
+          },
+      };
+      
+      static const struct iio_info dac_info = {
+          .read_raw = dac_read_raw,
+          .write_raw = dac_write_raw,
+      };

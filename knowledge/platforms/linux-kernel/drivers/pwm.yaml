@@ -1,129 +1,849 @@
-# PWM Driver Framework Knowledge Base
+# PWM (Pulse Width Modulation) Driver Framework Knowledge Base
+#
 # Reference: https://www.kernel.org/doc/html/latest/driver-api/pwm.html
 
-pwm_chip:
-  description: "PWM Controller Driver"
+# ============================================================
+# PWM CORE
+# ============================================================
+
+pwm_core:
+  description: "PWM Core - 脉冲宽度调制核心框架"
   header: "linux/pwm.h"
   icon: "⚡"
+  kernel_version: "3.0+"
 
-  registration:
-    - pattern: 'pwmchip_add\s*\(\s*&(?P<chip>\w+)\s*\)'
-      description: "注册 PWM 控制器"
-    - pattern: 'pwmchip_remove\s*\(\s*&(?P<chip>\w+)\s*\)'
-      description: "注销 PWM 控制器"
-    - pattern: 'devm_pwmchip_add\s*\([^,]+,\s*&(?P<chip>\w+)\s*\)'
-      description: "注册 PWM 控制器 (资源管理)"
+  overview: |
+    PWM 子系统为 PWM 控制器和消费者提供统一接口:
+    - PWM 提供者 (控制器驱动) 实现 pwm_chip 和 pwm_ops
+    - PWM 消费者通过 pwm_get/pwm_apply_state 使用 PWM
+    
+    常见应用:
+    - LED 亮度控制
+    - 电机速度控制
+    - 风扇控制
+    - 背光控制
+    - 蜂鸣器
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+
+# ============================================================
+# PWM_STATE STRUCTURE
+# ============================================================
+
+pwm_state:
+  description: "PWM State - PWM 状态"
+  header: "linux/pwm.h"
 
   structure:
-    - pattern: 'static struct pwm_chip\s+(?P<name>\w+)\s*'
-      description: "PWM 控制器结构体"
-    - pattern: 'static const struct pwm_ops\s+(?P<name>\w+)\s*=\s*\{'
-      description: "PWM 操作结构体"
+    pattern: 'struct pwm_state\s+(?P<name>\w+)'
+    description: "PWM 状态结构"
+    fields:
+      - name: "period"
+        type: "unsigned int"
+        description: "PWM 周期 (纳秒)"
+        notes: "周期 = 1/频率, 如 1000000ns = 1kHz"
+      - name: "duty_cycle"
+        type: "unsigned int"
+        description: "PWM 占空比 (纳秒)"
+        notes: "高电平持续时间，必须 <= period"
+      - name: "polarity"
+        type: "enum pwm_polarity"
+        description: "PWM 极性"
+        values:
+          PWM_POLARITY_NORMAL: "正常极性 (占空比 = 高电平时间)"
+          PWM_POLARITY_INVERSED: "反转极性 (占空比 = 低电平时间)"
+      - name: "enabled"
+        type: "bool"
+        description: "PWM 是否使能"
+
+  helper_macros:
+    - pattern: 'pwm_set_relative_duty_cycle\s*\(\s*(?P<state>[^,]+)\s*,\s*(?P<duty>[^,]+)\s*,\s*(?P<scale>[^)]+)\s*\)'
+      description: "设置相对占空比 (duty/scale)"
+      example: "pwm_set_relative_duty_cycle(&state, 50, 100) 设置 50%"
+
+
+# ============================================================
+# PWM_DEVICE STRUCTURE
+# ============================================================
+
+pwm_device:
+  description: "PWM Device - PWM 设备 (单个 PWM 通道)"
+  header: "linux/pwm.h"
+
+  structure:
+    pattern: 'struct pwm_device\s*\*\s*(?P<name>\w+)'
+    description: "PWM 设备指针"
+    fields:
+      - name: "label"
+        type: "const char *"
+        description: "PWM 设备名称"
+      - name: "flags"
+        type: "unsigned long"
+        description: "标志"
+      - name: "hwpwm"
+        type: "unsigned int"
+        description: "芯片内的硬件 PWM 索引"
+      - name: "pwm"
+        type: "unsigned int"
+        description: "全局 PWM 索引"
+      - name: "chip"
+        type: "struct pwm_chip *"
+        description: "所属的 PWM 控制器"
+      - name: "chip_data"
+        type: "void *"
+        description: "芯片私有数据"
+      - name: "args"
+        type: "struct pwm_args"
+        description: "从 DT/平台数据获取的参数"
+      - name: "state"
+        type: "struct pwm_state"
+        description: "当前 PWM 状态"
+
+
+# ============================================================
+# PWM_CHIP STRUCTURE
+# ============================================================
+
+pwm_chip:
+  description: "PWM Chip - PWM 控制器"
+  header: "linux/pwm.h"
+
+  structure:
+    pattern: 'struct pwm_chip\s+(?P<name>\w+)'
+    description: "PWM 控制器结构"
+    fields:
+      - name: "dev"
+        type: "struct device *"
+        description: "父设备"
+      - name: "ops"
+        type: "const struct pwm_ops *"
+        description: "PWM 操作回调"
+      - name: "base"
+        type: "int"
+        description: "第一个 PWM 的编号 (-1 为动态分配)"
+      - name: "npwm"
+        type: "unsigned int"
+        description: "此控制器管理的 PWM 通道数"
+      - name: "pwms"
+        type: "struct pwm_device *"
+        description: "PWM 设备数组 (框架分配)"
+      - name: "of_xlate"
+        type: "function pointer"
+        description: "设备树转换函数"
+      - name: "of_pwm_n_cells"
+        type: "unsigned int"
+        description: "设备树 PWM 说明符的 cell 数量"
+
+  registration:
+    - pattern: 'pwmchip_add\s*\(\s*&?(?P<chip>\w+)\s*\)'
+      description: "注册 PWM 控制器"
+      context: "process"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    - pattern: 'devm_pwmchip_add\s*\(\s*(?P<dev>[^,]+)\s*,\s*&?(?P<chip>\w+)\s*\)'
+      description: "注册 PWM 控制器 (资源管理版，推荐)"
+      context: "process"
+
+    - pattern: 'pwmchip_remove\s*\(\s*&?(?P<chip>\w+)\s*\)'
+      description: "注销 PWM 控制器"
+      context: "process"
+
+
+# ============================================================
+# PWM_OPS STRUCTURE - 控制器回调
+# ============================================================
+
+pwm_ops:
+  description: "PWM Operations - PWM 控制器操作回调"
+  header: "linux/pwm.h"
+
+  structure:
+    pattern: 'static const struct pwm_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "PWM 操作结构体定义"
 
   callbacks:
     request:
       pattern: '\.request\s*=\s*(?P<handler>\w+)'
       description: "请求 PWM 通道"
-      signature: "int (*)(struct pwm_chip *, struct pwm_device *)"
+      trigger: "消费者调用 pwm_get()"
       context: "process"
+      can_sleep: true
+      signature: "int (*)(struct pwm_chip *chip, struct pwm_device *pwm)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "使能时钟"
+        - "配置引脚复用"
+        - "初始化硬件"
 
     free:
       pattern: '\.free\s*=\s*(?P<handler>\w+)'
       description: "释放 PWM 通道"
-      signature: "void (*)(struct pwm_chip *, struct pwm_device *)"
-
-    capture:
-      pattern: '\.capture\s*=\s*(?P<handler>\w+)'
-      description: "捕获 PWM 信号"
-      signature: "int (*)(struct pwm_chip *, struct pwm_device *, struct pwm_capture *, unsigned long)"
+      trigger: "消费者调用 pwm_put()"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct pwm_chip *chip, struct pwm_device *pwm)"
+      typical_actions:
+        - "禁用时钟"
+        - "恢复引脚"
 
     apply:
       pattern: '\.apply\s*=\s*(?P<handler>\w+)'
-      description: "应用 PWM 配置"
-      signature: "int (*)(struct pwm_chip *, struct pwm_device *, const struct pwm_state *)"
+      description: "应用 PWM 状态 (新 API，推荐)"
+      trigger: "消费者调用 pwm_apply_state()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct pwm_chip *chip, struct pwm_device *pwm, const struct pwm_state *state)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
       notes:
-        - "原子地应用所有状态"
-        - "包括周期、占空比、极性、启用状态"
+        - "原子地应用所有参数"
+        - "必须处理 period, duty_cycle, polarity, enabled"
+        - "应该读取当前状态并只更新变化的参数"
+      typical_actions:
+        - "计算寄存器值"
+        - "配置硬件定时器"
+        - "设置输出使能"
 
     get_state:
       pattern: '\.get_state\s*=\s*(?P<handler>\w+)'
       description: "获取当前 PWM 状态"
-      signature: "void (*)(struct pwm_chip *, struct pwm_device *, struct pwm_state *)"
+      trigger: "pwmchip_add() 或 pwm_get_state()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct pwm_chip *chip, struct pwm_device *pwm, struct pwm_state *state)"
+      typical_actions:
+        - "从硬件读取当前配置"
+        - "填充 state 结构"
 
-    # Legacy callbacks (deprecated)
+    capture:
+      pattern: '\.capture\s*=\s*(?P<handler>\w+)'
+      description: "捕获输入 PWM 信号"
+      trigger: "消费者调用 pwm_capture()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct pwm_chip *chip, struct pwm_device *pwm, struct pwm_capture *result, unsigned long timeout)"
+      notes: "用于测量外部 PWM 信号的周期和占空比"
+
+    # 旧 API (已废弃，不推荐使用)
     config:
       pattern: '\.config\s*=\s*(?P<handler>\w+)'
-      description: "配置 PWM (旧 API，已废弃)"
+      description: "配置 PWM 周期和占空比 (旧 API)"
       deprecated: true
+      signature: "int (*)(struct pwm_chip *chip, struct pwm_device *pwm, int duty_ns, int period_ns)"
+      notes: "请使用 .apply 代替"
 
     enable:
       pattern: '\.enable\s*=\s*(?P<handler>\w+)'
-      description: "启用 PWM (旧 API，已废弃)"
+      description: "使能 PWM 输出 (旧 API)"
       deprecated: true
+      signature: "int (*)(struct pwm_chip *chip, struct pwm_device *pwm)"
+      notes: "请使用 .apply 代替"
 
     disable:
       pattern: '\.disable\s*=\s*(?P<handler>\w+)'
-      description: "禁用 PWM (旧 API，已废弃)"
+      description: "禁用 PWM 输出 (旧 API)"
       deprecated: true
+      signature: "void (*)(struct pwm_chip *chip, struct pwm_device *pwm)"
+      notes: "请使用 .apply 代替"
 
     set_polarity:
       pattern: '\.set_polarity\s*=\s*(?P<handler>\w+)'
-      description: "设置极性 (旧 API，已废弃)"
+      description: "设置极性 (旧 API)"
       deprecated: true
+      signature: "int (*)(struct pwm_chip *chip, struct pwm_device *pwm, enum pwm_polarity polarity)"
+      notes: "请使用 .apply 代替"
 
+    owner:
+      pattern: '\.owner\s*=\s*(?P<module>\w+)'
+      description: "模块所有者"
+      notes: "通常设为 THIS_MODULE"
+
+
+# ============================================================
+# PWM CONSUMER API
+# ============================================================
 
 pwm_consumer:
-  description: "PWM Consumer API"
+  description: "PWM Consumer API - PWM 消费者接口"
   header: "linux/pwm.h"
 
   acquisition:
-    - pattern: 'pwm_get\s*\([^,]+,\s*(?P<con_id>[^)]+)\s*\)'
+    - pattern: 'pwm_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<con_id>[^)]+)\s*\)'
       description: "获取 PWM 设备"
-    - pattern: 'devm_pwm_get\s*\([^,]+,\s*(?P<con_id>[^)]+)\s*\)'
-      description: "获取 PWM 设备 (资源管理)"
-    - pattern: 'pwm_put\s*\([^)]+\)'
+      context: "process"
+      can_sleep: true
+      return_value: "struct pwm_device * 或 ERR_PTR"
+
+    - pattern: 'devm_pwm_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<con_id>[^)]+)\s*\)'
+      description: "获取 PWM 设备 (资源管理版，推荐)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_fwnode_pwm_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<fwnode>[^,]+)\s*,\s*(?P<con_id>[^)]+)\s*\)'
+      description: "从 fwnode 获取 PWM 设备"
+      context: "process"
+
+    - pattern: 'pwm_put\s*\(\s*(?P<pwm>[^)]+)\s*\)'
       description: "释放 PWM 设备"
+      context: "process"
+
+    - pattern: 'devm_pwm_put\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<pwm>[^)]+)\s*\)'
+      description: "释放 PWM 设备 (资源管理版)"
+      context: "process"
 
   configuration:
-    - pattern: 'pwm_apply_state\s*\([^)]+\)'
-      description: "应用 PWM 状态"
-    - pattern: 'pwm_get_state\s*\([^)]+\)'
-      description: "获取 PWM 状态"
-    - pattern: 'pwm_enable\s*\([^)]+\)'
-      description: "启用 PWM"
-    - pattern: 'pwm_disable\s*\([^)]+\)'
-      description: "禁用 PWM"
-    - pattern: 'pwm_config\s*\([^)]+\)'
-      description: "配置 PWM 周期和占空比"
+    - pattern: 'pwm_apply_state\s*\(\s*(?P<pwm>[^,]+)\s*,\s*(?P<state>[^)]+)\s*\)'
+      description: "应用 PWM 状态 (新 API，推荐)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
 
+    - pattern: 'pwm_get_state\s*\(\s*(?P<pwm>[^,]+)\s*,\s*(?P<state>[^)]+)\s*\)'
+      description: "获取当前 PWM 状态"
+      context: "process"
+
+    - pattern: 'pwm_init_state\s*\(\s*(?P<pwm>[^,]+)\s*,\s*(?P<state>[^)]+)\s*\)'
+      description: "从 PWM 参数初始化状态"
+      context: "process"
+
+    - pattern: 'pwm_get_args\s*\(\s*(?P<pwm>[^,]+)\s*,\s*(?P<args>[^)]+)\s*\)'
+      description: "获取 PWM 参数 (来自 DT)"
+      context: "process"
+
+    # 便捷函数 (内部调用 pwm_apply_state)
+    - pattern: 'pwm_enable\s*\(\s*(?P<pwm>[^)]+)\s*\)'
+      description: "使能 PWM 输出"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pwm_disable\s*\(\s*(?P<pwm>[^)]+)\s*\)'
+      description: "禁用 PWM 输出"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pwm_config\s*\(\s*(?P<pwm>[^,]+)\s*,\s*(?P<duty_ns>[^,]+)\s*,\s*(?P<period_ns>[^)]+)\s*\)'
+      description: "配置 PWM 周期和占空比"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pwm_set_polarity\s*\(\s*(?P<pwm>[^,]+)\s*,\s*(?P<polarity>[^)]+)\s*\)'
+      description: "设置 PWM 极性"
+      context: "process"
+
+  capture:
+    - pattern: 'pwm_capture\s*\(\s*(?P<pwm>[^,]+)\s*,\s*(?P<result>[^,]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      description: "捕获输入 PWM 信号"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# PWM_CAPTURE STRUCTURE
+# ============================================================
+
+pwm_capture:
+  description: "PWM Capture - PWM 捕获结果"
+  header: "linux/pwm.h"
+
+  structure:
+    pattern: 'struct pwm_capture\s+(?P<name>\w+)'
+    description: "PWM 捕获结果结构"
+    fields:
+      - name: "period"
+        type: "unsigned int"
+        description: "测量的周期 (纳秒)"
+      - name: "duty_cycle"
+        type: "unsigned int"
+        description: "测量的占空比 (纳秒)"
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+helper_functions:
+  - pattern: 'pwm_get_period\s*\(\s*(?P<pwm>[^)]+)\s*\)'
+    description: "获取 PWM 周期 (纳秒)"
+    context: "any"
+
+  - pattern: 'pwm_get_duty_cycle\s*\(\s*(?P<pwm>[^)]+)\s*\)'
+    description: "获取 PWM 占空比 (纳秒)"
+    context: "any"
+
+  - pattern: 'pwm_get_polarity\s*\(\s*(?P<pwm>[^)]+)\s*\)'
+    description: "获取 PWM 极性"
+    context: "any"
+
+  - pattern: 'pwm_is_enabled\s*\(\s*(?P<pwm>[^)]+)\s*\)'
+    description: "检查 PWM 是否使能"
+    context: "any"
+
+  - pattern: 'pwm_set_chip_data\s*\(\s*(?P<pwm>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+    description: "设置芯片私有数据"
+    context: "process"
+
+  - pattern: 'pwm_get_chip_data\s*\(\s*(?P<pwm>[^)]+)\s*\)'
+    description: "获取芯片私有数据"
+    context: "any"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  pwm_apply:
+    description: "PWM 状态应用流程"
+    trigger: "消费者调用 pwm_apply_state()"
+    chain:
+      - function: "pwm_apply_state"
+        file: "drivers/pwm/core.c"
+        description: "消费者 API 入口"
+        context: "process"
+      - function: "__pwm_apply"
+        file: "drivers/pwm/core.c"
+        description: "内部实现"
+      - function: "chip->ops->apply"
+        file: "用户代码"
+        description: "控制器驱动 apply 回调"
+        is_user_entry: true
+      - function: "pwm->state = *state"
+        description: "更新软件状态"
+
+  pwm_get:
+    description: "PWM 设备获取流程"
+    trigger: "消费者调用 pwm_get()"
+    chain:
+      - function: "pwm_get"
+        file: "drivers/pwm/core.c"
+        description: "消费者 API 入口"
+        context: "process"
+      - function: "of_pwm_get"
+        file: "drivers/pwm/core.c"
+        description: "从设备树获取"
+        notes: "如果有 DT 节点"
+      - function: "pwm_request_from_chip"
+        file: "drivers/pwm/core.c"
+        description: "从控制器请求"
+      - function: "chip->ops->request"
+        file: "用户代码"
+        description: "控制器驱动 request 回调"
+        is_user_entry: true
+      - function: "chip->ops->get_state"
+        file: "用户代码"
+        description: "获取初始状态"
+        is_user_entry: true
+
+  pwmchip_add:
+    description: "PWM 控制器注册流程"
+    trigger: "驱动调用 pwmchip_add()"
+    chain:
+      - function: "pwmchip_add"
+        file: "drivers/pwm/core.c"
+        description: "注册入口"
+        context: "process"
+      - function: "pwmchip_alloc_pwms"
+        file: "drivers/pwm/core.c"
+        description: "分配 PWM 设备数组"
+      - function: "chip->ops->get_state (for each pwm)"
+        file: "用户代码"
+        description: "获取每个 PWM 的初始状态"
+        is_user_entry: true
+
+
+# ============================================================
+# DEVICE TREE BINDING
+# ============================================================
+
+device_tree:
+  description: "PWM Device Tree Bindings"
+  
+  provider_properties:
+    - property: "#pwm-cells"
+      description: "PWM 说明符的 cell 数量"
+      typical_values: [2, 3]
+      notes: |
+        2 cells: <&pwm channel period_ns>
+        3 cells: <&pwm channel period_ns flags>
+
+  consumer_properties:
+    - property: "pwms"
+      description: "PWM 说明符"
+      example: "pwms = <&pwm0 0 1000000 PWM_POLARITY_NORMAL>;"
+      notes: "phandle + #pwm-cells 个值"
+    - property: "pwm-names"
+      description: "PWM 名称 (用于 pwm_get 的 con_id)"
+      example: 'pwm-names = "backlight";'
+
+  of_xlate:
+    description: "自定义设备树转换函数"
+    default: "of_pwm_xlate_with_flags (处理 2-3 cells)"
+    notes: |
+      如果硬件有特殊需求，可以提供自定义 of_xlate:
+      - 非标准的 cell 布局
+      - 特殊的极性/标志处理
+
+
+# ============================================================
+# SYSFS INTERFACE
+# ============================================================
+
+sysfs_interface:
+  description: "PWM Sysfs Interface"
+  path: "/sys/class/pwm/pwmchipN/"
+
+  attributes:
+    chip_level:
+      - name: "base"
+        description: "第一个 PWM 的编号"
+        mode: "read-only"
+      - name: "npwm"
+        description: "PWM 通道数量"
+        mode: "read-only"
+      - name: "export"
+        description: "导出 PWM 通道到 sysfs"
+        mode: "write-only"
+        usage: "echo N > export"
+      - name: "unexport"
+        description: "取消导出 PWM 通道"
+        mode: "write-only"
+        usage: "echo N > unexport"
+
+    pwm_level:
+      path: "/sys/class/pwm/pwmchipN/pwmM/"
+      attributes:
+        - name: "period"
+          description: "PWM 周期 (纳秒)"
+          mode: "read-write"
+        - name: "duty_cycle"
+          description: "PWM 占空比 (纳秒)"
+          mode: "read-write"
+        - name: "polarity"
+          description: "PWM 极性 (normal/inversed)"
+          mode: "read-write"
+        - name: "enable"
+          description: "PWM 使能状态 (0/1)"
+          mode: "read-write"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
 
 examples:
-  - description: "PWM 驱动示例"
+  - description: "基本 PWM 控制器驱动"
+    kernel_version: "5.0+"
     code: |
-      static int my_pwm_apply(struct pwm_chip *chip,
-                              struct pwm_device *pwm,
+      #include <linux/module.h>
+      #include <linux/pwm.h>
+      #include <linux/platform_device.h>
+      #include <linux/io.h>
+      #include <linux/clk.h>
+      
+      /* 寄存器偏移 */
+      #define PWM_CTRL    0x00
+      #define PWM_PERIOD  0x04
+      #define PWM_DUTY    0x08
+      
+      #define PWM_CTRL_EN BIT(0)
+      #define PWM_CTRL_POL BIT(1)
+      
+      struct my_pwm_chip {
+          struct pwm_chip chip;
+          void __iomem *base;
+          struct clk *clk;
+          unsigned long clk_rate;
+      };
+      
+      static inline struct my_pwm_chip *to_my_pwm_chip(struct pwm_chip *chip)
+      {
+          return container_of(chip, struct my_pwm_chip, chip);
+      }
+      
+      static int my_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
                               const struct pwm_state *state)
       {
-          struct my_pwm *priv = to_my_pwm(chip);
-          u32 period, duty;
-
-          if (!state->enabled) {
-              writel(0, priv->base + PWM_CTRL);
-              return 0;
-          }
-
-          period = DIV_ROUND_CLOSEST(state->period, 1000);
-          duty = DIV_ROUND_CLOSEST(state->duty_cycle, 1000);
-
-          writel(period, priv->base + PWM_PERIOD);
-          writel(duty, priv->base + PWM_DUTY);
-          writel(PWM_EN, priv->base + PWM_CTRL);
-
+          struct my_pwm_chip *pc = to_my_pwm_chip(chip);
+          u32 period_cycles, duty_cycles, ctrl;
+          u64 tmp;
+          
+          /* 计算周期的时钟周期数 */
+          tmp = (u64)state->period * pc->clk_rate;
+          do_div(tmp, NSEC_PER_SEC);
+          period_cycles = tmp;
+          
+          /* 计算占空比的时钟周期数 */
+          tmp = (u64)state->duty_cycle * pc->clk_rate;
+          do_div(tmp, NSEC_PER_SEC);
+          duty_cycles = tmp;
+          
+          /* 写入寄存器 */
+          writel(period_cycles, pc->base + PWM_PERIOD);
+          writel(duty_cycles, pc->base + PWM_DUTY);
+          
+          /* 配置控制寄存器 */
+          ctrl = 0;
+          if (state->enabled)
+              ctrl |= PWM_CTRL_EN;
+          if (state->polarity == PWM_POLARITY_INVERSED)
+              ctrl |= PWM_CTRL_POL;
+          
+          writel(ctrl, pc->base + PWM_CTRL);
+          
           return 0;
       }
-
+      
+      static int my_pwm_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
+                                   struct pwm_state *state)
+      {
+          struct my_pwm_chip *pc = to_my_pwm_chip(chip);
+          u32 period_cycles, duty_cycles, ctrl;
+          u64 tmp;
+          
+          ctrl = readl(pc->base + PWM_CTRL);
+          period_cycles = readl(pc->base + PWM_PERIOD);
+          duty_cycles = readl(pc->base + PWM_DUTY);
+          
+          /* 转换为纳秒 */
+          tmp = (u64)period_cycles * NSEC_PER_SEC;
+          do_div(tmp, pc->clk_rate);
+          state->period = tmp;
+          
+          tmp = (u64)duty_cycles * NSEC_PER_SEC;
+          do_div(tmp, pc->clk_rate);
+          state->duty_cycle = tmp;
+          
+          state->enabled = !!(ctrl & PWM_CTRL_EN);
+          state->polarity = (ctrl & PWM_CTRL_POL) ? 
+                            PWM_POLARITY_INVERSED : PWM_POLARITY_NORMAL;
+          
+          return 0;
+      }
+      
       static const struct pwm_ops my_pwm_ops = {
           .apply = my_pwm_apply,
           .get_state = my_pwm_get_state,
           .owner = THIS_MODULE,
       };
+      
+      static int my_pwm_probe(struct platform_device *pdev)
+      {
+          struct my_pwm_chip *pc;
+          struct resource *res;
+          int ret;
+          
+          pc = devm_kzalloc(&pdev->dev, sizeof(*pc), GFP_KERNEL);
+          if (!pc)
+              return -ENOMEM;
+          
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          pc->base = devm_ioremap_resource(&pdev->dev, res);
+          if (IS_ERR(pc->base))
+              return PTR_ERR(pc->base);
+          
+          pc->clk = devm_clk_get(&pdev->dev, NULL);
+          if (IS_ERR(pc->clk))
+              return PTR_ERR(pc->clk);
+          
+          ret = clk_prepare_enable(pc->clk);
+          if (ret)
+              return ret;
+          
+          pc->clk_rate = clk_get_rate(pc->clk);
+          
+          pc->chip.dev = &pdev->dev;
+          pc->chip.ops = &my_pwm_ops;
+          pc->chip.base = -1;  /* 动态分配 */
+          pc->chip.npwm = 4;   /* 4 个 PWM 通道 */
+          pc->chip.of_pwm_n_cells = 3;
+          
+          platform_set_drvdata(pdev, pc);
+          
+          ret = devm_pwmchip_add(&pdev->dev, &pc->chip);
+          if (ret) {
+              clk_disable_unprepare(pc->clk);
+              return ret;
+          }
+          
+          return 0;
+      }
+      
+      static int my_pwm_remove(struct platform_device *pdev)
+      {
+          struct my_pwm_chip *pc = platform_get_drvdata(pdev);
+          
+          clk_disable_unprepare(pc->clk);
+          
+          return 0;
+      }
+      
+      static const struct of_device_id my_pwm_of_match[] = {
+          { .compatible = "vendor,my-pwm" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_pwm_of_match);
+      
+      static struct platform_driver my_pwm_driver = {
+          .driver = {
+              .name = "my-pwm",
+              .of_match_table = my_pwm_of_match,
+          },
+          .probe = my_pwm_probe,
+          .remove = my_pwm_remove,
+      };
+      module_platform_driver(my_pwm_driver);
+      
+      MODULE_LICENSE("GPL");
+
+  - description: "PWM 消费者示例 (LED 背光)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/pwm.h>
+      #include <linux/platform_device.h>
+      
+      struct backlight_data {
+          struct pwm_device *pwm;
+          unsigned int max_brightness;
+          unsigned int brightness;
+      };
+      
+      static int backlight_set_brightness(struct backlight_data *data,
+                                          unsigned int brightness)
+      {
+          struct pwm_state state;
+          int ret;
+          
+          /* 获取当前状态 */
+          pwm_get_state(data->pwm, &state);
+          
+          /* 计算占空比: brightness / max_brightness * period */
+          state.duty_cycle = DIV_ROUND_UP(state.period * brightness,
+                                          data->max_brightness);
+          state.enabled = brightness > 0;
+          
+          ret = pwm_apply_state(data->pwm, &state);
+          if (ret)
+              return ret;
+          
+          data->brightness = brightness;
+          return 0;
+      }
+      
+      static int backlight_probe(struct platform_device *pdev)
+      {
+          struct backlight_data *data;
+          struct pwm_state state;
+          int ret;
+          
+          data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
+          if (!data)
+              return -ENOMEM;
+          
+          /* 获取 PWM 设备 */
+          data->pwm = devm_pwm_get(&pdev->dev, "backlight");
+          if (IS_ERR(data->pwm)) {
+              dev_err(&pdev->dev, "Failed to get PWM\n");
+              return PTR_ERR(data->pwm);
+          }
+          
+          data->max_brightness = 100;
+          
+          /* 初始化 PWM 状态 */
+          pwm_init_state(data->pwm, &state);
+          
+          /* 设置初始周期 (如果 DT 没有指定) */
+          if (!state.period)
+              state.period = 1000000; /* 1kHz */
+          
+          state.duty_cycle = state.period / 2; /* 50% 亮度 */
+          state.enabled = true;
+          
+          ret = pwm_apply_state(data->pwm, &state);
+          if (ret) {
+              dev_err(&pdev->dev, "Failed to apply PWM state\n");
+              return ret;
+          }
+          
+          data->brightness = 50;
+          platform_set_drvdata(pdev, data);
+          
+          dev_info(&pdev->dev, "PWM backlight initialized\n");
+          return 0;
+      }
+
+  - description: "使用 pwm_set_relative_duty_cycle"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/pwm.h>
+      
+      /* 设置百分比亮度 */
+      static int set_brightness_percent(struct pwm_device *pwm,
+                                        unsigned int percent)
+      {
+          struct pwm_state state;
+          int ret;
+          
+          pwm_get_state(pwm, &state);
+          
+          /* 使用便捷宏设置相对占空比 */
+          ret = pwm_set_relative_duty_cycle(&state, percent, 100);
+          if (ret)
+              return ret;
+          
+          state.enabled = percent > 0;
+          
+          return pwm_apply_state(pwm, &state);
+      }
+      
+      /* 使用示例 */
+      void example(struct pwm_device *pwm)
+      {
+          set_brightness_percent(pwm, 75);  /* 75% 亮度 */
+          set_brightness_percent(pwm, 0);   /* 关闭 */
+          set_brightness_percent(pwm, 100); /* 最大亮度 */
+      }
+
+  - description: "PWM 输入捕获"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/pwm.h>
+      
+      /* 测量外部 PWM 信号 */
+      static int measure_pwm_signal(struct pwm_device *pwm)
+      {
+          struct pwm_capture result;
+          int ret;
+          
+          /* 捕获信号，超时 1 秒 */
+          ret = pwm_capture(pwm, &result, HZ);
+          if (ret) {
+              pr_err("PWM capture failed: %d\n", ret);
+              return ret;
+          }
+          
+          pr_info("Measured PWM: period=%u ns, duty=%u ns\n",
+                  result.period, result.duty_cycle);
+          
+          /* 计算频率和占空比百分比 */
+          if (result.period) {
+              unsigned int freq_hz = NSEC_PER_SEC / result.period;
+              unsigned int duty_percent = result.duty_cycle * 100 / result.period;
+              
+              pr_info("Frequency: %u Hz, Duty: %u%%\n", freq_hz, duty_percent);
+          }
+          
+          return 0;
+      }

@@ -1,15 +1,17 @@
 # Linux Kernel MFD (Multi-Function Device) Driver Framework Knowledge Base
 #
-# Reference: https://www.kernel.org/doc/html/latest/mfd/index.html
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/mfd.html
+# Kernel Version: 5.0+
 
 # ============================================================
 # MFD CORE
 # ============================================================
 
 mfd_core:
-  description: "MFD Core - 多功能设备核心"
+  description: "MFD Core - 多功能设备核心框架，用于管理集成多个功能的芯片"
   header: "linux/mfd/core.h"
   icon: "🔌"
+  kernel_version: "2.6.27+"
 
   context:
     type: "process"
@@ -17,16 +19,81 @@ mfd_core:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # mfd_add_devices - 添加 MFD 子设备
-    - pattern: 'mfd_add_devices\s*\(\s*(?P<parent>[^)]+)\s*,\s*(?P<id>\w+)\s*,\s*(?P<cells>[^)]+)\s*,\s*(?P<num_cells>\w+)\s*,\s*(?P<lookup>[^)]+)\s*\)'
-      variable_capture: "parent"
-      description: "添加 MFD 子设备"
+  overview: |
+    MFD (Multi-Function Device) 框架用于管理集成多个功能单元的芯片，
+    如 PMIC (电源管理芯片)、音频编解码器、触摸屏控制器等。
+    
+    典型使用场景:
+    - 一个 I2C/SPI 芯片包含 GPIO、ADC、LED 控制器、看门狗等
+    - 父驱动负责总线通信和共享资源
+    - 子设备驱动专注于各自的功能
+    
+    架构:
+    +-------------------+
+    |   MFD 父驱动      |  (I2C/SPI/Platform)
+    |  (初始化、regmap) |
+    +--------+----------+
+             |
+    +--------v----------+
+    |   mfd_add_devices |
+    +--------+----------+
+             |
+    +--------+----------+----------+-----------+
+    |        |          |          |           |
+    v        v          v          v           v
+    GPIO    ADC       LED       WDT       Regulator
+    驱动    驱动      驱动      驱动        驱动
 
-    # mfd_remove_devices - 移除 MFD 子设备
-    - pattern: 'mfd_remove_devices\s*\(\s*(?P<parent>[^)]+)\s*\)'
-      variable_capture: "parent"
+  registration:
+    # 添加子设备
+    - pattern: 'mfd_add_devices\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<cells>[^,]+)\s*,\s*(?P<n_devs>[^,]+)\s*,\s*(?P<mem_base>[^,]+)\s*,\s*(?P<irq_base>[^,]+)\s*,\s*(?P<irq_domain>[^)]+)\s*\)'
+      description: "添加 MFD 子设备"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_mfd_add_devices\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<cells>[^,]+)\s*,\s*(?P<n_devs>[^,]+)\s*,\s*(?P<mem_base>[^,]+)\s*,\s*(?P<irq_base>[^,]+)\s*,\s*(?P<irq_domain>[^)]+)\s*\)'
+      description: "devm 版本: 添加 MFD 子设备"
+      context: "process"
+      can_sleep: true
+
+    # 移除子设备
+    - pattern: 'mfd_remove_devices\s*\(\s*&?(?P<parent>[\w\.\->]+)\s*\)'
       description: "移除 MFD 子设备"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'mfd_remove_devices_late\s*\(\s*&?(?P<parent>[\w\.\->]+)\s*\)'
+      description: "延迟移除 MFD 子设备"
+      context: "process"
+
+    # 新式 API (5.0+)
+    - pattern: 'mfd_add_hotplug_devices\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<cells>[^,]+)\s*,\s*(?P<n_devs>[^)]+)\s*\)'
+      description: "添加可热插拔的 MFD 子设备"
+      context: "process"
+
+  parameters:
+    mfd_add_devices:
+      - name: "parent"
+        type: "struct device *"
+        description: "父设备 (MFD 驱动的 device)"
+      - name: "id"
+        type: "int"
+        description: "设备实例 ID (-1 自动分配, PLATFORM_DEVID_AUTO)"
+      - name: "cells"
+        type: "const struct mfd_cell *"
+        description: "子设备定义数组"
+      - name: "n_devs"
+        type: "int"
+        description: "子设备数量"
+      - name: "mem_base"
+        type: "struct resource *"
+        description: "内存资源基地址 (可为 NULL)"
+      - name: "irq_base"
+        type: "int"
+        description: "中断基址 (可为 0)"
+      - name: "irq_domain"
+        type: "struct irq_domain *"
+        description: "中断域 (可为 NULL)"
 
 
 # ============================================================
@@ -34,113 +101,861 @@ mfd_core:
 # ============================================================
 
 mfd_cell:
-  description: "MFD Cell - MFD 子设备"
+  description: "MFD Cell - MFD 子设备定义结构"
   header: "linux/mfd/core.h"
 
-  bind_patterns:
-    # struct mfd_cell
-    - pattern: 'struct mfd_cell\s*\{[^}]+\}'
-      description: "MFD 子设备结构"
+  patterns:
+    # 结构体定义
+    - pattern: 'static\s+(const\s+)?struct mfd_cell\s+(?P<name>\w+)\s*\[\]\s*='
+      description: "MFD 子设备数组定义"
 
-    # MFD_CELL_*
-    - pattern: 'MFD_CELL\s*\(\s*(?P<name>\w+)'
-      description: "MFD 子设备定义"
+    # MFD_CELL_* 宏
+    - pattern: 'MFD_CELL_BASIC\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<res>[^,]+)\s*,\s*(?P<pdata>[^,]+)\s*,\s*(?P<pdsize>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "基本 MFD cell 定义宏"
+
+    - pattern: 'MFD_CELL_OF\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<res>[^,]+)\s*,\s*(?P<pdata>[^,]+)\s*,\s*(?P<pdsize>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<of_compat>[^)]+)\s*\)'
+      description: "带设备树 compatible 的 MFD cell"
+
+    - pattern: 'MFD_CELL_ACPI\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<res>[^,]+)\s*,\s*(?P<pdata>[^,]+)\s*,\s*(?P<pdsize>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<acpi_match>[^)]+)\s*\)'
+      description: "带 ACPI 匹配的 MFD cell"
+
+    - pattern: 'MFD_CELL_RES\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<res>[^)]+)\s*\)'
+      description: "只有资源的简化 MFD cell"
+
+    - pattern: 'MFD_CELL_NAME\s*\(\s*(?P<name>[^)]+)\s*\)'
+      description: "只有名称的最简 MFD cell"
+
+  structure:
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "子设备名称 (用于驱动匹配)"
+      - name: "id"
+        type: "int"
+        description: "设备实例 ID"
+      - name: "level"
+        type: "int"
+        description: "子设备层级 (影响 probe 顺序)"
+      - name: "of_compatible"
+        type: "const char *"
+        description: "设备树 compatible 字符串"
+      - name: "of_reg"
+        type: "u64"
+        description: "设备树 reg 属性"
+      - name: "use_of_reg"
+        type: "bool"
+        description: "是否使用 of_reg"
+      - name: "acpi_match"
+        type: "const struct mfd_cell_acpi_match *"
+        description: "ACPI 匹配信息"
+      - name: "platform_data"
+        type: "void *"
+        description: "传递给子设备的平台数据"
+      - name: "pdata_size"
+        type: "size_t"
+        description: "平台数据大小"
+      - name: "properties"
+        type: "const struct property_entry *"
+        description: "设备属性"
+      - name: "num_resources"
+        type: "size_t"
+        description: "资源数量"
+      - name: "resources"
+        type: "const struct resource *"
+        description: "资源数组 (IRQ, MEM)"
+      - name: "ignore_resource_conflicts"
+        type: "bool"
+        description: "忽略资源冲突"
+      - name: "enable"
+        type: "int (*)(struct platform_device *)"
+        description: "子设备使能回调"
+      - name: "disable"
+        type: "int (*)(struct platform_device *)"
+        description: "子设备禁用回调"
+      - name: "suspend"
+        type: "int (*)(struct platform_device *)"
+        description: "子设备挂起回调"
+      - name: "resume"
+        type: "int (*)(struct platform_device *)"
+        description: "子设备恢复回调"
 
 
 # ============================================================
-# MFD RESOURCES
+# MFD RESOURCE
 # ============================================================
 
-mfd_resources:
-  description: "MFD Resources - MFD 资源"
+mfd_resource:
+  description: "MFD Resources - MFD 资源定义"
+  header: "linux/ioport.h"
+
+  patterns:
+    # 资源定义
+    - pattern: 'static\s+(const\s+)?struct resource\s+(?P<name>\w+)\s*\[\]\s*='
+      description: "资源数组定义"
+
+    # DEFINE_RES_* 宏
+    - pattern: 'DEFINE_RES_IRQ\s*\(\s*(?P<irq>[^)]+)\s*\)'
+      description: "定义 IRQ 资源"
+
+    - pattern: 'DEFINE_RES_IRQ_NAMED\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "定义命名 IRQ 资源"
+
+    - pattern: 'DEFINE_RES_MEM\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "定义内存资源"
+
+    - pattern: 'DEFINE_RES_MEM_NAMED\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "定义命名内存资源"
+
+    - pattern: 'DEFINE_RES_IO\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "定义 IO 端口资源"
+
+  resource_types:
+    - name: "IORESOURCE_IRQ"
+      description: "中断资源"
+    - name: "IORESOURCE_MEM"
+      description: "内存映射资源"
+    - name: "IORESOURCE_IO"
+      description: "IO 端口资源"
+    - name: "IORESOURCE_REG"
+      description: "寄存器资源"
+
+
+# ============================================================
+# REGMAP INTEGRATION
+# ============================================================
+
+regmap_integration:
+  description: "Regmap Integration - MFD 与 regmap 集成"
+  header: "linux/regmap.h"
+
+  overview: |
+    大多数 MFD 驱动使用 regmap 进行寄存器访问。
+    父驱动创建 regmap，子驱动通过 dev_get_regmap() 获取。
+
+  patterns:
+    # 父驱动创建 regmap
+    - pattern: 'devm_regmap_init_i2c\s*\(\s*(?P<client>[^,]+)\s*,\s*(?P<config>[^)]+)\s*\)'
+      description: "为 I2C MFD 创建 regmap"
+      context: "process"
+
+    - pattern: 'devm_regmap_init_spi\s*\(\s*(?P<spi>[^,]+)\s*,\s*(?P<config>[^)]+)\s*\)'
+      description: "为 SPI MFD 创建 regmap"
+      context: "process"
+
+    - pattern: 'devm_regmap_init_mmio\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<regs>[^,]+)\s*,\s*(?P<config>[^)]+)\s*\)'
+      description: "为 MMIO MFD 创建 regmap"
+      context: "process"
+
+    # 子驱动获取 regmap
+    - pattern: 'dev_get_regmap\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "子驱动获取父驱动的 regmap"
+      context: "process"
+
+  parent_driver_pattern: |
+    /* 父驱动设置 regmap */
+    priv->regmap = devm_regmap_init_i2c(client, &config);
+    dev_set_drvdata(&client->dev, priv);
+    
+    /* 子驱动自动继承 regmap */
+    mfd_add_devices(&client->dev, ...);
+
+  child_driver_pattern: |
+    /* 子驱动获取 regmap */
+    struct regmap *regmap = dev_get_regmap(dev->parent, NULL);
+
+
+# ============================================================
+# IRQ DOMAIN INTEGRATION
+# ============================================================
+
+irq_domain_integration:
+  description: "IRQ Domain Integration - MFD 中断域集成"
+  header: "linux/irqdomain.h"
+
+  overview: |
+    MFD 设备通常有一个主中断，需要在父驱动中解复用 (demux)。
+    使用 regmap-irq 简化中断处理。
+
+  patterns:
+    # regmap-irq 初始化
+    - pattern: 'devm_regmap_add_irq_chip\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<regmap>[^,]+)\s*,\s*(?P<irq>[^,]+)\s*,\s*(?P<irq_flags>[^,]+)\s*,\s*(?P<irq_base>[^,]+)\s*,\s*(?P<chip>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "添加 regmap IRQ 芯片"
+      context: "process"
+
+    - pattern: 'regmap_irq_get_domain\s*\(\s*(?P<data>[^)]+)\s*\)'
+      description: "获取 IRQ 域"
+      context: "any"
+
+    - pattern: 'regmap_irq_get_virq\s*\(\s*(?P<data>[^,]+)\s*,\s*(?P<irq>[^)]+)\s*\)'
+      description: "获取虚拟 IRQ 号"
+      context: "any"
+
+    # 传递给子设备
+    - pattern: 'platform_get_irq\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<num>\d+)\s*\)'
+      description: "子设备获取映射后的 IRQ"
+      context: "process"
+
+    - pattern: 'platform_get_irq_byname\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "子设备按名称获取 IRQ"
+      context: "process"
+
+  regmap_irq_chip_structure:
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "IRQ 芯片名称"
+      - name: "status_base"
+        type: "unsigned int"
+        description: "状态寄存器基址"
+      - name: "mask_base"
+        type: "unsigned int"
+        description: "掩码寄存器基址"
+      - name: "ack_base"
+        type: "unsigned int"
+        description: "确认寄存器基址"
+      - name: "wake_base"
+        type: "unsigned int"
+        description: "唤醒寄存器基址"
+      - name: "irq_reg_stride"
+        type: "int"
+        description: "寄存器步进"
+      - name: "num_regs"
+        type: "int"
+        description: "寄存器数量"
+      - name: "irqs"
+        type: "const struct regmap_irq *"
+        description: "IRQ 描述数组"
+      - name: "num_irqs"
+        type: "int"
+        description: "IRQ 数量"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  parent_probe_path:
+    description: "MFD 父驱动 probe 路径"
+    trigger: "总线驱动匹配"
+    chain:
+      - function: "i2c_device_probe / spi_drv_probe"
+        file: "drivers/i2c/i2c-core.c / drivers/spi/spi.c"
+        description: "总线探测入口"
+      - function: "mfd_probe()"
+        file: "用户代码"
+        description: "父驱动 probe"
+        is_user_entry: true
+      - function: "devm_regmap_init_*()"
+        file: "drivers/base/regmap/"
+        description: "初始化 regmap"
+      - function: "devm_regmap_add_irq_chip()"
+        file: "drivers/base/regmap/regmap-irq.c"
+        description: "设置 IRQ 域"
+      - function: "mfd_add_devices()"
+        file: "drivers/mfd/mfd-core.c"
+        description: "添加子设备"
+      - function: "mfd_add_device()"
+        file: "drivers/mfd/mfd-core.c"
+        description: "添加单个子设备"
+      - function: "platform_device_add()"
+        file: "drivers/base/platform.c"
+        description: "添加 platform device"
+
+  child_probe_path:
+    description: "MFD 子设备 probe 路径"
+    trigger: "子设备与驱动匹配"
+    chain:
+      - function: "platform_match()"
+        file: "drivers/base/platform.c"
+        description: "匹配子设备驱动"
+      - function: "platform_probe()"
+        file: "drivers/base/platform.c"
+        description: "platform 探测"
+      - function: "child_probe()"
+        file: "用户代码"
+        description: "子设备 probe"
+        is_user_entry: true
+      - function: "dev_get_regmap()"
+        file: "drivers/base/regmap/regmap.c"
+        description: "获取父驱动 regmap"
+      - function: "platform_get_irq()"
+        file: "drivers/base/platform.c"
+        description: "获取映射后 IRQ"
+
+  remove_path:
+    description: "MFD 移除路径"
+    trigger: "父设备移除或驱动卸载"
+    chain:
+      - function: "mfd_remove()"
+        file: "用户代码"
+        description: "父驱动 remove"
+        is_user_entry: true
+      - function: "mfd_remove_devices()"
+        file: "drivers/mfd/mfd-core.c"
+        description: "移除所有子设备"
+      - function: "platform_device_unregister()"
+        file: "drivers/base/platform.c"
+        description: "注销 platform device"
+      - function: "child_remove()"
+        file: "子设备驱动"
+        description: "子设备 remove"
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+helper_functions:
+  description: "MFD Helper Functions - MFD 辅助函数"
   header: "linux/mfd/core.h"
 
-  bind_patterns:
-    # struct resource
-    - pattern: 'struct resource\s*\{[^}]+\}'
-      description: "资源结构"
+  patterns:
+    # 获取 MFD cell
+    - pattern: 'mfd_get_cell\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取 platform_device 对应的 mfd_cell"
+      context: "any"
+
+    # 添加单个设备
+    - pattern: 'mfd_add_device\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<cell>[^,]+)\s*,\s*(?P<mem_base>[^,]+)\s*,\s*(?P<irq_base>[^,]+)\s*,\s*(?P<domain>[^)]+)\s*\)'
+      description: "添加单个 MFD 子设备"
+      context: "process"
+
+    # 克隆 cell
+    - pattern: 'mfd_clone_cell\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<clones>[^,]+)\s*,\s*(?P<n_clones>[^)]+)\s*\)'
+      description: "克隆 MFD cell"
+      context: "process"
 
 
 # ============================================================
-# MFD PLATFORM DEVICE
+# COMMON MFD CHIPS
 # ============================================================
 
-mfd_platform:
-  description: "MFD Platform Device - MFD 平台设备"
-  header: "linux/mfd/core.h"
+common_chips:
+  description: "Common MFD Chips - 常见 MFD 芯片"
+  
+  pmic:
+    description: "电源管理芯片 (PMIC)"
+    examples:
+      - "max8997, max8998 - 三星 PMIC"
+      - "tps65910, tps65912 - TI PMIC"
+      - "da9063, da9062 - Dialog PMIC"
+      - "bd718xx - ROHM PMIC"
+      - "rk808, rk818 - Rockchip PMIC"
+    typical_cells:
+      - "regulator - 稳压器"
+      - "rtc - 实时时钟"
+      - "gpio - GPIO 扩展"
+      - "watchdog - 看门狗"
+      - "onkey - 开机键"
+      - "battery - 电池管理"
 
-  bind_patterns:
-    # platform_device_register_data - 注册平台设备
-    - pattern: 'platform_device_register_data\s*\(\s*(?P<parent>[^)]+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<id>\w+)\s*,\s*(?P<res>[^)]+)\s*,\s*(?P<num_res>\w+)\s*\)'
-      variable_capture: "parent"
-      description: "注册平台设备"
+  codec:
+    description: "音频编解码器"
+    examples:
+      - "wm8994, wm8958 - Wolfson/Cirrus"
+      - "rt5640, rt5651 - Realtek"
+      - "max98090 - Maxim"
+    typical_cells:
+      - "codec - 音频编解码"
+      - "gpio - GPIO"
+      - "jack - 耳机检测"
+
+  touch:
+    description: "触摸屏控制器"
+    examples:
+      - "stmpe - ST 触摸/GPIO"
+      - "tsc2007 - TI 触摸"
+    typical_cells:
+      - "touchscreen - 触摸屏"
+      - "gpio - GPIO"
+      - "adc - ADC"
 
 
 # ============================================================
-# MFD REGISTERS
-# ============================================================
-
-mfd_registers:
-  description: "MFD Registers - MFD 寄存器"
-  header: "linux/mfd/core.h"
-
-  bind_patterns:
-    # regmap_*
-    - pattern: 'regmap_(?P<op>\w+)\s*\([^)]+\)'
-      description: "寄存器映射操作"
-
-
-# ============================================================
-# MFD EXAMPLES
+# EXAMPLES
 # ============================================================
 
 examples:
-  - description: "MFD 驱动"
+  - description: "基本 MFD 父驱动 (I2C)"
+    kernel_version: "5.0+"
     code: |
-      static int my_mfd_probe(struct platform_device *pdev) {
-          struct resource *res;
-          struct mfd_cell cells[] = {
-              {
-                  .name = "my-gpio",
-                  .of_compatible = "my,gpio",
-                  .resources = &res[0],
-                  .num_resources = 1,
-              },
-              {
-                  .name = "my-wdt",
-                  .of_compatible = "my,wdt",
-                  .resources = &res[1],
-                  .num_resources = 1,
-              },
-              {
-                  .name = "my-regulator",
-                  .of_compatible = "my,regulator",
-                  .resources = &res[2],
-                  .num_resources = 1,
-              },
-          };
-
-          /* 获取资源 */
-          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-
+      #include <linux/module.h>
+      #include <linux/i2c.h>
+      #include <linux/mfd/core.h>
+      #include <linux/regmap.h>
+      
+      /* 设备私有数据 */
+      struct my_mfd {
+          struct device *dev;
+          struct regmap *regmap;
+          int irq;
+      };
+      
+      /* 子设备资源定义 */
+      static const struct resource gpio_resources[] = {
+          DEFINE_RES_IRQ_NAMED(0, "gpio"),
+      };
+      
+      static const struct resource adc_resources[] = {
+          DEFINE_RES_IRQ_NAMED(1, "adc"),
+      };
+      
+      static const struct resource wdt_resources[] = {
+          DEFINE_RES_IRQ_NAMED(2, "wdt"),
+      };
+      
+      /* 子设备定义 */
+      static const struct mfd_cell my_mfd_cells[] = {
+          {
+              .name = "my-mfd-gpio",
+              .of_compatible = "vendor,my-mfd-gpio",
+              .resources = gpio_resources,
+              .num_resources = ARRAY_SIZE(gpio_resources),
+          },
+          {
+              .name = "my-mfd-adc",
+              .of_compatible = "vendor,my-mfd-adc",
+              .resources = adc_resources,
+              .num_resources = ARRAY_SIZE(adc_resources),
+          },
+          {
+              .name = "my-mfd-wdt",
+              .of_compatible = "vendor,my-mfd-wdt",
+              .resources = wdt_resources,
+              .num_resources = ARRAY_SIZE(wdt_resources),
+          },
+      };
+      
+      /* regmap 配置 */
+      static const struct regmap_config my_regmap_config = {
+          .reg_bits = 8,
+          .val_bits = 8,
+          .max_register = 0xFF,
+          .cache_type = REGCACHE_RBTREE,
+      };
+      
+      static int my_mfd_probe(struct i2c_client *client)
+      {
+          struct my_mfd *mfd;
+          int ret;
+          
+          mfd = devm_kzalloc(&client->dev, sizeof(*mfd), GFP_KERNEL);
+          if (!mfd)
+              return -ENOMEM;
+          
+          mfd->dev = &client->dev;
+          mfd->irq = client->irq;
+          i2c_set_clientdata(client, mfd);
+          
+          /* 创建 regmap */
+          mfd->regmap = devm_regmap_init_i2c(client, &my_regmap_config);
+          if (IS_ERR(mfd->regmap)) {
+              dev_err(&client->dev, "Failed to init regmap\n");
+              return PTR_ERR(mfd->regmap);
+          }
+          
           /* 初始化硬件 */
-
+          ret = regmap_write(mfd->regmap, REG_CTRL, CTRL_ENABLE);
+          if (ret) {
+              dev_err(&client->dev, "Failed to enable device\n");
+              return ret;
+          }
+          
           /* 添加子设备 */
-          return mfd_add_devices(&pdev->dev, 0, cells,
-                                 ARRAY_SIZE(cells), NULL, 0, NULL);
+          ret = devm_mfd_add_devices(&client->dev, PLATFORM_DEVID_AUTO,
+                                     my_mfd_cells, ARRAY_SIZE(my_mfd_cells),
+                                     NULL, 0, NULL);
+          if (ret) {
+              dev_err(&client->dev, "Failed to add MFD devices\n");
+              return ret;
+          }
+          
+          dev_info(&client->dev, "MFD device probed\n");
+          return 0;
       }
+      
+      static void my_mfd_remove(struct i2c_client *client)
+      {
+          struct my_mfd *mfd = i2c_get_clientdata(client);
+          
+          /* 禁用硬件 */
+          regmap_write(mfd->regmap, REG_CTRL, 0);
+          /* devm 自动移除子设备 */
+      }
+      
+      static const struct of_device_id my_mfd_of_match[] = {
+          { .compatible = "vendor,my-mfd" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_mfd_of_match);
+      
+      static const struct i2c_device_id my_mfd_id[] = {
+          { "my-mfd", 0 },
+          { }
+      };
+      MODULE_DEVICE_TABLE(i2c, my_mfd_id);
+      
+      static struct i2c_driver my_mfd_driver = {
+          .driver = {
+              .name = "my-mfd",
+              .of_match_table = my_mfd_of_match,
+          },
+          .probe = my_mfd_probe,
+          .remove = my_mfd_remove,
+          .id_table = my_mfd_id,
+      };
+      module_i2c_driver(my_mfd_driver);
+      
+      MODULE_LICENSE("GPL");
 
-      static int my_mfd_remove(struct platform_device *pdev) {
-          mfd_remove_devices(&pdev->dev);
+  - description: "带 IRQ 域的 MFD 驱动"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/regmap.h>
+      #include <linux/mfd/core.h>
+      #include <linux/interrupt.h>
+      
+      /* IRQ 定义 */
+      enum my_mfd_irqs {
+          MY_MFD_IRQ_GPIO,
+          MY_MFD_IRQ_ADC,
+          MY_MFD_IRQ_WDT,
+          MY_MFD_IRQ_MAX,
+      };
+      
+      /* regmap IRQ 定义 */
+      static const struct regmap_irq my_mfd_irqs[] = {
+          [MY_MFD_IRQ_GPIO] = {
+              .mask = BIT(0),
+          },
+          [MY_MFD_IRQ_ADC] = {
+              .mask = BIT(1),
+          },
+          [MY_MFD_IRQ_WDT] = {
+              .mask = BIT(2),
+          },
+      };
+      
+      static const struct regmap_irq_chip my_mfd_irq_chip = {
+          .name = "my-mfd",
+          .status_base = REG_IRQ_STATUS,
+          .mask_base = REG_IRQ_MASK,
+          .ack_base = REG_IRQ_ACK,
+          .num_regs = 1,
+          .irqs = my_mfd_irqs,
+          .num_irqs = ARRAY_SIZE(my_mfd_irqs),
+      };
+      
+      struct my_mfd {
+          struct device *dev;
+          struct regmap *regmap;
+          struct regmap_irq_chip_data *irq_data;
+      };
+      
+      /* 子设备使用父驱动 IRQ 域 */
+      static const struct resource gpio_resources[] = {
+          DEFINE_RES_IRQ_NAMED(MY_MFD_IRQ_GPIO, "gpio"),
+      };
+      
+      static const struct mfd_cell my_mfd_cells[] = {
+          {
+              .name = "my-mfd-gpio",
+              .resources = gpio_resources,
+              .num_resources = ARRAY_SIZE(gpio_resources),
+          },
+          /* ... */
+      };
+      
+      static int my_mfd_probe(struct i2c_client *client)
+      {
+          struct my_mfd *mfd;
+          struct irq_domain *domain;
+          int ret;
+          
+          mfd = devm_kzalloc(&client->dev, sizeof(*mfd), GFP_KERNEL);
+          if (!mfd)
+              return -ENOMEM;
+          
+          mfd->regmap = devm_regmap_init_i2c(client, &my_regmap_config);
+          if (IS_ERR(mfd->regmap))
+              return PTR_ERR(mfd->regmap);
+          
+          /* 设置 IRQ 域 */
+          ret = devm_regmap_add_irq_chip(&client->dev, mfd->regmap,
+                                         client->irq,
+                                         IRQF_ONESHOT | IRQF_SHARED,
+                                         0, &my_mfd_irq_chip,
+                                         &mfd->irq_data);
+          if (ret) {
+              dev_err(&client->dev, "Failed to add IRQ chip\n");
+              return ret;
+          }
+          
+          domain = regmap_irq_get_domain(mfd->irq_data);
+          
+          /* 添加子设备，传递 IRQ 域 */
+          ret = devm_mfd_add_devices(&client->dev, PLATFORM_DEVID_AUTO,
+                                     my_mfd_cells, ARRAY_SIZE(my_mfd_cells),
+                                     NULL, 0, domain);
+          if (ret)
+              return ret;
+          
+          i2c_set_clientdata(client, mfd);
           return 0;
       }
 
-      static struct platform_driver my_mfd_driver = {
-          .probe = my_mfd_probe,
-          .remove = my_mfd_remove,
+  - description: "MFD 子设备驱动 (GPIO)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/gpio/driver.h>
+      #include <linux/regmap.h>
+      #include <linux/mfd/core.h>
+      
+      struct my_mfd_gpio {
+          struct gpio_chip gc;
+          struct regmap *regmap;
+          struct device *dev;
+      };
+      
+      static int my_gpio_get(struct gpio_chip *gc, unsigned int offset)
+      {
+          struct my_mfd_gpio *gpio = gpiochip_get_data(gc);
+          unsigned int val;
+          int ret;
+          
+          ret = regmap_read(gpio->regmap, REG_GPIO_IN, &val);
+          if (ret)
+              return ret;
+          
+          return !!(val & BIT(offset));
+      }
+      
+      static void my_gpio_set(struct gpio_chip *gc, unsigned int offset, int value)
+      {
+          struct my_mfd_gpio *gpio = gpiochip_get_data(gc);
+          
+          regmap_update_bits(gpio->regmap, REG_GPIO_OUT,
+                             BIT(offset), value ? BIT(offset) : 0);
+      }
+      
+      static int my_gpio_direction_input(struct gpio_chip *gc, unsigned int offset)
+      {
+          struct my_mfd_gpio *gpio = gpiochip_get_data(gc);
+          return regmap_update_bits(gpio->regmap, REG_GPIO_DIR,
+                                    BIT(offset), 0);
+      }
+      
+      static int my_gpio_direction_output(struct gpio_chip *gc,
+                                          unsigned int offset, int value)
+      {
+          struct my_mfd_gpio *gpio = gpiochip_get_data(gc);
+          
+          my_gpio_set(gc, offset, value);
+          return regmap_update_bits(gpio->regmap, REG_GPIO_DIR,
+                                    BIT(offset), BIT(offset));
+      }
+      
+      static int my_mfd_gpio_probe(struct platform_device *pdev)
+      {
+          struct my_mfd_gpio *gpio;
+          int ret, irq;
+          
+          gpio = devm_kzalloc(&pdev->dev, sizeof(*gpio), GFP_KERNEL);
+          if (!gpio)
+              return -ENOMEM;
+          
+          gpio->dev = &pdev->dev;
+          
+          /* 从父驱动获取 regmap */
+          gpio->regmap = dev_get_regmap(pdev->dev.parent, NULL);
+          if (!gpio->regmap) {
+              dev_err(&pdev->dev, "Failed to get regmap\n");
+              return -ENODEV;
+          }
+          
+          /* 配置 GPIO 芯片 */
+          gpio->gc.label = "my-mfd-gpio";
+          gpio->gc.parent = &pdev->dev;
+          gpio->gc.owner = THIS_MODULE;
+          gpio->gc.get = my_gpio_get;
+          gpio->gc.set = my_gpio_set;
+          gpio->gc.direction_input = my_gpio_direction_input;
+          gpio->gc.direction_output = my_gpio_direction_output;
+          gpio->gc.base = -1;  /* 动态分配 */
+          gpio->gc.ngpio = 8;
+          gpio->gc.can_sleep = true;  /* regmap 可能睡眠 */
+          
+          /* 获取 IRQ (已通过 IRQ 域映射) */
+          irq = platform_get_irq(pdev, 0);
+          if (irq > 0) {
+              ret = devm_request_threaded_irq(&pdev->dev, irq,
+                                              NULL, my_gpio_irq_handler,
+                                              IRQF_ONESHOT,
+                                              "my-mfd-gpio", gpio);
+              if (ret) {
+                  dev_err(&pdev->dev, "Failed to request IRQ\n");
+                  return ret;
+              }
+          }
+          
+          /* 注册 GPIO 芯片 */
+          ret = devm_gpiochip_add_data(&pdev->dev, &gpio->gc, gpio);
+          if (ret) {
+              dev_err(&pdev->dev, "Failed to add GPIO chip\n");
+              return ret;
+          }
+          
+          platform_set_drvdata(pdev, gpio);
+          dev_info(&pdev->dev, "MFD GPIO probed\n");
+          return 0;
+      }
+      
+      static const struct platform_device_id my_mfd_gpio_id[] = {
+          { "my-mfd-gpio", 0 },
+          { }
+      };
+      MODULE_DEVICE_TABLE(platform, my_mfd_gpio_id);
+      
+      static struct platform_driver my_mfd_gpio_driver = {
           .driver = {
-              .name = "my-mfd",
-              .of_match_table = my_of_match,
+              .name = "my-mfd-gpio",
+          },
+          .probe = my_mfd_gpio_probe,
+          .id_table = my_mfd_gpio_id,
+      };
+      module_platform_driver(my_mfd_gpio_driver);
+      
+      MODULE_LICENSE("GPL");
+
+  - description: "带平台数据的子设备"
+    code: |
+      /* 定义平台数据结构 */
+      struct my_adc_pdata {
+          int reference_mv;
+          int channels;
+          bool use_internal_ref;
+      };
+      
+      /* 父驱动中的平台数据 */
+      static struct my_adc_pdata adc_pdata = {
+          .reference_mv = 3300,
+          .channels = 4,
+          .use_internal_ref = true,
+      };
+      
+      static const struct mfd_cell my_mfd_cells[] = {
+          {
+              .name = "my-mfd-adc",
+              .platform_data = &adc_pdata,
+              .pdata_size = sizeof(adc_pdata),
+              .resources = adc_resources,
+              .num_resources = ARRAY_SIZE(adc_resources),
           },
       };
-      platform_driver_probe(&my_mfd_driver, my_mfd_probe);
+      
+      /* 子驱动获取平台数据 */
+      static int my_adc_probe(struct platform_device *pdev)
+      {
+          const struct my_adc_pdata *pdata;
+          
+          pdata = dev_get_platdata(&pdev->dev);
+          if (!pdata) {
+              dev_err(&pdev->dev, "No platform data\n");
+              return -ENODEV;
+          }
+          
+          dev_info(&pdev->dev, "ADC: %d channels, %d mV ref\n",
+                   pdata->channels, pdata->reference_mv);
+          
+          /* 使用 pdata 初始化 ADC */
+          return 0;
+      }
+
+  - description: "SPI MFD 驱动"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/spi/spi.h>
+      #include <linux/mfd/core.h>
+      #include <linux/regmap.h>
+      
+      static const struct regmap_config my_spi_regmap_config = {
+          .reg_bits = 8,
+          .val_bits = 8,
+          .max_register = 0xFF,
+          .read_flag_mask = 0x80,  /* 读操作设置 bit7 */
+      };
+      
+      static int my_spi_mfd_probe(struct spi_device *spi)
+      {
+          struct regmap *regmap;
+          int ret;
+          
+          regmap = devm_regmap_init_spi(spi, &my_spi_regmap_config);
+          if (IS_ERR(regmap))
+              return PTR_ERR(regmap);
+          
+          ret = devm_mfd_add_devices(&spi->dev, PLATFORM_DEVID_AUTO,
+                                     my_mfd_cells, ARRAY_SIZE(my_mfd_cells),
+                                     NULL, 0, NULL);
+          return ret;
+      }
+      
+      static const struct spi_device_id my_spi_mfd_id[] = {
+          { "my-spi-mfd", 0 },
+          { }
+      };
+      MODULE_DEVICE_TABLE(spi, my_spi_mfd_id);
+      
+      static struct spi_driver my_spi_mfd_driver = {
+          .driver = {
+              .name = "my-spi-mfd",
+          },
+          .probe = my_spi_mfd_probe,
+          .id_table = my_spi_mfd_id,
+      };
+      module_spi_driver(my_spi_mfd_driver);
+
+  - description: "设备树配置示例"
+    code: |
+      /* 设备树示例 */
+      /*
+      &i2c1 {
+          status = "okay";
+          
+          pmic: pmic@48 {
+              compatible = "vendor,my-mfd";
+              reg = <0x48>;
+              interrupt-parent = <&gpio>;
+              interrupts = <5 IRQ_TYPE_LEVEL_LOW>;
+              
+              #interrupt-cells = <1>;
+              interrupt-controller;
+              
+              gpio: gpio {
+                  compatible = "vendor,my-mfd-gpio";
+                  gpio-controller;
+                  #gpio-cells = <2>;
+                  interrupt-controller;
+                  #interrupt-cells = <2>;
+              };
+              
+              adc: adc {
+                  compatible = "vendor,my-mfd-adc";
+                  #io-channel-cells = <1>;
+              };
+              
+              regulators {
+                  compatible = "vendor,my-mfd-regulator";
+                  
+                  ldo1: ldo1 {
+                      regulator-name = "ldo1";
+                      regulator-min-microvolt = <1800000>;
+                      regulator-max-microvolt = <3300000>;
+                  };
+              };
+          };
+      };
+      */

@@ -7,9 +7,10 @@
 # ============================================================
 
 input_core:
-  description: "Input Core - 输入核心"
+  description: "Input Core - 输入子系统核心"
   header: "linux/input.h"
   icon: "🎮"
+  kernel_version: "2.6+"
 
   context:
     type: "process"
@@ -17,213 +18,451 @@ input_core:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # input_allocate_device - 分配输入设备
+  registration:
     - pattern: 'input_allocate_device\s*\(\s*\)'
-      description: "分配输入设备"
-
-    # input_free_device - 释放输入设备
+      description: "分配输入设备结构"
+    - pattern: 'devm_input_allocate_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "分配输入设备 (资源管理)"
     - pattern: 'input_free_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
       variable_capture: "dev"
-      description: "释放输入设备"
-
-    # input_register_device - 注册输入设备
+      description: "释放未注册的输入设备"
     - pattern: 'input_register_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
       variable_capture: "dev"
-      description: "注册输入设备"
-
-    # input_unregister_device - 注销输入设备
+      description: "注册输入设备到系统"
     - pattern: 'input_unregister_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
       variable_capture: "dev"
       description: "注销输入设备"
 
-    # input_register_handler - 注册处理器
-    - pattern: 'input_register_handler\s*\(\s*(?P<handler>[^)]+)\s*\)'
-      variable_capture: "handler"
-      description: "注册输入处理器"
-
-    # input_unregister_handler - 注销处理器
-    - pattern: 'input_unregister_handler\s*\(\s*(?P<handler>[^)]+)\s*\)'
-      variable_capture: "handler"
-      description: "注销输入处理器"
-
-    # input_register_handle - 注册句柄
-    - pattern: 'input_register_handle\s*\(\s*(?P<handle>[^)]+)\s*\)'
-      variable_capture: "handle"
-      description: "注册输入句柄"
-
-    # input_unregister_handle - 注销句柄
-    - pattern: 'input_unregister_handle\s*\(\s*(?P<handle>[^)]+)\s*\)'
-      variable_capture: "handle"
-      description: "注销输入句柄"
-
-
-# ============================================================
-# INPUT EVENTS
-# ============================================================
-
-input_events:
-  description: "Input Events - 输入事件"
-  header: "linux/input.h"
-
-  bind_patterns:
-    # input_event - 报告事件
-    - pattern: 'input_event\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<code>\w+)\s*,\s*(?P<value>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "报告输入事件"
-
-    # input_report_key - 报告按键
-    - pattern: 'input_report_key\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<code>\w+)\s*,\s*(?P<value>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "报告按键事件"
-
-    # input_report_rel - 报告相对事件
-    - pattern: 'input_report_rel\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<code>\w+)\s*,\s*(?P<value>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "报告相对移动事件"
-
-    # input_report_abs - 报告绝对事件
-    - pattern: 'input_report_abs\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<code>\w+)\s*,\s*(?P<value>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "报告绝对位置事件"
-
-    # input_report_ff_status - 报告力反馈状态
-    - pattern: 'input_report_ff_status\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<status>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "报告力反馈状态"
-
-    # input_sync - 同步事件
-    - pattern: 'input_sync\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "同步事件包"
-
-    # input_mt_sync - MT 同步
-    - pattern: 'input_mt_sync\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "多点触摸同步"
-
-
-# ============================================================
-# INPUT DEVICE CAPABILITY
-# ============================================================
-
-input_capability:
-  description: "Input Device Capabilities - 输入设备能力"
-  header: "linux/input.h"
-
-  bind_patterns:
-    # set_capability - 设置能力
-    - pattern: 'input_set_capability\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<code>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "设置设备能力"
-
-    # enable - 启用能力
-    - pattern: 'input_enable_softdpa\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<code>\w+)\s*\)'
-      description: "启用能力"
-
-    # disable - 禁用能力
-    - pattern: 'input_disable_softdpa\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<code>\w+)\s*\)'
-      description: "禁用能力"
-
-
-# ============================================================
-# INPUT DEVICE ID
-# ============================================================
-
-input_device_id:
-  description: "Input Device ID - 输入设备 ID"
-  header: "linux/input.h"
-
-  bind_patterns:
-    # struct input_device_id
-    - pattern: 'struct input_device_id\s*\{[^}]+\}'
-      description: "输入设备 ID 结构"
-
-    # 匹配标志
-    - pattern: '\.flags\s*=\s*INPUT_DEVICE_ID_MATCH_'
-      description: "匹配标志"
-
-    # 总线匹配
-    - pattern: '\.bustype\s*=\s*BUS_'
-      description: "总线类型匹配"
-
-    # 厂商/产品匹配
-    - pattern: '\.vendor\s*=\s*(?P<vendor>\w+)'
-      description: "厂商 ID 匹配"
-
-    - pattern: '\.product\s*=\s*(?P<product>\w+)'
-      description: "产品 ID 匹配"
-
-    - pattern: '\.version\s*=\s*(?P<version>\w+)'
-      description: "版本匹配"
+  helper_functions:
+    - pattern: 'input_set_drvdata\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "设置驱动私有数据"
+      context: "process"
+    - pattern: 'input_get_drvdata\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "获取驱动私有数据"
+      context: "any"
+    - pattern: 'input_set_abs_params\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<axis>[^,]+)\s*,'
+      description: "设置绝对坐标参数 (min, max, fuzz, flat)"
+      context: "process"
+    - pattern: '__set_bit\s*\(\s*(?P<bit>[^,]+)\s*,\s*(?P<dev>[\w\->]+evbit)\s*\)'
+      description: "设置事件类型位"
+      context: "process"
+    - pattern: '__set_bit\s*\(\s*(?P<bit>[^,]+)\s*,\s*(?P<dev>[\w\->]+keybit)\s*\)'
+      description: "设置按键位"
+      context: "process"
 
 
 # ============================================================
 # INPUT DEVICE STRUCTURE
 # ============================================================
 
-input_device:
-  description: "Input Device Structure - 输入设备结构"
+input_dev:
+  description: "Input Device - 输入设备结构 (struct input_dev)"
+  header: "linux/input.h"
+
+  structure:
+    pattern: 'struct input_dev\s*\*\s*(?P<name>\w+)'
+    description: "输入设备指针声明"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "设备名称，显示在 /sys/class/input/"
+      - name: "phys"
+        type: "const char *"
+        description: "设备物理路径 (如 usb-0000:00:1d.0-1/input0)"
+      - name: "uniq"
+        type: "const char *"
+        description: "设备唯一标识 (序列号)"
+      - name: "id"
+        type: "struct input_id"
+        description: "设备 ID (bustype, vendor, product, version)"
+      - name: "evbit"
+        type: "unsigned long[]"
+        description: "支持的事件类型位图 (EV_KEY, EV_REL, etc.)"
+      - name: "keybit"
+        type: "unsigned long[]"
+        description: "支持的按键位图"
+      - name: "relbit"
+        type: "unsigned long[]"
+        description: "支持的相对事件位图"
+      - name: "absbit"
+        type: "unsigned long[]"
+        description: "支持的绝对事件位图"
+      - name: "absinfo"
+        type: "struct input_absinfo *"
+        description: "绝对坐标信息 (min, max, fuzz, flat)"
+
+  callbacks:
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      description: "设备打开回调"
+      trigger: "第一个用户打开设备"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct input_dev *dev)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "启用硬件"
+        - "启动轮询"
+        - "申请中断"
+
+    close:
+      pattern: '\.close\s*=\s*(?P<handler>\w+)'
+      description: "设备关闭回调"
+      trigger: "最后一个用户关闭设备"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct input_dev *dev)"
+      typical_actions:
+        - "禁用硬件"
+        - "停止轮询"
+        - "释放中断"
+
+    event:
+      pattern: '\.event\s*=\s*(?P<handler>\w+)'
+      description: "接收来自用户空间的事件 (LED, 力反馈)"
+      trigger: "用户空间写入事件"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct input_dev *dev, unsigned int type, unsigned int code, int value)"
+      typical_actions:
+        - "设置 LED 状态"
+        - "播放力反馈效果"
+
+    flush:
+      pattern: '\.flush\s*=\s*(?P<handler>\w+)'
+      description: "刷新设备"
+      trigger: "设备关闭前"
+      context: "process"
+      signature: "int (*)(struct input_dev *dev, struct file *file)"
+
+
+# ============================================================
+# INPUT EVENTS - 事件上报 API
+# ============================================================
+
+input_events:
+  description: "Input Events - 输入事件上报"
+  header: "linux/input.h"
+
+  context:
+    type: "any"
+    can_sleep: false
+    notes: "可在中断上下文中调用"
+
+  bind_patterns:
+    # 通用事件上报
+    - pattern: 'input_event\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<code>\w+)\s*,\s*(?P<value>[^)]+)\s*\)'
+      description: "通用事件上报"
+      context: "any (including hardirq)"
+
+    # 按键事件
+    - pattern: 'input_report_key\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<code>\w+)\s*,\s*(?P<value>[^)]+)\s*\)'
+      description: "上报按键事件 (EV_KEY)"
+      context: "any"
+      notes: "value: 0=释放, 1=按下, 2=重复"
+
+    # 相对事件 (鼠标移动)
+    - pattern: 'input_report_rel\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<code>\w+)\s*,\s*(?P<value>[^)]+)\s*\)'
+      description: "上报相对移动事件 (EV_REL)"
+      context: "any"
+      notes: "常用: REL_X, REL_Y, REL_WHEEL"
+
+    # 绝对事件 (触摸屏)
+    - pattern: 'input_report_abs\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<code>\w+)\s*,\s*(?P<value>[^)]+)\s*\)'
+      description: "上报绝对位置事件 (EV_ABS)"
+      context: "any"
+      notes: "常用: ABS_X, ABS_Y, ABS_PRESSURE"
+
+    # 开关事件
+    - pattern: 'input_report_switch\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<code>\w+)\s*,\s*(?P<value>[^)]+)\s*\)'
+      description: "上报开关事件 (EV_SW)"
+      context: "any"
+      notes: "常用: SW_LID, SW_HEADPHONE_INSERT"
+
+    # 同步事件
+    - pattern: 'input_sync\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "同步事件包 - 标记一组事件结束"
+      context: "any"
+      notes: "必须在一组相关事件后调用"
+
+    # MT 同步 (旧 API)
+    - pattern: 'input_mt_sync\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "多点触摸同步 (Type A 协议)"
+      deprecated: true
+
+
+# ============================================================
+# INPUT HANDLER - 输入处理器 (evdev, keyboard, mouse 等)
+# ============================================================
+
+input_handler:
+  description: "Input Handler - 输入处理器框架"
+  header: "linux/input.h"
+
+  structure:
+    pattern: 'static struct input_handler\s+(?P<name>\w+)\s*=\s*\{'
+    description: "输入处理器结构体定义"
+    fields:
+      - name: "private"
+        type: "void *"
+        description: "处理器私有数据"
+      - name: "name"
+        type: "const char *"
+        description: "处理器名称"
+      - name: "id_table"
+        type: "const struct input_device_id *"
+        description: "匹配的设备 ID 表"
+      - name: "minor"
+        type: "int"
+        description: "设备次设备号基址"
+      - name: "legacy_minors"
+        type: "bool"
+        description: "是否使用传统次设备号分配"
+
+  registration:
+    - pattern: 'input_register_handler\s*\(\s*&?(?P<handler>\w+)\s*\)'
+      description: "注册输入处理器"
+    - pattern: 'input_unregister_handler\s*\(\s*&?(?P<handler>\w+)\s*\)'
+      description: "注销输入处理器"
+
+  callbacks:
+    event:
+      pattern: '\.event\s*=\s*(?P<handler>\w+)'
+      description: "处理单个输入事件"
+      trigger: "input_event() 被调用"
+      context: "any (可能是中断上下文)"
+      can_sleep: false
+      signature: "void (*)(struct input_handle *handle, unsigned int type, unsigned int code, int value)"
+      typical_actions:
+        - "过滤和转换事件"
+        - "发送事件到用户空间"
+
+    events:
+      pattern: '\.events\s*=\s*(?P<handler>\w+)'
+      description: "批量处理输入事件"
+      trigger: "input_sync() 后批量传递"
+      context: "any"
+      can_sleep: false
+      signature: "void (*)(struct input_handle *handle, const struct input_value *vals, unsigned int count)"
+      notes: "优先于 event 回调，效率更高"
+
+    filter:
+      pattern: '\.filter\s*=\s*(?P<handler>\w+)'
+      description: "过滤事件"
+      trigger: "事件传递给处理器前"
+      context: "any"
+      signature: "bool (*)(struct input_handle *handle, unsigned int type, unsigned int code, int value)"
+      return_value:
+        true: "丢弃该事件"
+        false: "继续传递"
+
+    match:
+      pattern: '\.match\s*=\s*(?P<handler>\w+)'
+      description: "自定义设备匹配逻辑"
+      trigger: "设备注册时"
+      context: "process"
+      signature: "bool (*)(struct input_handler *handler, struct input_dev *dev)"
+
+    connect:
+      pattern: '\.connect\s*=\s*(?P<handler>\w+)'
+      description: "连接设备和处理器"
+      trigger: "设备匹配成功"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct input_handler *handler, struct input_dev *dev, const struct input_device_id *id)"
+      typical_actions:
+        - "分配 input_handle"
+        - "创建字符设备"
+        - "调用 input_register_handle()"
+
+    disconnect:
+      pattern: '\.disconnect\s*=\s*(?P<handler>\w+)'
+      description: "断开设备和处理器"
+      trigger: "设备注销或处理器注销"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct input_handle *handle)"
+      typical_actions:
+        - "调用 input_unregister_handle()"
+        - "释放 input_handle"
+        - "销毁字符设备"
+
+    start:
+      pattern: '\.start\s*=\s*(?P<handler>\w+)'
+      description: "处理器启动回调"
+      trigger: "handle 注册完成后"
+      context: "process"
+      signature: "void (*)(struct input_handle *handle)"
+
+
+# ============================================================
+# INPUT HANDLE - 连接设备和处理器的桥梁
+# ============================================================
+
+input_handle:
+  description: "Input Handle - 设备-处理器连接"
+  header: "linux/input.h"
+
+  structure:
+    pattern: 'struct input_handle\s+(?P<name>\w+)'
+    description: "输入句柄结构体"
+    fields:
+      - name: "private"
+        type: "void *"
+        description: "句柄私有数据"
+      - name: "open"
+        type: "int"
+        description: "打开计数"
+      - name: "name"
+        type: "const char *"
+        description: "句柄名称"
+      - name: "dev"
+        type: "struct input_dev *"
+        description: "关联的输入设备"
+      - name: "handler"
+        type: "struct input_handler *"
+        description: "关联的输入处理器"
+
+  registration:
+    - pattern: 'input_register_handle\s*\(\s*(?P<handle>[^)]+)\s*\)'
+      description: "注册输入句柄"
+    - pattern: 'input_unregister_handle\s*\(\s*(?P<handle>[^)]+)\s*\)'
+      description: "注销输入句柄"
+
+  helper_functions:
+    - pattern: 'input_open_device\s*\(\s*(?P<handle>[^)]+)\s*\)'
+      description: "打开设备 (会调用 input_dev->open)"
+    - pattern: 'input_close_device\s*\(\s*(?P<handle>[^)]+)\s*\)'
+      description: "关闭设备 (会调用 input_dev->close)"
+
+
+# ============================================================
+# EVDEV - 通用事件设备接口
+# ============================================================
+
+evdev:
+  description: "evdev - 通用事件设备接口 (/dev/input/eventX)"
+  header: "linux/input.h"
+  source: "drivers/input/evdev.c"
+
+  overview: |
+    evdev 是 Linux 输入子系统的通用用户空间接口。
+    它将所有输入事件以 struct input_event 格式传递给用户空间。
+    应用程序通过 /dev/input/eventX 设备文件访问输入事件。
+
+  device_files:
+    - pattern: '/dev/input/event\d+'
+      description: "事件设备文件"
+    - pattern: '/dev/input/by-id/*'
+      description: "按设备 ID 的符号链接"
+    - pattern: '/dev/input/by-path/*'
+      description: "按设备路径的符号链接"
+
+  user_space_api:
+    read:
+      description: "读取输入事件"
+      returns: "struct input_event 数组"
+      notes: "阻塞或非阻塞读取"
+
+    write:
+      description: "发送事件到设备 (力反馈, LED)"
+      notes: "需要写权限"
+
+    ioctl:
+      - command: "EVIOCGVERSION"
+        description: "获取驱动版本"
+      - command: "EVIOCGID"
+        description: "获取设备 ID"
+      - command: "EVIOCGNAME"
+        description: "获取设备名称"
+      - command: "EVIOCGPHYS"
+        description: "获取设备物理路径"
+      - command: "EVIOCGBIT(type, size)"
+        description: "获取设备能力位图"
+      - command: "EVIOCGABS(axis)"
+        description: "获取绝对坐标信息"
+      - command: "EVIOCSABS(axis)"
+        description: "设置绝对坐标信息"
+      - command: "EVIOCGRAB"
+        description: "独占设备"
+      - command: "EVIOCREVOKE"
+        description: "撤销设备访问权限"
+
+  event_structure:
+    description: "struct input_event - 用户空间事件格式"
+    fields:
+      - name: "time"
+        type: "struct timeval"
+        description: "事件时间戳"
+      - name: "type"
+        type: "__u16"
+        description: "事件类型 (EV_KEY, EV_REL, etc.)"
+      - name: "code"
+        type: "__u16"
+        description: "事件代码 (KEY_A, REL_X, etc.)"
+      - name: "value"
+        type: "__s32"
+        description: "事件值"
+
+
+# ============================================================
+# INPUT CAPABILITY SETUP
+# ============================================================
+
+input_capability:
+  description: "Input Device Capabilities - 输入设备能力设置"
   header: "linux/input.h"
 
   bind_patterns:
-    # struct input_dev
-    - pattern: 'struct input_dev\s*\{[^}]+\}'
-      description: "输入设备结构"
+    - pattern: 'input_set_capability\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<code>\w+)\s*\)'
+      description: "设置设备能力 (自动设置事件类型位)"
 
-  device_fields:
-    - name: "name"
-      type: "const char *"
-      description: "设备名称"
-    - name: "phys"
-      type: "const char *"
-      description: "设备路径"
-    - name: "uniq"
-      type: "const char *"
-      description: "唯一标识"
-    - name: "id"
-      type: "struct input_id"
-      description: "设备 ID"
-    - name: "evbit"
-      type: "unsigned long *"
-      description: "事件类型位图"
-    - name: "keybit"
-      type: "unsigned long *"
-      description: "按键位图"
-    - name: "relbit"
-      type: "unsigned long *"
-      description: "相对事件位图"
-    - name: "absbit"
-      type: "unsigned long *"
-      description: "绝对事件位图"
+    - pattern: '__set_bit\s*\(\s*(?P<type>EV_\w+)\s*,\s*(?P<dev>[\w\->]+)evbit\s*\)'
+      description: "手动设置事件类型位"
+
+    - pattern: 'bitmap_fill\s*\(\s*(?P<dev>[\w\->]+)keybit\s*,'
+      description: "填充所有按键位"
 
 
 # ============================================================
-# INPUT DEVICE CALLBACKS
+# INPUT MULTI-TOUCH (MT)
 # ============================================================
 
-input_callbacks:
-  description: "Input Device Callbacks - 输入设备回调"
-  header: "linux/input.h"
+input_mt:
+  description: "Multi-Touch Support - 多点触摸支持"
+  header: "linux/input/mt.h"
+  kernel_version: "2.6.30+"
 
-  callbacks:
-    # open
-    open:
-      pattern: '\.open\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "打开设备"
+  context:
+    type: "any"
+    can_sleep: false
 
-    # close
-    close:
-      pattern: '\.close\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "关闭设备"
+  bind_patterns:
+    # Type B (slots) - 推荐
+    - pattern: 'input_mt_init_slots\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<num_slots>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+      description: "初始化 MT 槽 (Type B 协议)"
+      notes: "flags: INPUT_MT_POINTER, INPUT_MT_DIRECT, etc."
 
-    # event
-    event:
-      pattern: '\.event\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "事件处理"
+    - pattern: 'input_mt_destroy_slots\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "销毁 MT 槽"
+
+    - pattern: 'input_mt_slot\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<slot>[^)]+)\s*\)'
+      description: "选择 MT 槽"
+
+    - pattern: 'input_mt_report_slot_state\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<tool>\w+)\s*,\s*(?P<active>[^)]+)\s*\)'
+      description: "报告槽状态 (活动/非活动)"
+
+    - pattern: 'input_mt_report_finger_count\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      description: "报告手指数量"
+
+    - pattern: 'input_mt_report_pointer_emulation\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<use_count>[^)]+)\s*\)'
+      description: "生成单点触摸模拟事件"
+
+    - pattern: 'input_mt_sync_frame\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "同步 MT 帧 (Type B)"
 
 
 # ============================================================
@@ -234,347 +473,400 @@ input_codes:
   description: "Input Event Codes - 输入事件码"
   header: "linux/input-event-codes.h"
 
-  bind_patterns:
-    # 事件类型
+  event_types:
     EV_SYN:
-      pattern: 'EV_SYN'
-      description: "同步事件"
-
+      value: 0x00
+      description: "同步事件 - 分隔事件包"
     EV_KEY:
-      pattern: 'EV_KEY'
-      description: "按键事件"
-
+      value: 0x01
+      description: "按键/按钮事件"
     EV_REL:
-      pattern: 'EV_REL'
-      description: "相对事件"
-
+      value: 0x02
+      description: "相对坐标事件 (鼠标)"
     EV_ABS:
-      pattern: 'EV_ABS'
-      description: "绝对事件"
-
+      value: 0x03
+      description: "绝对坐标事件 (触摸屏)"
     EV_MSC:
-      pattern: 'EV_MSC'
+      value: 0x04
       description: "杂项事件"
-
     EV_SW:
-      pattern: 'EV_SW'
+      value: 0x05
       description: "开关事件"
-
     EV_LED:
-      pattern: 'EV_LED'
+      value: 0x11
       description: "LED 事件"
-
     EV_SND:
-      pattern: 'EV_SND'
+      value: 0x12
       description: "声音事件"
-
     EV_REP:
-      pattern: 'EV_REP'
+      value: 0x14
       description: "重复事件"
-
     EV_FF:
-      pattern: 'EV_FF'
+      value: 0x15
       description: "力反馈事件"
 
-    EV_PWR:
-      pattern: 'EV_PWR'
-      description: "电源事件"
+  common_keys:
+    - "KEY_ESC, KEY_1..KEY_0, KEY_A..KEY_Z"
+    - "KEY_ENTER, KEY_SPACE, KEY_TAB"
+    - "BTN_LEFT, BTN_RIGHT, BTN_MIDDLE (鼠标按钮)"
+    - "BTN_TOUCH, BTN_TOOL_FINGER (触摸)"
 
-    # 按键码
-    KEY_RESERVED:
-      pattern: 'KEY_RESERVED'
-    KEY_ESC:
-      pattern: 'KEY_ESC'
-    KEY_1:
-      pattern: 'KEY_1'
-    KEY_A:
-      pattern: 'KEY_A'
+  relative_axes:
+    - "REL_X, REL_Y - 鼠标移动"
+    - "REL_WHEEL, REL_HWHEEL - 滚轮"
 
-    # 相对坐标
-    REL_X:
-      pattern: 'REL_X'
-    REL_Y:
-      pattern: 'REL_Y'
-    REL_WHEEL:
-      pattern: 'REL_WHEEL'
-
-    # 绝对坐标
-    ABS_X:
-      pattern: 'ABS_X'
-    ABS_Y:
-      pattern: 'ABS_Y'
-    ABS_PRESSURE:
-      pattern: 'ABS_PRESSURE'
+  absolute_axes:
+    - "ABS_X, ABS_Y - 触摸位置"
+    - "ABS_PRESSURE - 压力"
+    - "ABS_MT_SLOT - MT 槽索引"
+    - "ABS_MT_POSITION_X, ABS_MT_POSITION_Y - MT 位置"
+    - "ABS_MT_TRACKING_ID - MT 触点追踪 ID"
 
 
 # ============================================================
-# INPUT MT (MULTI-TOUCH)
+# CALL CHAINS
 # ============================================================
 
-input_mt:
-  description: "Multi-Touch Support - 多点触摸支持"
-  header: "linux/input/mt.h"
+call_chains:
+  input_event_reporting:
+    description: "事件从驱动到用户空间的传递"
+    trigger: "驱动调用 input_report_* 或 input_event"
+    chain:
+      - function: "input_report_key/input_event"
+        file: "drivers/input/input.c"
+        description: "驱动上报事件"
+        context: "any"
+      - function: "input_handle_event"
+        file: "drivers/input/input.c"
+        description: "事件处理入口"
+      - function: "input_pass_values"
+        file: "drivers/input/input.c"
+        description: "传递给所有 handler"
+      - function: "handler->events 或 handler->event"
+        file: "用户代码"
+        description: "handler 回调"
+        is_user_entry: true
+      - function: "evdev_events"
+        file: "drivers/input/evdev.c"
+        description: "evdev 处理器接收事件"
+      - function: "wake_up_interruptible"
+        description: "唤醒等待的用户进程"
 
-  bind_patterns:
-    # input_mt_create_slots - 创建触摸槽
-    - pattern: 'input_mt_create_slots\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<num_slots>\d+)\s*\)'
-      variable_capture: "dev"
-      description: "创建触摸槽"
+  device_registration:
+    description: "输入设备注册流程"
+    trigger: "驱动调用 input_register_device"
+    chain:
+      - function: "input_register_device"
+        file: "drivers/input/input.c"
+        description: "注册设备入口"
+        context: "process"
+      - function: "device_add"
+        file: "drivers/base/core.c"
+        description: "添加到设备模型"
+      - function: "input_attach_handler"
+        file: "drivers/input/input.c"
+        description: "尝试匹配 handler"
+      - function: "input_match_device"
+        file: "drivers/input/input.c"
+        description: "设备-handler 匹配"
+      - function: "handler->connect"
+        file: "用户代码"
+        description: "连接回调"
+        is_user_entry: true
 
-    # input_mt_destroy_slots - 销毁触摸槽
-    - pattern: 'input_mt_destroy_slots\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "销毁触摸槽"
-
-    # input_mt_report_slot_state - 报告槽状态
-    - pattern: 'input_mt_report_slot_state\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<tool>\w+)\s*,\s*(?P<active>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "报告触摸槽状态"
-
-    # input_mt_report_finger_count - 报告手指数
-    - pattern: 'input_mt_report_finger_count\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<count>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "报告手指数量"
-
-    # input_mt_report_pointer_emulation - 指针模拟
-    - pattern: 'input_mt_report_pointer_emulation\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<use_count>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "指针模拟"
-
-    # input_mt_slots - 获取触摸槽
-    - pattern: 'input_mt_slots\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "获取触摸槽数组"
-
-
-# ============================================================
-# INPUT POLL DEVICE
-# ============================================================
-
-input_poll:
-  description: "Input Poll Device - 轮询输入设备"
-  header: "linux/input-polldev.h"
-
-  bind_patterns:
-    # input_allocate_polled_device - 分配轮询设备
-    - pattern: 'input_allocate_polled_device\s*\(\s*\)'
-      description: "分配轮询输入设备"
-
-    # input_free_polled_device - 释放轮询设备
-    - pattern: 'input_free_polled_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "释放轮询输入设备"
-
-    # input_register_polled_device - 注册轮询设备
-    - pattern: 'input_register_polled_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "注册轮询输入设备"
-
-    # input_unregister_polled_device - 注销轮询设备
-    - pattern: 'input_unregister_polled_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "注销轮询输入设备"
-
-  callbacks:
-    # poll
-    poll:
-      pattern: '\.poll\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "轮询回调"
-
-  poll_interval:
-    - pattern: '\.poll_interval\s*=\s*(?P<interval>\d+)'
-      description: "轮询间隔"
+  evdev_read:
+    description: "用户空间读取事件"
+    trigger: "用户空间 read(/dev/input/eventX)"
+    chain:
+      - function: "evdev_read"
+        file: "drivers/input/evdev.c"
+        description: "read 文件操作"
+        context: "process"
+      - function: "evdev_fetch_next_event"
+        file: "drivers/input/evdev.c"
+        description: "从缓冲区获取事件"
+      - function: "copy_to_user"
+        description: "复制到用户空间"
 
 
 # ============================================================
-# INPUT JOYSTICK
-# ============================================================
-
-input_joystick:
-  description: "Input Joystick - 游戏杆支持"
-  header: "linux/input.h"
-
-  bind_patterns:
-    # 模拟值
-    input_report_abs.*ABS_GAS:
-      pattern: 'input_report_abs\s*\([^)]*ABS_GAS[^)]*\)'
-      description: "油门踏板"
-
-    input_report_abs.*ABS_BRAKE:
-      pattern: 'input_report_abs\s*\([^)]*ABS_BRAKE[^)]*\)'
-      description: "刹车踏板"
-
-
-# ============================================================
-# INPUT LEDS
-# ============================================================
-
-input_leds:
-  description: "Input LEDs - 键盘 LED"
-  header: "linux/input.h"
-
-  bind_patterns:
-    input_report_led:
-      pattern: 'input_report_led\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<led>\w+)\s*,\s*(?P<value>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "报告 LED 状态"
-
-    # LED 码
-    LED_NUML:
-      pattern: 'LED_NUML'
-      description: "数字锁定 LED"
-    LED_CAPSL:
-      pattern: 'LED_CAPSL'
-      description: "大写锁定 LED"
-    LED_SCROLLL:
-      pattern: 'LED_SCROLLL'
-      description: "滚动锁定 LED"
-
-
-# ============================================================
-# INPUT FF (FORCE FEEDBACK)
+# FORCE FEEDBACK
 # ============================================================
 
 input_ff:
-  description: "Force Feedback - 力反馈"
+  description: "Force Feedback - 力反馈支持"
   header: "linux/input.h"
 
-  bind_patterns:
-    # upload_effect - 上传效果
-    - pattern: 'upload_effect\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
+  callbacks:
+    upload_effect:
+      pattern: '\.upload\s*=\s*(?P<handler>\w+)'
       description: "上传力反馈效果"
+      signature: "int (*)(struct input_dev *, struct ff_effect *, struct ff_effect *)"
 
-    # erase_effect - 删除效果
-    - pattern: 'erase_effect\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
+    erase_effect:
+      pattern: '\.erase\s*=\s*(?P<handler>\w+)'
       description: "删除力反馈效果"
+      signature: "int (*)(struct input_dev *, int effect_id)"
 
-    # play_effect - 播放效果
-    - pattern: 'play_effect\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "播放力反馈效果"
+    playback:
+      pattern: '\.playback\s*=\s*(?P<handler>\w+)'
+      description: "播放/停止效果"
+      signature: "int (*)(struct input_dev *, int effect_id, int value)"
+
+    set_gain:
+      pattern: '\.set_gain\s*=\s*(?P<handler>\w+)'
+      description: "设置增益"
+
+    set_autocenter:
+      pattern: '\.set_autocenter\s*=\s*(?P<handler>\w+)'
+      description: "设置自动居中"
 
   effect_types:
-    # 效果类型
-    FF_RUMBLE:
-      pattern: 'FF_RUMBLE'
-      description: "振动效果"
-    FF_PERIODIC:
-      pattern: 'FF_PERIODIC'
-      description: "周期性效果"
-    FF_CONSTANT:
-      pattern: 'FF_CONSTANT'
-      description: "恒定效果"
-    FF_SPRING:
-      pattern: 'FF_SPRING'
-      description: "弹簧效果"
+    FF_RUMBLE: "振动效果"
+    FF_PERIODIC: "周期性效果"
+    FF_CONSTANT: "恒定力效果"
+    FF_SPRING: "弹簧效果"
+    FF_FRICTION: "摩擦效果"
+    FF_DAMPER: "阻尼效果"
+    FF_INERTIA: "惯性效果"
 
 
 # ============================================================
-# INPUT EXAMPLES
+# EXAMPLES
 # ============================================================
 
 examples:
-  - description: "简单按键驱动"
+  - description: "简单按键驱动 (GPIO 按钮)"
+    kernel_version: "5.0+"
     code: |
-      static struct input_dev *button_dev;
-
-      static irqreturn_t button_irq_handler(int irq, void *dev_id) {
-          int pressed;
-
-          /* 读取按键状态 */
-          pressed = gpio_get_value(BUTTON_GPIO);
-
-          /* 报告按键事件 */
-          input_report_key(button_dev, KEY_ENTER, pressed);
-
-          /* 同步事件 */
-          input_sync(button_dev);
-
+      #include <linux/module.h>
+      #include <linux/input.h>
+      #include <linux/gpio.h>
+      #include <linux/interrupt.h>
+      
+      struct button_data {
+          struct input_dev *input;
+          int gpio;
+          int irq;
+      };
+      
+      static irqreturn_t button_irq_handler(int irq, void *dev_id)
+      {
+          struct button_data *data = dev_id;
+          int pressed = gpio_get_value(data->gpio);
+          
+          /* 上报按键事件 */
+          input_report_key(data->input, KEY_ENTER, pressed);
+          input_sync(data->input);
+          
           return IRQ_HANDLED;
       }
-
-      static int __init button_init(void) {
+      
+      static int button_probe(struct platform_device *pdev)
+      {
+          struct button_data *data;
+          struct input_dev *input;
           int error;
-
-          /* 分配设备 */
-          button_dev = input_allocate_device();
-          if (!button_dev)
+          
+          data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
+          if (!data)
               return -ENOMEM;
-
-          button_dev->name = "gpio-buttons";
-          button_dev->phys = "gpio-buttons/input0";
-
+          
+          /* 分配输入设备 */
+          input = devm_input_allocate_device(&pdev->dev);
+          if (!input)
+              return -ENOMEM;
+          
+          data->input = input;
+          data->gpio = /* 从 DT/platform_data 获取 */;
+          
+          /* 设置设备信息 */
+          input->name = "gpio-button";
+          input->phys = "gpio-button/input0";
+          input->id.bustype = BUS_HOST;
+          
           /* 设置能力 */
-          __set_bit(EV_KEY, button_dev->evbit);
-          __set_bit(KEY_ENTER, button_dev->keybit);
-
+          input_set_capability(input, EV_KEY, KEY_ENTER);
+          
           /* 注册设备 */
-          error = input_register_device(button_dev);
-          if (error) {
-              input_free_device(button_dev);
+          error = input_register_device(input);
+          if (error)
               return error;
-          }
-
+          
           /* 请求中断 */
-          error = request_irq(button_irq, button_irq_handler,
-                             IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-                             "gpio-button", NULL);
-
+          data->irq = gpio_to_irq(data->gpio);
+          error = devm_request_irq(&pdev->dev, data->irq,
+                                   button_irq_handler,
+                                   IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+                                   "gpio-button", data);
+          
           return error;
       }
 
-  - description: "触摸屏驱动 (MT)"
+  - description: "多点触摸屏驱动 (Type B)"
+    kernel_version: "3.0+"
     code: |
-      static struct input_dev *ts_dev;
-
-      static void touch_poll(struct input_polled_dev *polldev) {
-          struct ts_event event;
-          int x, y, active;
-
-          /* 读取触摸数据 */
-          if (ts_read(&event) < 0)
-              return;
-
-          x = event.x;
-          y = event.y;
-          active = event.pressure > 0;
-
-          /* 报告触摸位置 */
-          input_report_abs(ts_dev, ABS_X, x);
-          input_report_abs(ts_dev, ABS_Y, y);
-          input_report_abs(ts_dev, ABS_PRESSURE, event.pressure);
-
-          /* 同步 */
-          input_sync(ts_dev);
-        }
-
-      static int __init ts_init(void) {
-          struct input_polled_dev *polldev;
-          int error;
-
-          /* 分配轮询设备 */
-          polldev = input_allocate_polled_device();
-          if (!polldev)
-              return -ENOMEM;
-
-          polldev->poll = touch_poll;
-          polldev->poll_interval = 10;  /* 10ms */
-
-          ts_dev = polldev->input;
-          ts_dev->name = "touchscreen";
-          __set_bit(EV_ABS, ts_dev->evbit);
-          input_set_abs_params(ts_dev, ABS_X, 0, X_MAX, 0, 0);
-          input_set_abs_params(ts_dev, ABS_Y, 0, Y_MAX, 0, 0);
-          input_set_abs_params(ts_dev, ABS_PRESSURE, 0, 255, 0, 0);
-
-          error = input_register_polled_device(polldev);
-          if (error) {
-              input_free_polled_device(polldev);
-              return error;
+      #include <linux/module.h>
+      #include <linux/input.h>
+      #include <linux/input/mt.h>
+      #include <linux/i2c.h>
+      
+      #define MAX_TOUCH_POINTS 10
+      
+      struct touch_data {
+          struct input_dev *input;
+          struct i2c_client *client;
+      };
+      
+      static irqreturn_t touch_irq_handler(int irq, void *dev_id)
+      {
+          struct touch_data *data = dev_id;
+          struct input_dev *input = data->input;
+          int i, x, y, id, active;
+          
+          /* 读取触摸数据 (从 I2C) */
+          for (i = 0; i < MAX_TOUCH_POINTS; i++) {
+              /* 从硬件读取 */
+              id = /* read tracking id */;
+              active = /* read active state */;
+              x = /* read x position */;
+              y = /* read y position */;
+              
+              /* 选择槽 */
+              input_mt_slot(input, i);
+              
+              /* 报告槽状态 */
+              input_mt_report_slot_state(input, MT_TOOL_FINGER, active);
+              
+              if (active) {
+                  input_report_abs(input, ABS_MT_POSITION_X, x);
+                  input_report_abs(input, ABS_MT_POSITION_Y, y);
+                  input_report_abs(input, ABS_MT_TRACKING_ID, id);
+              }
           }
-
-          return 0;
+          
+          /* 生成单点模拟 */
+          input_mt_report_pointer_emulation(input, true);
+          
+          /* 同步 */
+          input_sync(input);
+          
+          return IRQ_HANDLED;
       }
+      
+      static int touch_probe(struct i2c_client *client)
+      {
+          struct touch_data *data;
+          struct input_dev *input;
+          int error;
+          
+          data = devm_kzalloc(&client->dev, sizeof(*data), GFP_KERNEL);
+          if (!data)
+              return -ENOMEM;
+          
+          input = devm_input_allocate_device(&client->dev);
+          if (!input)
+              return -ENOMEM;
+          
+          data->input = input;
+          data->client = client;
+          
+          input->name = "i2c-touchscreen";
+          input->id.bustype = BUS_I2C;
+          
+          /* 设置绝对坐标 */
+          input_set_abs_params(input, ABS_MT_POSITION_X, 0, 1920, 0, 0);
+          input_set_abs_params(input, ABS_MT_POSITION_Y, 0, 1080, 0, 0);
+          
+          /* 初始化 MT 槽 */
+          error = input_mt_init_slots(input, MAX_TOUCH_POINTS,
+                                      INPUT_MT_DIRECT | INPUT_MT_DROP_UNUSED);
+          if (error)
+              return error;
+          
+          error = input_register_device(input);
+          if (error)
+              return error;
+          
+          return devm_request_threaded_irq(&client->dev, client->irq,
+                                           NULL, touch_irq_handler,
+                                           IRQF_ONESHOT, "touchscreen", data);
+      }
+
+  - description: "输入处理器示例 (类似 evdev)"
+    code: |
+      #include <linux/module.h>
+      #include <linux/input.h>
+      #include <linux/cdev.h>
+      
+      struct my_handler_data {
+          struct input_handle handle;
+          struct cdev cdev;
+          /* 事件缓冲区等 */
+      };
+      
+      static void my_handler_event(struct input_handle *handle,
+                                   unsigned int type,
+                                   unsigned int code,
+                                   int value)
+      {
+          /* 处理单个事件 */
+          pr_info("Event: type=%d, code=%d, value=%d\n", type, code, value);
+      }
+      
+      static int my_handler_connect(struct input_handler *handler,
+                                    struct input_dev *dev,
+                                    const struct input_device_id *id)
+      {
+          struct my_handler_data *data;
+          int error;
+          
+          data = kzalloc(sizeof(*data), GFP_KERNEL);
+          if (!data)
+              return -ENOMEM;
+          
+          data->handle.dev = dev;
+          data->handle.handler = handler;
+          data->handle.name = "my-handler";
+          data->handle.private = data;
+          
+          error = input_register_handle(&data->handle);
+          if (error)
+              goto err_free;
+          
+          error = input_open_device(&data->handle);
+          if (error)
+              goto err_unregister;
+          
+          return 0;
+          
+      err_unregister:
+          input_unregister_handle(&data->handle);
+      err_free:
+          kfree(data);
+          return error;
+      }
+      
+      static void my_handler_disconnect(struct input_handle *handle)
+      {
+          struct my_handler_data *data = handle->private;
+          
+          input_close_device(handle);
+          input_unregister_handle(handle);
+          kfree(data);
+      }
+      
+      static const struct input_device_id my_handler_ids[] = {
+          { .driver_info = 1 },  /* 匹配所有设备 */
+          { },
+      };
+      
+      static struct input_handler my_handler = {
+          .event      = my_handler_event,
+          .connect    = my_handler_connect,
+          .disconnect = my_handler_disconnect,
+          .name       = "my-handler",
+          .id_table   = my_handler_ids,
+      };
+      
+      module_input_handler(my_handler);

@@ -1,15 +1,17 @@
 # Linux Kernel PCI/PCIe Driver Framework Knowledge Base
 #
 # Reference: https://www.kernel.org/doc/html/latest/PCI/index.html
+# Kernel Version: 5.0+
 
 # ============================================================
 # PCI DRIVER
 # ============================================================
 
 pci_driver:
-  description: "PCI/PCIe Driver - PCI 设备驱动"
+  description: "PCI/PCIe Driver - PCI 设备驱动框架"
   header: "linux/pci.h"
   icon: "🎛️"
+  kernel_version: "2.6+"
 
   context:
     type: "process"
@@ -17,111 +19,244 @@ pci_driver:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # pci_register_driver - 注册驱动
-    - pattern: 'pci_register_driver\s*\(\s*(?P<driver>[^)]+)\s*\)'
-      variable_capture: "driver"
+  registration:
+    # 标准注册
+    - pattern: 'pci_register_driver\s*\(\s*&?(?P<driver>[\w\.\->]+)\s*\)'
       description: "注册 PCI 驱动"
+      context: "process"
+      can_sleep: true
 
-    # module_pci_driver - 模块宏
-    - pattern: 'module_pci_driver\s*\(\s*(?P<name>\w+)\s*\)'
-      variable_capture: "name"
-      description: "模块化的 PCI 驱动注册"
+    - pattern: 'pci_unregister_driver\s*\(\s*&?(?P<driver>[\w\.\->]+)\s*\)'
+      description: "注销 PCI 驱动"
+      context: "process"
+      can_sleep: true
 
-  driver_structure:
-    - pattern: 'static struct pci_driver\s+(?P<name>\w+)\s*=\s*\{'
-      variable_capture: "name"
-      description: "PCI driver 结构体定义"
+    # 模块宏 (最常用)
+    - pattern: 'module_pci_driver\s*\(\s*(?P<driver>\w+)\s*\)'
+      description: "模块化 PCI 驱动注册宏"
+      notes: "自动生成 module_init/exit"
+
+    # 内建驱动宏
+    - pattern: 'builtin_pci_driver\s*\(\s*(?P<driver>\w+)\s*\)'
+      description: "内建 PCI 驱动宏"
+      notes: "用于编译进内核的驱动"
+
+    # 辅助宏
+    - pattern: '__pci_register_driver\s*\(\s*(?P<driver>[^,]+)\s*,\s*(?P<owner>[^,]+)\s*,\s*(?P<mod_name>[^)]+)\s*\)'
+      description: "底层 PCI 驱动注册"
+
+  structure:
+    pattern: 'static\s+(const\s+)?struct pci_driver\s+(?P<name>\w+)\s*=\s*\{'
+    description: "PCI driver 结构体定义"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "驱动名称"
+      - name: "id_table"
+        type: "const struct pci_device_id *"
+        description: "设备 ID 表"
+      - name: "probe"
+        type: "int (*)(struct pci_dev *, const struct pci_device_id *)"
+        description: "设备探测回调"
+      - name: "remove"
+        type: "void (*)(struct pci_dev *)"
+        description: "设备移除回调"
+      - name: "shutdown"
+        type: "void (*)(struct pci_dev *)"
+        description: "系统关机回调"
+      - name: "suspend"
+        type: "int (*)(struct pci_dev *, pm_message_t)"
+        description: "旧版挂起回调 (已废弃)"
+      - name: "resume"
+        type: "int (*)(struct pci_dev *)"
+        description: "旧版恢复回调 (已废弃)"
+      - name: "err_handler"
+        type: "const struct pci_error_handlers *"
+        description: "AER 错误处理"
+      - name: "groups"
+        type: "const struct attribute_group **"
+        description: "sysfs 属性组"
+      - name: "driver"
+        type: "struct device_driver"
+        description: "内嵌的设备驱动"
+      - name: "driver.pm"
+        type: "const struct dev_pm_ops *"
+        description: "电源管理操作"
+      - name: "sriov_configure"
+        type: "int (*)(struct pci_dev *, int)"
+        description: "SR-IOV 配置回调"
 
   callbacks:
     probe:
       pattern: '\.probe\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Probe 回调 - 设备匹配后调用"
+      description: "设备探测回调 - PCI ID 匹配后调用"
+      trigger: "PCI 设备枚举 + ID 匹配成功"
+      context: "process"
+      can_sleep: true
+      signature: "int (*probe)(struct pci_dev *pdev, const struct pci_device_id *id)"
+      return_value:
+        success: "0"
+        failure: "负数错误码 (-ENOMEM, -ENODEV, -EIO)"
+      typical_actions:
+        - "pci_enable_device() 使能设备"
+        - "pci_request_regions() 请求 BAR"
+        - "pci_iomap() 或 pci_ioremap_bar() 映射 BAR"
+        - "pci_set_master() 启用 DMA"
+        - "pci_alloc_irq_vectors() 配置中断"
+        - "设置 DMA 掩码"
+        - "pci_set_drvdata() 保存私有数据"
 
     remove:
       pattern: '\.remove\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Remove 回调 - 设备移除时调用"
+      description: "设备移除回调"
+      trigger: "设备移除或驱动卸载"
+      context: "process"
+      can_sleep: true
+      signature: "void (*remove)(struct pci_dev *pdev)"
+      typical_actions:
+        - "释放中断资源"
+        - "iounmap() 解除映射"
+        - "pci_release_regions()"
+        - "pci_disable_device()"
 
     shutdown:
       pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Shutdown 回调"
+      description: "系统关机回调"
+      trigger: "系统关机或重启"
+      context: "process"
+      can_sleep: true
+      signature: "void (*shutdown)(struct pci_dev *pdev)"
 
     suspend:
       pattern: '\.suspend\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Suspend 回调"
-
-    suspend_late:
-      pattern: '\.suspend_late\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Late suspend 回调"
-
-    resume_early:
-      pattern: '\.resume_early\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Early resume 回调"
+      description: "旧版挂起回调 (推荐使用 pm_ops)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*suspend)(struct pci_dev *pdev, pm_message_t state)"
+      deprecated: true
 
     resume:
       pattern: '\.resume\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "Resume 回调"
+      description: "旧版恢复回调 (推荐使用 pm_ops)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*resume)(struct pci_dev *pdev)"
+      deprecated: true
 
-    err_handler:
-      pattern: '\.err_handler\s*=\s*'
-      description: "错误处理回调"
+    sriov_configure:
+      pattern: '\.sriov_configure\s*=\s*(?P<handler>\w+)'
+      description: "SR-IOV VF 配置回调"
+      context: "process"
+      can_sleep: true
+      signature: "int (*sriov_configure)(struct pci_dev *pdev, int num_vfs)"
+      notes: "返回实际创建的 VF 数量"
 
-  probe_signature:
-    return_type: "int"
-    parameters:
-      - name: "dev"
-        type: "struct pci_dev *"
-        description: "PCI 设备"
-      - name: "id"
-        type: "const struct pci_device_id *"
-        description: "匹配的设备 ID"
+  call_chains:
+    device_enumeration:
+      description: "PCI 设备枚举路径"
+      trigger: "系统启动或热插拔"
+      chain:
+        - function: "pci_scan_bus"
+          file: "drivers/pci/probe.c"
+          description: "扫描 PCI 总线"
+        - function: "pci_scan_slot"
+          file: "drivers/pci/probe.c"
+          description: "扫描插槽"
+        - function: "pci_scan_single_device"
+          file: "drivers/pci/probe.c"
+          description: "扫描单个设备"
+        - function: "pci_device_add"
+          file: "drivers/pci/probe.c"
+          description: "添加 PCI 设备到总线"
 
-  remove_signature:
-    return_type: "void"
-    parameters:
-      - name: "dev"
-        type: "struct pci_dev *"
-        description: "PCI 设备"
+    probe_path:
+      description: "设备探测调用路径"
+      trigger: "设备与驱动 ID 匹配成功"
+      chain:
+        - function: "pci_bus_add_devices"
+          file: "drivers/pci/bus.c"
+          description: "将设备添加到驱动模型"
+        - function: "pci_bus_add_device"
+          file: "drivers/pci/bus.c"
+          description: "单个设备添加"
+        - function: "device_attach"
+          file: "drivers/base/dd.c"
+          description: "尝试绑定驱动"
+        - function: "pci_device_probe"
+          file: "drivers/pci/pci-driver.c"
+          description: "PCI 探测入口"
+        - function: "pci_match_device"
+          file: "drivers/pci/pci-driver.c"
+          description: "匹配设备 ID"
+        - function: "__pci_device_probe"
+          file: "drivers/pci/pci-driver.c"
+          description: "实际执行探测"
+        - function: "drv->probe(pdev, id)"
+          file: "用户代码"
+          description: "用户 probe 函数"
+          is_user_entry: true
 
-  kernel_call_chain:
-    trigger: "PCI 设备枚举 + ID 匹配"
-    chain:
-      - function: "pci_bus_add_devices"
-        file: "drivers/pci/bus.c"
-        description: "PCI 总线枚举设备"
-      - function: "pci_device_add"
-        file: "drivers/pci/pci-driver.c"
-        description: "添加 PCI 设备"
-      - function: "pci_device_probe"
-        file: "drivers/pci/pci-driver.c"
-        description: "探测设备"
-      - function: "pci_match_device"
-        file: "drivers/pci/pci-driver.c"
-        description: "匹配驱动"
-      - function: "my_probe(dev, id)"
-        file: "用户代码"
-        description: "用户 probe 函数"
-        is_user_entry: true
+    remove_path:
+      description: "设备移除调用路径"
+      trigger: "设备移除或驱动卸载"
+      chain:
+        - function: "pci_stop_and_remove_bus_device"
+          file: "drivers/pci/remove.c"
+          description: "停止并移除设备"
+        - function: "pci_stop_bus_device"
+          file: "drivers/pci/remove.c"
+          description: "停止设备"
+        - function: "pci_device_remove"
+          file: "drivers/pci/pci-driver.c"
+          description: "PCI 移除入口"
+        - function: "drv->remove(pdev)"
+          file: "用户代码"
+          description: "用户 remove 函数"
+          is_user_entry: true
 
-      # Remove 路径
-      - function: "pci_device_remove"
-        file: "drivers/pci/pci-driver.c"
-      - function: "my_remove(dev)"
-        file: "用户代码"
-        description: "用户 remove 函数"
-        is_user_entry: true
+    hotplug_path:
+      description: "热插拔路径"
+      trigger: "物理插入/拔出 PCI 设备"
+      chain:
+        - function: "pciehp_handle_presence"
+          file: "drivers/pci/hotplug/pciehp_ctrl.c"
+          description: "PCIe 热插拔事件"
+        - function: "pciehp_enable_slot"
+          file: "drivers/pci/hotplug/pciehp_ctrl.c"
+          description: "使能插槽"
+        - function: "pciehp_configure_device"
+          file: "drivers/pci/hotplug/pciehp_pci.c"
+          description: "配置新设备"
+        - function: "pci_bus_add_device"
+          file: "drivers/pci/bus.c"
+          description: "添加设备"
+
+    aer_error_path:
+      description: "AER 错误处理路径"
+      trigger: "PCIe AER 错误"
+      chain:
+        - function: "aer_irq"
+          file: "drivers/pci/pcie/aer.c"
+          description: "AER 中断处理"
+          context: "hardirq"
+        - function: "aer_process_err_device"
+          file: "drivers/pci/pcie/aer.c"
+          description: "处理错误设备"
+        - function: "pcie_do_recovery"
+          file: "drivers/pci/pcie/err.c"
+          description: "执行恢复"
+          context: "process"
+        - function: "err_handler->error_detected()"
+          file: "用户代码"
+          description: "用户错误检测回调"
+          is_user_entry: true
 
   notes:
     - "PCI 设备通过总线枚举自动发现"
+    - "现代驱动应使用 pcim_* (devm) API"
+    - "MSI/MSI-X 是 PCIe 推荐的中断方式"
     - "probe 中通常进行 BAR 映射、中断配置"
-    - "MSI/MSI-X 是现代 PCIe 中断方式"
+    - "使用 pci_alloc_irq_vectors() 统一管理中断"
 
 
 # ============================================================
@@ -129,47 +264,118 @@ pci_driver:
 # ============================================================
 
 pci_device_id:
-  description: "PCI Device ID Table"
+  description: "PCI Device ID Table - PCI 设备识别表"
   header: "linux/mod_devicetable.h"
 
-  bind_patterns:
-    # PCI ID 表格定义
-    - pattern: 'static struct pci_device_id\s+(?P<name>\w+)\s*\[\]\s*=\s*\{'
-      variable_capture: "name"
-      description: "PCI 设备 ID 表"
+  patterns:
+    # ID 表定义
+    - pattern: 'static\s+(const\s+)?struct pci_device_id\s+(?P<name>\w+)\s*\[\]\s*='
+      description: "PCI 设备 ID 表定义"
 
-    # 单个 ID 条目
-    - pattern: '\{\s*PCI_DEVICE\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*\)\s*\}'
+    # PCI_DEVICE 宏
+    - pattern: 'PCI_DEVICE\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*\)'
+      description: "匹配 Vendor + Device ID"
       extra_captures:
         - name: "vendor"
-          description: "Vendor ID"
+          description: "Vendor ID (如 PCI_VENDOR_ID_INTEL)"
         - name: "device"
           description: "Device ID"
 
-    # 带子设备 ID
-    - pattern: '\{\s*PCI_DEVICE_SUB\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*,\s*(?P<subvendor>\w+)\s*,\s*(?P<subdevice>\w+)\s*\)\s*\}'
-      extra_captures:
-        - name: "subvendor"
-          description: "SubVendor ID"
-        - name: "subdevice"
-          description: "SubDevice ID"
+    # PCI_DEVICE_SUB
+    - pattern: 'PCI_DEVICE_SUB\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*,\s*(?P<subvendor>\w+)\s*,\s*(?P<subdevice>\w+)\s*\)'
+      description: "匹配带子系统 ID"
 
-    # 类匹配
-    - pattern: '\{\s*PCI_DEVICE_CLASS\s*\(\s*(?P<class>\w+)\s*,\s*(?P<class_mask>\w+)\s*\)\s*\}'
-      extra_captures:
-        - name: "class"
-          description: "PCI Class"
-        - name: "class_mask"
-          description: "Class Mask"
+    # PCI_DEVICE_CLASS
+    - pattern: 'PCI_DEVICE_CLASS\s*\(\s*(?P<class>\w+)\s*,\s*(?P<class_mask>\w+)\s*\)'
+      description: "按 PCI 类匹配"
+
+    # PCI_VDEVICE
+    - pattern: 'PCI_VDEVICE\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*\)'
+      description: "简化的 Vendor:Device 匹配"
+
+    # PCI_DEVICE_DATA
+    - pattern: 'PCI_DEVICE_DATA\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "带驱动数据的匹配"
+
+    # PCI_ANY_ID
+    - pattern: 'PCI_ANY_ID'
+      description: "通配符 ID"
 
     # 终止符
-    - pattern: '\{\s*0\s*,\s*\}'
+    - pattern: '\{\s*0\s*,?\s*\}'
       description: "ID 表终止符"
 
     # MODULE_DEVICE_TABLE
     - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*pci\s*,\s*(?P<table>\w+)\s*\)'
-      variable_capture: "table"
-      description: "模块导出 PCI ID 表"
+      description: "导出 PCI ID 表供模块自动加载"
+
+  structure:
+    fields:
+      - name: "vendor"
+        type: "__u32"
+        description: "Vendor ID"
+      - name: "device"
+        type: "__u32"
+        description: "Device ID"
+      - name: "subvendor"
+        type: "__u32"
+        description: "SubVendor ID"
+      - name: "subdevice"
+        type: "__u32"
+        description: "SubDevice ID"
+      - name: "class"
+        type: "__u32"
+        description: "PCI Class"
+      - name: "class_mask"
+        type: "__u32"
+        description: "Class Mask"
+      - name: "driver_data"
+        type: "kernel_ulong_t"
+        description: "驱动私有数据"
+
+
+# ============================================================
+# PCI ENABLE/DISABLE
+# ============================================================
+
+pci_enable:
+  description: "PCI Device Enable/Disable - 设备使能"
+  header: "linux/pci.h"
+
+  patterns:
+    # 使能设备
+    - pattern: 'pci_enable_device\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "使能 PCI 设备 (IO + MEM)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_enable_device_mem\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "仅使能内存 BAR"
+      context: "process"
+
+    - pattern: 'pci_enable_device_io\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "仅使能 IO BAR"
+      context: "process"
+
+    # 禁用设备
+    - pattern: 'pci_disable_device\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "禁用 PCI 设备"
+      context: "process"
+
+    # devm 版本
+    - pattern: 'pcim_enable_device\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "devm 版本: 使能设备"
+      context: "process"
+      can_sleep: true
+
+    # 设置 DMA Master
+    - pattern: 'pci_set_master\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "启用 DMA 主设备模式"
+      context: "process"
+
+    - pattern: 'pci_clear_master\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "禁用 DMA 主设备模式"
+      context: "process"
 
 
 # ============================================================
@@ -177,204 +383,566 @@ pci_device_id:
 # ============================================================
 
 pci_resource:
-  description: "PCI BAR (Base Address Register) Resources"
+  description: "PCI BAR (Base Address Register) - BAR 资源管理"
   header: "linux/pci.h"
 
-  bind_patterns:
-    # pci_enable_device - 使能设备
-    - pattern: 'pci_enable_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "使能 PCI 设备"
+  patterns:
+    # 请求/释放区域
+    - pattern: 'pci_request_regions\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "请求所有 BAR 区域"
+      context: "process"
+      can_sleep: true
 
-    # pci_disable_device - 禁用设备
-    - pattern: 'pci_disable_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "禁用 PCI 设备"
+    - pattern: 'pci_request_region\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "请求单个 BAR"
+      context: "process"
 
-    # pci_request_regions - 请求 BAR 区域
-    - pattern: 'pci_request_regions\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "请求 PCI 区域"
+    - pattern: 'pci_release_regions\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "释放所有 BAR 区域"
+      context: "process"
 
-    # pci_release_regions - 释放 BAR 区域
-    - pattern: 'pci_release_regions\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "释放 PCI 区域"
+    - pattern: 'pci_release_region\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      description: "释放单个 BAR"
+      context: "process"
 
-    # pci_ioremap_bar - 映射 BAR
-    - pattern: 'pci_ioremap_bar\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
-      variable_capture: "dev"
-      extra_captures:
-        - name: "bar"
-          description: "BAR 编号 (0-5)"
+    # 选择 BAR
+    - pattern: 'pci_select_bars\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      description: "选择特定类型的 BAR"
+      context: "process"
 
-    # pci_resource_flags - 获取资源标志
-    - pattern: 'pci_resource_flags\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
-      variable_capture: "dev"
-      extra_captures:
-        - name: "bar"
-          description: "BAR 编号"
+    - pattern: 'pci_request_selected_regions\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bars>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "请求选定的 BAR"
+      context: "process"
 
-    # pci_resource_start/end/len
-    - pattern: 'pci_resource_start\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
-      variable_capture: "dev"
-      description: "获取 BAR 起始地址"
+    # devm 版本
+    - pattern: 'pcim_iomap_regions\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<mask>\w+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "devm: 请求并映射 BAR"
+      context: "process"
+      can_sleep: true
 
-    - pattern: 'pci_resource_end\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
-      variable_capture: "dev"
-      description: "获取 BAR 结束地址"
+    - pattern: 'pcim_iomap_table\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取 devm 映射表"
+      context: "process"
 
-    - pattern: 'pci_resource_len\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<bar>\d+)\s*\)'
-      variable_capture: "dev"
+    - pattern: 'pcim_iomap\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*,\s*(?P<maxlen>\w+)\s*\)'
+      description: "devm: 映射单个 BAR"
+      context: "process"
+
+    # 映射 BAR
+    - pattern: 'pci_ioremap_bar\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      description: "映射 BAR 到虚拟地址"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_iomap\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*,\s*(?P<maxlen>\w+)\s*\)'
+      description: "映射 BAR (支持 IO 端口)"
+      context: "process"
+
+    - pattern: 'pci_iounmap\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      description: "解除 BAR 映射"
+      context: "process"
+
+    # 资源信息
+    - pattern: 'pci_resource_start\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      description: "获取 BAR 物理起始地址"
+      context: "any"
+
+    - pattern: 'pci_resource_end\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      description: "获取 BAR 物理结束地址"
+      context: "any"
+
+    - pattern: 'pci_resource_len\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*\)'
       description: "获取 BAR 长度"
+      context: "any"
+
+    - pattern: 'pci_resource_flags\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      description: "获取 BAR 标志 (MEM/IO/PREFETCH)"
+      context: "any"
+
+  resource_flags:
+    - name: "IORESOURCE_MEM"
+      description: "内存映射 BAR"
+    - name: "IORESOURCE_IO"
+      description: "IO 端口 BAR"
+    - name: "IORESOURCE_MEM_64"
+      description: "64位内存 BAR"
+    - name: "IORESOURCE_PREFETCH"
+      description: "可预取内存"
 
 
 # ============================================================
-# PCI INTERRUPT (MSI/MSI-X)
+# PCI INTERRUPT (MSI/MSI-X/INTx)
 # ============================================================
 
 pci_interrupt:
-  description: "PCI/MSI Interrupt Handling"
+  description: "PCI Interrupt - PCI 中断管理"
   header: "linux/pci.h"
+  kernel_version: "4.8+"
 
-  bind_patterns:
-    # request_irq for PCI
-    - pattern: 'request_irq\s*\(\s*(?P<irq>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<name>[^)]+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
-      handler_capture: "handler"
-      description: "请求中断"
+  patterns:
+    # 统一中断分配 (推荐)
+    - pattern: 'pci_alloc_irq_vectors\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<min_vecs>\w+)\s*,\s*(?P<max_vecs>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      description: "分配中断向量 (MSI-X/MSI/INTx 自动选择)"
+      context: "process"
+      can_sleep: true
 
-    # pci_enable_msi - 启用 MSI
-    - pattern: 'pci_enable_msi\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "启用 MSI 中断"
+    - pattern: 'pci_alloc_irq_vectors_affinity\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<min>\w+)\s*,\s*(?P<max>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<affd>[^)]+)\s*\)'
+      description: "分配带 CPU 亲和性的中断向量"
+      context: "process"
 
-    # pci_disable_msi - 禁用 MSI
-    - pattern: 'pci_disable_msi\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "禁用 MSI 中断"
-
-    # pci_enable_msix - 启用 MSI-X
-    - pattern: 'pci_enable_msix_range\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<entries>[^)]+)\s*,\s*(?P<min>\d+)\s*,\s*(?P<max>\d+)\s*\)'
-      variable_capture: "dev"
-      description: "启用 MSI-X 中断"
-
-    # pci_disable_msix - 禁用 MSI-X
-    - pattern: 'pci_disable_msix\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "禁用 MSI-X 中断"
-
-    # pci_alloc_irq_vectors - 分配中断向量
-    - pattern: 'pci_alloc_irq_vectors\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<min_vecs>\d+)\s*,\s*(?P<max_vecs>\d+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "dev"
-      description: "分配中断向量"
-
-    # pci_free_irq_vectors - 释放中断向量
-    - pattern: 'pci_free_irq_vectors\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
+    - pattern: 'pci_free_irq_vectors\s*\(\s*(?P<pdev>[^)]+)\s*\)'
       description: "释放中断向量"
+      context: "process"
+
+    - pattern: 'pci_irq_vector\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<nr>\w+)\s*\)'
+      description: "获取中断向量号"
+      context: "any"
+
+    # MSI (旧 API)
+    - pattern: 'pci_enable_msi\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "启用单个 MSI 中断"
+      context: "process"
+      deprecated: "使用 pci_alloc_irq_vectors"
+
+    - pattern: 'pci_disable_msi\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "禁用 MSI 中断"
+      context: "process"
+
+    # MSI-X (旧 API)
+    - pattern: 'pci_enable_msix_range\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<entries>[^,]+)\s*,\s*(?P<min>\w+)\s*,\s*(?P<max>\w+)\s*\)'
+      description: "启用 MSI-X (指定范围)"
+      context: "process"
+      deprecated: "使用 pci_alloc_irq_vectors"
+
+    - pattern: 'pci_enable_msix_exact\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<entries>[^,]+)\s*,\s*(?P<nvec>\w+)\s*\)'
+      description: "启用精确数量的 MSI-X"
+      context: "process"
+
+    - pattern: 'pci_disable_msix\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "禁用 MSI-X"
+      context: "process"
+
+    # 请求中断
+    - pattern: 'pci_request_irq\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<nr>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<thread_fn>[^,]+)\s*,\s*(?P<dev_id>[^,]+)\s*,\s*(?P<fmt>[^)]+)\s*\)'
+      description: "请求 PCI 中断"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_free_irq\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<nr>\w+)\s*,\s*(?P<dev_id>[^)]+)\s*\)'
+      description: "释放 PCI 中断"
+      context: "process"
+
+  irq_flags:
+    - name: "PCI_IRQ_LEGACY"
+      description: "使用 INTx 中断"
+    - name: "PCI_IRQ_MSI"
+      description: "使用 MSI 中断"
+    - name: "PCI_IRQ_MSIX"
+      description: "使用 MSI-X 中断"
+    - name: "PCI_IRQ_ALL_TYPES"
+      description: "尝试所有中断类型"
+    - name: "PCI_IRQ_AFFINITY"
+      description: "自动设置 CPU 亲和性"
+
+  notes:
+    - "优先使用 pci_alloc_irq_vectors() + pci_irq_vector()"
+    - "MSI-X 支持多个中断向量和独立的亲和性"
+    - "MSI 最多支持 32 个向量 (通常 1 个)"
+    - "INTx 是传统共享中断方式"
 
 
 # ============================================================
-# PCI CONFIG SPACE ACCESS
+# PCI DMA
+# ============================================================
+
+pci_dma:
+  description: "PCI DMA - DMA 映射和掩码"
+  header: "linux/pci.h"
+
+  patterns:
+    # DMA 掩码
+    - pattern: 'dma_set_mask\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "设置 DMA 地址掩码"
+      context: "process"
+
+    - pattern: 'dma_set_coherent_mask\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "设置一致性 DMA 掩码"
+      context: "process"
+
+    - pattern: 'dma_set_mask_and_coherent\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "同时设置两种 DMA 掩码"
+      context: "process"
+
+    # 旧 PCI API (不推荐)
+    - pattern: 'pci_set_dma_mask\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "设置 PCI DMA 掩码 (旧)"
+      deprecated: "使用 dma_set_mask"
+
+    - pattern: 'pci_set_consistent_dma_mask\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "设置一致性 DMA 掩码 (旧)"
+      deprecated: "使用 dma_set_coherent_mask"
+
+  dma_masks:
+    - name: "DMA_BIT_MASK(32)"
+      description: "32位 DMA 地址"
+    - name: "DMA_BIT_MASK(64)"
+      description: "64位 DMA 地址"
+    - name: "DMA_BIT_MASK(24)"
+      description: "ISA 兼容 (16MB)"
+
+
+# ============================================================
+# PCI CONFIG SPACE
 # ============================================================
 
 pci_config:
-  description: "PCI Configuration Space Access"
+  description: "PCI Configuration Space - 配置空间访问"
   header: "linux/pci.h"
 
-  bind_patterns:
-    # pci_read_config_byte/word/dword
-    - pattern: 'pci_read_config_(byte|word|dword)\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "读取配置空间"
+  patterns:
+    # 读配置
+    - pattern: 'pci_read_config_byte\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "读取配置空间字节"
+      context: "any"
 
-    # pci_write_config_byte/word/dword
-    - pattern: 'pci_write_config_(byte|word|dword)\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "写入配置空间"
+    - pattern: 'pci_read_config_word\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "读取配置空间字"
+      context: "any"
 
-    # pci_find_capability - 查找能力结构
-    - pattern: 'pci_find_capability\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<cap>\w+)\s*\)'
-      variable_capture: "dev"
+    - pattern: 'pci_read_config_dword\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "读取配置空间双字"
+      context: "any"
+
+    # 写配置
+    - pattern: 'pci_write_config_byte\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入配置空间字节"
+      context: "any"
+
+    - pattern: 'pci_write_config_word\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入配置空间字"
+      context: "any"
+
+    - pattern: 'pci_write_config_dword\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入配置空间双字"
+      context: "any"
+
+    # Capability 查找
+    - pattern: 'pci_find_capability\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<cap>\w+)\s*\)'
       description: "查找 PCI capability"
+      context: "any"
 
-    # pci_read_config_word with vendor/capabilities
-    - pattern: 'pci_find_capability\s*\([^)]+\)'
-      description: "查找 capability (MSI, PCIe, etc.)"
+    - pattern: 'pci_find_next_capability\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<cap>\w+)\s*\)'
+      description: "查找下一个 capability"
+      context: "any"
+
+    - pattern: 'pci_find_ext_capability\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<cap>\w+)\s*\)'
+      description: "查找 PCIe extended capability"
+      context: "any"
+
+  capabilities:
+    - name: "PCI_CAP_ID_PM"
+      description: "电源管理"
+    - name: "PCI_CAP_ID_MSI"
+      description: "MSI 中断"
+    - name: "PCI_CAP_ID_MSIX"
+      description: "MSI-X 中断"
+    - name: "PCI_CAP_ID_EXP"
+      description: "PCIe 能力"
+    - name: "PCI_CAP_ID_VNDR"
+      description: "厂商特定"
 
 
 # ============================================================
-# PCI DRIVER EXAMPLES
+# PCI ERROR HANDLERS (AER)
+# ============================================================
+
+pci_error_handlers:
+  description: "PCI Error Handlers - AER 错误处理"
+  header: "linux/pci.h"
+  kernel_version: "2.6.18+"
+
+  patterns:
+    - pattern: 'static\s+(const\s+)?struct pci_error_handlers\s+(?P<name>\w+)\s*='
+      description: "定义错误处理结构"
+
+    - pattern: '\.err_handler\s*=\s*&?(?P<handler>\w+)'
+      description: "设置错误处理器"
+
+  structure:
+    fields:
+      - name: "error_detected"
+        type: "pci_ers_result_t (*)(struct pci_dev *, pci_channel_state_t)"
+        description: "错误检测回调"
+      - name: "mmio_enabled"
+        type: "pci_ers_result_t (*)(struct pci_dev *)"
+        description: "MMIO 重新启用回调"
+      - name: "slot_reset"
+        type: "pci_ers_result_t (*)(struct pci_dev *)"
+        description: "插槽重置后回调"
+      - name: "resume"
+        type: "void (*)(struct pci_dev *)"
+        description: "恢复正常操作回调"
+      - name: "cor_error_detected"
+        type: "void (*)(struct pci_dev *)"
+        description: "可纠正错误回调"
+
+  callbacks:
+    error_detected:
+      description: "错误检测回调"
+      context: "process"
+      signature: "pci_ers_result_t (*)(struct pci_dev *pdev, pci_channel_state_t state)"
+      return_values:
+        - "PCI_ERS_RESULT_NONE - 不需要恢复"
+        - "PCI_ERS_RESULT_CAN_RECOVER - 可以恢复"
+        - "PCI_ERS_RESULT_NEED_RESET - 需要重置"
+        - "PCI_ERS_RESULT_DISCONNECT - 永久故障"
+
+    slot_reset:
+      description: "插槽重置后恢复"
+      context: "process"
+      typical_actions:
+        - "重新初始化硬件"
+        - "恢复设备状态"
+
+    resume:
+      description: "恢复正常操作"
+      context: "process"
+
+  channel_states:
+    - name: "pci_channel_io_normal"
+      description: "I/O 正常"
+    - name: "pci_channel_io_frozen"
+      description: "I/O 冻结 (可恢复)"
+    - name: "pci_channel_io_perm_failure"
+      description: "永久故障"
+
+
+# ============================================================
+# PCI POWER MANAGEMENT
+# ============================================================
+
+pci_pm:
+  description: "PCI Power Management - PCI 电源管理"
+  header: "linux/pci.h"
+
+  patterns:
+    # 保存/恢复状态
+    - pattern: 'pci_save_state\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "保存 PCI 配置空间"
+      context: "process"
+
+    - pattern: 'pci_restore_state\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "恢复 PCI 配置空间"
+      context: "process"
+
+    # 电源状态
+    - pattern: 'pci_set_power_state\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<state>\w+)\s*\)'
+      description: "设置 PCI 电源状态"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_choose_state\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<state>\w+)\s*\)'
+      description: "选择 PCI 电源状态"
+      context: "process"
+
+    # 唤醒
+    - pattern: 'pci_enable_wake\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<state>\w+)\s*,\s*(?P<enable>\w+)\s*\)'
+      description: "启用/禁用唤醒"
+      context: "process"
+
+    - pattern: 'pci_wake_from_d3\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<enable>\w+)\s*\)'
+      description: "从 D3 状态唤醒"
+      context: "process"
+
+    - pattern: 'device_set_wakeup_enable\s*\(\s*&?(?P<dev>[\w\.\->]+)\s*,\s*(?P<enable>\w+)\s*\)'
+      description: "设置唤醒能力"
+      context: "process"
+
+  power_states:
+    - name: "PCI_D0"
+      description: "完全工作状态"
+    - name: "PCI_D1"
+      description: "轻度睡眠"
+    - name: "PCI_D2"
+      description: "中度睡眠"
+    - name: "PCI_D3hot"
+      description: "D3hot (软件关闭)"
+    - name: "PCI_D3cold"
+      description: "D3cold (硬件关闭)"
+
+
+# ============================================================
+# PCI HELPER FUNCTIONS
+# ============================================================
+
+pci_helpers:
+  description: "PCI Helper Functions - PCI 辅助函数"
+  header: "linux/pci.h"
+
+  patterns:
+    # 驱动数据
+    - pattern: 'pci_set_drvdata\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "设置驱动私有数据"
+      context: "any"
+
+    - pattern: 'pci_get_drvdata\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取驱动私有数据"
+      context: "any"
+
+    # 设备信息
+    - pattern: 'pci_name\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取设备名称"
+      context: "any"
+
+    - pattern: 'pci_domain_nr\s*\(\s*(?P<bus>[^)]+)\s*\)'
+      description: "获取 PCI 域号"
+      context: "any"
+
+    # 设备查找
+    - pattern: 'pci_get_device\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*,\s*(?P<from>[^)]+)\s*\)'
+      description: "按 ID 查找设备"
+      context: "process"
+
+    - pattern: 'pci_get_subsys\s*\(\s*(?P<vendor>\w+)\s*,\s*(?P<device>\w+)\s*,\s*(?P<subvendor>\w+)\s*,\s*(?P<subdevice>\w+)\s*,\s*(?P<from>[^)]+)\s*\)'
+      description: "按子系统 ID 查找设备"
+      context: "process"
+
+    - pattern: 'pci_get_class\s*\(\s*(?P<class>\w+)\s*,\s*(?P<from>[^)]+)\s*\)'
+      description: "按类查找设备"
+      context: "process"
+
+    # VPD
+    - pattern: 'pci_read_vpd\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<count>\w+)\s*,\s*(?P<buf>[^)]+)\s*\)'
+      description: "读取 VPD (Vital Product Data)"
+      context: "process"
+
+
+# ============================================================
+# PCI SRIOV
+# ============================================================
+
+pci_sriov:
+  description: "PCI SR-IOV - 单根 I/O 虚拟化"
+  header: "linux/pci.h"
+  kernel_version: "2.6.30+"
+
+  patterns:
+    # 启用/禁用
+    - pattern: 'pci_enable_sriov\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<nr_virtfn>\w+)\s*\)'
+      description: "启用 SR-IOV"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_disable_sriov\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "禁用 SR-IOV"
+      context: "process"
+
+    # VF 信息
+    - pattern: 'pci_num_vf\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取 VF 数量"
+      context: "any"
+
+    - pattern: 'pci_vfs_assigned\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "检查 VF 是否已分配"
+      context: "any"
+
+    # VF BAR
+    - pattern: 'pci_iov_resource_bar\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<resno>\w+)\s*\)'
+      description: "获取 VF BAR 基地址"
+      context: "any"
+
+
+# ============================================================
+# EXAMPLES
 # ============================================================
 
 examples:
-  - description: "基本 PCI 驱动"
+  - description: "基本 PCI 驱动 (使用 pcim/devm)"
+    kernel_version: "5.0+"
     code: |
-      static int my_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
-          struct my_device *dev;
-          int bars, ret;
-
-          /* 使能设备 */
-          ret = pci_enable_device(pdev);
+      #include <linux/module.h>
+      #include <linux/pci.h>
+      #include <linux/interrupt.h>
+      
+      struct my_device {
+          void __iomem *bar0;
+          int irq_count;
+      };
+      
+      static irqreturn_t my_irq_handler(int irq, void *dev_id)
+      {
+          struct my_device *priv = dev_id;
+          /* 处理中断 */
+          return IRQ_HANDLED;
+      }
+      
+      static int my_probe(struct pci_dev *pdev,
+                          const struct pci_device_id *id)
+      {
+          struct my_device *priv;
+          int ret, nvec;
+          
+          /* 使能设备 (devm 版本) */
+          ret = pcim_enable_device(pdev);
           if (ret)
               return ret;
-
-          /* 请求 BAR 区域 */
-          bars = pci_select_bars(pdev, IORESOURCE_MEM);
-          ret = pci_request_regions(pdev, "my_pci");
+          
+          /* 请求并映射 BAR (devm 版本) */
+          ret = pcim_iomap_regions(pdev, BIT(0), "my_pci");
           if (ret)
-              goto err_disable;
-
-          /* 映射 BAR */
-          dev->bar0 = pci_ioremap_bar(pdev, 0);
-          if (!dev->bar0) {
-              ret = -ENOMEM;
-              goto err_release;
+              return ret;
+          
+          /* 分配私有数据 */
+          priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
+          if (!priv)
+              return -ENOMEM;
+          
+          priv->bar0 = pcim_iomap_table(pdev)[0];
+          
+          /* 设置 DMA Master */
+          pci_set_master(pdev);
+          
+          /* 设置 DMA 掩码 */
+          ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
+          if (ret) {
+              ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+              if (ret)
+                  return ret;
           }
-
-          /* 设置驱动数据 */
-          pci_set_drvdata(pdev, dev);
-
-          /* 启用 MSI 中断 */
-          ret = pci_enable_msi(pdev);
-          if (ret)
-              goto err_unmap;
-
+          
+          /* 分配中断向量 (优先 MSI-X) */
+          nvec = pci_alloc_irq_vectors(pdev, 1, 4,
+                                       PCI_IRQ_MSIX | PCI_IRQ_MSI);
+          if (nvec < 0)
+              return nvec;
+          priv->irq_count = nvec;
+          
           /* 请求中断 */
-          ret = request_irq(pdev->irq, my_irq_handler, 0,
-                            "my_pci", dev);
-          if (ret)
-              goto err_msi;
-
+          ret = devm_request_irq(&pdev->dev, pci_irq_vector(pdev, 0),
+                                 my_irq_handler, 0, "my_pci", priv);
+          if (ret) {
+              pci_free_irq_vectors(pdev);
+              return ret;
+          }
+          
+          pci_set_drvdata(pdev, priv);
+          dev_info(&pdev->dev, "probed with %d irq vectors\n", nvec);
           return 0;
-
-      err_msi:
-          pci_disable_msi(pdev);
-      err_unmap:
-          iounmap(dev->bar0);
-      err_release:
-          pci_release_regions(pdev);
-      err_disable:
-          pci_disable_device(pdev);
-          return ret;
       }
-
-      static void my_remove(struct pci_dev *pdev) {
-          struct my_device *dev = pci_get_drvdata(pdev);
-
-          free_irq(pdev->irq, dev);
-          pci_disable_msi(pdev);
-          iounmap(dev->bar0);
-          pci_release_regions(pdev);
-          pci_disable_device(pdev);
+      
+      static void my_remove(struct pci_dev *pdev)
+      {
+          /* devm 自动清理大部分资源 */
+          pci_free_irq_vectors(pdev);
       }
-
-      static struct pci_device_id my_id_table[] = {
+      
+      static const struct pci_device_id my_id_table[] = {
           { PCI_DEVICE(0x1234, 0x5678) },
+          { PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0xABCD) },
           { 0, }
       };
       MODULE_DEVICE_TABLE(pci, my_id_table);
-
+      
       static struct pci_driver my_driver = {
           .name = "my_pci_driver",
           .id_table = my_id_table,
@@ -382,3 +950,183 @@ examples:
           .remove = my_remove,
       };
       module_pci_driver(my_driver);
+      
+      MODULE_LICENSE("GPL");
+
+  - description: "带 PM 和错误处理的驱动"
+    kernel_version: "5.0+"
+    code: |
+      static int my_suspend(struct device *dev)
+      {
+          struct pci_dev *pdev = to_pci_dev(dev);
+          struct my_device *priv = pci_get_drvdata(pdev);
+          
+          /* 保存设备状态 */
+          priv->saved_ctrl = ioread32(priv->bar0 + REG_CTRL);
+          
+          /* 停止 DMA */
+          iowrite32(0, priv->bar0 + REG_DMA_CTRL);
+          
+          return 0;
+      }
+      
+      static int my_resume(struct device *dev)
+      {
+          struct pci_dev *pdev = to_pci_dev(dev);
+          struct my_device *priv = pci_get_drvdata(pdev);
+          
+          /* 恢复设备状态 */
+          iowrite32(priv->saved_ctrl, priv->bar0 + REG_CTRL);
+          
+          return 0;
+      }
+      
+      static DEFINE_SIMPLE_DEV_PM_OPS(my_pm_ops, my_suspend, my_resume);
+      
+      /* AER 错误处理 */
+      static pci_ers_result_t my_error_detected(struct pci_dev *pdev,
+                                                pci_channel_state_t state)
+      {
+          struct my_device *priv = pci_get_drvdata(pdev);
+          
+          dev_err(&pdev->dev, "PCI error detected, state=%d\n", state);
+          
+          if (state == pci_channel_io_perm_failure)
+              return PCI_ERS_RESULT_DISCONNECT;
+          
+          /* 停止设备活动 */
+          priv->error_state = true;
+          
+          return PCI_ERS_RESULT_NEED_RESET;
+      }
+      
+      static pci_ers_result_t my_slot_reset(struct pci_dev *pdev)
+      {
+          struct my_device *priv = pci_get_drvdata(pdev);
+          
+          /* 重新初始化硬件 */
+          if (my_hw_init(priv) < 0)
+              return PCI_ERS_RESULT_DISCONNECT;
+          
+          return PCI_ERS_RESULT_RECOVERED;
+      }
+      
+      static void my_error_resume(struct pci_dev *pdev)
+      {
+          struct my_device *priv = pci_get_drvdata(pdev);
+          priv->error_state = false;
+          /* 恢复正常操作 */
+      }
+      
+      static const struct pci_error_handlers my_err_handler = {
+          .error_detected = my_error_detected,
+          .slot_reset = my_slot_reset,
+          .resume = my_error_resume,
+      };
+      
+      static struct pci_driver my_driver = {
+          .name = "my_pci_driver",
+          .id_table = my_id_table,
+          .probe = my_probe,
+          .remove = my_remove,
+          .driver.pm = pm_ptr(&my_pm_ops),
+          .err_handler = &my_err_handler,
+      };
+
+  - description: "多中断向量 (MSI-X)"
+    kernel_version: "4.8+"
+    code: |
+      #define MAX_QUEUES 8
+      
+      struct my_queue {
+          struct my_device *dev;
+          int queue_id;
+          void __iomem *regs;
+      };
+      
+      struct my_device {
+          void __iomem *bar0;
+          int num_queues;
+          struct my_queue queues[MAX_QUEUES];
+      };
+      
+      static irqreturn_t my_queue_irq(int irq, void *data)
+      {
+          struct my_queue *q = data;
+          /* 处理队列中断 */
+          return IRQ_HANDLED;
+      }
+      
+      static int my_probe(struct pci_dev *pdev,
+                          const struct pci_device_id *id)
+      {
+          struct my_device *priv;
+          int ret, nvec, i;
+          
+          ret = pcim_enable_device(pdev);
+          if (ret)
+              return ret;
+          
+          priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
+          if (!priv)
+              return -ENOMEM;
+          
+          /* 尝试分配多个 MSI-X 向量 */
+          nvec = pci_alloc_irq_vectors(pdev, 1, MAX_QUEUES,
+                                       PCI_IRQ_MSIX | PCI_IRQ_AFFINITY);
+          if (nvec < 0)
+              return nvec;
+          
+          priv->num_queues = nvec;
+          
+          /* 为每个队列请求中断 */
+          for (i = 0; i < nvec; i++) {
+              priv->queues[i].dev = priv;
+              priv->queues[i].queue_id = i;
+              
+              ret = devm_request_irq(&pdev->dev,
+                                     pci_irq_vector(pdev, i),
+                                     my_queue_irq, 0,
+                                     dev_name(&pdev->dev),
+                                     &priv->queues[i]);
+              if (ret) {
+                  pci_free_irq_vectors(pdev);
+                  return ret;
+              }
+          }
+          
+          pci_set_drvdata(pdev, priv);
+          return 0;
+      }
+
+  - description: "SR-IOV 支持"
+    kernel_version: "3.0+"
+    code: |
+      static int my_sriov_configure(struct pci_dev *pdev, int num_vfs)
+      {
+          struct my_device *priv = pci_get_drvdata(pdev);
+          int ret;
+          
+          if (num_vfs == 0) {
+              /* 禁用 VF */
+              pci_disable_sriov(pdev);
+              priv->num_vfs = 0;
+              return 0;
+          }
+          
+          /* 启用 VF */
+          ret = pci_enable_sriov(pdev, num_vfs);
+          if (ret)
+              return ret;
+          
+          priv->num_vfs = num_vfs;
+          return num_vfs;
+      }
+      
+      static struct pci_driver my_driver = {
+          .name = "my_pci_driver",
+          .id_table = my_id_table,
+          .probe = my_probe,
+          .remove = my_remove,
+          .sriov_configure = my_sriov_configure,
+      };
