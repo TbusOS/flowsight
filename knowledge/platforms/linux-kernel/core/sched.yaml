@@ -1,0 +1,233 @@
+# Linux Kernel Scheduler Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/scheduler/
+
+# ============================================================
+# SCHEDULER CLASS (CFS, RT, DL)
+# ============================================================
+
+sched_class:
+  description: "Scheduler Class Framework"
+  header: "kernel/sched/sched.h"
+  icon: "⏱️"
+
+  classes:
+    - name: "stop_sched_class"
+      description: "最高优先级，用于停止 CPU"
+      priority: 0
+    - name: "dl_sched_class"
+      description: "Deadline 调度器"
+      priority: 1
+    - name: "rt_sched_class"
+      description: "实时调度器 (FIFO/RR)"
+      priority: 2
+    - name: "fair_sched_class"
+      description: "完全公平调度器 (CFS)"
+      priority: 3
+    - name: "idle_sched_class"
+      description: "空闲调度器"
+      priority: 4
+
+  callbacks:
+    enqueue_task:
+      pattern: '\.enqueue_task\s*=\s*(?P<handler>\w+)'
+      description: "将任务加入运行队列"
+      context: "process/irq"
+      signature: "void (*)(struct rq *, struct task_struct *, int)"
+
+    dequeue_task:
+      pattern: '\.dequeue_task\s*=\s*(?P<handler>\w+)'
+      description: "将任务从运行队列移除"
+      context: "process/irq"
+      signature: "void (*)(struct rq *, struct task_struct *, int)"
+
+    pick_next_task:
+      pattern: '\.pick_next_task\s*=\s*(?P<handler>\w+)'
+      description: "选择下一个要运行的任务"
+      context: "irq_disabled"
+      signature: "struct task_struct *(*)(struct rq *)"
+
+    put_prev_task:
+      pattern: '\.put_prev_task\s*=\s*(?P<handler>\w+)'
+      description: "将当前任务放回队列"
+      context: "irq_disabled"
+      signature: "void (*)(struct rq *, struct task_struct *)"
+
+    task_tick:
+      pattern: '\.task_tick\s*=\s*(?P<handler>\w+)'
+      description: "时钟中断回调"
+      context: "hardirq"
+      trigger: "scheduler_tick()"
+      signature: "void (*)(struct rq *, struct task_struct *, int)"
+
+    task_fork:
+      pattern: '\.task_fork\s*=\s*(?P<handler>\w+)'
+      description: "新进程创建回调"
+      context: "process"
+      trigger: "fork()/clone()"
+      signature: "void (*)(struct task_struct *)"
+
+    task_dead:
+      pattern: '\.task_dead\s*=\s*(?P<handler>\w+)'
+      description: "进程退出回调"
+      context: "process"
+      trigger: "do_exit()"
+      signature: "void (*)(struct task_struct *)"
+
+    select_task_rq:
+      pattern: '\.select_task_rq\s*=\s*(?P<handler>\w+)'
+      description: "选择任务运行的 CPU"
+      context: "process"
+      signature: "int (*)(struct task_struct *, int, int)"
+
+    check_preempt_curr:
+      pattern: '\.check_preempt_curr\s*=\s*(?P<handler>\w+)'
+      description: "检查是否需要抢占当前任务"
+      context: "irq_disabled"
+      signature: "void (*)(struct rq *, struct task_struct *, int)"
+
+  call_chains:
+    schedule:
+      - "schedule()"
+      - "  __schedule()"
+      - "    pick_next_task()"
+      - "      sched_class->pick_next_task()"
+      - "    context_switch()"
+      - "      switch_mm_irqs_off()"
+      - "      switch_to()"
+
+    wake_up:
+      - "wake_up_process() / try_to_wake_up()"
+      - "  ttwu_queue()"
+      - "    ttwu_do_activate()"
+      - "      activate_task()"
+      - "        enqueue_task()"
+      - "          sched_class->enqueue_task()"
+      - "      check_preempt_curr()"
+
+# ============================================================
+# CFS SCHEDULER (Completely Fair Scheduler)
+# ============================================================
+
+cfs_scheduler:
+  description: "Completely Fair Scheduler"
+  header: "kernel/sched/fair.c"
+  icon: "⚖️"
+
+  data_structures:
+    cfs_rq:
+      description: "CFS 运行队列"
+      fields:
+        - "struct rb_root_cached tasks_timeline"
+        - "struct sched_entity *curr"
+        - "u64 min_vruntime"
+
+    sched_entity:
+      description: "调度实体"
+      fields:
+        - "struct rb_node run_node"
+        - "u64 vruntime"
+        - "u64 exec_start"
+        - "u64 sum_exec_runtime"
+
+  key_functions:
+    update_curr:
+      pattern: 'update_curr\s*\('
+      description: "更新当前任务的虚拟运行时间"
+
+    __enqueue_entity:
+      pattern: '__enqueue_entity\s*\('
+      description: "将实体加入红黑树"
+
+    __pick_first_entity:
+      pattern: '__pick_first_entity\s*\('
+      description: "选择 vruntime 最小的实体"
+
+# ============================================================
+# RT SCHEDULER (Real-Time)
+# ============================================================
+
+rt_scheduler:
+  description: "Real-Time Scheduler (SCHED_FIFO/SCHED_RR)"
+  header: "kernel/sched/rt.c"
+  icon: "🚀"
+
+  policies:
+    - name: "SCHED_FIFO"
+      description: "先进先出，不会被同优先级抢占"
+    - name: "SCHED_RR"
+      description: "轮转，同优先级之间时间片轮转"
+
+  priority_range:
+    min: 1
+    max: 99
+    description: "实时优先级范围"
+
+# ============================================================
+# SCHEDULER STATISTICS
+# ============================================================
+
+sched_stats:
+  description: "Scheduler Statistics and Debugging"
+  
+  proc_files:
+    - path: "/proc/sched_debug"
+      description: "调度器调试信息"
+    - path: "/proc/schedstat"
+      description: "调度器统计"
+    - path: "/proc/<pid>/sched"
+      description: "进程调度信息"
+
+  tracepoints:
+    - "sched:sched_switch"
+    - "sched:sched_wakeup"
+    - "sched:sched_migrate_task"
+    - "sched:sched_process_fork"
+    - "sched:sched_process_exit"
+
+# ============================================================
+# PREEMPTION
+# ============================================================
+
+preemption:
+  description: "Kernel Preemption"
+  
+  config_options:
+    - name: "CONFIG_PREEMPT_NONE"
+      description: "无抢占（服务器）"
+    - name: "CONFIG_PREEMPT_VOLUNTARY"
+      description: "自愿抢占"
+    - name: "CONFIG_PREEMPT"
+      description: "完全抢占（桌面）"
+    - name: "CONFIG_PREEMPT_RT"
+      description: "实时抢占"
+
+  preempt_disable:
+    - pattern: 'preempt_disable\s*\(\s*\)'
+      description: "禁用抢占"
+    - pattern: 'preempt_enable\s*\(\s*\)'
+      description: "启用抢占"
+    - pattern: 'preempt_count\s*\(\s*\)'
+      description: "获取抢占计数"
+
+# ============================================================
+# CPU AFFINITY
+# ============================================================
+
+cpu_affinity:
+  description: "CPU Affinity and Migration"
+  
+  functions:
+    - pattern: 'set_cpus_allowed_ptr\s*\('
+      description: "设置任务允许运行的 CPU"
+    - pattern: 'sched_setaffinity\s*\('
+      description: "系统调用设置亲和性"
+    - pattern: 'migrate_task_to\s*\('
+      description: "迁移任务到指定 CPU"
+
+  per_cpu:
+    - pattern: 'get_cpu\s*\(\s*\)'
+      description: "获取当前 CPU 并禁用抢占"
+    - pattern: 'put_cpu\s*\(\s*\)'
+      description: "释放 CPU 并启用抢占"
+    - pattern: 'smp_processor_id\s*\(\s*\)'
+      description: "获取当前 CPU ID"

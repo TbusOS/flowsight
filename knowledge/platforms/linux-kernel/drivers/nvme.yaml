@@ -1,0 +1,195 @@
+# NVMe Driver Framework Knowledge Base
+# Reference: https://nvmexpress.org/
+
+# ============================================================
+# NVME DRIVER
+# ============================================================
+
+nvme_driver:
+  description: "NVMe Driver Framework"
+  header: "linux/nvme.h"
+  icon: "⚡"
+
+  registration:
+    - pattern: 'nvme_init_ctrl\s*\('
+      description: "初始化 NVMe 控制器"
+    - pattern: 'nvme_uninit_ctrl\s*\('
+      description: "注销 NVMe 控制器"
+
+  controller_ops:
+    pattern: 'static const struct nvme_ctrl_ops\s+(?P<name>\w+)'
+    description: "NVMe 控制器操作"
+
+    callbacks:
+      reg_read32:
+        pattern: '\.reg_read32\s*=\s*(?P<handler>\w+)'
+        description: "读 32 位寄存器"
+
+      reg_write32:
+        pattern: '\.reg_write32\s*=\s*(?P<handler>\w+)'
+        description: "写 32 位寄存器"
+
+      reg_read64:
+        pattern: '\.reg_read64\s*=\s*(?P<handler>\w+)'
+        description: "读 64 位寄存器"
+
+      submit_async_event:
+        pattern: '\.submit_async_event\s*=\s*(?P<handler>\w+)'
+        description: "提交异步事件"
+
+      free_ctrl:
+        pattern: '\.free_ctrl\s*=\s*(?P<handler>\w+)'
+        description: "释放控制器"
+
+# ============================================================
+# NVME PCIE
+# ============================================================
+
+nvme_pcie:
+  description: "NVMe PCIe Driver"
+  header: "drivers/nvme/host/pci.c"
+  icon: "🔌"
+
+  registration:
+    - pattern: 'pci_register_driver\s*\(\s*&nvme_driver\s*\)'
+      description: "注册 NVMe PCIe 驱动"
+
+  pci_callbacks:
+    probe:
+      pattern: '\.probe\s*=\s*nvme_probe'
+      description: "PCIe 探测"
+      context: "process"
+
+    remove:
+      pattern: '\.remove\s*=\s*nvme_remove'
+      description: "PCIe 移除"
+      context: "process"
+
+    shutdown:
+      pattern: '\.shutdown\s*=\s*nvme_shutdown'
+      description: "关机处理"
+
+  queue_handling:
+    - pattern: 'nvme_alloc_queue\s*\('
+      description: "分配队列"
+    - pattern: 'nvme_init_queue\s*\('
+      description: "初始化队列"
+    - pattern: 'nvme_free_queue\s*\('
+      description: "释放队列"
+
+# ============================================================
+# NVME FABRICS
+# ============================================================
+
+nvme_fabrics:
+  description: "NVMe over Fabrics"
+  header: "linux/nvme-fc.h"
+  icon: "🌐"
+
+  transports:
+    - name: "NVMe/RDMA"
+      module: "nvme-rdma"
+      description: "NVMe over RDMA"
+    - name: "NVMe/FC"
+      module: "nvme-fc"
+      description: "NVMe over Fibre Channel"
+    - name: "NVMe/TCP"
+      module: "nvme-tcp"
+      description: "NVMe over TCP"
+
+  fabrics_ops:
+    create_ctrl:
+      pattern: '\.create_ctrl\s*=\s*(?P<handler>\w+)'
+      description: "创建控制器"
+
+# ============================================================
+# NVME COMMANDS
+# ============================================================
+
+nvme_commands:
+  description: "NVMe Command Set"
+  icon: "📝"
+
+  admin_commands:
+    - "NVME_ADMIN_CREATE_SQ"
+    - "NVME_ADMIN_CREATE_CQ"
+    - "NVME_ADMIN_DELETE_SQ"
+    - "NVME_ADMIN_DELETE_CQ"
+    - "NVME_ADMIN_IDENTIFY"
+    - "NVME_ADMIN_GET_LOG_PAGE"
+    - "NVME_ADMIN_SET_FEATURES"
+    - "NVME_ADMIN_GET_FEATURES"
+    - "NVME_ADMIN_ASYNC_EVENT"
+    - "NVME_ADMIN_NS_MGMT"
+    - "NVME_ADMIN_NS_ATTACH"
+    - "NVME_ADMIN_FORMAT_NVM"
+
+  io_commands:
+    - "nvme_cmd_read"
+    - "nvme_cmd_write"
+    - "nvme_cmd_flush"
+    - "nvme_cmd_dsm"
+    - "nvme_cmd_write_zeroes"
+    - "nvme_cmd_compare"
+
+  functions:
+    - pattern: 'nvme_submit_sync_cmd\s*\('
+      description: "同步提交命令"
+    - pattern: 'nvme_submit_user_cmd\s*\('
+      description: "提交用户命令"
+
+# ============================================================
+# NVME NAMESPACES
+# ============================================================
+
+nvme_namespace:
+  description: "NVMe Namespace Management"
+  icon: "📁"
+
+  functions:
+    - pattern: 'nvme_alloc_ns\s*\('
+      description: "分配命名空间"
+    - pattern: 'nvme_ns_remove\s*\('
+      description: "移除命名空间"
+    - pattern: 'nvme_mpath_set_disk_name\s*\('
+      description: "设置多路径磁盘名"
+
+  multipath:
+    - pattern: 'nvme_mpath_add_disk\s*\('
+      description: "添加多路径磁盘"
+    - pattern: 'nvme_mpath_remove_disk\s*\('
+      description: "移除多路径磁盘"
+
+# ============================================================
+# NVME TARGET (NVMeoF Target)
+# ============================================================
+
+nvme_target:
+  description: "NVMe Target Subsystem"
+  header: "drivers/nvme/target/"
+  icon: "🎯"
+
+  subsystem:
+    - pattern: 'nvmet_subsys_alloc\s*\('
+      description: "分配 NVMe target 子系统"
+    - pattern: 'nvmet_subsys_put\s*\('
+      description: "释放子系统引用"
+
+  namespace:
+    - pattern: 'nvmet_ns_enable\s*\('
+      description: "启用目标命名空间"
+    - pattern: 'nvmet_ns_disable\s*\('
+      description: "禁用目标命名空间"
+
+  transport_ops:
+    queue_response:
+      pattern: '\.queue_response\s*=\s*(?P<handler>\w+)'
+      description: "队列响应"
+
+    add_port:
+      pattern: '\.add_port\s*=\s*(?P<handler>\w+)'
+      description: "添加端口"
+
+    remove_port:
+      pattern: '\.remove_port\s*=\s*(?P<handler>\w+)'
+      description: "移除端口"

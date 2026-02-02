@@ -1,0 +1,350 @@
+# Linux IPC (Inter-Process Communication) Knowledge Base
+# Reference: https://man7.org/linux/man-pages/man7/sysvipc.7.html
+
+# ============================================================
+# SYSTEM V SHARED MEMORY
+# ============================================================
+
+sysv_shm:
+  description: "System V Shared Memory"
+  header: "linux/shm.h"
+  icon: "🗃️"
+
+  syscalls:
+    shmget:
+      pattern: 'shmget\s*\('
+      description: "获取或创建共享内存段"
+      signature: "int shmget(key_t key, size_t size, int shmflg)"
+      context: "process"
+
+    shmat:
+      pattern: 'shmat\s*\('
+      description: "附加共享内存段到进程地址空间"
+      signature: "void *shmat(int shmid, const void *shmaddr, int shmflg)"
+      context: "process"
+
+    shmdt:
+      pattern: 'shmdt\s*\('
+      description: "分离共享内存段"
+      signature: "int shmdt(const void *shmaddr)"
+      context: "process"
+
+    shmctl:
+      pattern: 'shmctl\s*\('
+      description: "共享内存控制操作"
+      signature: "int shmctl(int shmid, int cmd, struct shmid_ds *buf)"
+      context: "process"
+
+  kernel_functions:
+    - pattern: 'do_shmat\s*\('
+      description: "内核 shmat 实现"
+    - pattern: 'newseg\s*\('
+      description: "创建新共享内存段"
+    - pattern: 'shm_destroy\s*\('
+      description: "销毁共享内存段"
+
+  data_structures:
+    shmid_kernel:
+      description: "内核共享内存描述符"
+      fields:
+        - "struct kern_ipc_perm shm_perm"
+        - "struct file *shm_file"
+        - "size_t shm_segsz"
+        - "unsigned long shm_nattch"
+
+# ============================================================
+# SYSTEM V MESSAGE QUEUE
+# ============================================================
+
+sysv_msg:
+  description: "System V Message Queue"
+  header: "linux/msg.h"
+  icon: "📨"
+
+  syscalls:
+    msgget:
+      pattern: 'msgget\s*\('
+      description: "获取或创建消息队列"
+      signature: "int msgget(key_t key, int msgflg)"
+      context: "process"
+
+    msgsnd:
+      pattern: 'msgsnd\s*\('
+      description: "发送消息"
+      signature: "int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg)"
+      context: "process"
+      can_sleep: true
+
+    msgrcv:
+      pattern: 'msgrcv\s*\('
+      description: "接收消息"
+      signature: "ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp, int msgflg)"
+      context: "process"
+      can_sleep: true
+
+    msgctl:
+      pattern: 'msgctl\s*\('
+      description: "消息队列控制操作"
+      signature: "int msgctl(int msqid, int cmd, struct msqid_ds *buf)"
+      context: "process"
+
+  kernel_functions:
+    - pattern: 'do_msgsnd\s*\('
+      description: "内核 msgsnd 实现"
+    - pattern: 'do_msgrcv\s*\('
+      description: "内核 msgrcv 实现"
+    - pattern: 'newque\s*\('
+      description: "创建新消息队列"
+
+# ============================================================
+# SYSTEM V SEMAPHORE
+# ============================================================
+
+sysv_sem:
+  description: "System V Semaphore"
+  header: "linux/sem.h"
+  icon: "🚦"
+
+  syscalls:
+    semget:
+      pattern: 'semget\s*\('
+      description: "获取或创建信号量集"
+      signature: "int semget(key_t key, int nsems, int semflg)"
+      context: "process"
+
+    semop:
+      pattern: 'semop\s*\('
+      description: "信号量操作"
+      signature: "int semop(int semid, struct sembuf *sops, size_t nsops)"
+      context: "process"
+      can_sleep: true
+
+    semctl:
+      pattern: 'semctl\s*\('
+      description: "信号量控制操作"
+      signature: "int semctl(int semid, int semnum, int cmd, ...)"
+      context: "process"
+
+  operations:
+    - value: -1
+      description: "P 操作 (wait/acquire)"
+    - value: 1
+      description: "V 操作 (signal/release)"
+    - value: 0
+      description: "等待信号量值为 0"
+
+# ============================================================
+# POSIX SHARED MEMORY
+# ============================================================
+
+posix_shm:
+  description: "POSIX Shared Memory"
+  header: "mman.h"
+  icon: "📦"
+
+  functions:
+    shm_open:
+      pattern: 'shm_open\s*\('
+      description: "创建/打开 POSIX 共享内存对象"
+      signature: "int shm_open(const char *name, int oflag, mode_t mode)"
+
+    shm_unlink:
+      pattern: 'shm_unlink\s*\('
+      description: "删除 POSIX 共享内存对象"
+      signature: "int shm_unlink(const char *name)"
+
+    mmap:
+      pattern: 'mmap\s*\('
+      description: "映射共享内存"
+      signature: "void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)"
+
+    munmap:
+      pattern: 'munmap\s*\('
+      description: "取消映射"
+      signature: "int munmap(void *addr, size_t length)"
+
+  filesystem: "/dev/shm/"
+
+# ============================================================
+# UNIX DOMAIN SOCKET
+# ============================================================
+
+unix_socket:
+  description: "Unix Domain Socket"
+  header: "linux/un.h"
+  icon: "🔌"
+
+  socket_types:
+    - name: "SOCK_STREAM"
+      description: "流套接字（面向连接）"
+    - name: "SOCK_DGRAM"
+      description: "数据报套接字（无连接）"
+    - name: "SOCK_SEQPACKET"
+      description: "顺序数据包套接字"
+
+  special_features:
+    - name: "SCM_RIGHTS"
+      description: "传递文件描述符"
+    - name: "SCM_CREDENTIALS"
+      description: "传递进程凭证"
+    - name: "SO_PEERCRED"
+      description: "获取对端凭证"
+
+  kernel_functions:
+    - pattern: 'unix_stream_connect\s*\('
+      description: "Unix 流套接字连接"
+    - pattern: 'unix_dgram_sendmsg\s*\('
+      description: "Unix 数据报发送"
+    - pattern: 'unix_stream_sendmsg\s*\('
+      description: "Unix 流发送"
+
+# ============================================================
+# PIPE
+# ============================================================
+
+pipe:
+  description: "Pipe and Named Pipe (FIFO)"
+  header: "linux/pipe_fs_i.h"
+  icon: "🚿"
+
+  syscalls:
+    pipe:
+      pattern: 'pipe\s*\('
+      description: "创建匿名管道"
+      signature: "int pipe(int pipefd[2])"
+
+    pipe2:
+      pattern: 'pipe2\s*\('
+      description: "创建管道（带标志）"
+      signature: "int pipe2(int pipefd[2], int flags)"
+
+    mkfifo:
+      pattern: 'mkfifo\s*\('
+      description: "创建命名管道"
+      signature: "int mkfifo(const char *pathname, mode_t mode)"
+
+  kernel_functions:
+    - pattern: 'pipe_read\s*\('
+      description: "管道读"
+      context: "process"
+      can_sleep: true
+    - pattern: 'pipe_write\s*\('
+      description: "管道写"
+      context: "process"
+      can_sleep: true
+
+  pipe_buffer:
+    size: "16 pages (64KB default)"
+    can_modify: "/proc/sys/fs/pipe-max-size"
+
+# ============================================================
+# FUTEX
+# ============================================================
+
+futex:
+  description: "Fast Userspace Mutex"
+  header: "linux/futex.h"
+  icon: "⚡"
+
+  operations:
+    - name: "FUTEX_WAIT"
+      description: "等待 futex 值变化"
+    - name: "FUTEX_WAKE"
+      description: "唤醒等待的进程"
+    - name: "FUTEX_FD"
+      description: "返回 futex 文件描述符"
+    - name: "FUTEX_REQUEUE"
+      description: "重新排队等待者"
+    - name: "FUTEX_CMP_REQUEUE"
+      description: "条件重新排队"
+
+  syscall:
+    pattern: 'futex\s*\('
+    description: "futex 系统调用"
+    signature: "long futex(uint32_t *uaddr, int op, uint32_t val, ...)"
+
+  kernel_functions:
+    - pattern: 'do_futex\s*\('
+      description: "futex 系统调用实现"
+    - pattern: 'futex_wait\s*\('
+      description: "futex 等待"
+    - pattern: 'futex_wake\s*\('
+      description: "futex 唤醒"
+
+# ============================================================
+# EVENTFD
+# ============================================================
+
+eventfd:
+  description: "Event File Descriptor"
+  header: "linux/eventfd.h"
+  icon: "🔔"
+
+  syscall:
+    pattern: 'eventfd\s*\('
+    description: "创建 eventfd"
+    signature: "int eventfd(unsigned int initval, int flags)"
+
+  flags:
+    - "EFD_CLOEXEC"
+    - "EFD_NONBLOCK"
+    - "EFD_SEMAPHORE"
+
+  kernel_functions:
+    - pattern: 'eventfd_signal\s*\('
+      description: "从内核发送事件信号"
+    - pattern: 'eventfd_ctx_read\s*\('
+      description: "读取 eventfd 计数"
+
+  usage:
+    - description: "用户空间事件通知"
+    - description: "KVM/VFIO 中断注入"
+    - description: "epoll 事件循环"
+
+# ============================================================
+# SIGNALFD
+# ============================================================
+
+signalfd:
+  description: "Signal File Descriptor"
+  header: "linux/signalfd.h"
+  icon: "📡"
+
+  syscall:
+    pattern: 'signalfd\s*\('
+    description: "创建 signalfd"
+    signature: "int signalfd(int fd, const sigset_t *mask, int flags)"
+
+  usage:
+    - description: "将信号转为文件描述符事件"
+    - description: "配合 epoll/select 使用"
+
+# ============================================================
+# TIMERFD
+# ============================================================
+
+timerfd:
+  description: "Timer File Descriptor"
+  header: "linux/timerfd.h"
+  icon: "⏰"
+
+  syscalls:
+    timerfd_create:
+      pattern: 'timerfd_create\s*\('
+      description: "创建 timerfd"
+      signature: "int timerfd_create(int clockid, int flags)"
+
+    timerfd_settime:
+      pattern: 'timerfd_settime\s*\('
+      description: "设置定时器"
+      signature: "int timerfd_settime(int fd, int flags, ...)"
+
+    timerfd_gettime:
+      pattern: 'timerfd_gettime\s*\('
+      description: "获取定时器状态"
+      signature: "int timerfd_gettime(int fd, struct itimerspec *curr_value)"
+
+  clock_types:
+    - "CLOCK_REALTIME"
+    - "CLOCK_MONOTONIC"
+    - "CLOCK_BOOTTIME"

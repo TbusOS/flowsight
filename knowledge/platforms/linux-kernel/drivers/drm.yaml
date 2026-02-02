@@ -1,0 +1,266 @@
+# DRM (Direct Rendering Manager) Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/gpu/
+
+# ============================================================
+# DRM DRIVER
+# ============================================================
+
+drm_driver:
+  description: "DRM/KMS Driver Framework"
+  header: "drm/drm_drv.h"
+  icon: "🖥️"
+
+  registration:
+    - pattern: 'drm_dev_register\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "注册 DRM 设备"
+    - pattern: 'drm_dev_unregister\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "注销 DRM 设备"
+    - pattern: 'drm_dev_alloc\s*\(\s*&(?P<driver>\w+)\s*,'
+      description: "分配 DRM 设备"
+
+  driver_structure:
+    pattern: 'static const struct drm_driver\s+(?P<name>\w+)'
+    description: "DRM 驱动结构体"
+
+  callbacks:
+    load:
+      pattern: '\.load\s*=\s*(?P<handler>\w+)'
+      description: "驱动加载回调（已废弃）"
+      context: "process"
+
+    unload:
+      pattern: '\.unload\s*=\s*(?P<handler>\w+)'
+      description: "驱动卸载回调"
+      context: "process"
+
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      description: "文件打开回调"
+      context: "process"
+
+    postclose:
+      pattern: '\.postclose\s*=\s*(?P<handler>\w+)'
+      description: "文件关闭后回调"
+      context: "process"
+
+  features:
+    - "DRIVER_MODESET"
+    - "DRIVER_GEM"
+    - "DRIVER_ATOMIC"
+    - "DRIVER_RENDER"
+
+# ============================================================
+# KMS (Kernel Mode Setting)
+# ============================================================
+
+kms:
+  description: "Kernel Mode Setting"
+  header: "drm/drm_crtc.h"
+  icon: "📺"
+
+  objects:
+    connector:
+      description: "显示输出连接器 (HDMI, DP, etc.)"
+      structure: "struct drm_connector"
+      helpers:
+        - "drm_connector_init()"
+        - "drm_connector_register()"
+        - "drm_connector_cleanup()"
+
+    encoder:
+      description: "信号编码器"
+      structure: "struct drm_encoder"
+      helpers:
+        - "drm_encoder_init()"
+        - "drm_encoder_cleanup()"
+
+    crtc:
+      description: "CRT Controller (扫描输出引擎)"
+      structure: "struct drm_crtc"
+      helpers:
+        - "drm_crtc_init_with_planes()"
+        - "drm_crtc_cleanup()"
+
+    plane:
+      description: "显示平面 (Primary, Cursor, Overlay)"
+      structure: "struct drm_plane"
+      helpers:
+        - "drm_universal_plane_init()"
+        - "drm_plane_cleanup()"
+
+    framebuffer:
+      description: "帧缓冲"
+      structure: "struct drm_framebuffer"
+      helpers:
+        - "drm_framebuffer_init()"
+        - "drm_framebuffer_cleanup()"
+
+  crtc_helper_funcs:
+    mode_set:
+      pattern: '\.mode_set\s*=\s*(?P<handler>\w+)'
+      description: "设置显示模式"
+
+    mode_set_nofb:
+      pattern: '\.mode_set_nofb\s*=\s*(?P<handler>\w+)'
+      description: "设置模式（无帧缓冲）"
+
+    atomic_enable:
+      pattern: '\.atomic_enable\s*=\s*(?P<handler>\w+)'
+      description: "原子启用 CRTC"
+
+    atomic_disable:
+      pattern: '\.atomic_disable\s*=\s*(?P<handler>\w+)'
+      description: "原子禁用 CRTC"
+
+# ============================================================
+# GEM (Graphics Execution Manager)
+# ============================================================
+
+gem:
+  description: "GEM Memory Management"
+  header: "drm/drm_gem.h"
+  icon: "💎"
+
+  functions:
+    - pattern: 'drm_gem_object_init\s*\('
+      description: "初始化 GEM 对象"
+    - pattern: 'drm_gem_object_put\s*\('
+      description: "减少 GEM 引用计数"
+    - pattern: 'drm_gem_handle_create\s*\('
+      description: "创建用户空间句柄"
+
+  gem_object_funcs:
+    free:
+      pattern: '\.free\s*=\s*(?P<handler>\w+)'
+      description: "释放 GEM 对象"
+
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      description: "GEM 对象打开"
+
+    close:
+      pattern: '\.close\s*=\s*(?P<handler>\w+)'
+      description: "GEM 对象关闭"
+
+    vmap:
+      pattern: '\.vmap\s*=\s*(?P<handler>\w+)'
+      description: "映射到内核虚拟地址"
+
+    mmap:
+      pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
+      description: "用户空间 mmap"
+
+# ============================================================
+# ATOMIC MODESETTING
+# ============================================================
+
+atomic:
+  description: "Atomic Mode Setting"
+  header: "drm/drm_atomic.h"
+  icon: "⚛️"
+
+  state_objects:
+    - "drm_atomic_state"
+    - "drm_crtc_state"
+    - "drm_plane_state"
+    - "drm_connector_state"
+
+  functions:
+    - pattern: 'drm_atomic_helper_commit\s*\('
+      description: "提交原子状态"
+    - pattern: 'drm_atomic_helper_check\s*\('
+      description: "检查原子状态"
+    - pattern: 'drm_atomic_helper_swap_state\s*\('
+      description: "交换原子状态"
+
+  atomic_helper_funcs:
+    atomic_check:
+      pattern: '\.atomic_check\s*=\s*(?P<handler>\w+)'
+      description: "原子检查回调"
+
+    atomic_update:
+      pattern: '\.atomic_update\s*=\s*(?P<handler>\w+)'
+      description: "原子更新回调"
+
+    atomic_flush:
+      pattern: '\.atomic_flush\s*=\s*(?P<handler>\w+)'
+      description: "原子刷新回调"
+
+# ============================================================
+# DRM BRIDGE
+# ============================================================
+
+drm_bridge:
+  description: "DRM Bridge (显示链路中间件)"
+  header: "drm/drm_bridge.h"
+  icon: "🌉"
+
+  registration:
+    - pattern: 'drm_bridge_add\s*\(\s*&(?P<bridge>\w+)\s*\)'
+      description: "添加 DRM bridge"
+    - pattern: 'drm_bridge_remove\s*\(\s*&(?P<bridge>\w+)\s*\)'
+      description: "移除 DRM bridge"
+
+  bridge_funcs:
+    attach:
+      pattern: '\.attach\s*=\s*(?P<handler>\w+)'
+      description: "Bridge 附加到编码器"
+
+    detach:
+      pattern: '\.detach\s*=\s*(?P<handler>\w+)'
+      description: "Bridge 分离"
+
+    mode_set:
+      pattern: '\.mode_set\s*=\s*(?P<handler>\w+)'
+      description: "设置显示模式"
+
+    enable:
+      pattern: '\.enable\s*=\s*(?P<handler>\w+)'
+      description: "启用 bridge"
+
+    disable:
+      pattern: '\.disable\s*=\s*(?P<handler>\w+)'
+      description: "禁用 bridge"
+
+# ============================================================
+# DRM PANEL
+# ============================================================
+
+drm_panel:
+  description: "DRM Panel (显示面板)"
+  header: "drm/drm_panel.h"
+  icon: "📱"
+
+  registration:
+    - pattern: 'drm_panel_add\s*\(\s*&(?P<panel>\w+)\s*\)'
+      description: "添加面板"
+    - pattern: 'drm_panel_remove\s*\(\s*&(?P<panel>\w+)\s*\)'
+      description: "移除面板"
+
+  panel_funcs:
+    prepare:
+      pattern: '\.prepare\s*=\s*(?P<handler>\w+)'
+      description: "准备面板（上电）"
+      context: "process"
+      can_sleep: true
+
+    unprepare:
+      pattern: '\.unprepare\s*=\s*(?P<handler>\w+)'
+      description: "取消准备（下电）"
+      context: "process"
+      can_sleep: true
+
+    enable:
+      pattern: '\.enable\s*=\s*(?P<handler>\w+)'
+      description: "启用面板（开始显示）"
+      context: "process"
+
+    disable:
+      pattern: '\.disable\s*=\s*(?P<handler>\w+)'
+      description: "禁用面板"
+      context: "process"
+
+    get_modes:
+      pattern: '\.get_modes\s*=\s*(?P<handler>\w+)'
+      description: "获取支持的显示模式"
+      context: "process"

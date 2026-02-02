@@ -1,0 +1,252 @@
+# Linux Security Module (LSM) Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/admin-guide/LSM/
+
+# ============================================================
+# LSM FRAMEWORK
+# ============================================================
+
+lsm_framework:
+  description: "Linux Security Module Framework"
+  header: "linux/lsm_hooks.h"
+  icon: "🔒"
+
+  registration:
+    - pattern: 'DEFINE_LSM\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "定义 LSM 模块"
+    - pattern: 'security_add_hooks\s*\(\s*(?P<hooks>\w+)\s*,'
+      description: "注册 LSM 钩子"
+
+  major_lsms:
+    - name: "SELinux"
+      config: "CONFIG_SECURITY_SELINUX"
+      description: "强制访问控制"
+    - name: "AppArmor"
+      config: "CONFIG_SECURITY_APPARMOR"
+      description: "路径名访问控制"
+    - name: "Smack"
+      config: "CONFIG_SECURITY_SMACK"
+      description: "简化的强制访问控制"
+    - name: "TOMOYO"
+      config: "CONFIG_SECURITY_TOMOYO"
+      description: "路径名访问控制"
+
+  hook_categories:
+    file_hooks:
+      - name: "file_permission"
+        pattern: '\.file_permission\s*=\s*(?P<handler>\w+)'
+        description: "文件访问权限检查"
+        context: "process"
+        trigger: "read/write/ioctl 系统调用"
+        signature: "int (*)(struct file *, int)"
+
+      - name: "file_open"
+        pattern: '\.file_open\s*=\s*(?P<handler>\w+)'
+        description: "文件打开权限检查"
+        context: "process"
+        trigger: "open() 系统调用"
+        signature: "int (*)(struct file *)"
+
+      - name: "file_mmap"
+        pattern: '\.file_mmap\s*=\s*(?P<handler>\w+)'
+        description: "内存映射权限检查"
+        context: "process"
+        trigger: "mmap() 系统调用"
+
+    inode_hooks:
+      - name: "inode_create"
+        pattern: '\.inode_create\s*=\s*(?P<handler>\w+)'
+        description: "创建文件权限检查"
+        context: "process"
+
+      - name: "inode_unlink"
+        pattern: '\.inode_unlink\s*=\s*(?P<handler>\w+)'
+        description: "删除文件权限检查"
+        context: "process"
+
+      - name: "inode_permission"
+        pattern: '\.inode_permission\s*=\s*(?P<handler>\w+)'
+        description: "inode 访问权限检查"
+        context: "process"
+
+    task_hooks:
+      - name: "task_alloc"
+        pattern: '\.task_alloc\s*=\s*(?P<handler>\w+)'
+        description: "进程创建安全检查"
+        context: "process"
+        trigger: "fork()/clone()"
+
+      - name: "task_kill"
+        pattern: '\.task_kill\s*=\s*(?P<handler>\w+)'
+        description: "信号发送权限检查"
+        context: "process"
+
+      - name: "task_setnice"
+        pattern: '\.task_setnice\s*=\s*(?P<handler>\w+)'
+        description: "修改优先级权限检查"
+        context: "process"
+
+    socket_hooks:
+      - name: "socket_create"
+        pattern: '\.socket_create\s*=\s*(?P<handler>\w+)'
+        description: "套接字创建权限检查"
+        context: "process"
+
+      - name: "socket_connect"
+        pattern: '\.socket_connect\s*=\s*(?P<handler>\w+)'
+        description: "套接字连接权限检查"
+        context: "process"
+
+      - name: "socket_bind"
+        pattern: '\.socket_bind\s*=\s*(?P<handler>\w+)'
+        description: "套接字绑定权限检查"
+        context: "process"
+
+  call_chain:
+    file_open:
+      - "sys_open()"
+      - "  do_sys_open()"
+      - "    do_filp_open()"
+      - "      path_openat()"
+      - "        do_open()"
+      - "          security_file_open()  # LSM hook"
+      - "            call_int_hook(file_open, ...)"
+      - "              selinux_file_open()"
+
+# ============================================================
+# SELINUX
+# ============================================================
+
+selinux:
+  description: "Security-Enhanced Linux"
+  header: "security/selinux/"
+  icon: "🛡️"
+
+  contexts:
+    - name: "user"
+      description: "SELinux 用户"
+    - name: "role"
+      description: "SELinux 角色"
+    - name: "type"
+      description: "SELinux 类型"
+    - name: "level"
+      description: "MLS/MCS 级别"
+
+  permissions:
+    file:
+      - "read", "write", "execute", "append"
+      - "create", "unlink", "rename"
+      - "getattr", "setattr", "relabelfrom", "relabelto"
+      - "lock", "ioctl", "open"
+
+    process:
+      - "fork", "transition", "sigchld", "sigkill"
+      - "ptrace", "getattr", "setexec", "setfscreate"
+
+  policy_files:
+    - "/etc/selinux/config"
+    - "/etc/selinux/*/policy/policy.*"
+    - "/sys/fs/selinux/"
+
+  commands:
+    - "getenforce"
+    - "setenforce"
+    - "sestatus"
+    - "chcon"
+    - "restorecon"
+    - "semanage"
+    - "audit2allow"
+
+# ============================================================
+# CAPABILITIES
+# ============================================================
+
+capabilities:
+  description: "POSIX Capabilities"
+  header: "linux/capability.h"
+  icon: "🔑"
+
+  common_caps:
+    - name: "CAP_SYS_ADMIN"
+      description: "系统管理（几乎万能）"
+    - name: "CAP_NET_ADMIN"
+      description: "网络配置"
+    - name: "CAP_NET_RAW"
+      description: "原始套接字"
+    - name: "CAP_SYS_PTRACE"
+      description: "进程跟踪"
+    - name: "CAP_DAC_OVERRIDE"
+      description: "绕过文件权限检查"
+    - name: "CAP_SETUID"
+      description: "设置 UID"
+    - name: "CAP_SETGID"
+      description: "设置 GID"
+    - name: "CAP_KILL"
+      description: "发送信号"
+    - name: "CAP_MKNOD"
+      description: "创建设备文件"
+
+  functions:
+    - pattern: 'capable\s*\(\s*(?P<cap>CAP_\w+)\s*\)'
+      description: "检查进程是否有指定能力"
+    - pattern: 'ns_capable\s*\('
+      description: "命名空间能力检查"
+    - pattern: 'has_capability\s*\('
+      description: "检查任务是否有能力"
+
+# ============================================================
+# SECCOMP
+# ============================================================
+
+seccomp:
+  description: "Secure Computing Mode"
+  header: "linux/seccomp.h"
+  icon: "🔐"
+
+  modes:
+    - name: "SECCOMP_MODE_STRICT"
+      description: "严格模式，仅允许 read/write/exit"
+    - name: "SECCOMP_MODE_FILTER"
+      description: "过滤模式，BPF 过滤系统调用"
+
+  filter_actions:
+    - "SECCOMP_RET_KILL_PROCESS"
+    - "SECCOMP_RET_KILL_THREAD"
+    - "SECCOMP_RET_TRAP"
+    - "SECCOMP_RET_ERRNO"
+    - "SECCOMP_RET_TRACE"
+    - "SECCOMP_RET_LOG"
+    - "SECCOMP_RET_ALLOW"
+
+  functions:
+    - pattern: 'prctl\s*\(\s*PR_SET_SECCOMP\s*,'
+      description: "启用 seccomp"
+    - pattern: 'seccomp\s*\('
+      description: "seccomp 系统调用"
+
+# ============================================================
+# AUDIT
+# ============================================================
+
+audit:
+  description: "Linux Audit Framework"
+  header: "linux/audit.h"
+  icon: "📋"
+
+  functions:
+    - pattern: 'audit_log\s*\('
+      description: "记录审计日志"
+    - pattern: 'audit_log_start\s*\('
+      description: "开始审计记录"
+    - pattern: 'audit_log_end\s*\('
+      description: "结束审计记录"
+
+  message_types:
+    - "AUDIT_SYSCALL"
+    - "AUDIT_PATH"
+    - "AUDIT_EXECVE"
+    - "AUDIT_ANOM_PROMISCUOUS"
+    - "AUDIT_AVC"
+
+  config_files:
+    - "/etc/audit/auditd.conf"
+    - "/etc/audit/rules.d/"

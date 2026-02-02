@@ -1,0 +1,263 @@
+# Device Tree / Open Firmware Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/devicetree/
+
+# ============================================================
+# DEVICE TREE BASICS
+# ============================================================
+
+device_tree:
+  description: "Device Tree Framework"
+  header: "linux/of.h"
+  icon: "🌳"
+
+  concepts:
+    - name: "node"
+      description: "设备树节点"
+    - name: "property"
+      description: "节点属性"
+    - name: "phandle"
+      description: "节点引用句柄"
+    - name: "compatible"
+      description: "兼容性字符串"
+
+  standard_properties:
+    - name: "compatible"
+      description: "设备兼容性列表"
+      example: 'compatible = "fsl,imx6ul-uart", "fsl,imx21-uart"'
+    - name: "reg"
+      description: "寄存器地址和大小"
+      example: "reg = <0x02020000 0x4000>"
+    - name: "interrupts"
+      description: "中断描述"
+    - name: "clocks"
+      description: "时钟引用"
+    - name: "status"
+      description: "节点状态 (okay/disabled)"
+    - name: "#address-cells"
+      description: "子节点地址单元数"
+    - name: "#size-cells"
+      description: "子节点大小单元数"
+
+# ============================================================
+# OF MATCHING
+# ============================================================
+
+of_match:
+  description: "Device Tree Matching"
+  header: "linux/of_device.h"
+  icon: "🔍"
+
+  match_table:
+    - pattern: 'static const struct of_device_id\s+(?P<name>\w+)\[\]'
+      description: "OF 匹配表"
+    - pattern: '\.compatible\s*=\s*"(?P<compat>[^"]+)"'
+      description: "兼容性字符串"
+    - pattern: '\.data\s*=\s*(?P<data>\w+)'
+      description: "匹配数据"
+
+  module_macros:
+    - pattern: 'MODULE_DEVICE_TABLE\s*\(\s*of\s*,\s*(?P<table>\w+)\s*\)'
+      description: "模块设备表"
+
+  functions:
+    - pattern: 'of_match_device\s*\('
+      description: "匹配设备"
+    - pattern: 'of_match_node\s*\('
+      description: "匹配节点"
+    - pattern: 'of_device_get_match_data\s*\('
+      description: "获取匹配数据"
+
+# ============================================================
+# OF PROPERTY ACCESS
+# ============================================================
+
+of_property:
+  description: "Device Tree Property Access"
+  header: "linux/of.h"
+  icon: "📋"
+
+  read_functions:
+    u32:
+      - pattern: 'of_property_read_u32\s*\('
+        description: "读取 u32 属性"
+      - pattern: 'of_property_read_u32_array\s*\('
+        description: "读取 u32 数组"
+      - pattern: 'of_property_read_u32_index\s*\('
+        description: "读取 u32 数组指定索引"
+
+    u64:
+      - pattern: 'of_property_read_u64\s*\('
+        description: "读取 u64 属性"
+
+    string:
+      - pattern: 'of_property_read_string\s*\('
+        description: "读取字符串属性"
+      - pattern: 'of_property_read_string_array\s*\('
+        description: "读取字符串数组"
+      - pattern: 'of_property_read_string_index\s*\('
+        description: "读取字符串数组指定索引"
+
+    bool:
+      - pattern: 'of_property_read_bool\s*\('
+        description: "读取布尔属性"
+
+    generic:
+      - pattern: 'of_find_property\s*\('
+        description: "查找属性"
+      - pattern: 'of_property_count_elems_of_size\s*\('
+        description: "计算属性元素数量"
+
+# ============================================================
+# OF NODE TRAVERSAL
+# ============================================================
+
+of_traversal:
+  description: "Device Tree Node Traversal"
+  header: "linux/of.h"
+  icon: "🚶"
+
+  find_functions:
+    - pattern: 'of_find_node_by_name\s*\('
+      description: "按名称查找节点"
+    - pattern: 'of_find_node_by_path\s*\('
+      description: "按路径查找节点"
+    - pattern: 'of_find_node_by_phandle\s*\('
+      description: "按 phandle 查找节点"
+    - pattern: 'of_find_compatible_node\s*\('
+      description: "按兼容性查找节点"
+
+  iteration:
+    - pattern: 'for_each_child_of_node\s*\('
+      description: "遍历子节点"
+    - pattern: 'for_each_available_child_of_node\s*\('
+      description: "遍历可用子节点"
+    - pattern: 'for_each_node_by_name\s*\('
+      description: "按名称遍历"
+    - pattern: 'for_each_compatible_node\s*\('
+      description: "按兼容性遍历"
+
+  reference_counting:
+    - pattern: 'of_node_get\s*\('
+      description: "增加节点引用"
+    - pattern: 'of_node_put\s*\('
+      description: "减少节点引用"
+
+# ============================================================
+# OF PLATFORM
+# ============================================================
+
+of_platform:
+  description: "OF Platform Integration"
+  header: "linux/of_platform.h"
+  icon: "🏭"
+
+  functions:
+    - pattern: 'of_platform_populate\s*\('
+      description: "从设备树创建平台设备"
+    - pattern: 'of_platform_depopulate\s*\('
+      description: "移除设备树创建的设备"
+    - pattern: 'of_platform_device_create\s*\('
+      description: "创建单个平台设备"
+
+  driver_integration:
+    - pattern: '\.of_match_table\s*=\s*(?P<table>\w+)'
+      description: "驱动 OF 匹配表"
+    - pattern: 'of_match_ptr\s*\(\s*(?P<table>\w+)\s*\)'
+      description: "OF 匹配表指针宏"
+
+# ============================================================
+# OF RESOURCE ACCESS
+# ============================================================
+
+of_resource:
+  description: "Device Tree Resource Access"
+  icon: "📦"
+
+  address:
+    - pattern: 'of_address_to_resource\s*\('
+      description: "地址转资源"
+    - pattern: 'of_iomap\s*\('
+      description: "映射 I/O 内存"
+    - pattern: 'of_io_request_and_map\s*\('
+      description: "请求并映射 I/O"
+
+  interrupt:
+    - pattern: 'of_irq_get\s*\('
+      description: "获取中断号"
+    - pattern: 'of_irq_get_byname\s*\('
+      description: "按名称获取中断"
+    - pattern: 'platform_get_irq\s*\('
+      description: "平台设备获取中断"
+
+  gpio:
+    - pattern: 'of_get_named_gpio\s*\('
+      description: "获取命名 GPIO"
+    - pattern: 'devm_gpiod_get\s*\('
+      description: "获取 GPIO 描述符"
+
+  clock:
+    - pattern: 'of_clk_get\s*\('
+      description: "获取时钟"
+    - pattern: 'of_clk_get_by_name\s*\('
+      description: "按名称获取时钟"
+
+  regulator:
+    - pattern: 'of_get_regulator\s*\('
+      description: "获取调节器"
+
+  dma:
+    - pattern: 'of_dma_controller_register\s*\('
+      description: "注册 DMA 控制器"
+
+# ============================================================
+# OF OVERLAY
+# ============================================================
+
+of_overlay:
+  description: "Device Tree Overlay"
+  header: "linux/of.h"
+  icon: "🎭"
+
+  functions:
+    - pattern: 'of_overlay_fdt_apply\s*\('
+      description: "应用 FDT overlay"
+    - pattern: 'of_overlay_remove\s*\('
+      description: "移除 overlay"
+    - pattern: 'of_overlay_notifier_register\s*\('
+      description: "注册 overlay 通知"
+
+  use_cases:
+    - "运行时添加/移除设备"
+    - "Cape/HAT 热插拔"
+    - "FPGA 配置"
+
+# ============================================================
+# DEVICE TREE BINDINGS
+# ============================================================
+
+dt_bindings:
+  description: "Device Tree Bindings Documentation"
+  location: "Documentation/devicetree/bindings/"
+  icon: "📚"
+
+  binding_categories:
+    - "arm/"
+    - "bus/"
+    - "clock/"
+    - "display/"
+    - "gpio/"
+    - "i2c/"
+    - "interrupt-controller/"
+    - "mmc/"
+    - "net/"
+    - "phy/"
+    - "pinctrl/"
+    - "regulator/"
+    - "serial/"
+    - "spi/"
+    - "usb/"
+
+  yaml_schema:
+    - "dt-schema"
+    - "YAML bindings"
+    - "make dt_binding_check"

@@ -1,0 +1,276 @@
+# Linux Cgroup (Control Groups) Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html
+
+# ============================================================
+# CGROUP V2 CORE
+# ============================================================
+
+cgroup_v2:
+  description: "Control Groups v2"
+  header: "linux/cgroup.h"
+  icon: "📦"
+
+  hierarchy:
+    - "/sys/fs/cgroup/"
+    - "统一层级 (unified hierarchy)"
+
+  core_files:
+    - "cgroup.controllers"
+    - "cgroup.subtree_control"
+    - "cgroup.events"
+    - "cgroup.type"
+    - "cgroup.procs"
+    - "cgroup.threads"
+    - "cgroup.freeze"
+
+  controllers:
+    - name: "cpu"
+      description: "CPU 调度控制"
+    - name: "memory"
+      description: "内存控制"
+    - name: "io"
+      description: "块 I/O 控制"
+    - name: "pids"
+      description: "进程数限制"
+    - name: "cpuset"
+      description: "CPU 和内存节点绑定"
+    - name: "rdma"
+      description: "RDMA 资源控制"
+    - name: "hugetlb"
+      description: "大页内存控制"
+
+# ============================================================
+# CGROUP SUBSYSTEM
+# ============================================================
+
+cgroup_subsys:
+  description: "Cgroup Subsystem Framework"
+  header: "include/linux/cgroup-defs.h"
+  icon: "🔧"
+
+  registration:
+    pattern: 'CGROUP_SUBSYS\s*\(\s*(?P<name>\w+)\s*,\s*(?P<subsys>\w+)\s*\)'
+    description: "定义 cgroup 子系统"
+
+  subsys_structure:
+    pattern: 'struct cgroup_subsys\s+(?P<name>\w+)_cgrp_subsys'
+    description: "Cgroup 子系统结构体"
+
+  callbacks:
+    css_alloc:
+      pattern: '\.css_alloc\s*=\s*(?P<handler>\w+)'
+      description: "分配子系统状态"
+      context: "process"
+      can_sleep: true
+
+    css_online:
+      pattern: '\.css_online\s*=\s*(?P<handler>\w+)'
+      description: "子系统上线"
+      context: "process"
+
+    css_offline:
+      pattern: '\.css_offline\s*=\s*(?P<handler>\w+)'
+      description: "子系统下线"
+      context: "process"
+
+    css_free:
+      pattern: '\.css_free\s*=\s*(?P<handler>\w+)'
+      description: "释放子系统状态"
+      context: "可能是 RCU 回调"
+
+    attach:
+      pattern: '\.attach\s*=\s*(?P<handler>\w+)'
+      description: "进程附加到 cgroup"
+      context: "process"
+
+    fork:
+      pattern: '\.fork\s*=\s*(?P<handler>\w+)'
+      description: "fork 时回调"
+      context: "process"
+
+    exit:
+      pattern: '\.exit\s*=\s*(?P<handler>\w+)'
+      description: "进程退出回调"
+      context: "process"
+
+# ============================================================
+# MEMORY CGROUP
+# ============================================================
+
+memcg:
+  description: "Memory Cgroup Controller"
+  header: "mm/memcontrol.c"
+  icon: "🧠"
+
+  interface_files:
+    - "memory.current"
+    - "memory.min"
+    - "memory.low"
+    - "memory.high"
+    - "memory.max"
+    - "memory.swap.current"
+    - "memory.swap.max"
+    - "memory.stat"
+    - "memory.events"
+    - "memory.oom.group"
+
+  kernel_functions:
+    charge:
+      - pattern: 'mem_cgroup_charge\s*\('
+        description: "内存计费"
+      - pattern: 'mem_cgroup_uncharge\s*\('
+        description: "取消内存计费"
+
+    oom:
+      - pattern: 'mem_cgroup_oom_synchronize\s*\('
+        description: "OOM 同步"
+      - pattern: 'mem_cgroup_out_of_memory\s*\('
+        description: "触发 OOM"
+
+    reclaim:
+      - pattern: 'mem_cgroup_try_charge\s*\('
+        description: "尝试计费（可能触发回收）"
+
+# ============================================================
+# CPU CGROUP
+# ============================================================
+
+cpucg:
+  description: "CPU Cgroup Controller"
+  header: "kernel/sched/core.c"
+  icon: "⚡"
+
+  interface_files:
+    - "cpu.weight"
+    - "cpu.weight.nice"
+    - "cpu.max"
+    - "cpu.pressure"
+    - "cpu.stat"
+
+  bandwidth_control:
+    - "cpu.max 格式: $MAX $PERIOD"
+    - "quota/period 限制 CPU 时间"
+
+  kernel_integration:
+    - pattern: 'cfs_bandwidth_usage_exceeded\s*\('
+      description: "带宽超限检查"
+    - pattern: 'tg_set_cfs_bandwidth\s*\('
+      description: "设置 CFS 带宽"
+
+# ============================================================
+# IO CGROUP
+# ============================================================
+
+iocg:
+  description: "IO Cgroup Controller"
+  header: "block/blk-iocost.c"
+  icon: "💾"
+
+  interface_files:
+    - "io.max"
+    - "io.weight"
+    - "io.stat"
+    - "io.pressure"
+    - "io.latency"
+
+  models:
+    - name: "blk-iocost"
+      description: "IO 成本模型"
+    - name: "blk-throttle"
+      description: "IO 带宽限制"
+
+  kernel_functions:
+    - pattern: 'blkcg_css_alloc\s*\('
+      description: "分配块 cgroup 状态"
+    - pattern: 'blkcg_policy_register\s*\('
+      description: "注册块 cgroup 策略"
+
+# ============================================================
+# PIDS CGROUP
+# ============================================================
+
+pidscg:
+  description: "PIDs Cgroup Controller"
+  header: "kernel/cgroup/pids.c"
+  icon: "🔢"
+
+  interface_files:
+    - "pids.max"
+    - "pids.current"
+    - "pids.events"
+
+  purpose:
+    - "限制 cgroup 中的进程数"
+    - "防止 fork 炸弹"
+
+# ============================================================
+# CPUSET CGROUP
+# ============================================================
+
+cpusetcg:
+  description: "Cpuset Cgroup Controller"
+  header: "kernel/cgroup/cpuset.c"
+  icon: "🎯"
+
+  interface_files:
+    - "cpuset.cpus"
+    - "cpuset.cpus.effective"
+    - "cpuset.mems"
+    - "cpuset.mems.effective"
+    - "cpuset.cpus.partition"
+
+  features:
+    - "CPU 绑定"
+    - "NUMA 内存节点绑定"
+    - "CPU 分区"
+
+# ============================================================
+# FREEZER
+# ============================================================
+
+freezer:
+  description: "Cgroup Freezer"
+  header: "kernel/cgroup/freezer.c"
+  icon: "❄️"
+
+  interface_file: "cgroup.freeze"
+
+  states:
+    - value: 0
+      description: "运行中"
+    - value: 1
+      description: "冻结"
+
+  kernel_functions:
+    - pattern: 'cgroup_freeze\s*\('
+      description: "冻结 cgroup"
+    - pattern: 'cgroup_freezer_migrate_task\s*\('
+      description: "迁移冻结任务"
+
+# ============================================================
+# PRESSURE STALL INFORMATION (PSI)
+# ============================================================
+
+psi:
+  description: "Pressure Stall Information"
+  header: "kernel/sched/psi.c"
+  icon: "📊"
+
+  interface_files:
+    - "cpu.pressure"
+    - "memory.pressure"
+    - "io.pressure"
+
+  metrics:
+    - name: "some"
+      description: "部分任务阻塞"
+    - name: "full"
+      description: "所有任务阻塞"
+
+  format: "some avg10=X.XX avg60=X.XX avg300=X.XX total=XXXXX"
+
+  monitoring:
+    - pattern: 'psi_trigger_create\s*\('
+      description: "创建 PSI 触发器"
+    - pattern: 'psi_trigger_destroy\s*\('
+      description: "销毁 PSI 触发器"

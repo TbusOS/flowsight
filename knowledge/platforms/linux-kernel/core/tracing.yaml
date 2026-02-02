@@ -1,0 +1,334 @@
+# Linux Kernel Tracing Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/trace/
+
+# ============================================================
+# FTRACE FRAMEWORK
+# ============================================================
+
+ftrace:
+  description: "Function Tracer Framework"
+  header: "linux/ftrace.h"
+  icon: "📊"
+
+  tracers:
+    - name: "function"
+      description: "函数调用追踪"
+    - name: "function_graph"
+      description: "函数调用图（含返回）"
+    - name: "blk"
+      description: "块设备 I/O 追踪"
+    - name: "wakeup"
+      description: "唤醒延迟追踪"
+    - name: "wakeup_rt"
+      description: "实时任务唤醒延迟"
+    - name: "irqsoff"
+      description: "中断关闭时间追踪"
+    - name: "preemptoff"
+      description: "抢占关闭时间追踪"
+
+  debugfs_interface:
+    - path: "/sys/kernel/debug/tracing/"
+      files:
+        - "available_tracers"
+        - "current_tracer"
+        - "trace"
+        - "trace_pipe"
+        - "tracing_on"
+        - "set_ftrace_filter"
+        - "set_ftrace_notrace"
+        - "set_graph_function"
+        - "available_filter_functions"
+
+  function_registration:
+    - pattern: 'register_ftrace_function\s*\(\s*&(?P<ops>\w+)\s*\)'
+      description: "注册 ftrace 回调"
+    - pattern: 'unregister_ftrace_function\s*\(\s*&(?P<ops>\w+)\s*\)'
+      description: "注销 ftrace 回调"
+
+  ftrace_ops:
+    pattern: 'static struct ftrace_ops\s+(?P<name>\w+)'
+    callbacks:
+      func:
+        pattern: '\.func\s*=\s*(?P<handler>\w+)'
+        description: "函数追踪回调"
+        signature: "void (*)(unsigned long, unsigned long, struct ftrace_ops *, struct ftrace_regs *)"
+        context: "any (atomic)"
+
+# ============================================================
+# TRACEPOINTS
+# ============================================================
+
+tracepoints:
+  description: "Static Tracepoints"
+  header: "linux/tracepoint.h"
+  icon: "📍"
+
+  definition:
+    - pattern: 'TRACE_EVENT\s*\(\s*(?P<name>\w+)\s*,'
+      description: "定义跟踪点事件"
+    - pattern: 'DECLARE_TRACE\s*\(\s*(?P<name>\w+)\s*,'
+      description: "声明跟踪点"
+    - pattern: 'DEFINE_TRACE\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "定义跟踪点"
+
+  usage:
+    - pattern: 'trace_(?P<name>\w+)\s*\('
+      description: "触发跟踪点"
+    - pattern: 'register_trace_(?P<name>\w+)\s*\('
+      description: "注册跟踪点回调"
+    - pattern: 'unregister_trace_(?P<name>\w+)\s*\('
+      description: "注销跟踪点回调"
+
+  common_tracepoints:
+    sched:
+      - "sched_switch"
+      - "sched_wakeup"
+      - "sched_migrate_task"
+      - "sched_process_fork"
+      - "sched_process_exit"
+    
+    irq:
+      - "irq_handler_entry"
+      - "irq_handler_exit"
+      - "softirq_entry"
+      - "softirq_exit"
+    
+    block:
+      - "block_rq_issue"
+      - "block_rq_complete"
+      - "block_bio_queue"
+    
+    syscalls:
+      - "sys_enter"
+      - "sys_exit"
+      - "sys_enter_<name>"
+      - "sys_exit_<name>"
+
+  debugfs_interface:
+    - "/sys/kernel/debug/tracing/events/"
+    - "/sys/kernel/debug/tracing/events/<subsystem>/<event>/enable"
+    - "/sys/kernel/debug/tracing/events/<subsystem>/<event>/filter"
+
+# ============================================================
+# KPROBES
+# ============================================================
+
+kprobes:
+  description: "Dynamic Function Probes"
+  header: "linux/kprobes.h"
+  icon: "🔬"
+
+  types:
+    - name: "kprobe"
+      description: "函数入口探针"
+    - name: "kretprobe"
+      description: "函数返回探针"
+    - name: "jprobe"
+      description: "Jump probe (已废弃)"
+
+  registration:
+    - pattern: 'register_kprobe\s*\(\s*&(?P<probe>\w+)\s*\)'
+      description: "注册 kprobe"
+    - pattern: 'unregister_kprobe\s*\(\s*&(?P<probe>\w+)\s*\)'
+      description: "注销 kprobe"
+    - pattern: 'register_kretprobe\s*\(\s*&(?P<probe>\w+)\s*\)'
+      description: "注册 kretprobe"
+
+  kprobe_struct:
+    pattern: 'static struct kprobe\s+(?P<name>\w+)'
+    fields:
+      - name: "symbol_name"
+        description: "探测的函数名"
+      - name: "pre_handler"
+        description: "函数执行前回调"
+      - name: "post_handler"
+        description: "函数执行后回调"
+      - name: "fault_handler"
+        description: "故障处理回调"
+
+  callbacks:
+    pre_handler:
+      pattern: '\.pre_handler\s*=\s*(?P<handler>\w+)'
+      description: "函数入口回调"
+      signature: "int (*)(struct kprobe *, struct pt_regs *)"
+      context: "任何上下文，需要原子操作"
+      can_sleep: false
+
+    post_handler:
+      pattern: '\.post_handler\s*=\s*(?P<handler>\w+)'
+      description: "函数执行后回调"
+      signature: "void (*)(struct kprobe *, struct pt_regs *, unsigned long)"
+
+  debugfs:
+    - "/sys/kernel/debug/kprobes/list"
+    - "/sys/kernel/debug/kprobes/enabled"
+
+# ============================================================
+# PERF EVENTS
+# ============================================================
+
+perf_events:
+  description: "Performance Monitoring Events"
+  header: "linux/perf_event.h"
+  icon: "📈"
+
+  event_types:
+    - name: "PERF_TYPE_HARDWARE"
+      description: "CPU 硬件事件 (cycles, cache misses)"
+    - name: "PERF_TYPE_SOFTWARE"
+      description: "软件事件 (page faults, context switches)"
+    - name: "PERF_TYPE_TRACEPOINT"
+      description: "内核跟踪点"
+    - name: "PERF_TYPE_RAW"
+      description: "原始 PMU 事件"
+
+  hardware_events:
+    - "PERF_COUNT_HW_CPU_CYCLES"
+    - "PERF_COUNT_HW_INSTRUCTIONS"
+    - "PERF_COUNT_HW_CACHE_REFERENCES"
+    - "PERF_COUNT_HW_CACHE_MISSES"
+    - "PERF_COUNT_HW_BRANCH_INSTRUCTIONS"
+    - "PERF_COUNT_HW_BRANCH_MISSES"
+
+  software_events:
+    - "PERF_COUNT_SW_CPU_CLOCK"
+    - "PERF_COUNT_SW_TASK_CLOCK"
+    - "PERF_COUNT_SW_PAGE_FAULTS"
+    - "PERF_COUNT_SW_CONTEXT_SWITCHES"
+
+  kernel_api:
+    - pattern: 'perf_event_create_kernel_counter\s*\('
+      description: "创建内核 perf 计数器"
+    - pattern: 'perf_event_release_kernel\s*\('
+      description: "释放内核 perf 计数器"
+
+  pmu_registration:
+    - pattern: 'perf_pmu_register\s*\(\s*&(?P<pmu>\w+)\s*,'
+      description: "注册 PMU"
+    - pattern: 'perf_pmu_unregister\s*\(\s*&(?P<pmu>\w+)\s*\)'
+      description: "注销 PMU"
+
+  pmu_callbacks:
+    event_init:
+      pattern: '\.event_init\s*=\s*(?P<handler>\w+)'
+      description: "事件初始化"
+
+    add:
+      pattern: '\.add\s*=\s*(?P<handler>\w+)'
+      description: "启用事件"
+
+    del:
+      pattern: '\.del\s*=\s*(?P<handler>\w+)'
+      description: "禁用事件"
+
+    start:
+      pattern: '\.start\s*=\s*(?P<handler>\w+)'
+      description: "开始计数"
+
+    stop:
+      pattern: '\.stop\s*=\s*(?P<handler>\w+)'
+      description: "停止计数"
+
+    read:
+      pattern: '\.read\s*=\s*(?P<handler>\w+)'
+      description: "读取计数值"
+
+# ============================================================
+# BPF TRACING
+# ============================================================
+
+bpf_tracing:
+  description: "eBPF Tracing"
+  header: "linux/bpf.h"
+  icon: "🐝"
+
+  program_types:
+    - "BPF_PROG_TYPE_KPROBE"
+    - "BPF_PROG_TYPE_TRACEPOINT"
+    - "BPF_PROG_TYPE_PERF_EVENT"
+    - "BPF_PROG_TYPE_RAW_TRACEPOINT"
+    - "BPF_PROG_TYPE_TRACING"
+
+  attach_types:
+    - "BPF_TRACE_FENTRY"
+    - "BPF_TRACE_FEXIT"
+    - "BPF_TRACE_RAW_TP"
+
+  helpers:
+    - "bpf_probe_read()"
+    - "bpf_probe_read_user()"
+    - "bpf_probe_read_kernel()"
+    - "bpf_get_current_pid_tgid()"
+    - "bpf_get_current_comm()"
+    - "bpf_ktime_get_ns()"
+    - "bpf_perf_event_output()"
+    - "bpf_ringbuf_output()"
+
+  tools:
+    - name: "bpftrace"
+      description: "高级 BPF 追踪语言"
+    - name: "bcc"
+      description: "BPF Compiler Collection"
+    - name: "libbpf"
+      description: "BPF 库"
+
+# ============================================================
+# PRINTK / DYNAMIC DEBUG
+# ============================================================
+
+printk:
+  description: "Kernel Logging"
+  header: "linux/printk.h"
+  icon: "🖨️"
+
+  levels:
+    - level: "KERN_EMERG"
+      value: 0
+      description: "系统不可用"
+    - level: "KERN_ALERT"
+      value: 1
+      description: "必须立即处理"
+    - level: "KERN_CRIT"
+      value: 2
+      description: "严重错误"
+    - level: "KERN_ERR"
+      value: 3
+      description: "错误"
+    - level: "KERN_WARNING"
+      value: 4
+      description: "警告"
+    - level: "KERN_NOTICE"
+      value: 5
+      description: "正常但重要"
+    - level: "KERN_INFO"
+      value: 6
+      description: "信息"
+    - level: "KERN_DEBUG"
+      value: 7
+      description: "调试"
+
+  functions:
+    - pattern: 'printk\s*\(\s*(?P<level>KERN_\w+)'
+      description: "内核打印"
+    - pattern: 'pr_err\s*\('
+      description: "打印错误"
+    - pattern: 'pr_warn\s*\('
+      description: "打印警告"
+    - pattern: 'pr_info\s*\('
+      description: "打印信息"
+    - pattern: 'pr_debug\s*\('
+      description: "打印调试（需要 DEBUG）"
+    - pattern: 'dev_err\s*\('
+      description: "设备错误打印"
+    - pattern: 'dev_info\s*\('
+      description: "设备信息打印"
+
+  dynamic_debug:
+    control: "/sys/kernel/debug/dynamic_debug/control"
+    format: "file <path> line <N> +p"
+    flags:
+      - "p: 打印"
+      - "f: 包含函数名"
+      - "l: 包含行号"
+      - "m: 包含模块名"
+      - "t: 包含线程 ID"

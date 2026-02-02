@@ -1,0 +1,227 @@
+# Virtio Driver Framework Knowledge Base
+# Reference: https://docs.oasis-open.org/virtio/virtio/
+
+# ============================================================
+# VIRTIO DRIVER
+# ============================================================
+
+virtio_driver:
+  description: "Virtio Device Driver Framework"
+  header: "linux/virtio.h"
+  icon: "🖧"
+
+  registration:
+    - pattern: 'register_virtio_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注册 virtio 驱动"
+    - pattern: 'unregister_virtio_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
+      description: "注销 virtio 驱动"
+    - pattern: 'module_virtio_driver\s*\(\s*(?P<driver>\w+)\s*\)'
+      description: "模块初始化宏"
+
+  driver_structure:
+    pattern: 'static struct virtio_driver\s+(?P<name>\w+)'
+    description: "Virtio 驱动结构体"
+
+  callbacks:
+    probe:
+      pattern: '\.probe\s*=\s*(?P<handler>\w+)'
+      description: "设备探测回调"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct virtio_device *)"
+
+    remove:
+      pattern: '\.remove\s*=\s*(?P<handler>\w+)'
+      description: "设备移除回调"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct virtio_device *)"
+
+    config_changed:
+      pattern: '\.config_changed\s*=\s*(?P<handler>\w+)'
+      description: "配置变更通知"
+      context: "可能是中断上下文"
+      signature: "void (*)(struct virtio_device *)"
+
+    freeze:
+      pattern: '\.freeze\s*=\s*(?P<handler>\w+)'
+      description: "挂起回调"
+      context: "process"
+
+    restore:
+      pattern: '\.restore\s*=\s*(?P<handler>\w+)'
+      description: "恢复回调"
+      context: "process"
+
+  device_ids:
+    - "VIRTIO_ID_NET"
+    - "VIRTIO_ID_BLOCK"
+    - "VIRTIO_ID_CONSOLE"
+    - "VIRTIO_ID_RNG"
+    - "VIRTIO_ID_BALLOON"
+    - "VIRTIO_ID_SCSI"
+    - "VIRTIO_ID_9P"
+    - "VIRTIO_ID_GPU"
+    - "VIRTIO_ID_INPUT"
+    - "VIRTIO_ID_VSOCK"
+    - "VIRTIO_ID_CRYPTO"
+    - "VIRTIO_ID_FS"
+
+# ============================================================
+# VIRTQUEUE
+# ============================================================
+
+virtqueue:
+  description: "Virtio Queue"
+  header: "linux/virtio.h"
+  icon: "📬"
+
+  functions:
+    find_vqs:
+      pattern: 'virtio_find_vqs\s*\('
+      description: "查找并初始化 virtqueue"
+      context: "process"
+
+    add_buf:
+      pattern: 'virtqueue_add_(?P<type>sgs|inbuf|outbuf)\s*\('
+      description: "添加缓冲区到队列"
+      context: "any"
+
+    kick:
+      pattern: 'virtqueue_kick\s*\('
+      description: "通知 host 有新数据"
+      context: "any"
+
+    get_buf:
+      pattern: 'virtqueue_get_buf\s*\('
+      description: "获取完成的缓冲区"
+      context: "any"
+
+    enable_cb:
+      pattern: 'virtqueue_enable_cb\s*\('
+      description: "启用回调通知"
+
+    disable_cb:
+      pattern: 'virtqueue_disable_cb\s*\('
+      description: "禁用回调通知"
+
+  callback:
+    pattern: 'vq->callback\s*=\s*(?P<handler>\w+)'
+    description: "Virtqueue 回调"
+    context: "softirq/hardirq"
+    signature: "void (*)(struct virtqueue *)"
+
+  typical_flow:
+    - "virtqueue_add_sgs() - 添加 scatter-gather 列表"
+    - "virtqueue_kick() - 通知 host"
+    - "(host 处理请求)"
+    - "callback 被调用"
+    - "virtqueue_get_buf() - 获取结果"
+
+# ============================================================
+# VIRTIO-NET
+# ============================================================
+
+virtio_net:
+  description: "Virtio Network Driver"
+  header: "drivers/net/virtio_net.c"
+  icon: "🌐"
+
+  queues:
+    - name: "receiveq"
+      description: "接收队列"
+    - name: "sendq"
+      description: "发送队列"
+    - name: "ctrlq"
+      description: "控制队列"
+
+  features:
+    - "VIRTIO_NET_F_CSUM"
+    - "VIRTIO_NET_F_MAC"
+    - "VIRTIO_NET_F_GSO"
+    - "VIRTIO_NET_F_MRG_RXBUF"
+    - "VIRTIO_NET_F_STATUS"
+    - "VIRTIO_NET_F_CTRL_VQ"
+    - "VIRTIO_NET_F_MQ"
+
+# ============================================================
+# VIRTIO-BLK
+# ============================================================
+
+virtio_blk:
+  description: "Virtio Block Driver"
+  header: "drivers/block/virtio_blk.c"
+  icon: "💾"
+
+  request_types:
+    - "VIRTIO_BLK_T_IN"
+    - "VIRTIO_BLK_T_OUT"
+    - "VIRTIO_BLK_T_FLUSH"
+    - "VIRTIO_BLK_T_DISCARD"
+    - "VIRTIO_BLK_T_WRITE_ZEROES"
+
+  features:
+    - "VIRTIO_BLK_F_SIZE_MAX"
+    - "VIRTIO_BLK_F_SEG_MAX"
+    - "VIRTIO_BLK_F_BLK_SIZE"
+    - "VIRTIO_BLK_F_FLUSH"
+    - "VIRTIO_BLK_F_TOPOLOGY"
+    - "VIRTIO_BLK_F_MQ"
+    - "VIRTIO_BLK_F_DISCARD"
+
+# ============================================================
+# VIRTIO-GPU
+# ============================================================
+
+virtio_gpu:
+  description: "Virtio GPU Driver"
+  header: "drivers/gpu/drm/virtio/"
+  icon: "🎮"
+
+  features:
+    - "VIRTIO_GPU_F_VIRGL"
+    - "VIRTIO_GPU_F_EDID"
+    - "VIRTIO_GPU_F_RESOURCE_UUID"
+    - "VIRTIO_GPU_F_RESOURCE_BLOB"
+    - "VIRTIO_GPU_F_CONTEXT_INIT"
+
+  commands:
+    - "VIRTIO_GPU_CMD_GET_DISPLAY_INFO"
+    - "VIRTIO_GPU_CMD_RESOURCE_CREATE_2D"
+    - "VIRTIO_GPU_CMD_SET_SCANOUT"
+    - "VIRTIO_GPU_CMD_RESOURCE_FLUSH"
+    - "VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D"
+    - "VIRTIO_GPU_CMD_SUBMIT_3D"
+
+# ============================================================
+# VHOST
+# ============================================================
+
+vhost:
+  description: "Vhost (用户空间 virtio backend)"
+  header: "linux/vhost.h"
+  icon: "🏠"
+
+  types:
+    - name: "vhost-net"
+      description: "网络后端"
+      device: "/dev/vhost-net"
+    - name: "vhost-scsi"
+      description: "SCSI 后端"
+    - name: "vhost-vsock"
+      description: "Vsock 后端"
+    - name: "vhost-vdpa"
+      description: "vDPA 后端"
+
+  kernel_module:
+    pattern: 'vhost_dev_init\s*\('
+    description: "初始化 vhost 设备"
+
+  operations:
+    - "VHOST_SET_OWNER"
+    - "VHOST_RESET_OWNER"
+    - "VHOST_SET_MEM_TABLE"
+    - "VHOST_SET_VRING_NUM"
+    - "VHOST_SET_VRING_ADDR"
+    - "VHOST_SET_VRING_KICK"
+    - "VHOST_SET_VRING_CALL"
