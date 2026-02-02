@@ -1,123 +1,608 @@
 # Completion Primitive Knowledge Base
 # Synchronization primitive for one-time signaling
+# Reference: https://www.kernel.org/doc/html/latest/scheduler/completion.html
+
+# ============================================================
+# COMPLETION
+# ============================================================
 
 completion:
-  description: "Completion - 一次性信号同步机制"
+  description: "Completion - 一次性信号同步机制，用于等待异步事件完成"
   header: "linux/completion.h"
   icon: "✅"
+  kernel_version: "2.6+"
 
   context:
     type: "process"
     can_sleep: true
+    can_schedule: true
+    preemptible: true
     notes:
-      - "wait_for_completion 在 process context 执行，会睡眠"
-      - "complete/complete_all 在任何上下文都可调用"
+      - "wait_for_completion* 系列函数在 process context 执行，会睡眠"
+      - "complete/complete_all 在任何上下文都可调用（包括 hardirq）"
+      - "completion 内部使用 wait_queue 实现"
+
+  structure:
+    pattern: 'struct completion\s+(?P<name>\w+)\s*[;=]'
+    description: "completion 结构体定义"
+    fields:
+      - name: "done"
+        type: "unsigned int"
+        description: "完成计数器，0 表示未完成"
+      - name: "wait"
+        type: "struct swait_queue_head"
+        description: "等待队列头"
+
+  # ============================================================
+  # INITIALIZATION API
+  # ============================================================
 
   bind_patterns:
     # 静态初始化
     - pattern: 'DECLARE_COMPLETION\s*\(\s*(?P<var>\w+)\s*\)'
       variable_capture: "var"
-      description: "静态声明 completion"
+      description: "静态声明并初始化 completion（done=0）"
+      api_type: "initialization"
 
     - pattern: 'DECLARE_COMPLETION_ONSTACK\s*\(\s*(?P<var>\w+)\s*\)'
       variable_capture: "var"
-      description: "栈上声明 completion"
+      description: "栈上声明 completion（带 lockdep 检查）"
+      api_type: "initialization"
+      notes:
+        - "用于函数内部的局部 completion"
+        - "启用 lockdep 时会有额外检查"
+
+    - pattern: 'COMPLETION_INITIALIZER\s*\(\s*(?P<var>\w+)\s*\)'
+      variable_capture: "var"
+      description: "静态初始化器（用于结构体成员）"
+      api_type: "initialization"
+
+    - pattern: 'COMPLETION_INITIALIZER_ONSTACK\s*\(\s*(?P<var>\w+)\s*\)'
+      variable_capture: "var"
+      description: "栈上静态初始化器"
+      api_type: "initialization"
 
     # 动态初始化
     - pattern: 'init_completion\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
-      description: "动态初始化 completion"
+      description: "动态初始化 completion（done=0）"
+      api_type: "initialization"
+      context: "any"
 
-    # 等待
+    - pattern: 'reinit_completion\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "重新初始化已使用的 completion（done=0，保留 wait_queue）"
+      api_type: "initialization"
+      context: "any"
+      notes:
+        - "不能用于仍有等待者的 completion"
+        - "用于重复使用同一个 completion"
+
+    # ============================================================
+    # WAIT API
+    # ============================================================
+
+    # 基本等待
     - pattern: 'wait_for_completion\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
-      description: "等待 completion (可中断)"
+      description: "无限等待 completion（不可中断）"
+      api_type: "wait"
       context: "process"
       can_sleep: true
+      return_type: "void"
+      notes:
+        - "进程进入 TASK_UNINTERRUPTIBLE 状态"
+        - "信号无法中断此等待"
+        - "确保一定会等到完成"
 
     - pattern: 'wait_for_completion_interruptible\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
-      description: "可中断等待 completion"
+      description: "可被信号中断的等待"
+      api_type: "wait"
       context: "process"
       can_sleep: true
-
-    - pattern: 'wait_for_completion_timeout\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,'
-      variable_capture: "var"
-      description: "限时等待 completion"
-      context: "process"
-      can_sleep: true
+      return_type: "int"
+      return_value:
+        success: "0 - 正常完成"
+        failure: "-ERESTARTSYS - 被信号中断"
+      notes:
+        - "进程进入 TASK_INTERRUPTIBLE 状态"
+        - "收到信号时返回 -ERESTARTSYS"
 
     - pattern: 'wait_for_completion_killable\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
-      description: "可 kill 等待 completion"
+      description: "可被致命信号中断的等待"
+      api_type: "wait"
       context: "process"
       can_sleep: true
+      return_type: "int"
+      return_value:
+        success: "0 - 正常完成"
+        failure: "-ERESTARTSYS - 被致命信号中断"
+      notes:
+        - "进程进入 TASK_KILLABLE 状态"
+        - "只有 SIGKILL 等致命信号才能中断"
+        - "比 interruptible 更健壮"
 
-    # 唤醒
+    # 带超时的等待
+    - pattern: 'wait_for_completion_timeout\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "带超时的等待（不可中断）"
+      api_type: "wait"
+      context: "process"
+      can_sleep: true
+      return_type: "unsigned long"
+      return_value:
+        success: "剩余的 jiffies（>0 表示正常完成）"
+        failure: "0 - 超时"
+      parameters:
+        - name: "timeout"
+          type: "unsigned long"
+          description: "超时时间（jiffies）"
+
+    - pattern: 'wait_for_completion_interruptible_timeout\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "带超时的可中断等待"
+      api_type: "wait"
+      context: "process"
+      can_sleep: true
+      return_type: "long"
+      return_value:
+        success: "剩余的 jiffies（>0）"
+        timeout: "0 - 超时"
+        failure: "-ERESTARTSYS - 被信号中断"
+
+    - pattern: 'wait_for_completion_killable_timeout\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "带超时的可杀死等待"
+      api_type: "wait"
+      context: "process"
+      can_sleep: true
+      return_type: "long"
+      return_value:
+        success: "剩余的 jiffies（>0）"
+        timeout: "0 - 超时"
+        failure: "-ERESTARTSYS - 被致命信号中断"
+
+    # 非阻塞检查
+    - pattern: 'try_wait_for_completion\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "非阻塞检查 completion 状态并消费"
+      api_type: "check"
+      context: "any"
+      can_sleep: false
+      return_type: "bool"
+      return_value:
+        success: "true - 已完成（并减少 done 计数）"
+        failure: "false - 未完成"
+      notes:
+        - "不会睡眠，可在任何上下文调用"
+        - "如果返回 true，会消费一个完成计数"
+
+    - pattern: 'completion_done\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "检查 completion 是否已完成（不消费）"
+      api_type: "check"
+      context: "any"
+      can_sleep: false
+      return_type: "bool"
+      return_value:
+        success: "true - 已完成"
+        failure: "false - 未完成"
+      notes:
+        - "只检查状态，不修改 done 计数"
+        - "可能有 TOCTOU 竞态"
+
+    # ============================================================
+    # COMPLETE API
+    # ============================================================
+
     - pattern: 'complete\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
-      description: "唤醒一个等待者"
+      description: "唤醒一个等待者（done++）"
+      api_type: "complete"
       context: "any"
+      can_sleep: false
+      notes:
+        - "可在任何上下文调用，包括 hardirq"
+        - "增加 done 计数并唤醒一个等待者"
+        - "如果 done 溢出会 WARN"
 
     - pattern: 'complete_all\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
       variable_capture: "var"
-      description: "唤醒所有等待者"
+      description: "唤醒所有等待者（done=UINT_MAX/2）"
+      api_type: "complete"
       context: "any"
+      can_sleep: false
+      notes:
+        - "将 done 设为 UINT_MAX/2"
+        - "唤醒所有当前等待者"
+        - "之后的 wait 调用也会立即返回"
+        - "需要 reinit_completion() 才能重用"
 
-  kernel_call_chain:
-    trigger: "线程等待 I/O 完成"
-    chain:
-      - function: "wait_for_completion(&done)"
-        description: "线程进入睡眠"
-        context: "process"
-        is_user_entry: true
-      - function: "schedule()"
-        description: "调度其他进程运行"
-      - function: "其他代码调用 complete()"
-        description: "中断或工作队列完成操作"
-        context: "any"
-      - function: "wake_up()"
-        description: "唤醒等待线程"
-      - function: "schedule()"
-        description: "调度回原线程"
-      - function: "wait_for_completion() 返回"
-        description: "继续执行"
-        is_user_entry: true
+  # ============================================================
+  # CALL CHAINS
+  # ============================================================
+
+  call_chains:
+    wait_for_completion_path:
+      description: "等待 completion 完成的调用路径"
+      trigger: "进程调用 wait_for_completion()"
+      chain:
+        - function: "wait_for_completion"
+          file: "kernel/sched/completion.c"
+          description: "等待入口"
+          context: "process"
+          is_user_entry: true
+        - function: "wait_for_common"
+          file: "kernel/sched/completion.c"
+          description: "通用等待实现"
+        - function: "do_wait_for_common"
+          file: "kernel/sched/completion.c"
+          description: "核心等待循环"
+        - function: "schedule_timeout"
+          file: "kernel/time/timer.c"
+          description: "调度让出 CPU（如果有超时）"
+        - function: "schedule"
+          file: "kernel/sched/core.c"
+          description: "主动调度，进入睡眠"
+        - function: "context_switch"
+          file: "kernel/sched/core.c"
+          description: "上下文切换到其他进程"
+
+    complete_path:
+      description: "完成并唤醒等待者的调用路径"
+      trigger: "调用 complete() 或 complete_all()"
+      chain:
+        - function: "complete"
+          file: "kernel/sched/completion.c"
+          description: "完成入口"
+          context: "any"
+          is_user_entry: true
+        - function: "swake_up_locked"
+          file: "kernel/sched/swait.c"
+          description: "唤醒等待队列中的进程"
+        - function: "wake_up_process"
+          file: "kernel/sched/core.c"
+          description: "将进程设为 TASK_RUNNING"
+        - function: "try_to_wake_up"
+          file: "kernel/sched/core.c"
+          description: "尝试唤醒进程"
+        - function: "ttwu_queue"
+          file: "kernel/sched/core.c"
+          description: "将进程加入运行队列"
+
+    interruptible_wait_path:
+      description: "可中断等待的调用路径"
+      trigger: "进程调用 wait_for_completion_interruptible()"
+      chain:
+        - function: "wait_for_completion_interruptible"
+          file: "kernel/sched/completion.c"
+          description: "可中断等待入口"
+          context: "process"
+          is_user_entry: true
+        - function: "wait_for_common"
+          file: "kernel/sched/completion.c"
+          description: "使用 TASK_INTERRUPTIBLE 状态"
+        - function: "signal_pending"
+          file: "kernel/signal.c"
+          description: "检查是否有待处理信号"
+          notes: "如果有信号，返回 -ERESTARTSYS"
+
+  # ============================================================
+  # USE CASES
+  # ============================================================
 
   use_cases:
-    - description: "模块卸载时等待所有操作完成"
+    - name: "driver_initialization_sync"
+      description: "驱动初始化同步 - 等待硬件或固件就绪"
+      scenario: "probe 函数中等待固件加载或硬件初始化完成"
       code: |
-        void module_cleanup(void) {
-            complete_all(&cleanup_done);
+        struct my_device {
+            struct completion fw_loaded;
+            const struct firmware *fw;
+        };
+
+        static void fw_callback(const struct firmware *fw, void *ctx)
+        {
+            struct my_device *dev = ctx;
+            dev->fw = fw;
+            complete(&dev->fw_loaded);  /* 在 workqueue 上下文 */
         }
 
-        void module_worker(struct work_struct *work) {
-            /* 执行清理工作 */
-            complete(&cleanup_done);
+        static int my_probe(struct platform_device *pdev)
+        {
+            struct my_device *dev;
+            int ret;
+
+            dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+            if (!dev)
+                return -ENOMEM;
+
+            init_completion(&dev->fw_loaded);
+
+            /* 异步请求固件 */
+            ret = request_firmware_nowait(THIS_MODULE, true,
+                "my_firmware.bin", &pdev->dev, GFP_KERNEL,
+                dev, fw_callback);
+            if (ret)
+                return ret;
+
+            /* 等待固件加载完成，最多 10 秒 */
+            if (!wait_for_completion_timeout(&dev->fw_loaded,
+                    msecs_to_jiffies(10000))) {
+                dev_err(&pdev->dev, "firmware load timeout\n");
+                return -ETIMEDOUT;
+            }
+
+            if (!dev->fw) {
+                dev_err(&pdev->dev, "firmware load failed\n");
+                return -ENOENT;
+            }
+
+            /* 使用固件初始化硬件 */
+            return init_hardware_with_fw(dev);
         }
 
-    - description: "异步操作完成通知"
+    - name: "async_io_wait"
+      description: "异步 I/O 等待 - 等待 DMA 或 I/O 操作完成"
+      scenario: "发起异步 I/O 后等待完成中断"
       code: |
-        int async_operation(struct completion *done) {
-            /* 提交异步工作 */
-            queue_work(wq, &async_work);
+        struct dma_transfer {
+            struct completion done;
+            dma_addr_t src, dst;
+            size_t len;
+            int status;
+        };
 
-            /* 等待完成 */
-            wait_for_completion(done);
+        static irqreturn_t dma_isr(int irq, void *dev_id)
+        {
+            struct dma_transfer *xfer = dev_id;
 
-            /* 处理结果 */
+            /* 读取 DMA 状态 */
+            xfer->status = read_dma_status();
+
+            /* 清除中断并通知等待者 */
+            clear_dma_interrupt();
+            complete(&xfer->done);  /* 在硬中断上下文 */
+
+            return IRQ_HANDLED;
         }
 
-    - description: "线程池同步"
-      code: |
-        for (i = 0; i < num_workers; i++)
-            wake_up_process(worker_threads[i]);
+        static int do_dma_transfer(struct dma_transfer *xfer)
+        {
+            int ret;
 
-        wait_for_completion(&all_workers_ready);
+            reinit_completion(&xfer->done);
+
+            /* 启动 DMA 传输 */
+            start_dma(xfer->src, xfer->dst, xfer->len);
+
+            /* 可中断等待完成 */
+            ret = wait_for_completion_interruptible(&xfer->done);
+            if (ret < 0) {
+                abort_dma();
+                return ret;
+            }
+
+            return xfer->status;
+        }
+
+    - name: "thread_sync"
+      description: "内核线程同步 - 等待线程启动或停止"
+      scenario: "创建内核线程后等待其就绪"
+      code: |
+        struct worker_data {
+            struct completion started;
+            struct completion should_stop;
+            struct task_struct *thread;
+            void *private_data;
+        };
+
+        static int worker_thread(void *data)
+        {
+            struct worker_data *w = data;
+
+            /* 初始化完成，通知创建者 */
+            complete(&w->started);
+
+            while (!kthread_should_stop()) {
+                /* 执行工作 */
+                do_work(w->private_data);
+
+                /* 等待更多工作或停止信号 */
+                wait_for_completion_interruptible(&w->should_stop);
+                reinit_completion(&w->should_stop);
+            }
+
+            return 0;
+        }
+
+        static int start_worker(struct worker_data *w)
+        {
+            init_completion(&w->started);
+            init_completion(&w->should_stop);
+
+            w->thread = kthread_run(worker_thread, w, "my_worker");
+            if (IS_ERR(w->thread))
+                return PTR_ERR(w->thread);
+
+            /* 等待线程初始化完成 */
+            wait_for_completion(&w->started);
+            return 0;
+        }
+
+        static void stop_worker(struct worker_data *w)
+        {
+            complete(&w->should_stop);  /* 唤醒线程 */
+            kthread_stop(w->thread);
+        }
+
+    - name: "module_unload_sync"
+      description: "模块卸载同步 - 确保所有操作完成后再卸载"
+      scenario: "模块退出时等待所有回调完成"
+      code: |
+        static DECLARE_COMPLETION(pending_work_done);
+        static atomic_t pending_count = ATOMIC_INIT(0);
+
+        static void work_handler(struct work_struct *work)
+        {
+            /* 执行工作 */
+            do_something();
+
+            /* 工作完成，减少计数 */
+            if (atomic_dec_and_test(&pending_count))
+                complete(&pending_work_done);
+
+            kfree(work);
+        }
+
+        static int submit_work(void)
+        {
+            struct work_struct *work;
+
+            work = kmalloc(sizeof(*work), GFP_KERNEL);
+            if (!work)
+                return -ENOMEM;
+
+            atomic_inc(&pending_count);
+            INIT_WORK(work, work_handler);
+            schedule_work(work);
+            return 0;
+        }
+
+        static void __exit my_exit(void)
+        {
+            /* 等待所有待处理工作完成 */
+            if (atomic_read(&pending_count) > 0)
+                wait_for_completion(&pending_work_done);
+
+            /* 现在可以安全卸载 */
+        }
+
+    - name: "scatter_gather_sync"
+      description: "分散-聚集同步 - 并行操作后等待全部完成"
+      scenario: "启动多个并行操作，等待全部完成"
+      code: |
+        struct parallel_ops {
+            struct completion all_done;
+            atomic_t remaining;
+            int *results;
+            int num_ops;
+        };
+
+        static void op_complete_callback(void *ctx, int result)
+        {
+            struct parallel_ops *ops = ctx;
+            int idx = /* 获取操作索引 */;
+
+            ops->results[idx] = result;
+
+            if (atomic_dec_and_test(&ops->remaining))
+                complete(&ops->all_done);
+        }
+
+        static int run_parallel_ops(struct parallel_ops *ops)
+        {
+            int i;
+
+            init_completion(&ops->all_done);
+            atomic_set(&ops->remaining, ops->num_ops);
+
+            /* 启动所有并行操作 */
+            for (i = 0; i < ops->num_ops; i++)
+                start_async_op(i, op_complete_callback, ops);
+
+            /* 等待全部完成 */
+            wait_for_completion(&ops->all_done);
+
+            /* 检查结果 */
+            for (i = 0; i < ops->num_ops; i++) {
+                if (ops->results[i] < 0)
+                    return ops->results[i];
+            }
+            return 0;
+        }
+
+  # ============================================================
+  # COMPARISON WITH OTHER PRIMITIVES
+  # ============================================================
+
+  comparison:
+    vs_semaphore:
+      description: "Completion vs Semaphore"
+      differences:
+        - aspect: "语义"
+          completion: "一次性事件信号"
+          semaphore: "资源计数器"
+        - aspect: "complete_all"
+          completion: "唤醒所有等待者"
+          semaphore: "每次 up 只唤醒一个"
+        - aspect: "典型用途"
+          completion: "等待异步操作完成"
+          semaphore: "限制并发访问数量"
+        - aspect: "重复使用"
+          completion: "需要 reinit_completion()"
+          semaphore: "自动可重用"
+
+    vs_wait_event:
+      description: "Completion vs wait_event"
+      differences:
+        - aspect: "复杂度"
+          completion: "简单，内置条件"
+          wait_event: "需要自定义条件表达式"
+        - aspect: "灵活性"
+          completion: "只能等待完成状态"
+          wait_event: "可等待任意条件"
+        - aspect: "性能"
+          completion: "使用 swait（更轻量）"
+          wait_event: "使用标准 wait_queue"
+
+  # ============================================================
+  # BEST PRACTICES
+  # ============================================================
+
+  best_practices:
+    - rule: "初始化时机"
+      description: "在可能被等待之前初始化 completion"
+      good: |
+        init_completion(&dev->done);
+        start_async_operation();  /* 可能调用 complete */
+      bad: |
+        start_async_operation();  /* 可能调用 complete */
+        init_completion(&dev->done);  /* 太晚！*/
+
+    - rule: "重用 completion"
+      description: "重复使用前必须调用 reinit_completion()"
+      good: |
+        reinit_completion(&done);
+        submit_request();
+        wait_for_completion(&done);
+      bad: |
+        /* done 可能还是完成状态 */
+        submit_request();
+        wait_for_completion(&done);  /* 可能立即返回！*/
+
+    - rule: "选择正确的 wait 变体"
+      description: "根据场景选择合适的等待函数"
+      recommendations:
+        - scenario: "必须等到完成（如模块卸载）"
+          use: "wait_for_completion()"
+        - scenario: "用户空间可中断的等待"
+          use: "wait_for_completion_interruptible()"
+        - scenario: "只允许 SIGKILL 中断"
+          use: "wait_for_completion_killable()"
+        - scenario: "需要超时保护"
+          use: "wait_for_completion_timeout()"
+
+    - rule: "避免在 complete_all 后等待"
+      description: "complete_all() 后的等待会立即返回"
+      note: "如果需要重用，必须先 reinit_completion()"
 
   notes:
     - "completion 是轻量级的一次性信号机制"
     - "适合用于一个等待者对应一个或多个完成者的场景"
-    - "与 semaphore 的区别: completion 只唤醒一次(除非用 complete_all)"
-    - "reinit_completion() 可重新初始化已使用的 completion"
-
+    - "complete() 可在任何上下文调用，包括硬中断"
+    - "wait_for_completion*() 只能在进程上下文调用"
+    - "内部使用 swait_queue（simple wait queue）实现，比标准 wait_queue 更轻量"
+    - "如果需要等待多个条件或复杂条件，考虑使用 wait_event 系列"

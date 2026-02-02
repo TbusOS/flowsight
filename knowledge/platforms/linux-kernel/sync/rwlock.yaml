@@ -1,242 +1,770 @@
 # Linux Kernel Read-Write Lock Knowledge Base
-#
-# Reference: https://www.kernel.org/doc/html/latest/locking/rwlock.html
+# Read-Write Spinlocks for concurrent read access
+# Reference: https://www.kernel.org/doc/html/latest/locking/spinlocks.html
 
 # ============================================================
-# RWLOCK (Legacy)
+# RWLOCK (Read-Write Spinlock)
 # ============================================================
 
-rwlock_legacy:
-  description: "RWLock - 读写锁（旧版接口）"
+rwlock:
+  description: "RWLock - 读写自旋锁，允许多个读者或单个写者"
   header: "linux/rwlock.h"
   icon: "🔐"
+  kernel_version: "2.6+"
 
   context:
-    type: "process"
+    type: "atomic"
     can_sleep: false
     can_schedule: false
     preemptible: false
+    notes:
+      - "自旋锁不能睡眠，在等待时会忙等（spin）"
+      - "多个读者可以同时持有读锁"
+      - "写者是排他的，必须等待所有读者释放"
+      - "写者可能饥饿（如果读者持续到来）"
+
+  structure:
+    pattern: 'rwlock_t\s+(?P<name>\w+)\s*[;=]'
+    description: "读写锁类型"
+    fields:
+      - name: "raw_lock"
+        type: "arch_rwlock_t"
+        description: "架构相关的锁实现"
+      - name: "magic"
+        type: "unsigned int"
+        description: "调试用魔数（CONFIG_DEBUG_SPINLOCK）"
+      - name: "owner_cpu"
+        type: "int"
+        description: "持有锁的 CPU（调试用）"
+      - name: "dep_map"
+        type: "struct lockdep_map"
+        description: "lockdep 依赖追踪（CONFIG_LOCKDEP）"
+
+  # ============================================================
+  # INITIALIZATION API
+  # ============================================================
 
   bind_patterns:
-    # DEFINE_RWLOCK - 定义读写锁
+    # 静态初始化
     - pattern: 'DEFINE_RWLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
       variable_capture: "lock"
-      description: "定义读写锁"
+      description: "静态定义并初始化读写锁"
+      api_type: "initialization"
 
-    # rwlock_init - 初始化读写锁
-    - pattern: 'rwlock_init\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "初始化读写锁"
-
-    # read_lock - 获取读锁
-    - pattern: 'read_lock\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "获取读锁"
-
-    # read_lock_irqsave - 保存中断获取读锁
-    - pattern: 'read_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "保存中断状态获取读锁"
-
-    # read_lock_irq - 关闭中断获取读锁
-    - pattern: 'read_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "关闭中断获取读锁"
-
-    # read_lock_bh - 关闭软中断获取读锁
-    - pattern: 'read_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "关闭软中断获取读锁"
-
-    # read_trylock - 尝试获取读锁
-    - pattern: 'read_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "尝试获取读锁"
-
-    # read_unlock - 释放读锁
-    - pattern: 'read_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "释放读锁"
-
-    # write_lock - 获取写锁
-    - pattern: 'write_lock\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "获取写锁"
-
-    # write_lock_irqsave - 保存中断获取写锁
-    - pattern: 'write_lock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "保存中断状态获取写锁"
-
-    # write_lock_irq - 关闭中断获取写锁
-    - pattern: 'write_lock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "关闭中断获取写锁"
-
-    # write_lock_bh - 关闭软中断获取写锁
-    - pattern: 'write_lock_bh\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "关闭软中断获取写锁"
-
-    # write_trylock - 尝试获取写锁
-    - pattern: 'write_trylock\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "尝试获取写锁"
-
-    # write_unlock - 释放写锁
-    - pattern: 'write_unlock\s*\(\s*(?P<lock>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "释放写锁"
-
-    # read_unlock_irqrestore - 恢复中断释放读锁
-    - pattern: 'read_unlock_irqrestore\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "恢复中断状态释放读锁"
-
-    # write_unlock_irqrestore - 恢复中断释放写锁
-    - pattern: 'write_unlock_irqrestore\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
-      variable_capture: "lock"
-      description: "恢复中断状态释放写锁"
-
-
-# ============================================================
-# RWLOCK_T (utex-based)
-# ============================================================
-
-rwlock_utex:
-  description: "RWLock (utex-based) - 基于utex的读写锁"
-  header: "linux/rwlock_types.h"
-
-  context:
-    type: "process"
-    can_sleep: false
-    can_schedule: false
-    preemptible: false
-
-  bind_patterns:
-    # rwlock_t - 读写锁类型
-    - pattern: 'rwlock_t\s+(?P<lock>\w+)\s*='
-      variable_capture: "lock"
-      description: "读写锁变量"
-
-    # __RW_LOCK_UNLOCKED - 静态初始化
     - pattern: '__RW_LOCK_UNLOCKED\s*\(\s*(?P<lock>\w+)\s*\)'
       variable_capture: "lock"
-      description: "静态读写锁初始化"
+      description: "静态初始化器（用于结构体成员）"
+      api_type: "initialization"
 
-    # RW_LOCK_UNLOCKED - 静态初始化（旧版）
-    - pattern: 'RW_LOCK_UNLOCKED\s*\(\s*(?P<lock>\w+)\s*\)'
+    - pattern: 'RW_LOCK_UNLOCKED'
+      description: "静态初始化值（已废弃，用 __RW_LOCK_UNLOCKED）"
+      api_type: "initialization"
+      deprecated: true
+
+    # 动态初始化
+    - pattern: 'rwlock_init\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "静态读写锁初始化（旧版）"
+      description: "动态初始化读写锁"
+      api_type: "initialization"
+      context: "any"
 
+    # ============================================================
+    # READ LOCK API
+    # ============================================================
 
-# ============================================================
-# SEQLOCK
-# ============================================================
+    # 基本读锁
+    - pattern: 'read_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取读锁（禁止抢占）"
+      api_type: "read_lock"
+      context: "process/softirq"
+      can_sleep: false
+      preempt_disabled: true
+      notes:
+        - "允许多个读者同时持有"
+        - "如果有写者等待，读者会自旋"
+
+    - pattern: 'read_lock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取读锁并禁止软中断"
+      api_type: "read_lock"
+      context: "process"
+      can_sleep: false
+      softirq_disabled: true
+      notes:
+        - "用于与软中断处理函数共享数据"
+        - "进程上下文获取锁时禁止本地 softirq"
+
+    - pattern: 'read_lock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取读锁并禁止本地中断"
+      api_type: "read_lock"
+      context: "process"
+      can_sleep: false
+      irq_disabled: true
+      notes:
+        - "用于与硬中断处理函数共享数据"
+        - "假设中断是开启的"
+
+    - pattern: 'read_lock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取读锁，保存并禁止中断状态"
+      api_type: "read_lock"
+      context: "any"
+      can_sleep: false
+      irq_disabled: true
+      parameters:
+        - name: "flags"
+          type: "unsigned long"
+          description: "保存的中断状态"
+      notes:
+        - "最安全的读锁获取方式"
+        - "保存当前中断状态，无论开启还是关闭"
+
+    - pattern: 'read_trylock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取读锁（非阻塞）"
+      api_type: "read_lock"
+      context: "any"
+      can_sleep: false
+      return_type: "int"
+      return_value:
+        success: "1 - 成功获取"
+        failure: "0 - 获取失败"
+
+    # ============================================================
+    # READ UNLOCK API
+    # ============================================================
+
+    - pattern: 'read_unlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放读锁（恢复抢占）"
+      api_type: "read_unlock"
+      context: "atomic"
+
+    - pattern: 'read_unlock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放读锁并恢复软中断"
+      api_type: "read_unlock"
+      context: "atomic"
+
+    - pattern: 'read_unlock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放读锁并开启本地中断"
+      api_type: "read_unlock"
+      context: "atomic"
+
+    - pattern: 'read_unlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放读锁并恢复中断状态"
+      api_type: "read_unlock"
+      context: "atomic"
+      parameters:
+        - name: "flags"
+          type: "unsigned long"
+          description: "要恢复的中断状态"
+
+    # ============================================================
+    # WRITE LOCK API
+    # ============================================================
+
+    - pattern: 'write_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取写锁（排他，禁止抢占）"
+      api_type: "write_lock"
+      context: "process/softirq"
+      can_sleep: false
+      preempt_disabled: true
+      notes:
+        - "必须等待所有读者释放"
+        - "写者之间互斥"
+
+    - pattern: 'write_lock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取写锁并禁止软中断"
+      api_type: "write_lock"
+      context: "process"
+      can_sleep: false
+      softirq_disabled: true
+
+    - pattern: 'write_lock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取写锁并禁止本地中断"
+      api_type: "write_lock"
+      context: "process"
+      can_sleep: false
+      irq_disabled: true
+
+    - pattern: 'write_lock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取写锁，保存并禁止中断状态"
+      api_type: "write_lock"
+      context: "any"
+      can_sleep: false
+      irq_disabled: true
+      parameters:
+        - name: "flags"
+          type: "unsigned long"
+          description: "保存的中断状态"
+
+    - pattern: 'write_trylock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取写锁（非阻塞）"
+      api_type: "write_lock"
+      context: "any"
+      can_sleep: false
+      return_type: "int"
+      return_value:
+        success: "1 - 成功获取"
+        failure: "0 - 获取失败"
+
+    # ============================================================
+    # WRITE UNLOCK API
+    # ============================================================
+
+    - pattern: 'write_unlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁（恢复抢占）"
+      api_type: "write_unlock"
+      context: "atomic"
+
+    - pattern: 'write_unlock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁并恢复软中断"
+      api_type: "write_unlock"
+      context: "atomic"
+
+    - pattern: 'write_unlock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁并开启本地中断"
+      api_type: "write_unlock"
+      context: "atomic"
+
+    - pattern: 'write_unlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁并恢复中断状态"
+      api_type: "write_unlock"
+      context: "atomic"
+      parameters:
+        - name: "flags"
+          type: "unsigned long"
+          description: "要恢复的中断状态"
+
+  # ============================================================
+  # CALL CHAINS
+  # ============================================================
+
+  call_chains:
+    read_lock_path:
+      description: "获取读锁的调用路径"
+      trigger: "调用 read_lock()"
+      chain:
+        - function: "read_lock"
+          file: "include/linux/rwlock.h"
+          description: "读锁入口宏"
+          is_user_entry: true
+        - function: "_raw_read_lock"
+          file: "include/linux/rwlock_api_smp.h"
+          description: "SMP 版本读锁"
+        - function: "__raw_read_lock"
+          file: "include/linux/rwlock_api_smp.h"
+          description: "禁止抢占"
+        - function: "do_raw_read_lock"
+          file: "include/linux/rwlock.h"
+          description: "实际获取锁"
+        - function: "arch_read_lock"
+          file: "arch/x86/include/asm/spinlock.h"
+          description: "架构相关的原子操作"
+          notes: "x86 使用 lock 前缀指令"
+
+    write_lock_path:
+      description: "获取写锁的调用路径"
+      trigger: "调用 write_lock()"
+      chain:
+        - function: "write_lock"
+          file: "include/linux/rwlock.h"
+          description: "写锁入口宏"
+          is_user_entry: true
+        - function: "_raw_write_lock"
+          file: "include/linux/rwlock_api_smp.h"
+          description: "SMP 版本写锁"
+        - function: "__raw_write_lock"
+          file: "include/linux/rwlock_api_smp.h"
+          description: "禁止抢占"
+        - function: "do_raw_write_lock"
+          file: "include/linux/rwlock.h"
+          description: "实际获取锁"
+        - function: "arch_write_lock"
+          file: "arch/x86/include/asm/spinlock.h"
+          description: "架构相关的原子操作"
+          notes: "等待 reader_count == 0"
+
+    read_lock_irqsave_path:
+      description: "获取读锁并保存中断状态的路径"
+      trigger: "调用 read_lock_irqsave()"
+      chain:
+        - function: "read_lock_irqsave"
+          file: "include/linux/rwlock.h"
+          description: "读锁入口宏"
+          is_user_entry: true
+        - function: "local_irq_save"
+          file: "include/linux/irqflags.h"
+          description: "保存并禁止本地中断"
+        - function: "_raw_read_lock"
+          file: "include/linux/rwlock_api_smp.h"
+          description: "获取读锁"
+
+  # ============================================================
+  # USE CASES
+  # ============================================================
+
+  use_cases:
+    - name: "global_data_protection"
+      description: "保护全局只读数据 - 多读少写场景"
+      scenario: "系统配置数据，频繁读取，偶尔更新"
+      code: |
+        static DEFINE_RWLOCK(config_lock);
+        static struct system_config global_config;
+
+        /* 读取配置 - 可以并发 */
+        int get_config_value(int key)
+        {
+            int value;
+
+            read_lock(&config_lock);
+            value = global_config.values[key];
+            read_unlock(&config_lock);
+
+            return value;
+        }
+
+        /* 更新配置 - 排他 */
+        void update_config(int key, int value)
+        {
+            write_lock(&config_lock);
+            global_config.values[key] = value;
+            global_config.version++;
+            write_unlock(&config_lock);
+        }
+
+    - name: "list_traversal"
+      description: "链表遍历保护 - 读者遍历，写者修改"
+      scenario: "进程列表或设备列表的并发访问"
+      code: |
+        static DEFINE_RWLOCK(device_list_lock);
+        static LIST_HEAD(device_list);
+
+        /* 遍历设备列表 - 可以并发 */
+        struct my_device *find_device(const char *name)
+        {
+            struct my_device *dev, *found = NULL;
+
+            read_lock(&device_list_lock);
+            list_for_each_entry(dev, &device_list, list) {
+                if (strcmp(dev->name, name) == 0) {
+                    found = dev;
+                    break;
+                }
+            }
+            read_unlock(&device_list_lock);
+
+            return found;
+        }
+
+        /* 添加设备 - 排他 */
+        void add_device(struct my_device *dev)
+        {
+            write_lock(&device_list_lock);
+            list_add_tail(&dev->list, &device_list);
+            write_unlock(&device_list_lock);
+        }
+
+        /* 删除设备 - 排他 */
+        void remove_device(struct my_device *dev)
+        {
+            write_lock(&device_list_lock);
+            list_del(&dev->list);
+            write_unlock(&device_list_lock);
+        }
+
+    - name: "irq_shared_data"
+      description: "中断与进程共享数据"
+      scenario: "中断处理函数写入数据，进程上下文读取"
+      code: |
+        static DEFINE_RWLOCK(stats_lock);
+        static struct device_stats stats;
+
+        /* 中断处理函数 - 写入统计 */
+        static irqreturn_t device_isr(int irq, void *dev_id)
+        {
+            unsigned long flags;
+
+            write_lock_irqsave(&stats_lock, flags);
+            stats.rx_packets++;
+            stats.rx_bytes += get_packet_length();
+            write_unlock_irqrestore(&stats_lock, flags);
+
+            return IRQ_HANDLED;
+        }
+
+        /* 进程上下文 - 读取统计 */
+        void get_statistics(struct device_stats *out)
+        {
+            read_lock_irq(&stats_lock);
+            *out = stats;
+            read_unlock_irq(&stats_lock);
+        }
+
+    - name: "softirq_shared_data"
+      description: "软中断与进程共享数据"
+      scenario: "网络协议栈中的数据结构保护"
+      code: |
+        static DEFINE_RWLOCK(route_lock);
+        static struct route_table *routing_table;
+
+        /* 软中断中查找路由 - 读取 */
+        struct route_entry *lookup_route_softirq(u32 dest)
+        {
+            struct route_entry *entry;
+
+            read_lock(&route_lock);  /* 软中断中已禁止抢占 */
+            entry = search_route(routing_table, dest);
+            read_unlock(&route_lock);
+
+            return entry;
+        }
+
+        /* 进程上下文更新路由表 */
+        void update_route_table(struct route_entry *new_entry)
+        {
+            write_lock_bh(&route_lock);  /* 禁止软中断 */
+            insert_route(routing_table, new_entry);
+            write_unlock_bh(&route_lock);
+        }
+
+  # ============================================================
+  # COMPARISON WITH OTHER PRIMITIVES
+  # ============================================================
+
+  comparison:
+    vs_rw_semaphore:
+      description: "rwlock vs rw_semaphore 对比"
+      table:
+        - aspect: "能否睡眠"
+          rwlock: "不能睡眠，忙等"
+          rw_semaphore: "可以睡眠"
+        - aspect: "中断上下文"
+          rwlock: "可用（带 irq 变体）"
+          rw_semaphore: "不可用"
+        - aspect: "持有时间"
+          rwlock: "应很短（微秒级）"
+          rw_semaphore: "可以较长"
+        - aspect: "公平性"
+          rwlock: "写者可能饥饿"
+          rw_semaphore: "更公平（FIFO）"
+        - aspect: "开销"
+          rwlock: "较低"
+          rw_semaphore: "较高（睡眠/唤醒）"
+        - aspect: "适用场景"
+          rwlock: "原子上下文，短临界区"
+          rw_semaphore: "进程上下文，长临界区"
+
+    vs_spinlock:
+      description: "rwlock vs spinlock 对比"
+      table:
+        - aspect: "并发读"
+          rwlock: "允许多个读者"
+          spinlock: "完全互斥"
+        - aspect: "复杂度"
+          rwlock: "较复杂"
+          spinlock: "简单"
+        - aspect: "开销"
+          rwlock: "稍高（读者计数）"
+          spinlock: "最低"
+        - aspect: "适用场景"
+          rwlock: "读多写少"
+          spinlock: "读写均衡或写多"
+
+    vs_seqlock:
+      description: "rwlock vs seqlock 对比"
+      table:
+        - aspect: "读者阻塞"
+          rwlock: "写者等待读者"
+          seqlock: "读者可能重试"
+        - aspect: "写者优先级"
+          rwlock: "低（可能饥饿）"
+          seqlock: "高（立即获取）"
+        - aspect: "读者开销"
+          rwlock: "获取/释放锁"
+          seqlock: "只需检查序列号"
+        - aspect: "适用场景"
+          rwlock: "读者数据需要一致"
+          seqlock: "读者可以重试，写极少"
+
+  # ============================================================
+  # BEST PRACTICES
+  # ============================================================
+
+  best_practices:
+    - rule: "选择正确的锁变体"
+      description: "根据中断上下文选择正确的 API"
+      recommendations:
+        - scenario: "只在进程上下文使用"
+          use: "read_lock/write_lock"
+        - scenario: "与软中断共享"
+          use: "*_bh 变体"
+        - scenario: "与硬中断共享"
+          use: "*_irqsave 变体"
+        - scenario: "不确定中断状态"
+          use: "*_irqsave 变体（最安全）"
+
+    - rule: "避免写者饥饿"
+      description: "rwlock 对写者不友好"
+      recommendations:
+        - "如果写操作频繁，考虑使用 spinlock"
+        - "如果需要公平性，考虑使用 rw_semaphore"
+        - "读者不应长时间持有读锁"
+
+    - rule: "保持临界区短小"
+      description: "自旋锁临界区应该尽量短"
+      good: |
+        read_lock(&lock);
+        value = shared_data;  /* 只读取需要的数据 */
+        read_unlock(&lock);
+        process(value);  /* 处理在锁外进行 */
+      bad: |
+        read_lock(&lock);
+        value = shared_data;
+        process(value);  /* 长时间处理阻塞其他 CPU */
+        read_unlock(&lock);
+
+    - rule: "正确配对锁操作"
+      description: "lock 和 unlock 必须使用匹配的变体"
+      good: |
+        read_lock_irqsave(&lock, flags);
+        /* ... */
+        read_unlock_irqrestore(&lock, flags);
+      bad: |
+        read_lock_irqsave(&lock, flags);
+        /* ... */
+        read_unlock(&lock);  /* 错误！中断状态丢失 */
+
+    - rule: "避免嵌套"
+      description: "读写锁不能嵌套获取同一个锁"
+      warning: |
+        /* 死锁！*/
+        read_lock(&lock);
+        write_lock(&lock);  /* 等待自己释放读锁 */
+
+  # ============================================================
+  # SEQLOCK (顺序锁)
+  # ============================================================
 
 seqlock:
-  description: "Sequential Lock - 顺序锁"
+  description: "Sequential Lock - 顺序锁，写者优先的读写同步"
   header: "linux/seqlock.h"
   icon: "🔄"
+  kernel_version: "2.6+"
 
   context:
-    type: "process"
+    type: "atomic"
     can_sleep: false
     can_schedule: false
     preemptible: false
+    notes:
+      - "写者不需要等待读者"
+      - "读者检测到写者修改后需要重试"
+      - "适合读极多、写极少的场景"
+      - "读者不能阻塞写者"
 
   bind_patterns:
-    # DEFINE_SEQLOCK - 定义顺序锁
+    # 静态初始化
     - pattern: 'DEFINE_SEQLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
       variable_capture: "lock"
-      description: "定义顺序锁"
+      description: "静态定义顺序锁"
+      api_type: "initialization"
 
-    # seqlock_init - 初始化顺序锁
-    - pattern: 'seqlock_init\s*\(\s*(?P<lock>\w+)\s*\)'
+    - pattern: '__SEQLOCK_UNLOCKED\s*\(\s*(?P<lock>\w+)\s*\)'
       variable_capture: "lock"
-      description: "初始化顺序锁"
+      description: "静态初始化器"
+      api_type: "initialization"
 
-    # read_seqbegin - 开始读序列
-    - pattern: 'read_seqbegin\s*\(\s*(?P<lock>\w+)\s*\)'
+    # 动态初始化
+    - pattern: 'seqlock_init\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "开始读取序列号"
+      description: "动态初始化顺序锁"
+      api_type: "initialization"
 
-    # read_seqretry - 验证读序列
-    - pattern: 'read_seqretry\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<seq>\w+)\s*\)'
+    # 读者操作
+    - pattern: 'read_seqbegin\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "验证读取序列号"
+      description: "开始读取，获取序列号"
+      api_type: "read"
+      return_type: "unsigned"
+      notes: "返回当前序列号，用于后续验证"
 
-    # write_seqlock - 获取写锁
-    - pattern: 'write_seqlock\s*\(\s*(?P<lock>\w+)\s*\)'
+    - pattern: 'read_seqretry\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<seq>\w+)\s*\)'
       variable_capture: "lock"
-      description: "获取顺序锁"
+      description: "验证读取是否有效"
+      api_type: "read"
+      return_type: "int"
+      return_value:
+        success: "0 - 读取有效"
+        failure: "非0 - 需要重试"
 
-    # write_sequnlock - 释放写锁
-    - pattern: 'write_sequnlock\s*\(\s*(?P<lock>\w+)\s*\)'
+    - pattern: 'read_seqbegin_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "lock"
-      description: "释放顺序锁"
+      description: "开始读取，保存中断状态"
+      api_type: "read"
 
-    # write_seqlock_irq - 关闭中断获取写锁
-    - pattern: 'write_seqlock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+    - pattern: 'read_seqretry_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<seq>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "lock"
-      description: "关闭中断获取顺序锁"
+      description: "验证读取并恢复中断状态"
+      api_type: "read"
 
-    # write_sequnlock_irq - 打开中断释放写锁
-    - pattern: 'write_sequnlock_irq\s*\(\s*(?P<lock>\w+)\s*\)'
+    # 写者操作
+    - pattern: 'write_seqlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "打开中断释放顺序锁"
+      description: "获取写锁"
+      api_type: "write"
 
-    # write_seqlock_irqsave - 保存中断获取写锁
-    - pattern: 'write_seqlock_irqsave\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+    - pattern: 'write_sequnlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "保存中断状态获取顺序锁"
+      description: "释放写锁"
+      api_type: "write"
 
-    # write_sequnlock_irqrestore - 恢复中断释放写锁
-    - pattern: 'write_sequnlock_irqrestore\s*\(\s*(?P<lock>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+    - pattern: 'write_seqlock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
-      description: "恢复中断状态释放顺序锁"
+      description: "获取写锁并禁止中断"
+      api_type: "write"
+
+    - pattern: 'write_sequnlock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁并开启中断"
+      api_type: "write"
+
+    - pattern: 'write_seqlock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "获取写锁，保存并禁止中断"
+      api_type: "write"
+
+    - pattern: 'write_sequnlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁并恢复中断状态"
+      api_type: "write"
+
+    - pattern: 'write_seqlock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "获取写锁并禁止软中断"
+      api_type: "write"
+
+    - pattern: 'write_sequnlock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "释放写锁并恢复软中断"
+      api_type: "write"
+
+  use_cases:
+    - name: "time_keeping"
+      description: "系统时间维护 - 内核 jiffies 更新"
+      scenario: "时钟中断更新时间，大量读者查询时间"
+      code: |
+        static DEFINE_SEQLOCK(xtime_lock);
+        static struct timespec64 xtime;
+
+        /* 读取系统时间（可能重试）*/
+        void get_time(struct timespec64 *ts)
+        {
+            unsigned int seq;
+
+            do {
+                seq = read_seqbegin(&xtime_lock);
+                *ts = xtime;
+            } while (read_seqretry(&xtime_lock, seq));
+        }
+
+        /* 时钟中断更新时间 */
+        void timer_interrupt(void)
+        {
+            write_seqlock(&xtime_lock);
+            xtime.tv_nsec += NSEC_PER_TICK;
+            if (xtime.tv_nsec >= NSEC_PER_SEC) {
+                xtime.tv_nsec -= NSEC_PER_SEC;
+                xtime.tv_sec++;
+            }
+            write_sequnlock(&xtime_lock);
+        }
 
   notes:
-    - "顺序锁适合读多写少的场景"
-    - "读者不需要获取锁，只需要检查序列号"
-    - "写者需要获取排他锁"
-    - "读者可能读到不一致的数据，需要重试"
+    - "seqlock 是读多写极少场景的最优选择"
+    - "读者不需要获取任何锁，只检查序列号"
+    - "写者立即获得锁，不等待读者"
+    - "读者读到的数据可能不一致，必须检查并重试"
+    - "不能保护指针（可能读到无效指针）"
 
-
-# ============================================================
-# LOCK_TYPICAL USAGE
-# ============================================================
+  # ============================================================
+  # LOCKING STRATEGY GUIDE
+  # ============================================================
 
 locking_strategies:
-  description: "Locking Strategies - 锁使用策略"
-  header: "linux/locking.h"
+  description: "锁选择指南"
 
-  context_rules:
-    - pattern: 'rwlock'
-      description: "读写锁适用于读多写少场景"
-      strategy: "read_many_write_few"
+  decision_tree:
+    - question: "需要睡眠吗？"
+      yes: "使用 mutex 或 rw_semaphore"
+      no: "继续下一问题"
+    - question: "读写比例？"
+      read_heavy: "考虑 rwlock 或 seqlock"
+      balanced: "使用 spinlock"
+      write_heavy: "使用 spinlock"
+    - question: "写者可以等待读者吗？"
+      yes: "使用 rwlock"
+      no: "使用 seqlock"
+    - question: "是否与中断共享？"
+      hardirq: "使用 *_irqsave 变体"
+      softirq: "使用 *_bh 变体"
+      process_only: "使用基本变体"
 
-    - pattern: 'seqlock'
-      description: "顺序锁适用于读极多写极少场景"
-      strategy: "read_mostly_write_rarely"
-
-    - pattern: 'mutex'
-      description: "互斥锁适用于需要睡眠的场景"
-      strategy: "sleep_allowed"
-
-    - pattern: 'spinlock'
-      description: "自旋锁适用于不能睡眠的场景"
-      strategy: "no_sleep"
+  summary_table:
+    - lock: "spinlock"
+      sleep: "否"
+      fairness: "先到先得"
+      readers: "1"
+      writers: "1"
+      use_case: "短临界区，读写均衡"
+    - lock: "rwlock"
+      sleep: "否"
+      fairness: "写者可能饥饿"
+      readers: "多个"
+      writers: "1"
+      use_case: "短临界区，读多写少"
+    - lock: "seqlock"
+      sleep: "否"
+      fairness: "写者优先"
+      readers: "多个（可能重试）"
+      writers: "1"
+      use_case: "极短临界区，读极多写极少"
+    - lock: "mutex"
+      sleep: "是"
+      fairness: "FIFO"
+      readers: "1"
+      writers: "1"
+      use_case: "长临界区，进程上下文"
+    - lock: "rw_semaphore"
+      sleep: "是"
+      fairness: "较公平"
+      readers: "多个"
+      writers: "1"
+      use_case: "长临界区，读多写少"
 
   notes:
     - "优先使用粒度最小的锁"
     - "减少持有锁的时间"
-    - "避免在锁内调用可能睡眠的函数"
-    - "考虑使用读写锁替代互斥锁提升并发"
-
+    - "避免在锁内调用可能睡眠的函数（自旋锁）"
+    - "考虑使用 per-CPU 变量减少锁竞争"
+    - "RCU 是另一种读优化的选择"
 
 # ============================================================
-# RWLOCK EXAMPLES
+# EXAMPLES
 # ============================================================
 
 examples:
@@ -245,77 +773,109 @@ examples:
       static DEFINE_RWLOCK(my_rwlock);
       static int shared_counter = 0;
 
-      static int read_counter(void) {
+      /* 读取计数器 - 可以并发 */
+      static int read_counter(void)
+      {
           int ret;
+
           read_lock(&my_rwlock);
           ret = shared_counter;
           read_unlock(&my_rwlock);
+
           return ret;
       }
 
-      static void increment_counter(void) {
+      /* 增加计数器 - 排他 */
+      static void increment_counter(void)
+      {
           write_lock(&my_rwlock);
           shared_counter++;
           write_unlock(&my_rwlock);
       }
 
-  - description: "中断中读写锁使用"
+  - description: "中断上下文中使用读写锁"
     code: |
-      static DEFINE_RWLOCK(my_rwlock);
-      static unsigned long flags;
+      static DEFINE_RWLOCK(stats_lock);
+      static struct statistics stats;
 
-      static irqreturn_t my_isr(int irq, void *dev_id) {
-          /* 写者：在中断上下文中 */
-          write_lock_irqsave(&my_rwlock, flags);
-          /* 更新共享数据 */
-          write_unlock_irqrestore(&my_rwlock, flags);
+      /* 中断处理函数 - 更新统计 */
+      static irqreturn_t my_isr(int irq, void *dev_id)
+      {
+          unsigned long flags;
+
+          write_lock_irqsave(&stats_lock, flags);
+          stats.interrupts++;
+          stats.last_irq_time = jiffies;
+          write_unlock_irqrestore(&stats_lock, flags);
+
           return IRQ_HANDLED;
       }
 
-      static int read_from_process_context(void) {
-          int ret;
-          /* 读者：在进程上下文中 */
-          read_lock(&my_rwlock);
-          ret = shared_data;
-          read_unlock(&my_rwlock);
-          return ret;
+      /* 进程上下文 - 读取统计 */
+      static int show_stats(struct seq_file *m, void *v)
+      {
+          read_lock_irq(&stats_lock);
+          seq_printf(m, "interrupts: %lu\n", stats.interrupts);
+          seq_printf(m, "last_time: %lu\n", stats.last_irq_time);
+          read_unlock_irq(&stats_lock);
+
+          return 0;
       }
 
   - description: "顺序锁使用示例"
     code: |
-      static DEFINE_SEQLOCK(my_seqlock);
-      static unsigned long jiffies_at_update;
+      static DEFINE_SEQLOCK(data_seqlock);
+      static struct big_data {
+          u64 field1;
+          u64 field2;
+          u64 field3;
+      } shared_data;
 
-      static unsigned long get_jiffies(void) {
-          unsigned long seq;
-          do {
-              seq = read_seqbegin(&my_seqlock);
-          } while (read_seqretry(&my_seqlock, seq));
-          return jiffies_at_update;
-      }
-
-      static void update_jiffies(void) {
-          write_seqlock(&my_seqlock);
-          jiffies_at_update = jiffies;
-          write_sequnlock(&my_seqlock);
-      }
-
-  - description: "读多写少场景优化"
-    code: |
-      /* 使用顺序锁优化读多写少场景 */
-      static DEFINE_SEQLOCK(time_seqlock);
-      static struct timespec64 last_update;
-
-      static void get_time(struct timespec64 *ts) {
+      /* 读取数据（可能重试）*/
+      static void read_data(struct big_data *out)
+      {
           unsigned int seq;
+
           do {
-              seq = read_seqbegin(&time_seqlock);
-              *ts = last_update;
-          } while (read_seqretry(&time_seqlock, seq));
+              seq = read_seqbegin(&data_seqlock);
+              /* 读取可能不一致，但会被检测到 */
+              out->field1 = shared_data.field1;
+              out->field2 = shared_data.field2;
+              out->field3 = shared_data.field3;
+          } while (read_seqretry(&data_seqlock, seq));
       }
 
-      static void update_time(struct timespec64 *new_time) {
-          write_seqlock(&time_seqlock);
-          last_update = *new_time;
-          write_sequnlock(&time_seqlock);
+      /* 更新数据 */
+      static void update_data(struct big_data *new)
+      {
+          write_seqlock(&data_seqlock);
+          shared_data = *new;
+          write_sequnlock(&data_seqlock);
+      }
+
+  - description: "软中断与进程上下文共享"
+    code: |
+      static DEFINE_RWLOCK(cache_lock);
+      static struct cache_entry *cache;
+
+      /* 软中断中查找缓存 */
+      static struct cache_entry *lookup_cache_softirq(u32 key)
+      {
+          struct cache_entry *entry;
+
+          read_lock(&cache_lock);
+          entry = find_entry(cache, key);
+          if (entry)
+              entry->refcount++;
+          read_unlock(&cache_lock);
+
+          return entry;
+      }
+
+      /* 进程上下文更新缓存 */
+      static void update_cache(struct cache_entry *new)
+      {
+          write_lock_bh(&cache_lock);
+          add_entry(cache, new);
+          write_unlock_bh(&cache_lock);
       }

@@ -1,15 +1,19 @@
-# Linux Kernel PHY Driver Framework Knowledge Base
+# Linux Kernel Generic PHY Driver Framework Knowledge Base
 #
-# Reference: https://www.kernel.org/doc/html/latest/driver-api/phy.html
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/phy/phy.html
+#
+# Note: 这是 Generic PHY 框架 (linux/phy/phy.h)，用于 USB PHY、SATA PHY、PCIe PHY 等
+#       不是网络 PHY 框架 (linux/phy.h)，那是用于以太网 PHY 的
 
 # ============================================================
-# PHY CORE
+# PHY STRUCTURE
 # ============================================================
 
-phy_core:
-  description: "PHY Core - PHY 芯片核心"
-  header: "linux/phy.h"
-  icon: "🌐"
+phy:
+  description: "Generic PHY Device - 通用 PHY 设备"
+  header: "linux/phy/phy.h"
+  icon: "🔌"
+  kernel_version: "3.13+"
 
   context:
     type: "process"
@@ -17,218 +21,685 @@ phy_core:
     can_schedule: true
     preemptible: true
 
-  bind_patterns:
-    # phy_create - 创建 PHY
-    - pattern: 'phy_create\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<node>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "创建 PHY 设备"
-
-    # phy_destroy - 销毁 PHY
-    - pattern: 'phy_destroy\s*\(\s*(?P<phy>[^)]+)\s*\)'
-      variable_capture: "phy"
-      description: "销毁 PHY 设备"
-
-    # devm_phy_create - 资源管理创建
-    - pattern: 'devm_phy_create\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<node>[^)]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "资源管理方式创建 PHY"
-
-
-# ============================================================
-# PHY CONSUMER
-# ============================================================
-
-phy_consumer:
-  description: "PHY Consumer - PHY 消费者"
-  header: "linux/phy.h"
-
-  bind_patterns:
-    # phy_get - 获取 PHY
-    - pattern: 'phy_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "获取 PHY 设备"
-
-    # phy_optional_get - 可选获取 PHY
-    - pattern: 'phy_optional_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "可选获取 PHY 设备"
-
-    # phy_put - 释放 PHY
-    - pattern: 'phy_put\s*\(\s*(?P<phy>[^)]+)\s*\)'
-      variable_capture: "phy"
-      description: "释放 PHY 设备"
+  structure:
+    pattern: 'struct phy\s*\{'
+    description: "PHY 设备结构体"
+    fields:
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备结构"
+      - name: "id"
+        type: "int"
+        description: "PHY 设备 ID"
+      - name: "ops"
+        type: "const struct phy_ops *"
+        description: "PHY 操作函数集"
+      - name: "mutex"
+        type: "struct mutex"
+        description: "保护 PHY 操作的互斥锁"
+      - name: "init_count"
+        type: "int"
+        description: "初始化引用计数"
+      - name: "power_count"
+        type: "int"
+        description: "电源引用计数"
+      - name: "attrs"
+        type: "struct phy_attrs"
+        description: "PHY 属性"
+      - name: "pwr"
+        type: "struct regulator *"
+        description: "PHY 电源 regulator"
 
 
 # ============================================================
-# PHY POWER
+# PHY MODE
 # ============================================================
 
-phy_power:
-  description: "PHY Power - PHY 电源管理"
-  header: "linux/phy.h"
+phy_mode:
+  description: "PHY Mode - PHY 工作模式"
+  header: "linux/phy/phy.h"
+  icon: "🔀"
 
-  bind_patterns:
-    # phy_power_on - 开启 PHY 电源
-    - pattern: 'phy_power_on\s*\(\s*(?P<phy>[^)]+)\s*\)'
-      variable_capture: "phy"
-      description: "开启 PHY 电源"
-
-    # phy_power_off - 关闭 PHY 电源
-    - pattern: 'phy_power_off\s*\(\s*(?P<phy>[^)]+)\s*\)'
-      variable_capture: "phy"
-      description: "关闭 PHY 电源"
-
-    # phy_start - 启动 PHY
-    - pattern: 'phy_start\s*\(\s*(?P<phy>[^)]+)\s*\)'
-      variable_capture: "phy"
-      description: "启动 PHY"
-
-    # phy_stop - 停止 PHY
-    - pattern: 'phy_stop\s*\(\s*(?P<phy>[^)]+)\s*\)'
-      variable_capture: "phy"
-      description: "停止 PHY"
-
-
-# ============================================================
-# PHY READ/WRITE
-# ============================================================
-
-phy_access:
-  description: "PHY Access - PHY 读写"
-  header: "linux/phy.h"
-
-  bind_patterns:
-    # phy_read - 读取 PHY 寄存器
-    - pattern: 'phy_read\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<regnum>\w+)\s*\)'
-      variable_capture: "phy"
-      description: "读取 PHY 寄存器"
-
-    # phy_write - 写入 PHY 寄存器
-    - pattern: 'phy_write\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<regnum>\w+)\s*,\s*(?P<val>\w+)\s*\)'
-      variable_capture: "phy"
-      description: "写入 PHY 寄存器"
-
-    # phy_read_mmd - 读取 MMD 寄存器
-    - pattern: 'phy_read_mmd\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<devad>\w+)\s*,\s*(?P<regnum>\w+)\s*\)'
-      variable_capture: "phy"
-      description: "读取 MMD 寄存器"
-
-    # phy_write_mmd - 写入 MMD 寄存器
-    - pattern: 'phy_write_mmd\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<devad>\w+)\s*,\s*(?P<regnum>\w+)\s*,\s*(?P<val>\w+)\s*\)'
-      variable_capture: "phy"
-      description: "写入 MMD 寄存器"
+  modes:
+    - name: "PHY_MODE_INVALID"
+      value: 0
+      description: "无效模式"
+    - name: "PHY_MODE_USB_HOST"
+      value: 1
+      description: "USB Host 模式"
+    - name: "PHY_MODE_USB_DEVICE"
+      value: 2
+      description: "USB Device 模式"
+    - name: "PHY_MODE_USB_OTG"
+      value: 3
+      description: "USB OTG 模式"
+    - name: "PHY_MODE_SGMII"
+      value: 4
+      description: "SGMII 串行千兆媒体独立接口"
+    - name: "PHY_MODE_10GKR"
+      value: 5
+      description: "10GBase-KR 背板接口"
+    - name: "PHY_MODE_UFS_HS_A"
+      description: "UFS High Speed A 模式"
+    - name: "PHY_MODE_UFS_HS_B"
+      description: "UFS High Speed B 模式"
+    - name: "PHY_MODE_PCIE"
+      description: "PCIe 模式"
+    - name: "PHY_MODE_ETHERNET"
+      description: "以太网模式"
+    - name: "PHY_MODE_MIPI_DPHY"
+      description: "MIPI D-PHY 模式"
+    - name: "PHY_MODE_SATA"
+      description: "SATA 模式"
 
 
 # ============================================================
-# PHY CONFIG
+# PHY OPERATIONS
 # ============================================================
 
-phy_config:
-  description: "PHY Config - PHY 配置"
-  header: "linux/phy.h"
+phy_ops:
+  description: "PHY Operations - PHY 操作函数集"
+  header: "linux/phy/phy.h"
+  icon: "⚙️"
 
-  bind_patterns:
-    # phy_validate - 验证 PHY
-    - pattern: 'phy_validate\s*\(\s*(?P<phy>[^)]+)\s*,\s*(?P<mode>\w+)\s*,\s*(?P<dev_flags>\w+)\s*\)'
-      variable_capture: "phy"
-      description: "验证 PHY 配置"
-
-    # phy_config_aneg - 配置自动协商
-    - pattern: 'phy_config_aneg\s*\(\s*(?P<phy>[^)]+)\s*\)'
-      variable_capture: "phy"
-      description: "配置自动协商"
-
-    # phy_start_aneg - 启动自动协商
-    - pattern: 'phy_start_aneg\s*\(\s*(?P<phy>[^)]+)\s*\)'
-      variable_capture: "phy"
-      description: "启动自动协商"
-
-    # phy_read_status - 读取状态
-    - pattern: 'phy_read_status\s*\(\s*(?P<phy>[^)]+)\s*\)'
-      variable_capture: "phy"
-      description: "读取 PHY 状态"
-
-
-# ============================================================
-# PHY CALLBACKS
-# ============================================================
-
-phy_callbacks:
-  description: "PHY Callbacks - PHY 回调"
-  header: "linux/phy.h"
-
-  bind_patterns:
-    # struct phy_ops
-    - pattern: 'struct phy_ops\s*\{[^}]+\}'
-      description: "PHY 操作结构"
+  structure:
+    pattern: 'static const struct phy_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "PHY 操作结构体定义"
+    fields:
+      - name: "init"
+        type: "int (*)(struct phy *)"
+        description: "PHY 初始化"
+        optional: true
+      - name: "exit"
+        type: "int (*)(struct phy *)"
+        description: "PHY 退出/清理"
+        optional: true
+      - name: "power_on"
+        type: "int (*)(struct phy *)"
+        description: "打开 PHY 电源"
+        optional: true
+      - name: "power_off"
+        type: "int (*)(struct phy *)"
+        description: "关闭 PHY 电源"
+        optional: true
+      - name: "set_mode"
+        type: "int (*)(struct phy *, enum phy_mode)"
+        description: "设置 PHY 工作模式"
+        optional: true
+      - name: "reset"
+        type: "int (*)(struct phy *)"
+        description: "复位 PHY"
+        optional: true
+      - name: "owner"
+        type: "struct module *"
+        description: "模块所有者"
+        mandatory: true
 
   callbacks:
     init:
       pattern: '\.init\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "初始化回调"
+      description: "PHY 初始化回调"
+      trigger: "消费者调用 phy_init()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct phy *phy)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "配置 PHY 寄存器"
+        - "设置时钟"
+        - "初始化 PLL"
+        - "配置信号参数"
+      note: "使用引用计数，只有第一次调用时执行"
 
     exit:
       pattern: '\.exit\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "退出回调"
+      description: "PHY 退出回调"
+      trigger: "消费者调用 phy_exit()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct phy *phy)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "禁用 PHY"
+        - "释放资源"
+        - "停止时钟"
+      note: "使用引用计数，只有最后一次调用时执行"
 
-    reset:
-      pattern: '\.reset\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "复位回调"
+    power_on:
+      pattern: '\.power_on\s*=\s*(?P<handler>\w+)'
+      description: "PHY 电源打开回调"
+      trigger: "消费者调用 phy_power_on()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct phy *phy)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "使能电源 regulator"
+        - "取消时钟门控"
+        - "等待 PLL 锁定"
+        - "等待 PHY 就绪"
+      note: "使用引用计数，只有第一次调用时执行"
 
-    start:
-      pattern: '\.start\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "启动回调"
-
-    stop:
-      pattern: '\.stop\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "停止回调"
-
-    get_rate:
-      pattern: '\.get_rate\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取速率"
-
-    set_rate:
-      pattern: '\.set_rate\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "设置速率"
+    power_off:
+      pattern: '\.power_off\s*=\s*(?P<handler>\w+)'
+      description: "PHY 电源关闭回调"
+      trigger: "消费者调用 phy_power_off()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct phy *phy)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "禁用电源 regulator"
+        - "门控时钟"
+        - "进入低功耗状态"
+      note: "使用引用计数，只有最后一次调用时执行"
 
     set_mode:
       pattern: '\.set_mode\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "设置模式"
+      description: "设置 PHY 模式回调"
+      trigger: "消费者调用 phy_set_mode()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct phy *phy, enum phy_mode mode)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO (如 -ENOTSUPP)"
+      typical_actions:
+        - "配置 USB Host/Device/OTG 模式"
+        - "切换 SGMII/RGMII 等接口模式"
+        - "更新 PHY 配置寄存器"
 
-    get_mode:
-      pattern: '\.get_mode\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取模式"
+    reset:
+      pattern: '\.reset\s*=\s*(?P<handler>\w+)'
+      description: "PHY 复位回调"
+      trigger: "消费者调用 phy_reset()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct phy *phy)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "触发硬件复位"
+        - "等待复位完成"
+        - "重新初始化 PHY"
 
 
 # ============================================================
-# PHY STATES
+# PHY PROVIDER API
 # ============================================================
 
-phy_state:
-  description: "PHY State - PHY 状态"
-  header: "linux/phy.h"
+phy_provider:
+  description: "PHY Provider API - PHY 提供者 API"
+  header: "linux/phy/phy.h"
+  icon: "🏭"
 
-  bind_patterns:
-    # phy_state_machine - PHY 状态机
-    - pattern: 'phy_state\s*\{[^}]+\}'
-      description: "PHY 状态结构"
+  overview: |
+    PHY 提供者是创建和管理 PHY 设备的驱动。
+    它负责注册 PHY 到框架，以便消费者可以获取和使用。
 
-    # PHY_*_AN - 自动协商状态
-    - pattern: 'PHY_(?P<state>\w+)_AN'
-      description: "自动协商状态"
+  structure:
+    pattern: 'struct phy_provider\s*\{'
+    description: "PHY 提供者结构体"
+    fields:
+      - name: "dev"
+        type: "struct device *"
+        description: "设备指针"
+      - name: "children"
+        type: "struct device_node *"
+        description: "子设备树节点"
+      - name: "owner"
+        type: "struct module *"
+        description: "模块所有者"
+      - name: "list"
+        type: "struct list_head"
+        description: "链表节点"
+      - name: "of_xlate"
+        type: "struct phy * (*)(struct device *, struct of_phandle_args *)"
+        description: "设备树到 PHY 的转换函数"
 
-    # PHY_FORCING - 强制状态
-    - pattern: 'PHY_FORCING'
-      description: "强制状态"
+  create_functions:
+    - pattern: 'phy_create\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<node>[^,]+)\s*,\s*&(?P<ops>\w+)\s*\)'
+      description: "创建 PHY 设备"
+      signature: "struct phy *phy_create(struct device *dev, struct device_node *node, const struct phy_ops *ops)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "有效的 phy 指针"
+        failure: "ERR_PTR(-ERRNO)"
+
+    - pattern: 'devm_phy_create\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<node>[^,]+)\s*,\s*&(?P<ops>\w+)\s*\)'
+      description: "资源管理方式创建 PHY 设备 (推荐)"
+      signature: "struct phy *devm_phy_create(struct device *dev, struct device_node *node, const struct phy_ops *ops)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'phy_destroy\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "销毁 PHY 设备"
+      signature: "void phy_destroy(struct phy *phy)"
+      note: "使用 devm_* 版本时不需要调用"
+
+  register_functions:
+    - pattern: 'of_phy_provider_register\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<xlate>[^)]+)\s*\)'
+      description: "注册 PHY 提供者"
+      signature: "宏，展开为 __of_phy_provider_register(dev, NULL, THIS_MODULE, xlate)"
+
+    - pattern: 'devm_of_phy_provider_register\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<xlate>[^)]+)\s*\)'
+      description: "资源管理方式注册 PHY 提供者 (推荐)"
+      signature: "宏，展开为 __devm_of_phy_provider_register(dev, NULL, THIS_MODULE, xlate)"
+
+    - pattern: 'of_phy_simple_xlate\s*\('
+      description: "简单的 of_xlate 实现，用于单 PHY 情况"
+      signature: "struct phy *of_phy_simple_xlate(struct device *dev, struct of_phandle_args *args)"
+
+  helper_functions:
+    - pattern: 'phy_set_drvdata\s*\(\s*(?P<phy>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "设置 PHY 驱动私有数据"
+    - pattern: 'phy_get_drvdata\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "获取 PHY 驱动私有数据"
+    - pattern: 'phy_get_bus_width\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "获取 PHY 总线宽度"
+    - pattern: 'phy_set_bus_width\s*\(\s*(?P<phy>[^,]+)\s*,\s*(?P<width>[^)]+)\s*\)'
+      description: "设置 PHY 总线宽度"
+
+
+# ============================================================
+# PHY CONSUMER API
+# ============================================================
+
+phy_consumer:
+  description: "PHY Consumer API - PHY 消费者 API"
+  header: "linux/phy/phy.h"
+  icon: "📥"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  get_functions:
+    - pattern: 'phy_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "获取 PHY"
+      signature: "struct phy *phy_get(struct device *dev, const char *string)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "有效的 phy 指针"
+        failure: "ERR_PTR(-ERRNO)"
+
+    - pattern: 'phy_optional_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "可选获取 PHY"
+      signature: "struct phy *phy_optional_get(struct device *dev, const char *string)"
+      return_value:
+        success: "有效的 phy 指针"
+        not_found: "NULL (不是错误)"
+        failure: "ERR_PTR(-ERRNO)"
+
+    - pattern: 'devm_phy_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "资源管理获取 PHY (推荐)"
+      signature: "struct phy *devm_phy_get(struct device *dev, const char *string)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_phy_optional_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "资源管理可选获取 PHY"
+      signature: "struct phy *devm_phy_optional_get(struct device *dev, const char *string)"
+
+    - pattern: 'devm_of_phy_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<np>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "从特定设备树节点获取 PHY"
+      signature: "struct phy *devm_of_phy_get(struct device *dev, struct device_node *np, const char *con_id)"
+
+    - pattern: 'devm_of_phy_get_by_index\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<np>[^,]+)\s*,\s*(?P<index>[^)]+)\s*\)'
+      description: "按索引从设备树获取 PHY"
+      signature: "struct phy *devm_of_phy_get_by_index(struct device *dev, struct device_node *np, int index)"
+
+  put_functions:
+    - pattern: 'phy_put\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "释放 PHY"
+      signature: "void phy_put(struct phy *phy)"
+      note: "使用 devm_* 版本时不需要调用"
+
+    - pattern: 'devm_phy_put\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<phy>[^)]+)\s*\)'
+      description: "资源管理释放 PHY"
+      signature: "void devm_phy_put(struct device *dev, struct phy *phy)"
+
+
+# ============================================================
+# PHY OPERATIONS API
+# ============================================================
+
+phy_operations:
+  description: "PHY Operations API - PHY 操作 API"
+  header: "linux/phy/phy.h"
+  icon: "▶️"
+
+  operations:
+    - pattern: 'phy_init\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "初始化 PHY"
+      signature: "int phy_init(struct phy *phy)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      note: "引用计数管理，多次调用安全"
+
+    - pattern: 'phy_exit\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "退出 PHY"
+      signature: "int phy_exit(struct phy *phy)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    - pattern: 'phy_power_on\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "打开 PHY 电源"
+      signature: "int phy_power_on(struct phy *phy)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      note: "引用计数管理，多次调用安全"
+
+    - pattern: 'phy_power_off\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "关闭 PHY 电源"
+      signature: "int phy_power_off(struct phy *phy)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    - pattern: 'phy_set_mode\s*\(\s*(?P<phy>[^,]+)\s*,\s*(?P<mode>[^)]+)\s*\)'
+      description: "设置 PHY 模式"
+      signature: "int phy_set_mode(struct phy *phy, enum phy_mode mode)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    - pattern: 'phy_reset\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "复位 PHY"
+      signature: "int phy_reset(struct phy *phy)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+  pm_functions:
+    - pattern: 'phy_pm_runtime_get\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "PM runtime get (异步)"
+      signature: "int phy_pm_runtime_get(struct phy *phy)"
+
+    - pattern: 'phy_pm_runtime_get_sync\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "PM runtime get (同步)"
+      signature: "int phy_pm_runtime_get_sync(struct phy *phy)"
+
+    - pattern: 'phy_pm_runtime_put\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "PM runtime put (异步)"
+      signature: "int phy_pm_runtime_put(struct phy *phy)"
+
+    - pattern: 'phy_pm_runtime_put_sync\s*\(\s*(?P<phy>[^)]+)\s*\)'
+      description: "PM runtime put (同步)"
+      signature: "int phy_pm_runtime_put_sync(struct phy *phy)"
+
+
+# ============================================================
+# PHY TYPES AND USE CASES
+# ============================================================
+
+phy_types:
+  description: "PHY Types and Use Cases - PHY 类型和使用场景"
+  icon: "📋"
+
+  types:
+    usb_phy:
+      description: "USB PHY"
+      modes: ["PHY_MODE_USB_HOST", "PHY_MODE_USB_DEVICE", "PHY_MODE_USB_OTG"]
+      use_cases:
+        - "USB 2.0 High Speed PHY"
+        - "USB 3.0 SuperSpeed PHY"
+        - "USB Type-C PHY"
+      typical_consumers:
+        - "USB Host Controller Driver"
+        - "USB Gadget/Device Controller Driver"
+        - "USB OTG Driver"
+      example_binding: |
+        usb_phy: phy@12340000 {
+            compatible = "vendor,usb-phy";
+            reg = <0x12340000 0x1000>;
+            #phy-cells = <0>;
+        };
+
+        usb@12350000 {
+            compatible = "vendor,usb-host";
+            phys = <&usb_phy>;
+            phy-names = "usb-phy";
+        };
+
+    pcie_phy:
+      description: "PCIe PHY"
+      modes: ["PHY_MODE_PCIE"]
+      use_cases:
+        - "PCIe Gen1/Gen2/Gen3/Gen4 PHY"
+        - "PCIe x1/x4/x8/x16 PHY"
+      typical_consumers:
+        - "PCIe Host Controller Driver"
+        - "PCIe Endpoint Controller Driver"
+      example_binding: |
+        pcie_phy: phy@12360000 {
+            compatible = "vendor,pcie-phy";
+            reg = <0x12360000 0x1000>;
+            #phy-cells = <0>;
+        };
+
+        pcie@12370000 {
+            compatible = "vendor,pcie-host";
+            phys = <&pcie_phy>;
+            phy-names = "pcie-phy";
+        };
+
+    sata_phy:
+      description: "SATA PHY"
+      modes: ["PHY_MODE_SATA"]
+      use_cases:
+        - "SATA I/II/III PHY"
+        - "AHCI Controller PHY"
+      typical_consumers:
+        - "AHCI SATA Controller Driver"
+      example_binding: |
+        sata_phy: phy@12380000 {
+            compatible = "vendor,sata-phy";
+            reg = <0x12380000 0x1000>;
+            #phy-cells = <0>;
+        };
+
+        sata@12390000 {
+            compatible = "vendor,ahci";
+            phys = <&sata_phy>;
+            phy-names = "sata-phy";
+        };
+
+    serdes_phy:
+      description: "SerDes PHY (多协议)"
+      modes: ["PHY_MODE_PCIE", "PHY_MODE_SATA", "PHY_MODE_SGMII"]
+      use_cases:
+        - "可配置 SerDes Lane"
+        - "多协议支持 (PCIe/SATA/SGMII)"
+      typical_consumers:
+        - "多种控制器，取决于配置"
+      note: "使用 phy_set_mode() 切换协议"
+
+    mipi_phy:
+      description: "MIPI D-PHY"
+      modes: ["PHY_MODE_MIPI_DPHY"]
+      use_cases:
+        - "Camera/Display 接口"
+        - "MIPI CSI/DSI"
+      typical_consumers:
+        - "MIPI CSI-2 Camera Driver"
+        - "MIPI DSI Display Driver"
+
+
+# ============================================================
+# PHY CALL CHAINS
+# ============================================================
+
+call_chains:
+  phy_init_flow:
+    description: "phy_init() 调用链"
+    trigger: "消费者驱动调用 phy_init()"
+    chain:
+      - function: "phy_init"
+        file: "drivers/phy/phy-core.c"
+        description: "消费者 API 入口"
+        context: "process"
+      - function: "mutex_lock"
+        file: "drivers/phy/phy-core.c"
+        description: "获取 PHY 互斥锁"
+      - function: "phy->init_count++ check"
+        description: "检查引用计数，仅首次调用继续"
+      - function: "phy->ops->init"
+        file: "用户驱动代码"
+        description: "调用 PHY 驱动的 init 回调"
+        is_user_entry: true
+      - function: "mutex_unlock"
+        file: "drivers/phy/phy-core.c"
+        description: "释放 PHY 互斥锁"
+
+  phy_power_on_flow:
+    description: "phy_power_on() 调用链"
+    trigger: "消费者驱动调用 phy_power_on()"
+    chain:
+      - function: "phy_power_on"
+        file: "drivers/phy/phy-core.c"
+        description: "消费者 API 入口"
+        context: "process"
+      - function: "mutex_lock"
+        file: "drivers/phy/phy-core.c"
+        description: "获取 PHY 互斥锁"
+      - function: "phy->power_count++ check"
+        description: "检查引用计数"
+      - function: "phy_pm_runtime_get_sync"
+        file: "drivers/phy/phy-core.c"
+        description: "PM runtime 唤醒"
+      - function: "regulator_enable"
+        file: "drivers/regulator/core.c"
+        description: "使能电源 regulator (如果有)"
+      - function: "phy->ops->power_on"
+        file: "用户驱动代码"
+        description: "调用 PHY 驱动的 power_on 回调"
+        is_user_entry: true
+      - function: "mutex_unlock"
+        file: "drivers/phy/phy-core.c"
+        description: "释放 PHY 互斥锁"
+
+  phy_get_flow:
+    description: "devm_phy_get() 调用链"
+    trigger: "消费者驱动 probe 时获取 PHY"
+    chain:
+      - function: "my_device_probe"
+        file: "用户驱动代码"
+        description: "消费者驱动探测函数"
+        context: "process"
+        is_user_entry: true
+      - function: "devm_phy_get"
+        file: "drivers/phy/phy-core.c"
+        description: "获取 PHY"
+      - function: "_of_phy_get"
+        file: "drivers/phy/phy-core.c"
+        description: "从设备树解析 PHY 信息"
+      - function: "phy_provider->of_xlate"
+        file: "用户驱动代码"
+        description: "转换设备树参数到 PHY"
+        is_user_entry: true
+
+  phy_provider_registration_flow:
+    description: "PHY 提供者注册调用链"
+    trigger: "PHY 驱动 probe 函数调用注册"
+    chain:
+      - function: "my_phy_probe"
+        file: "用户驱动代码"
+        description: "PHY 驱动探测函数"
+        context: "process"
+        is_user_entry: true
+      - function: "devm_phy_create"
+        file: "drivers/phy/phy-core.c"
+        description: "创建 PHY 设备"
+      - function: "device_create"
+        file: "drivers/base/core.c"
+        description: "创建设备"
+      - function: "devm_of_phy_provider_register"
+        file: "drivers/phy/phy-core.c"
+        description: "注册 PHY 提供者"
+
+
+# ============================================================
+# PHY DEVICE TREE BINDING
+# ============================================================
+
+device_tree:
+  description: "Device Tree Binding - 设备树绑定"
+  icon: "🌳"
+
+  provider_binding:
+    description: "PHY 提供者设备树节点"
+    example: |
+      /* 单 PHY 提供者 */
+      usb_phy: phy@12340000 {
+          compatible = "vendor,usb-phy";
+          reg = <0x12340000 0x1000>;
+          clocks = <&clk_phy>;
+          resets = <&reset_ctrl 0>;
+          #phy-cells = <0>;  /* 无参数 */
+      };
+
+      /* 多 PHY 提供者 */
+      combo_phy: phy@12350000 {
+          compatible = "vendor,combo-phy";
+          reg = <0x12350000 0x2000>;
+          #phy-cells = <1>;  /* 需要一个参数指定 PHY */
+
+          /* 子节点方式 */
+          usb_phy: usb-phy {
+              #phy-cells = <0>;
+          };
+          pcie_phy: pcie-phy {
+              #phy-cells = <0>;
+          };
+      };
+
+  consumer_binding:
+    description: "PHY 消费者设备树节点"
+    example: |
+      /* 单 PHY 消费者 */
+      usb@12360000 {
+          compatible = "vendor,usb-host";
+          reg = <0x12360000 0x1000>;
+          phys = <&usb_phy>;
+          phy-names = "usb-phy";
+      };
+
+      /* 多 PHY 消费者 */
+      usb@12370000 {
+          compatible = "vendor,usb3-host";
+          reg = <0x12370000 0x1000>;
+          phys = <&usb2_phy>, <&usb3_phy>;
+          phy-names = "usb2-phy", "usb3-phy";
+      };
 
 
 # ============================================================
@@ -236,53 +707,396 @@ phy_state:
 # ============================================================
 
 examples:
-  - description: "PHY 驱动"
+  - description: "完整 USB PHY 驱动示例"
+    kernel_version: "4.0+"
     code: |
-      static int my_phy_init(struct phy *phy) {
-          struct my_phy_data *priv;
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/phy/phy.h>
+      #include <linux/io.h>
+      #include <linux/clk.h>
+      #include <linux/reset.h>
+      #include <linux/regulator/consumer.h>
+      #include <linux/delay.h>
 
-          priv = phy_get_drvdata(phy);
-          /* 初始化 PHY */
-          phy_write(phy, MII_BMCR, BMCR_RESET);
+      #define PHY_CTRL    0x00
+      #define PHY_STATUS  0x04
+      #define PHY_CFG     0x08
+
+      #define PHY_EN      BIT(0)
+      #define PHY_READY   BIT(0)
+      #define PHY_MODE_MASK   GENMASK(3, 1)
+      #define PHY_MODE_HOST   (0 << 1)
+      #define PHY_MODE_DEV    (1 << 1)
+      #define PHY_MODE_OTG    (2 << 1)
+
+      struct my_usb_phy {
+          void __iomem *base;
+          struct phy *phy;
+          struct clk *clk;
+          struct reset_control *rst;
+          struct regulator *vdd;
+          enum phy_mode mode;
+      };
+
+      static int my_usb_phy_init(struct phy *phy)
+      {
+          struct my_usb_phy *priv = phy_get_drvdata(phy);
+          int ret;
+
+          /* 使能时钟 */
+          ret = clk_prepare_enable(priv->clk);
+          if (ret)
+              return ret;
+
+          /* 解除复位 */
+          ret = reset_control_deassert(priv->rst);
+          if (ret) {
+              clk_disable_unprepare(priv->clk);
+              return ret;
+          }
+
+          /* 初始化 PHY 寄存器 */
+          writel(0x12345678, priv->base + PHY_CFG);
+
           return 0;
       }
 
-      static int my_phy_reset(struct phy *phy) {
-          /* 复位 PHY */
-          gpio_set_value(phy_reset_gpio, 0);
-          udelay(10);
-          gpio_set_value(phy_reset_gpio, 1);
+      static int my_usb_phy_exit(struct phy *phy)
+      {
+          struct my_usb_phy *priv = phy_get_drvdata(phy);
+
+          /* 断言复位 */
+          reset_control_assert(priv->rst);
+
+          /* 禁用时钟 */
+          clk_disable_unprepare(priv->clk);
+
           return 0;
       }
 
-      static int my_phy_config_aneg(struct phy *phy) {
-          u16 adv = ADVERTISE_ALL | ADVERTISE_CSMA;
-          phy_write(phy, MII_ADVERTISE, adv);
+      static int my_usb_phy_power_on(struct phy *phy)
+      {
+          struct my_usb_phy *priv = phy_get_drvdata(phy);
+          u32 val;
+          int ret, timeout = 1000;
+
+          /* 使能电源 */
+          ret = regulator_enable(priv->vdd);
+          if (ret)
+              return ret;
+
+          /* 使能 PHY */
+          val = readl(priv->base + PHY_CTRL);
+          val |= PHY_EN;
+          writel(val, priv->base + PHY_CTRL);
+
+          /* 等待 PHY 就绪 */
+          while (timeout--) {
+              if (readl(priv->base + PHY_STATUS) & PHY_READY)
+                  return 0;
+              usleep_range(10, 20);
+          }
+
+          dev_err(&phy->dev, "PHY not ready\n");
+          regulator_disable(priv->vdd);
+          return -ETIMEDOUT;
+      }
+
+      static int my_usb_phy_power_off(struct phy *phy)
+      {
+          struct my_usb_phy *priv = phy_get_drvdata(phy);
+          u32 val;
+
+          /* 禁用 PHY */
+          val = readl(priv->base + PHY_CTRL);
+          val &= ~PHY_EN;
+          writel(val, priv->base + PHY_CTRL);
+
+          /* 关闭电源 */
+          regulator_disable(priv->vdd);
+
           return 0;
       }
 
-      static int my_phy_read_status(struct phy *phy) {
-          struct phy_device *phydev = to_phy_device(phy->dev);
+      static int my_usb_phy_set_mode(struct phy *phy, enum phy_mode mode)
+      {
+          struct my_usb_phy *priv = phy_get_drvdata(phy);
+          u32 val;
 
-          phydev->speed = SPEED_100;
-          phydev->duplex = DUPLEX_FULL;
+          val = readl(priv->base + PHY_CTRL);
+          val &= ~PHY_MODE_MASK;
+
+          switch (mode) {
+          case PHY_MODE_USB_HOST:
+              val |= PHY_MODE_HOST;
+              break;
+          case PHY_MODE_USB_DEVICE:
+              val |= PHY_MODE_DEV;
+              break;
+          case PHY_MODE_USB_OTG:
+              val |= PHY_MODE_OTG;
+              break;
+          default:
+              return -EINVAL;
+          }
+
+          writel(val, priv->base + PHY_CTRL);
+          priv->mode = mode;
+
           return 0;
       }
 
-      static struct phy_ops my_phy_ops = {
-          .init = my_phy_init,
-          .reset = my_phy_reset,
-          .config_aneg = my_phy_config_aneg,
-          .read_status = my_phy_read_status,
+      static int my_usb_phy_reset(struct phy *phy)
+      {
+          struct my_usb_phy *priv = phy_get_drvdata(phy);
+
+          reset_control_assert(priv->rst);
+          usleep_range(10, 20);
+          reset_control_deassert(priv->rst);
+          usleep_range(100, 200);
+
+          return 0;
+      }
+
+      static const struct phy_ops my_usb_phy_ops = {
+          .init = my_usb_phy_init,
+          .exit = my_usb_phy_exit,
+          .power_on = my_usb_phy_power_on,
+          .power_off = my_usb_phy_power_off,
+          .set_mode = my_usb_phy_set_mode,
+          .reset = my_usb_phy_reset,
           .owner = THIS_MODULE,
       };
 
-      static int __init my_phy_probe(struct platform_device *pdev) {
-          struct phy *phy;
+      static int my_usb_phy_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct my_usb_phy *priv;
+          struct phy_provider *phy_provider;
+          struct resource *res;
 
-          phy = devm_phy_create(&pdev->dev, NULL, &my_phy_ops);
-          if (IS_ERR(phy))
-              return PTR_ERR(phy);
+          priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+          if (!priv)
+              return -ENOMEM;
+
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          priv->base = devm_ioremap_resource(dev, res);
+          if (IS_ERR(priv->base))
+              return PTR_ERR(priv->base);
+
+          priv->clk = devm_clk_get(dev, "phy");
+          if (IS_ERR(priv->clk))
+              return PTR_ERR(priv->clk);
+
+          priv->rst = devm_reset_control_get(dev, "phy");
+          if (IS_ERR(priv->rst))
+              return PTR_ERR(priv->rst);
+
+          priv->vdd = devm_regulator_get(dev, "vdd");
+          if (IS_ERR(priv->vdd))
+              return PTR_ERR(priv->vdd);
+
+          /* 创建 PHY */
+          priv->phy = devm_phy_create(dev, dev->of_node, &my_usb_phy_ops);
+          if (IS_ERR(priv->phy))
+              return PTR_ERR(priv->phy);
+
+          phy_set_drvdata(priv->phy, priv);
+          platform_set_drvdata(pdev, priv);
+
+          /* 注册 PHY 提供者 */
+          phy_provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
+          if (IS_ERR(phy_provider))
+              return PTR_ERR(phy_provider);
 
           return 0;
       }
+
+      static const struct of_device_id my_usb_phy_of_match[] = {
+          { .compatible = "vendor,usb-phy" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_usb_phy_of_match);
+
+      static struct platform_driver my_usb_phy_driver = {
+          .probe = my_usb_phy_probe,
+          .driver = {
+              .name = "my-usb-phy",
+              .of_match_table = my_usb_phy_of_match,
+          },
+      };
+      module_platform_driver(my_usb_phy_driver);
+
+      MODULE_LICENSE("GPL");
+      MODULE_DESCRIPTION("My USB PHY Driver");
+      MODULE_AUTHOR("Author");
+
+  - description: "PHY 消费者驱动示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/phy/phy.h>
+
+      struct my_usb_ctrl {
+          void __iomem *base;
+          struct phy *phy;
+      };
+
+      static int my_usb_ctrl_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct my_usb_ctrl *ctrl;
+          struct resource *res;
+          int ret;
+
+          ctrl = devm_kzalloc(dev, sizeof(*ctrl), GFP_KERNEL);
+          if (!ctrl)
+              return -ENOMEM;
+
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          ctrl->base = devm_ioremap_resource(dev, res);
+          if (IS_ERR(ctrl->base))
+              return PTR_ERR(ctrl->base);
+
+          /* 获取 PHY (必需) */
+          ctrl->phy = devm_phy_get(dev, "usb-phy");
+          if (IS_ERR(ctrl->phy)) {
+              dev_err(dev, "Failed to get PHY\n");
+              return PTR_ERR(ctrl->phy);
+          }
+
+          /* 或者获取可选 PHY */
+          /* ctrl->phy = devm_phy_optional_get(dev, "usb-phy");
+             if (IS_ERR(ctrl->phy))
+                 return PTR_ERR(ctrl->phy);
+             if (!ctrl->phy)
+                 dev_info(dev, "No PHY provided\n"); */
+
+          /* 初始化 PHY */
+          ret = phy_init(ctrl->phy);
+          if (ret)
+              return ret;
+
+          /* 设置模式 (可选) */
+          ret = phy_set_mode(ctrl->phy, PHY_MODE_USB_HOST);
+          if (ret) {
+              phy_exit(ctrl->phy);
+              return ret;
+          }
+
+          /* 打开电源 */
+          ret = phy_power_on(ctrl->phy);
+          if (ret) {
+              phy_exit(ctrl->phy);
+              return ret;
+          }
+
+          platform_set_drvdata(pdev, ctrl);
+
+          /* ... 初始化 USB 控制器 ... */
+
+          return 0;
+      }
+
+      static void my_usb_ctrl_remove(struct platform_device *pdev)
+      {
+          struct my_usb_ctrl *ctrl = platform_get_drvdata(pdev);
+
+          /* 关闭 PHY */
+          phy_power_off(ctrl->phy);
+          phy_exit(ctrl->phy);
+      }
+
+      static const struct of_device_id my_usb_ctrl_of_match[] = {
+          { .compatible = "vendor,usb-host" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_usb_ctrl_of_match);
+
+      static struct platform_driver my_usb_ctrl_driver = {
+          .probe = my_usb_ctrl_probe,
+          .remove = my_usb_ctrl_remove,
+          .driver = {
+              .name = "my-usb-ctrl",
+              .of_match_table = my_usb_ctrl_of_match,
+          },
+      };
+      module_platform_driver(my_usb_ctrl_driver);
+
+      MODULE_LICENSE("GPL");
+      MODULE_DESCRIPTION("My USB Controller Driver");
+      MODULE_AUTHOR("Author");
+
+  - description: "多 PHY 提供者示例 (带自定义 xlate)"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/phy/phy.h>
+
+      #define MAX_PHYS 4
+
+      struct my_multi_phy {
+          void __iomem *base;
+          struct phy *phys[MAX_PHYS];
+      };
+
+      /* 自定义 xlate 函数 */
+      static struct phy *my_phy_xlate(struct device *dev,
+                                       struct of_phandle_args *args)
+      {
+          struct my_multi_phy *priv = dev_get_drvdata(dev);
+          int index;
+
+          if (args->args_count != 1)
+              return ERR_PTR(-EINVAL);
+
+          index = args->args[0];
+          if (index >= MAX_PHYS)
+              return ERR_PTR(-EINVAL);
+
+          return priv->phys[index];
+      }
+
+      static int my_multi_phy_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct my_multi_phy *priv;
+          int i;
+
+          priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+          if (!priv)
+              return -ENOMEM;
+
+          /* 创建多个 PHY */
+          for (i = 0; i < MAX_PHYS; i++) {
+              priv->phys[i] = devm_phy_create(dev, NULL, &my_phy_ops);
+              if (IS_ERR(priv->phys[i]))
+                  return PTR_ERR(priv->phys[i]);
+
+              phy_set_drvdata(priv->phys[i], priv);
+          }
+
+          platform_set_drvdata(pdev, priv);
+
+          /* 注册带自定义 xlate 的提供者 */
+          return PTR_ERR_OR_ZERO(
+              devm_of_phy_provider_register(dev, my_phy_xlate));
+      }
+
+      /*
+       * 设备树绑定示例:
+       *
+       * multi_phy: phy@12340000 {
+       *     compatible = "vendor,multi-phy";
+       *     reg = <0x12340000 0x1000>;
+       *     #phy-cells = <1>;  // 需要一个参数
+       * };
+       *
+       * 消费者:
+       * device@12350000 {
+       *     phys = <&multi_phy 0>, <&multi_phy 1>;
+       *     phy-names = "phy0", "phy1";
+       * };
+       */

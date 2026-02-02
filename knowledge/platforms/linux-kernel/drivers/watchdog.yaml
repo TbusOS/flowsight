@@ -3,56 +3,174 @@
 # Reference: https://www.kernel.org/doc/html/latest/watchdog/index.html
 
 # ============================================================
-# WATCHDOG CORE
-# ============================================================
-
-watchdog_core:
-  description: "Watchdog Core - 看门狗核心"
-  header: "linux/watchdog.h"
-  icon: "⏱️"
-
-  context:
-    type: "process"
-    can_sleep: false
-    can_schedule: false
-    preemptible: false
-    atomic_context: true
-
-  bind_patterns:
-    # watchdog_register_device - 注册看门狗设备
-    - pattern: 'watchdog_register_device\s*\(\s*(?P<wdd>[^)]+)\s*\)'
-      variable_capture: "wdd"
-      description: "注册看门狗设备"
-
-    # watchdog_unregister_device - 注销看门狗设备
-    - pattern: 'watchdog_unregister_device\s*\(\s*(?P<wdd>[^)]+)\s*\)'
-      variable_capture: "wdd"
-      description: "注销看门狗设备"
-
-    # devm_watchdog_register_device - 资源管理注册
-    - pattern: 'devm_watchdog_register_device\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<wdd>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "资源管理方式注册看门狗设备"
-
-
-# ============================================================
-# WATCHDOG DEVICE
+# WATCHDOG DEVICE STRUCTURE
 # ============================================================
 
 watchdog_device:
   description: "Watchdog Device - 看门狗设备"
   header: "linux/watchdog.h"
+  icon: "🐕"
+  kernel_version: "3.5+"
 
-  bind_patterns:
-    # watchdog_alloc_device - 分配看门狗设备
-    - pattern: 'watchdog_alloc_device\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "分配看门狗设备"
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+    note: "看门狗回调通常在进程上下文执行，但 ping 操作可能在原子上下文"
 
-    # watchdog_free_device - 释放看门狗设备
-    - pattern: 'watchdog_free_device\s*\(\s*(?P<wdd>[^)]+)\s*\)'
-      variable_capture: "wdd"
-      description: "释放看门狗设备"
+  structure:
+    pattern: 'struct watchdog_device\s+(?P<name>\w+)\s*=\s*\{'
+    description: "看门狗设备结构体定义"
+    fields:
+      - name: "id"
+        type: "int"
+        description: "设备 ID (由 watchdog_register_device 分配)"
+      - name: "parent"
+        type: "struct device *"
+        description: "父设备"
+      - name: "groups"
+        type: "const struct attribute_group **"
+        description: "sysfs 属性组"
+      - name: "info"
+        type: "const struct watchdog_info *"
+        description: "看门狗信息结构"
+      - name: "ops"
+        type: "const struct watchdog_ops *"
+        description: "操作函数集"
+      - name: "gov"
+        type: "const struct watchdog_governor *"
+        description: "pretimeout governor"
+      - name: "bootstatus"
+        type: "unsigned int"
+        description: "启动时的状态"
+      - name: "timeout"
+        type: "unsigned int"
+        description: "当前超时值 (秒)"
+      - name: "pretimeout"
+        type: "unsigned int"
+        description: "pretimeout 值 (秒)"
+      - name: "min_timeout"
+        type: "unsigned int"
+        description: "最小超时值 (秒)"
+      - name: "max_timeout"
+        type: "unsigned int"
+        description: "最大超时值 (秒)"
+      - name: "min_hw_heartbeat_ms"
+        type: "unsigned int"
+        description: "硬件最小心跳间隔 (毫秒)"
+      - name: "max_hw_heartbeat_ms"
+        type: "unsigned int"
+        description: "硬件最大超时 (毫秒)"
+      - name: "driver_data"
+        type: "void *"
+        description: "驱动私有数据"
+      - name: "status"
+        type: "unsigned long"
+        description: "状态位字段"
+
+  status_flags:
+    - name: "WDOG_ACTIVE"
+      bit: 0
+      description: "看门狗是否激活/运行中"
+    - name: "WDOG_NO_WAY_OUT"
+      bit: 1
+      description: "是否设置了 nowayout 特性"
+    - name: "WDOG_STOP_ON_REBOOT"
+      bit: 2
+      description: "重启时是否停止看门狗"
+    - name: "WDOG_HW_RUNNING"
+      bit: 3
+      description: "硬件看门狗是否运行中"
+    - name: "WDOG_STOP_ON_UNREGISTER"
+      bit: 4
+      description: "注销时是否停止看门狗"
+
+  registration:
+    - pattern: 'watchdog_register_device\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      description: "注册看门狗设备"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    - pattern: 'watchdog_unregister_device\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      description: "注销看门狗设备"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_watchdog_register_device\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<wdd>[^)]+)\s*\)'
+      description: "资源管理方式注册看门狗设备 (推荐)"
+      context: "process"
+      can_sleep: true
+
+  helper_functions:
+    - pattern: 'watchdog_set_drvdata\s*\(\s*(?P<wdd>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "设置驱动私有数据"
+    - pattern: 'watchdog_get_drvdata\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      description: "获取驱动私有数据"
+    - pattern: 'watchdog_active\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      description: "检查看门狗是否激活"
+    - pattern: 'watchdog_hw_running\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      description: "检查硬件看门狗是否运行"
+    - pattern: 'watchdog_set_nowayout\s*\(\s*(?P<wdd>[^,]+)\s*,\s*(?P<nowayout>[^)]+)\s*\)'
+      description: "设置 nowayout 特性"
+    - pattern: 'watchdog_stop_on_reboot\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      description: "设置重启时停止看门狗"
+    - pattern: 'watchdog_stop_on_unregister\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      description: "设置注销时停止看门狗"
+    - pattern: 'watchdog_init_timeout\s*\(\s*(?P<wdd>[^,]+)\s*,\s*(?P<timeout>[^,]+)\s*,\s*(?P<dev>[^)]+)\s*\)'
+      description: "初始化超时值 (从设备树/模块参数)"
+
+
+# ============================================================
+# WATCHDOG INFO STRUCTURE
+# ============================================================
+
+watchdog_info:
+  description: "Watchdog Info - 看门狗信息结构"
+  header: "linux/watchdog.h"
+
+  structure:
+    pattern: 'static const struct watchdog_info\s+(?P<name>\w+)\s*=\s*\{'
+    description: "看门狗信息结构体"
+    fields:
+      - name: "options"
+        type: "u32"
+        description: "支持的特性标志"
+      - name: "firmware_version"
+        type: "u32"
+        description: "固件版本"
+      - name: "identity"
+        type: "u8[32]"
+        description: "设备身份标识字符串"
+
+  options_flags:
+    - name: "WDIOF_OVERHEAT"
+      description: "过热复位"
+    - name: "WDIOF_FANFAULT"
+      description: "风扇故障"
+    - name: "WDIOF_EXTERN1"
+      description: "外部继电器 1"
+    - name: "WDIOF_EXTERN2"
+      description: "外部继电器 2"
+    - name: "WDIOF_POWERUNDER"
+      description: "电压不足"
+    - name: "WDIOF_CARDRESET"
+      description: "卡复位"
+    - name: "WDIOF_POWEROVER"
+      description: "电压过高"
+    - name: "WDIOF_SETTIMEOUT"
+      description: "支持设置超时"
+    - name: "WDIOF_MAGICCLOSE"
+      description: "支持魔术关闭"
+    - name: "WDIOF_PRETIMEOUT"
+      description: "支持 pretimeout"
+    - name: "WDIOF_ALARMONLY"
+      description: "仅告警，不复位"
+    - name: "WDIOF_KEEPALIVEPING"
+      description: "支持 keepalive ping"
 
 
 # ============================================================
@@ -60,86 +178,349 @@ watchdog_device:
 # ============================================================
 
 watchdog_ops:
-  description: "Watchdog Operations - 看门狗操作"
+  description: "Watchdog Operations - 看门狗操作函数集"
   header: "linux/watchdog.h"
+  icon: "⚙️"
 
-  bind_patterns:
-    # struct watchdog_ops
-    - pattern: 'struct watchdog_ops\s*\{[^}]+\}'
-      description: "看门狗操作结构"
+  structure:
+    pattern: 'static const struct watchdog_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "看门狗操作结构体定义"
+    fields:
+      - name: "owner"
+        type: "struct module *"
+        description: "模块所有者"
+        mandatory: true
+      - name: "start"
+        type: "int (*)(struct watchdog_device *)"
+        description: "启动看门狗"
+        mandatory: true
+      - name: "stop"
+        type: "int (*)(struct watchdog_device *)"
+        description: "停止看门狗"
+        mandatory: false
+        note: "如果不实现，则看门狗无法停止"
+      - name: "ping"
+        type: "int (*)(struct watchdog_device *)"
+        description: "喂狗"
+        mandatory: false
+        note: "不实现时使用 start 代替"
+      - name: "status"
+        type: "unsigned int (*)(struct watchdog_device *)"
+        description: "获取状态"
+        optional: true
+      - name: "set_timeout"
+        type: "int (*)(struct watchdog_device *, unsigned int)"
+        description: "设置超时"
+        optional: true
+      - name: "set_pretimeout"
+        type: "int (*)(struct watchdog_device *, unsigned int)"
+        description: "设置 pretimeout"
+        optional: true
+      - name: "get_timeleft"
+        type: "unsigned int (*)(struct watchdog_device *)"
+        description: "获取剩余时间"
+        optional: true
+      - name: "restart"
+        type: "int (*)(struct watchdog_device *, unsigned long, void *)"
+        description: "系统重启"
+        optional: true
+      - name: "ioctl"
+        type: "long (*)(struct watchdog_device *, unsigned int, unsigned long)"
+        description: "设备特定 ioctl"
+        optional: true
 
   callbacks:
     start:
       pattern: '\.start\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "启动看门狗"
+      description: "启动看门狗回调"
+      trigger: "用户打开设备或显式启动"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct watchdog_device *wdd)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "写入启动命令到控制寄存器"
+        - "配置超时值"
+        - "使能看门狗计数器"
 
     stop:
       pattern: '\.stop\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "停止看门狗"
+      description: "停止看门狗回调"
+      trigger: "用户关闭设备 (无 nowayout) 或显式停止"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct watchdog_device *wdd)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "写入停止命令到控制寄存器"
+        - "禁用看门狗计数器"
+      note: "如果设置了 nowayout，此函数可能不被调用"
 
     ping:
       pattern: '\.ping\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "喂狗"
+      description: "喂狗回调"
+      trigger: "用户写入设备或 ioctl WDIOC_KEEPALIVE"
+      context: "process/atomic"
+      can_sleep: false
+      signature: "int (*)(struct watchdog_device *wdd)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "写入清除/重载命令到寄存器"
+        - "重置看门狗计数器"
+      note: "可能在原子上下文调用，避免睡眠"
 
     set_timeout:
       pattern: '\.set_timeout\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "设置超时"
+      description: "设置超时回调"
+      trigger: "用户 ioctl WDIOC_SETTIMEOUT"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct watchdog_device *wdd, unsigned int timeout)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "验证超时值在 min/max 范围内"
+        - "计算寄存器值"
+        - "写入超时寄存器"
+        - "更新 wdd->timeout"
+
+    set_pretimeout:
+      pattern: '\.set_pretimeout\s*=\s*(?P<handler>\w+)'
+      description: "设置 pretimeout 回调"
+      trigger: "用户 ioctl WDIOC_SETPRETIMEOUT"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct watchdog_device *wdd, unsigned int pretimeout)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "验证 pretimeout < timeout"
+        - "配置 pretimeout 中断"
+        - "更新 wdd->pretimeout"
 
     get_timeleft:
       pattern: '\.get_timeleft\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取剩余时间"
+      description: "获取剩余时间回调"
+      trigger: "用户 ioctl WDIOC_GETTIMELEFT"
+      context: "process"
+      can_sleep: true
+      signature: "unsigned int (*)(struct watchdog_device *wdd)"
+      return_value:
+        success: "剩余秒数"
+        failure: "0"
+      typical_actions:
+        - "读取当前计数器值"
+        - "计算剩余时间"
 
-    keepalive:
-      pattern: '\.keepalive\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "保持活跃"
+    restart:
+      pattern: '\.restart\s*=\s*(?P<handler>\w+)'
+      description: "系统重启回调"
+      trigger: "系统重启请求"
+      context: "atomic"
+      can_sleep: false
+      signature: "int (*)(struct watchdog_device *wdd, unsigned long action, void *data)"
+      typical_actions:
+        - "配置最短超时"
+        - "停止喂狗让系统复位"
 
-    scope:
-      pattern: '\.scope\s*=\s*(?P<scope>\w+)'
-      description: "操作范围"
+    ioctl:
+      pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
+      description: "设备特定 ioctl 回调"
+      trigger: "用户调用不支持的 ioctl"
+      context: "process"
+      can_sleep: true
+      signature: "long (*)(struct watchdog_device *wdd, unsigned int cmd, unsigned long arg)"
 
 
 # ============================================================
-# WATCHDOG INFO
+# PRETIMEOUT HANDLING
 # ============================================================
 
-watchdog_info:
-  description: "Watchdog Info - 看门狗信息"
+pretimeout:
+  description: "Pretimeout Handling - 预超时处理"
+  header: "linux/watchdog.h"
+  icon: "⏰"
+
+  overview: |
+    Pretimeout 是在真正超时复位之前的一个警告机制。
+    当剩余时间 = pretimeout 时，触发预超时事件。
+    用户空间或 governor 可以响应这个事件。
+
+  governors:
+    description: "Pretimeout Governor 框架"
+    config: "CONFIG_WATCHDOG_PRETIMEOUT_GOV"
+    available_governors:
+      - name: "noop"
+        description: "不做任何处理"
+      - name: "panic"
+        description: "触发内核 panic"
+      - name: "userspace"
+        description: "通知用户空间 (通过 sysfs)"
+
+  notification:
+    - pattern: 'watchdog_notify_pretimeout\s*\(\s*(?P<wdd>[^)]+)\s*\)'
+      description: "通知 pretimeout 事件发生"
+      signature: "void watchdog_notify_pretimeout(struct watchdog_device *wdd)"
+      context: "hardirq/softirq"
+      can_sleep: false
+      typical_usage: |
+        static irqreturn_t wdt_pretimeout_irq(int irq, void *dev_id)
+        {
+            struct watchdog_device *wdd = dev_id;
+            watchdog_notify_pretimeout(wdd);
+            return IRQ_HANDLED;
+        }
+
+
+# ============================================================
+# WATCHDOG IOCTL COMMANDS
+# ============================================================
+
+ioctl_commands:
+  description: "Watchdog ioctl Commands - 看门狗 ioctl 命令"
   header: "linux/watchdog.h"
 
-  bind_patterns:
-    # struct watchdog_info
-    - pattern: 'struct watchdog_info\s*\{[^}]+\}'
-      description: "看门狗信息结构"
-
-    # WATCHDOG_VERSION
-    - pattern: 'WATCHDOG_VERSION'
-      description: "看门狗版本"
+  commands:
+    - name: "WDIOC_GETSUPPORT"
+      description: "获取 watchdog_info 结构"
+    - name: "WDIOC_GETSTATUS"
+      description: "获取设备状态"
+    - name: "WDIOC_GETBOOTSTATUS"
+      description: "获取启动状态"
+    - name: "WDIOC_GETTEMP"
+      description: "获取温度 (如果支持)"
+    - name: "WDIOC_SETOPTIONS"
+      description: "设置选项 (WDIOS_DISABLECARD/WDIOS_ENABLECARD)"
+    - name: "WDIOC_KEEPALIVE"
+      description: "喂狗"
+    - name: "WDIOC_SETTIMEOUT"
+      description: "设置超时值"
+    - name: "WDIOC_GETTIMEOUT"
+      description: "获取超时值"
+    - name: "WDIOC_SETPRETIMEOUT"
+      description: "设置 pretimeout"
+    - name: "WDIOC_GETPRETIMEOUT"
+      description: "获取 pretimeout"
+    - name: "WDIOC_GETTIMELEFT"
+      description: "获取剩余时间"
 
 
 # ============================================================
-# WATCHDOG DEVICES
+# WATCHDOG CALL CHAINS
 # ============================================================
 
-watchdog_device_id:
-  description: "Watchdog Device ID Table"
-  header: "linux/mod_devicetable.h"
+call_chains:
+  watchdog_open_flow:
+    description: "看门狗打开调用链"
+    trigger: "用户调用 open(/dev/watchdog)"
+    chain:
+      - function: "watchdog_open"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "字符设备 open"
+        context: "process"
+      - function: "watchdog_start"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "核心层启动看门狗"
+      - function: "ops->start"
+        file: "用户驱动代码"
+        description: "调用驱动的 start 回调"
+        is_user_entry: true
 
-  bind_patterns:
-    # WATCHDOG_ID_TABLE
-    - pattern: 'WATCHDOG_ID_TABLE\s*\(\s*(?P<name>\w+)\s*\)'
-      variable_capture: "name"
-      description: "看门狗 ID 表"
+  watchdog_write_flow:
+    description: "看门狗喂狗调用链"
+    trigger: "用户调用 write(fd, buf, len)"
+    chain:
+      - function: "watchdog_write"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "字符设备 write"
+        context: "process"
+      - function: "watchdog_ping"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "核心层喂狗"
+      - function: "ops->ping 或 ops->start"
+        file: "用户驱动代码"
+        description: "调用驱动的 ping 或 start 回调"
+        is_user_entry: true
+        note: "如果没实现 ping，则调用 start"
 
-    # WATCHDOG_DEVICE_ID
-    - pattern: 'WATCHDOG_DEVICE_ID\s*\(\s*(?P<name>\w+)\s*\)'
-      variable_capture: "name"
-      description: "看门狗设备 ID"
+  watchdog_close_flow:
+    description: "看门狗关闭调用链"
+    trigger: "用户调用 close(fd)"
+    chain:
+      - function: "watchdog_release"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "字符设备 release"
+        context: "process"
+      - function: "watchdog_stop"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "核心层停止看门狗"
+        note: "仅当没有设置 nowayout 时"
+      - function: "ops->stop"
+        file: "用户驱动代码"
+        description: "调用驱动的 stop 回调"
+        is_user_entry: true
+
+  watchdog_set_timeout_flow:
+    description: "设置超时调用链"
+    trigger: "用户调用 ioctl(fd, WDIOC_SETTIMEOUT, &timeout)"
+    chain:
+      - function: "watchdog_ioctl"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "字符设备 ioctl"
+        context: "process"
+      - function: "watchdog_set_timeout"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "核心层设置超时"
+      - function: "ops->set_timeout"
+        file: "用户驱动代码"
+        description: "调用驱动的 set_timeout 回调"
+        is_user_entry: true
+      - function: "watchdog_ping"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "设置超时后自动喂狗"
+
+  watchdog_pretimeout_flow:
+    description: "Pretimeout 处理调用链"
+    trigger: "硬件产生 pretimeout 中断"
+    chain:
+      - function: "wdt_pretimeout_irq"
+        file: "用户驱动代码"
+        description: "驱动 pretimeout 中断处理"
+        context: "hardirq"
+        is_user_entry: true
+      - function: "watchdog_notify_pretimeout"
+        file: "drivers/watchdog/watchdog_pretimeout.c"
+        description: "通知 pretimeout 框架"
+      - function: "governor->pretimeout"
+        file: "drivers/watchdog/pretimeout_*.c"
+        description: "调用 governor 处理函数"
+
+  watchdog_registration_flow:
+    description: "看门狗注册调用链"
+    trigger: "驱动 probe 函数调用注册"
+    chain:
+      - function: "my_wdt_probe"
+        file: "用户驱动代码"
+        description: "驱动探测函数"
+        context: "process"
+        is_user_entry: true
+      - function: "devm_watchdog_register_device"
+        file: "drivers/watchdog/watchdog_core.c"
+        description: "资源管理注册"
+      - function: "watchdog_register_device"
+        file: "drivers/watchdog/watchdog_core.c"
+        description: "核心注册函数"
+      - function: "watchdog_cdev_register"
+        file: "drivers/watchdog/watchdog_dev.c"
+        description: "注册字符设备"
 
 
 # ============================================================
@@ -147,58 +528,310 @@ watchdog_device_id:
 # ============================================================
 
 examples:
-  - description: "看门狗驱动"
+  - description: "完整看门狗驱动示例"
+    kernel_version: "4.0+"
     code: |
-      static int my_wdd_start(struct watchdog_device *wdd) {
-          writel(0xABCD, wdt_base + WDT_START_REG);
-          return 0;
-      }
+      #include <linux/module.h>
+      #include <linux/watchdog.h>
+      #include <linux/platform_device.h>
+      #include <linux/io.h>
+      #include <linux/clk.h>
+      #include <linux/interrupt.h>
 
-      static int my_wdd_stop(struct watchdog_device *wdd) {
-          writel(0, wdt_base + WDT_START_REG);
-          return 0;
-      }
+      #define WDT_CTRL    0x00
+      #define WDT_LOAD    0x04
+      #define WDT_COUNT   0x08
+      #define WDT_CLEAR   0x0C
+      #define WDT_PRETMR  0x10
 
-      static int my_wdd_ping(struct watchdog_device *wdd) {
-          writel(0xABCD, wdt_base + WDT_CLEAR_REG);
-          return 0;
-      }
+      #define WDT_EN      BIT(0)
+      #define WDT_INTEN   BIT(1)  /* Pretimeout interrupt enable */
 
-      static int my_wdd_set_timeout(struct watchdog_device *wdd,
-                                    unsigned int timeout) {
+      #define WDT_MIN_TIMEOUT     1
+      #define WDT_MAX_TIMEOUT     300
+      #define WDT_DEFAULT_TIMEOUT 30
+
+      struct my_wdt {
+          void __iomem *base;
+          struct clk *clk;
+          unsigned long rate;
+          int pretimeout_irq;
+      };
+
+      static int my_wdt_start(struct watchdog_device *wdd)
+      {
+          struct my_wdt *wdt = watchdog_get_drvdata(wdd);
           u32 val;
 
-          wdd->timeout = timeout;
-          val = timeout * WDT_FREQ;
-          writel(val, wdt_base + WDT_TIMEOUT_REG);
+          /* 设置超时值 */
+          writel(wdd->timeout * wdt->rate, wdt->base + WDT_LOAD);
+
+          /* 启用看门狗 */
+          val = readl(wdt->base + WDT_CTRL);
+          val |= WDT_EN;
+          writel(val, wdt->base + WDT_CTRL);
+
           return 0;
+      }
+
+      static int my_wdt_stop(struct watchdog_device *wdd)
+      {
+          struct my_wdt *wdt = watchdog_get_drvdata(wdd);
+          u32 val;
+
+          val = readl(wdt->base + WDT_CTRL);
+          val &= ~WDT_EN;
+          writel(val, wdt->base + WDT_CTRL);
+
+          return 0;
+      }
+
+      static int my_wdt_ping(struct watchdog_device *wdd)
+      {
+          struct my_wdt *wdt = watchdog_get_drvdata(wdd);
+
+          /* 清除看门狗计数器 */
+          writel(0x1234, wdt->base + WDT_CLEAR);
+
+          return 0;
+      }
+
+      static int my_wdt_set_timeout(struct watchdog_device *wdd, unsigned int timeout)
+      {
+          struct my_wdt *wdt = watchdog_get_drvdata(wdd);
+
+          wdd->timeout = timeout;
+          writel(timeout * wdt->rate, wdt->base + WDT_LOAD);
+
+          /* 设置后自动喂狗 */
+          my_wdt_ping(wdd);
+
+          return 0;
+      }
+
+      static int my_wdt_set_pretimeout(struct watchdog_device *wdd, unsigned int pretimeout)
+      {
+          struct my_wdt *wdt = watchdog_get_drvdata(wdd);
+          u32 val;
+
+          if (pretimeout >= wdd->timeout)
+              return -EINVAL;
+
+          wdd->pretimeout = pretimeout;
+
+          /* 配置 pretimeout 值 */
+          writel(pretimeout * wdt->rate, wdt->base + WDT_PRETMR);
+
+          /* 启用/禁用 pretimeout 中断 */
+          val = readl(wdt->base + WDT_CTRL);
+          if (pretimeout)
+              val |= WDT_INTEN;
+          else
+              val &= ~WDT_INTEN;
+          writel(val, wdt->base + WDT_CTRL);
+
+          return 0;
+      }
+
+      static unsigned int my_wdt_get_timeleft(struct watchdog_device *wdd)
+      {
+          struct my_wdt *wdt = watchdog_get_drvdata(wdd);
+          u32 count;
+
+          count = readl(wdt->base + WDT_COUNT);
+          return count / wdt->rate;
+      }
+
+      static irqreturn_t my_wdt_pretimeout_irq(int irq, void *dev_id)
+      {
+          struct watchdog_device *wdd = dev_id;
+
+          /* 通知看门狗框架 pretimeout 发生 */
+          watchdog_notify_pretimeout(wdd);
+
+          return IRQ_HANDLED;
       }
 
       static const struct watchdog_ops my_wdt_ops = {
           .owner = THIS_MODULE,
-          .start = my_wdd_start,
-          .stop = my_wdd_stop,
-          .ping = my_wdd_ping,
-          .set_timeout = my_wdd_set_timeout,
+          .start = my_wdt_start,
+          .stop = my_wdt_stop,
+          .ping = my_wdt_ping,
+          .set_timeout = my_wdt_set_timeout,
+          .set_pretimeout = my_wdt_set_pretimeout,
+          .get_timeleft = my_wdt_get_timeleft,
       };
 
       static const struct watchdog_info my_wdt_info = {
-          .options = WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING | WDIOF_MAGICCLOSE,
+          .options = WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING |
+                     WDIOF_MAGICCLOSE | WDIOF_PRETIMEOUT,
           .firmware_version = 0,
           .identity = "my-watchdog",
       };
 
-      static struct watchdog_device my_wdt = {
-          .info = &my_wdt_info,
-          .ops = &my_wdt_ops,
-          .min_timeout = 1,
-          .max_timeout = 300,
-          .timeout = 30,
-      };
-
-      static int __init my_init(void) {
+      static int my_wdt_probe(struct platform_device *pdev)
+      {
           struct device *dev = &pdev->dev;
+          struct my_wdt *wdt;
+          struct watchdog_device *wdd;
+          struct resource *res;
+          int ret;
 
-          my_wdt.parent = dev;
-          return devm_watchdog_register_device(dev, &my_wdt);
+          wdt = devm_kzalloc(dev, sizeof(*wdt), GFP_KERNEL);
+          if (!wdt)
+              return -ENOMEM;
+
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          wdt->base = devm_ioremap_resource(dev, res);
+          if (IS_ERR(wdt->base))
+              return PTR_ERR(wdt->base);
+
+          wdt->clk = devm_clk_get(dev, NULL);
+          if (IS_ERR(wdt->clk))
+              return PTR_ERR(wdt->clk);
+
+          ret = clk_prepare_enable(wdt->clk);
+          if (ret)
+              return ret;
+
+          wdt->rate = clk_get_rate(wdt->clk);
+
+          /* 分配并初始化 watchdog_device */
+          wdd = devm_kzalloc(dev, sizeof(*wdd), GFP_KERNEL);
+          if (!wdd) {
+              clk_disable_unprepare(wdt->clk);
+              return -ENOMEM;
+          }
+
+          wdd->info = &my_wdt_info;
+          wdd->ops = &my_wdt_ops;
+          wdd->min_timeout = WDT_MIN_TIMEOUT;
+          wdd->max_timeout = WDT_MAX_TIMEOUT;
+          wdd->parent = dev;
+
+          watchdog_set_drvdata(wdd, wdt);
+
+          /* 从设备树或模块参数初始化超时 */
+          watchdog_init_timeout(wdd, WDT_DEFAULT_TIMEOUT, dev);
+
+          /* 设置重启时停止看门狗 */
+          watchdog_stop_on_reboot(wdd);
+          watchdog_stop_on_unregister(wdd);
+
+          /* 注册 pretimeout 中断 (可选) */
+          wdt->pretimeout_irq = platform_get_irq(pdev, 0);
+          if (wdt->pretimeout_irq > 0) {
+              ret = devm_request_irq(dev, wdt->pretimeout_irq,
+                                     my_wdt_pretimeout_irq, 0,
+                                     "watchdog-pretimeout", wdd);
+              if (ret) {
+                  dev_warn(dev, "Pretimeout IRQ not available\n");
+                  wdt->pretimeout_irq = 0;
+              }
+          }
+
+          platform_set_drvdata(pdev, wdd);
+
+          return devm_watchdog_register_device(dev, wdd);
       }
+
+      static const struct of_device_id my_wdt_of_match[] = {
+          { .compatible = "vendor,my-watchdog" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_wdt_of_match);
+
+      static struct platform_driver my_wdt_driver = {
+          .probe = my_wdt_probe,
+          .driver = {
+              .name = "my-watchdog",
+              .of_match_table = my_wdt_of_match,
+          },
+      };
+      module_platform_driver(my_wdt_driver);
+
+      MODULE_LICENSE("GPL");
+      MODULE_DESCRIPTION("My Watchdog Driver");
+      MODULE_AUTHOR("Author");
+
+  - description: "看门狗用户空间使用示例"
+    code: |
+      #include <stdio.h>
+      #include <fcntl.h>
+      #include <unistd.h>
+      #include <sys/ioctl.h>
+      #include <linux/watchdog.h>
+
+      int main(void)
+      {
+          int fd;
+          int timeout = 30;
+          int pretimeout = 5;
+          int timeleft;
+
+          fd = open("/dev/watchdog", O_WRONLY);
+          if (fd < 0) {
+              perror("open");
+              return 1;
+          }
+
+          /* 设置超时 */
+          if (ioctl(fd, WDIOC_SETTIMEOUT, &timeout) < 0) {
+              perror("WDIOC_SETTIMEOUT");
+          }
+          printf("Timeout set to %d seconds\n", timeout);
+
+          /* 设置 pretimeout */
+          if (ioctl(fd, WDIOC_SETPRETIMEOUT, &pretimeout) < 0) {
+              perror("WDIOC_SETPRETIMEOUT");
+          }
+          printf("Pretimeout set to %d seconds\n", pretimeout);
+
+          /* 喂狗循环 */
+          while (1) {
+              /* 喂狗 - 方式 1: 写入任意字符 */
+              write(fd, ".", 1);
+
+              /* 喂狗 - 方式 2: ioctl */
+              /* ioctl(fd, WDIOC_KEEPALIVE, 0); */
+
+              /* 获取剩余时间 */
+              if (ioctl(fd, WDIOC_GETTIMELEFT, &timeleft) == 0) {
+                  printf("Time left: %d seconds\n", timeleft);
+              }
+
+              sleep(10);
+          }
+
+          /* 魔术关闭 - 写入 'V' 可以安全关闭看门狗 */
+          write(fd, "V", 1);
+          close(fd);
+
+          return 0;
+      }
+
+  - description: "Nowayout 和 Magic Close 说明"
+    code: |
+      /*
+       * Nowayout 特性:
+       * - 当设置 nowayout 时，一旦看门狗启动就无法停止
+       * - 即使关闭文件描述符，看门狗仍继续运行
+       * - 用于防止系统挂起
+       *
+       * 配置方式:
+       * 1. 编译时: CONFIG_WATCHDOG_NOWAYOUT=y
+       * 2. 模块参数: modprobe my_wdt nowayout=1
+       * 3. 驱动代码: watchdog_set_nowayout(wdd, true);
+       *
+       * Magic Close:
+       * - 当 WDIOF_MAGICCLOSE 被支持时
+       * - 在关闭文件前写入 'V' 可以安全停止看门狗
+       * - 即使设置了 nowayout，也可以通过此方式关闭
+       */
+
+      /* 安全关闭看门狗 */
+      write(fd, "V", 1);  /* Magic character */
+      close(fd);          /* 看门狗会停止 */
+
+      /* 不安全关闭 (如果设置了 nowayout) */
+      close(fd);          /* 看门狗继续运行 */

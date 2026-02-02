@@ -1,196 +1,1236 @@
 # Netfilter Framework Knowledge Base
 # Reference: https://www.kernel.org/doc/html/latest/networking/netfilter.html
+# Kernel Version: 5.0+
 
 # ============================================================
 # NETFILTER HOOKS
 # ============================================================
 nf_hook:
-  description: "Netfilter Hook Registration"
+  description: "Netfilter Hook Registration - 数据包过滤钩子"
   header: "linux/netfilter.h"
   icon: "🔥"
+  kernel_version: "5.0+"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+    description: "Netfilter hooks 在软中断上下文执行"
+
   registration:
     - pattern: 'nf_register_net_hook\s*\(\s*(?P<net>\w+)\s*,\s*&(?P<ops>\w+)\s*\)'
       description: "注册网络命名空间 hook"
+      context: "process"
+      can_sleep: true
+      typical_usage: "模块初始化时调用"
+
     - pattern: 'nf_register_net_hooks\s*\(\s*(?P<net>\w+)\s*,\s*(?P<ops>\w+)\s*,\s*(?P<n>\w+)\s*\)'
       description: "批量注册 hooks"
-  unregistration:
+      context: "process"
+      can_sleep: true
+
     - pattern: 'nf_unregister_net_hook\s*\(\s*(?P<net>\w+)\s*,\s*&(?P<ops>\w+)\s*\)'
       description: "注销 hook"
+      context: "process"
+      can_sleep: true
+
     - pattern: 'nf_unregister_net_hooks\s*\(\s*(?P<net>\w+)\s*,\s*(?P<ops>\w+)\s*,\s*(?P<n>\w+)\s*\)'
       description: "批量注销 hooks"
+      context: "process"
+      can_sleep: true
+
   structure:
     name: "nf_hook_ops"
+    pattern: 'static struct nf_hook_ops\s+(?P<name>\w+)'
+    description: "Netfilter hook 操作结构体"
     fields:
-      hook:
-        pattern: '\.hook\s*=\s*(?P<handler>\w+)'
+      - name: "hook"
+        type: "nf_hookfn *"
         description: "Hook 处理函数"
-        context: "softirq"
-        can_sleep: false
-      pf:
-        pattern: '\.pf\s*=\s*(?P<protocol>\w+)'
-        description: "协议族 (NFPROTO_IPV4, NFPROTO_IPV6)"
-      hooknum:
-        pattern: '\.hooknum\s*=\s*(?P<hooknum>\w+)'
-        description: "Hook 点 (NF_INET_PRE_ROUTING, etc.)"
-      priority:
-        pattern: '\.priority\s*=\s*(?P<priority>\w+)'
-        description: "优先级"
+      - name: "dev"
+        type: "struct net_device *"
+        description: "绑定的设备 (NULL 表示所有)"
+      - name: "priv"
+        type: "void *"
+        description: "私有数据"
+      - name: "pf"
+        type: "u_int8_t"
+        description: "协议族"
+      - name: "hooknum"
+        type: "unsigned int"
+        description: "Hook 点"
+      - name: "priority"
+        type: "int"
+        description: "优先级 (数值越小越先执行)"
+
+  callbacks:
+    hook:
+      pattern: '\.hook\s*=\s*(?P<handler>\w+)'
+      description: "Hook 处理函数"
+      trigger: "数据包经过对应 hook 点"
+      context: "softirq"
+      can_sleep: false
+      signature: "unsigned int (*nf_hookfn)(void *priv, struct sk_buff *skb, const struct nf_hook_state *state)"
+      parameters:
+        - name: "priv"
+          type: "void *"
+          description: "nf_hook_ops.priv 私有数据"
+        - name: "skb"
+          type: "struct sk_buff *"
+          description: "数据包"
+        - name: "state"
+          type: "const struct nf_hook_state *"
+          description: "hook 状态信息"
+      return_value:
+        NF_DROP: "丢弃数据包"
+        NF_ACCEPT: "接受数据包，继续处理"
+        NF_STOLEN: "Hook 接管数据包 (hook 负责释放)"
+        NF_QUEUE: "排队到用户空间 (NFQUEUE)"
+        NF_REPEAT: "重新调用当前 hook"
+        NF_STOP: "停止处理，接受数据包"
+      typical_actions:
+        - "检查数据包内容"
+        - "修改数据包"
+        - "记录日志"
+        - "做出过滤决定"
+      notes:
+        - "绝对不能睡眠！"
+        - "不能释放 skb (除非返回 NF_DROP 或 NF_STOLEN)"
+
+  hook_state:
+    description: "struct nf_hook_state - hook 状态信息"
+    fields:
+      - name: "hook"
+        type: "unsigned int"
+        description: "当前 hook 点"
+      - name: "pf"
+        type: "u_int8_t"
+        description: "协议族"
+      - name: "in"
+        type: "struct net_device *"
+        description: "输入设备"
+      - name: "out"
+        type: "struct net_device *"
+        description: "输出设备"
+      - name: "sk"
+        type: "struct sock *"
+        description: "关联的 socket"
+      - name: "net"
+        type: "struct net *"
+        description: "网络命名空间"
+
   hook_points:
-    - NF_INET_PRE_ROUTING
-    - NF_INET_LOCAL_IN
-    - NF_INET_FORWARD
-    - NF_INET_LOCAL_OUT
-    - NF_INET_POST_ROUTING
+    description: "IPv4/IPv6 Hook 点 (NF_INET_*)"
+    points:
+      NF_INET_PRE_ROUTING:
+        value: 0
+        description: "数据包刚进入协议栈，路由前"
+        timing: "在路由决定之前"
+        typical_use:
+          - "DNAT (目标地址转换)"
+          - "入站过滤"
+          - "连接跟踪初始化"
+        in_device: "接收设备"
+        out_device: "NULL"
+
+      NF_INET_LOCAL_IN:
+        value: 1
+        description: "发往本机的数据包"
+        timing: "路由后，确定发往本机"
+        typical_use:
+          - "本地入站过滤 (INPUT)"
+          - "访问控制"
+        in_device: "接收设备"
+        out_device: "NULL"
+
+      NF_INET_FORWARD:
+        value: 2
+        description: "转发的数据包"
+        timing: "路由后，需要转发"
+        typical_use:
+          - "转发过滤 (FORWARD)"
+          - "流量控制"
+        in_device: "接收设备"
+        out_device: "发送设备"
+
+      NF_INET_LOCAL_OUT:
+        value: 3
+        description: "本机发出的数据包"
+        timing: "本地产生，路由前"
+        typical_use:
+          - "本地出站过滤 (OUTPUT)"
+          - "出站策略"
+        in_device: "NULL"
+        out_device: "发送设备"
+
+      NF_INET_POST_ROUTING:
+        value: 4
+        description: "数据包即将离开协议栈"
+        timing: "路由后，即将发送"
+        typical_use:
+          - "SNAT (源地址转换)"
+          - "出站过滤"
+          - "最终修改"
+        in_device: "NULL (本地) 或 接收设备 (转发)"
+        out_device: "发送设备"
+
+  protocol_families:
+    NFPROTO_UNSPEC:
+      value: 0
+      description: "未指定"
+    NFPROTO_INET:
+      value: 1
+      description: "IPv4/IPv6 通用"
+    NFPROTO_IPV4:
+      value: 2
+      description: "IPv4"
+    NFPROTO_ARP:
+      value: 3
+      description: "ARP"
+    NFPROTO_NETDEV:
+      value: 5
+      description: "设备级别 (ingress/egress)"
+    NFPROTO_BRIDGE:
+      value: 7
+      description: "桥接"
+    NFPROTO_IPV6:
+      value: 10
+      description: "IPv6"
+
+  priorities:
+    description: "Netfilter Hook 优先级 (数值越小越先执行)"
+    standard_priorities:
+      NF_IP_PRI_FIRST:
+        value: "INT_MIN"
+        description: "最高优先级"
+      NF_IP_PRI_RAW_BEFORE_DEFRAG:
+        value: -450
+        description: "raw 表，分片重组前"
+      NF_IP_PRI_CONNTRACK_DEFRAG:
+        value: -400
+        description: "连接跟踪分片重组"
+      NF_IP_PRI_RAW:
+        value: -300
+        description: "raw 表"
+      NF_IP_PRI_SELINUX_FIRST:
+        value: -225
+        description: "SELinux 第一阶段"
+      NF_IP_PRI_CONNTRACK:
+        value: -200
+        description: "连接跟踪"
+      NF_IP_PRI_MANGLE:
+        value: -150
+        description: "mangle 表"
+      NF_IP_PRI_NAT_DST:
+        value: -100
+        description: "DNAT"
+      NF_IP_PRI_FILTER:
+        value: 0
+        description: "filter 表"
+      NF_IP_PRI_SECURITY:
+        value: 50
+        description: "security 表"
+      NF_IP_PRI_NAT_SRC:
+        value: 100
+        description: "SNAT"
+      NF_IP_PRI_SELINUX_LAST:
+        value: 225
+        description: "SELinux 最后阶段"
+      NF_IP_PRI_CONNTRACK_HELPER:
+        value: 300
+        description: "连接跟踪 helper"
+      NF_IP_PRI_CONNTRACK_CONFIRM:
+        value: "INT_MAX"
+        description: "连接跟踪确认"
+      NF_IP_PRI_LAST:
+        value: "INT_MAX"
+        description: "最低优先级"
+
   return_values:
-    - NF_DROP: "丢弃数据包"
-    - NF_ACCEPT: "接受数据包"
-    - NF_STOLEN: "Hook 接管数据包"
-    - NF_QUEUE: "排队到用户空间"
-    - NF_REPEAT: "重新调用 hook"
+    NF_DROP:
+      value: 0
+      description: "丢弃数据包"
+      action: "数据包被释放，不继续处理"
+    NF_ACCEPT:
+      value: 1
+      description: "接受数据包"
+      action: "继续执行后续 hook"
+    NF_STOLEN:
+      value: 2
+      description: "Hook 接管数据包"
+      action: "Hook 负责数据包，netfilter 不再处理"
+    NF_QUEUE:
+      value: 3
+      description: "排队到用户空间"
+      action: "通过 NFQUEUE 发送到用户空间处理"
+    NF_REPEAT:
+      value: 4
+      description: "重新调用 hook"
+      action: "重新调用当前 hook"
+    NF_STOP:
+      value: 5
+      description: "停止处理"
+      action: "接受数据包，不再调用后续 hook"
+
+  call_chains:
+    prerouting_path:
+      description: "PRE_ROUTING hook 调用链"
+      trigger: "数据包到达网络设备"
+      chain:
+        - function: "netif_receive_skb"
+          file: "net/core/dev.c"
+          description: "接收数据包"
+          context: "softirq"
+        - function: "ip_rcv"
+          file: "net/ipv4/ip_input.c"
+          description: "IPv4 接收"
+        - function: "NF_HOOK(NFPROTO_IPV4, NF_INET_PRE_ROUTING, ...)"
+          description: "调用 PRE_ROUTING hooks"
+        - function: "nf_hook_slow"
+          file: "net/netfilter/core.c"
+          description: "执行注册的 hooks"
+        - function: "user_hook_fn"
+          description: "用户 hook 函数"
+          is_user_entry: true
+        - function: "ip_rcv_finish"
+          file: "net/ipv4/ip_input.c"
+          description: "完成接收处理"
+
+    nf_hook_slow:
+      description: "Netfilter Hook 慢路径处理"
+      trigger: "NF_HOOK 宏"
+      chain:
+        - function: "NF_HOOK"
+          file: "include/linux/netfilter.h"
+          description: "Netfilter 入口宏"
+        - function: "nf_hook"
+          file: "include/linux/netfilter.h"
+          description: "检查是否有 hook"
+        - function: "nf_hook_slow"
+          file: "net/netfilter/core.c"
+          description: "慢路径处理"
+        - function: "nf_hook_entry_hookfn"
+          description: "调用每个注册的 hook"
+          context: "softirq"
+        - function: "hook_fn (用户函数)"
+          description: "执行 hook 逻辑"
+          is_user_entry: true
 
 # ============================================================
 # XTABLES (Legacy iptables)
 # ============================================================
 xt_target:
-  description: "Xtables Target"
+  description: "Xtables Target - iptables 目标"
   header: "linux/netfilter/x_tables.h"
   icon: "🎯"
+  kernel_version: "5.0+"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    description: "target 函数在 softirq 上下文执行"
+
   registration:
     - pattern: 'xt_register_target\s*\(\s*&(?P<target>\w+)\s*\)'
       description: "注册 target"
+      context: "process"
+      can_sleep: true
     - pattern: 'xt_register_targets\s*\(\s*(?P<targets>\w+)\s*,\s*(?P<n>\w+)\s*\)'
       description: "批量注册 targets"
+      context: "process"
+      can_sleep: true
+    - pattern: 'xt_unregister_target\s*\(\s*&(?P<target>\w+)\s*\)'
+      description: "注销 target"
+      context: "process"
+      can_sleep: true
+    - pattern: 'xt_unregister_targets\s*\(\s*(?P<targets>\w+)\s*,\s*(?P<n>\w+)\s*\)'
+      description: "批量注销 targets"
+      context: "process"
+      can_sleep: true
+
   structure:
     name: "xt_target"
-    callbacks:
-      target:
-        pattern: '\.target\s*=\s*(?P<handler>\w+)'
-        description: "Target 处理函数"
-        context: "softirq"
-        can_sleep: false
-      checkentry:
-        pattern: '\.checkentry\s*=\s*(?P<handler>\w+)'
-        description: "检查规则有效性"
-        context: "process"
-        can_sleep: true
-      destroy:
-        pattern: '\.destroy\s*=\s*(?P<handler>\w+)'
-        description: "销毁规则"
-        context: "process"
-        can_sleep: true
+    pattern: 'static struct xt_target\s+(?P<name>\w+)'
+    description: "Xtables target 结构体"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "target 名称 (如 REJECT, LOG)"
+      - name: "revision"
+        type: "u_int8_t"
+        description: "版本号"
+      - name: "family"
+        type: "u_int8_t"
+        description: "协议族 (NFPROTO_*)"
+      - name: "table"
+        type: "const char *"
+        description: "限制使用的表 (NULL 表示所有)"
+      - name: "hooks"
+        type: "unsigned int"
+        description: "允许的 hook 点位掩码"
+      - name: "proto"
+        type: "u_int8_t"
+        description: "限制的协议 (0 表示所有)"
+      - name: "targetsize"
+        type: "u_int16_t"
+        description: "target 私有数据大小"
+      - name: "usersize"
+        type: "u_int16_t"
+        description: "用户空间数据大小"
+
+  callbacks:
+    target:
+      pattern: '\.target\s*=\s*(?P<handler>\w+)'
+      description: "Target 处理函数"
+      trigger: "规则匹配后执行"
+      context: "softirq"
+      can_sleep: false
+      signature: "unsigned int (*)(struct sk_buff *skb, const struct xt_action_param *par)"
+      return_value:
+        NF_DROP: "丢弃"
+        NF_ACCEPT: "接受"
+        NF_STOLEN: "接管"
+        XT_CONTINUE: "继续下一条规则"
+        XT_RETURN: "返回上级链"
+
+    checkentry:
+      pattern: '\.checkentry\s*=\s*(?P<handler>\w+)'
+      description: "规则添加时检查有效性"
+      trigger: "iptables -A 添加规则"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(const struct xt_tgchk_param *par)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    destroy:
+      pattern: '\.destroy\s*=\s*(?P<handler>\w+)'
+      description: "规则删除时清理"
+      trigger: "规则被删除"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(const struct xt_tgdtor_param *par)"
+
+  common_targets:
+    - name: "ACCEPT"
+      description: "接受数据包"
+    - name: "DROP"
+      description: "丢弃数据包"
+    - name: "REJECT"
+      description: "拒绝并发送 ICMP"
+    - name: "LOG"
+      description: "记录日志"
+    - name: "NFLOG"
+      description: "记录到 NFLOG"
+    - name: "MARK"
+      description: "设置 skb mark"
+    - name: "CONNMARK"
+      description: "设置连接 mark"
+    - name: "SNAT"
+      description: "源地址转换"
+    - name: "DNAT"
+      description: "目标地址转换"
+    - name: "MASQUERADE"
+      description: "动态 SNAT"
+    - name: "REDIRECT"
+      description: "重定向到本机"
 
 xt_match:
-  description: "Xtables Match"
+  description: "Xtables Match - iptables 匹配模块"
   header: "linux/netfilter/x_tables.h"
   icon: "🔍"
+  kernel_version: "5.0+"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    description: "match 函数在 softirq 上下文执行"
+
   registration:
     - pattern: 'xt_register_match\s*\(\s*&(?P<match>\w+)\s*\)'
       description: "注册 match"
+      context: "process"
+      can_sleep: true
     - pattern: 'xt_register_matches\s*\(\s*(?P<matches>\w+)\s*,\s*(?P<n>\w+)\s*\)'
       description: "批量注册 matches"
+      context: "process"
+      can_sleep: true
+    - pattern: 'xt_unregister_match\s*\(\s*&(?P<match>\w+)\s*\)'
+      description: "注销 match"
+      context: "process"
+      can_sleep: true
+
   structure:
     name: "xt_match"
-    callbacks:
-      match:
-        pattern: '\.match\s*=\s*(?P<handler>\w+)'
-        description: "Match 处理函数"
-        context: "softirq"
-        can_sleep: false
-      checkentry:
-        pattern: '\.checkentry\s*=\s*(?P<handler>\w+)'
-        description: "检查规则有效性"
-      destroy:
-        pattern: '\.destroy\s*=\s*(?P<handler>\w+)'
-        description: "销毁规则"
+    pattern: 'static struct xt_match\s+(?P<name>\w+)'
+    description: "Xtables match 结构体"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "match 名称 (如 tcp, state)"
+      - name: "revision"
+        type: "u_int8_t"
+        description: "版本号"
+      - name: "family"
+        type: "u_int8_t"
+        description: "协议族"
+      - name: "matchsize"
+        type: "u_int16_t"
+        description: "match 私有数据大小"
+
+  callbacks:
+    match:
+      pattern: '\.match\s*=\s*(?P<handler>\w+)'
+      description: "Match 处理函数"
+      trigger: "检查规则是否匹配"
+      context: "softirq"
+      can_sleep: false
+      signature: "bool (*)(const struct sk_buff *skb, struct xt_action_param *par)"
+      return_value:
+        true: "匹配"
+        false: "不匹配"
+
+    checkentry:
+      pattern: '\.checkentry\s*=\s*(?P<handler>\w+)'
+      description: "规则添加时检查有效性"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(const struct xt_mtchk_param *par)"
+
+    destroy:
+      pattern: '\.destroy\s*=\s*(?P<handler>\w+)'
+      description: "规则删除时清理"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(const struct xt_mtdtor_param *par)"
+
+  common_matches:
+    - name: "tcp"
+      description: "TCP 端口匹配"
+    - name: "udp"
+      description: "UDP 端口匹配"
+    - name: "icmp"
+      description: "ICMP 类型匹配"
+    - name: "state"
+      description: "连接状态匹配 (已废弃，用 conntrack)"
+    - name: "conntrack"
+      description: "连接跟踪状态匹配"
+    - name: "multiport"
+      description: "多端口匹配"
+    - name: "iprange"
+      description: "IP 范围匹配"
+    - name: "mac"
+      description: "MAC 地址匹配"
+    - name: "mark"
+      description: "skb mark 匹配"
+    - name: "connmark"
+      description: "连接 mark 匹配"
+    - name: "limit"
+      description: "速率限制"
+    - name: "hashlimit"
+      description: "哈希速率限制"
+    - name: "recent"
+      description: "最近地址列表"
+    - name: "string"
+      description: "字符串匹配"
+    - name: "u32"
+      description: "任意数据匹配"
 
 # ============================================================
 # NFTABLES
 # ============================================================
 nft_expr:
-  description: "nftables Expression"
+  description: "nftables Expression - nftables 表达式"
   header: "net/netfilter/nf_tables.h"
   icon: "📋"
+  kernel_version: "3.13+"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    description: "表达式求值在 softirq 上下文"
+
   registration:
     - pattern: 'nft_register_expr\s*\(\s*&(?P<expr>\w+)\s*\)'
-      description: "注册表达式"
+      description: "注册表达式类型"
+      context: "process"
+      can_sleep: true
+    - pattern: 'nft_unregister_expr\s*\(\s*&(?P<expr>\w+)\s*\)'
+      description: "注销表达式类型"
+      context: "process"
+      can_sleep: true
+
   structure:
+    name: "nft_expr_type"
+    pattern: 'static struct nft_expr_type\s+(?P<name>\w+)'
+    description: "nftables 表达式类型"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "表达式名称"
+      - name: "ops"
+        type: "const struct nft_expr_ops *"
+        description: "表达式操作"
+      - name: "policy"
+        type: "const struct nla_policy *"
+        description: "netlink 属性策略"
+      - name: "maxattr"
+        type: "unsigned int"
+        description: "最大属性数"
+      - name: "family"
+        type: "u8"
+        description: "协议族"
+      - name: "flags"
+        type: "u8"
+        description: "标志"
+      - name: "owner"
+        type: "struct module *"
+        description: "所属模块"
+
+  expr_ops:
     name: "nft_expr_ops"
+    description: "表达式操作结构体"
     callbacks:
       eval:
         pattern: '\.eval\s*=\s*(?P<handler>\w+)'
         description: "表达式求值"
+        trigger: "规则处理时"
         context: "softirq"
         can_sleep: false
+        signature: "void (*)(const struct nft_expr *expr, struct nft_regs *regs, const struct nft_pktinfo *pkt)"
+        parameters:
+          - name: "expr"
+            description: "表达式实例"
+          - name: "regs"
+            description: "寄存器状态"
+          - name: "pkt"
+            description: "数据包信息"
+
       init:
         pattern: '\.init\s*=\s*(?P<handler>\w+)'
-        description: "初始化表达式"
+        description: "初始化表达式实例"
+        trigger: "添加规则时"
         context: "process"
         can_sleep: true
+        signature: "int (*)(const struct nft_ctx *ctx, const struct nft_expr *expr, const struct nlattr * const tb[])"
+
       destroy:
         pattern: '\.destroy\s*=\s*(?P<handler>\w+)'
-        description: "销毁表达式"
+        description: "销毁表达式实例"
+        trigger: "删除规则时"
+        context: "process"
+        can_sleep: true
+        signature: "void (*)(const struct nft_ctx *ctx, const struct nft_expr *expr)"
+
       dump:
         pattern: '\.dump\s*=\s*(?P<handler>\w+)'
         description: "导出到 netlink"
+        trigger: "nft list 查询"
+        context: "process"
+        can_sleep: true
+        signature: "int (*)(struct sk_buff *skb, const struct nft_expr *expr)"
+
+      clone:
+        pattern: '\.clone\s*=\s*(?P<handler>\w+)'
+        description: "克隆表达式"
+        context: "process"
+        can_sleep: true
+        signature: "int (*)(struct nft_expr *dst, const struct nft_expr *src)"
+
+      activate:
+        pattern: '\.activate\s*=\s*(?P<handler>\w+)'
+        description: "激活表达式"
+        context: "process"
+        can_sleep: true
+
+      deactivate:
+        pattern: '\.deactivate\s*=\s*(?P<handler>\w+)'
+        description: "停用表达式"
+        context: "process"
+        can_sleep: true
+
+  common_expressions:
+    - name: "immediate"
+      description: "立即数/verdict"
+    - name: "cmp"
+      description: "比较"
+    - name: "payload"
+      description: "载荷提取"
+    - name: "meta"
+      description: "元数据 (如 iif, oif)"
+    - name: "ct"
+      description: "连接跟踪"
+    - name: "nat"
+      description: "NAT"
+    - name: "counter"
+      description: "计数器"
+    - name: "limit"
+      description: "速率限制"
+    - name: "log"
+      description: "日志"
+    - name: "reject"
+      description: "拒绝"
+    - name: "masq"
+      description: "MASQUERADE"
+    - name: "lookup"
+      description: "集合查找"
+    - name: "dynset"
+      description: "动态集合"
+
+nft_objects:
+  description: "nftables Objects - 表/链/规则结构"
+  header: "net/netfilter/nf_tables.h"
+  icon: "📦"
+  kernel_version: "3.13+"
+
+  table:
+    description: "struct nft_table - nftables 表"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "表名称"
+      - name: "family"
+        type: "u32"
+        description: "协议族 (NFPROTO_*)"
+      - name: "flags"
+        type: "u32"
+        description: "表标志"
+      - name: "chains"
+        type: "struct list_head"
+        description: "链列表"
+      - name: "sets"
+        type: "struct list_head"
+        description: "集合列表"
+      - name: "objects"
+        type: "struct list_head"
+        description: "对象列表"
+    registration:
+      - pattern: 'nf_tables_newtable'
+        description: "创建表"
+        context: "process (netlink)"
+      - pattern: 'nf_tables_deltable'
+        description: "删除表"
+        context: "process (netlink)"
+
+  chain:
+    description: "struct nft_chain - nftables 链"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "链名称"
+      - name: "rules"
+        type: "struct list_head"
+        description: "规则列表"
+      - name: "table"
+        type: "struct nft_table *"
+        description: "所属表"
+      - name: "handle"
+        type: "u64"
+        description: "唯一标识"
+    types:
+      base_chain:
+        description: "基础链 (接入 netfilter hooks)"
+        fields:
+          - name: "type"
+            description: "链类型 (filter, nat, route)"
+          - name: "hook"
+            description: "hook 点 (prerouting, input, ...)"
+          - name: "priority"
+            description: "优先级"
+          - name: "policy"
+            description: "默认策略 (accept/drop)"
+      regular_chain:
+        description: "常规链 (通过 jump/goto 调用)"
+    registration:
+      - pattern: 'nf_tables_newchain'
+        description: "创建链"
+        context: "process (netlink)"
+      - pattern: 'nf_tables_delchain'
+        description: "删除链"
+        context: "process (netlink)"
+
+  rule:
+    description: "struct nft_rule - nftables 规则"
+    fields:
+      - name: "handle"
+        type: "u64"
+        description: "规则句柄"
+      - name: "expressions"
+        description: "表达式列表"
+      - name: "comment"
+        type: "const char *"
+        description: "规则注释"
+    registration:
+      - pattern: 'nf_tables_newrule'
+        description: "创建规则"
+        context: "process (netlink)"
+      - pattern: 'nf_tables_delrule'
+        description: "删除规则"
+        context: "process (netlink)"
+
+  set:
+    description: "struct nft_set - nftables 集合"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "集合名称"
+      - name: "dtype"
+        type: "u32"
+        description: "数据类型"
+      - name: "ktype"
+        type: "u32"
+        description: "键类型"
+      - name: "flags"
+        type: "u32"
+        description: "集合标志"
+    types:
+      - name: "hash"
+        description: "哈希集合"
+      - name: "rbtree"
+        description: "红黑树集合"
+      - name: "bitmap"
+        description: "位图集合"
+
+  chain_types:
+    filter:
+      description: "过滤链类型"
+      hooks: "所有"
+      action: "过滤数据包"
+    nat:
+      description: "NAT 链类型"
+      hooks: "prerouting, input, output, postrouting"
+      action: "地址转换"
+    route:
+      description: "路由链类型"
+      hooks: "output"
+      action: "标记路由"
+
+  verdicts:
+    description: "nftables 判定"
+    values:
+      NFT_CONTINUE:
+        value: -1
+        description: "继续下一条表达式/规则"
+      NFT_BREAK:
+        value: -2
+        description: "停止当前规则，继续下一条规则"
+      NFT_JUMP:
+        value: -3
+        description: "跳转到链 (返回后继续)"
+      NFT_GOTO:
+        value: -4
+        description: "跳转到链 (不返回)"
+      NFT_RETURN:
+        value: -5
+        description: "返回上级链"
 
 # ============================================================
 # CONNECTION TRACKING
 # ============================================================
 nf_conntrack:
-  description: "Connection Tracking"
+  description: "Connection Tracking - 连接跟踪"
   header: "net/netfilter/nf_conntrack.h"
   icon: "🔗"
+  kernel_version: "5.0+"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    description: "连接跟踪在 softirq 上下文处理"
+
   helpers:
-    - pattern: 'nf_conntrack_alloc\s*\('
+    - pattern: 'nf_conntrack_alloc\s*\(\s*(?P<net>\w+)\s*,\s*(?P<zone>\w+)\s*,\s*(?P<tuple>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
       description: "分配连接跟踪条目"
+      context: "softirq/process"
+      can_sleep: "depends on GFP"
+
     - pattern: 'nf_conntrack_free\s*\(\s*(?P<ct>\w+)\s*\)'
       description: "释放连接跟踪条目"
+      context: "any"
+      can_sleep: false
+
     - pattern: 'nf_ct_get\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<ctinfo>\w+)\s*\)'
       description: "获取 SKB 的连接跟踪"
+      context: "any"
+      can_sleep: false
+      return_type: "struct nf_conn *"
+
     - pattern: 'nf_ct_put\s*\(\s*(?P<ct>\w+)\s*\)'
       description: "释放连接跟踪引用"
+      context: "any"
+      can_sleep: false
+
+    - pattern: 'nf_ct_is_confirmed\s*\(\s*(?P<ct>\w+)\s*\)'
+      description: "检查连接是否已确认"
+      context: "any"
+      can_sleep: false
+      return_type: "bool"
+
+    - pattern: 'nf_ct_is_dying\s*\(\s*(?P<ct>\w+)\s*\)'
+      description: "检查连接是否正在销毁"
+      context: "any"
+      can_sleep: false
+      return_type: "bool"
+
+  states:
+    description: "连接跟踪状态"
+    values:
+      IP_CT_NEW:
+        description: "新连接"
+      IP_CT_ESTABLISHED:
+        description: "已建立的连接"
+      IP_CT_RELATED:
+        description: "相关连接 (如 FTP 数据连接)"
+      IP_CT_IS_REPLY:
+        description: "回复方向"
+      IP_CT_ESTABLISHED_REPLY:
+        description: "已建立连接的回复"
+      IP_CT_RELATED_REPLY:
+        description: "相关连接的回复"
+
   protocol_tracker:
-    pattern: 'nf_conntrack_l4proto_register\s*\(\s*&(?P<proto>\w+)\s*\)'
+    pattern: 'nf_conntrack_l4proto_register\s*\(\s*(?P<net>\w+)\s*,\s*&(?P<proto>\w+)\s*\)'
     description: "注册 L4 协议跟踪器"
+    context: "process"
+    can_sleep: true
+
+  structure:
+    name: "nf_conn"
+    description: "连接跟踪条目"
+    fields:
+      - name: "tuplehash"
+        description: "原始/回复方向 tuple"
+      - name: "status"
+        description: "连接状态位"
+      - name: "timeout"
+        description: "超时时间"
+      - name: "master"
+        description: "主连接 (相关连接)"
+      - name: "mark"
+        description: "连接 mark (CONNMARK)"
+      - name: "ct_general"
+        description: "通用引用计数"
 
 # ============================================================
 # NAT
 # ============================================================
 nf_nat:
-  description: "Network Address Translation"
+  description: "Network Address Translation - 网络地址转换"
   header: "net/netfilter/nf_nat.h"
   icon: "🔄"
+  kernel_version: "5.0+"
+
   helpers:
-    - pattern: 'nf_nat_setup_info\s*\('
+    - pattern: 'nf_nat_setup_info\s*\(\s*(?P<ct>\w+)\s*,\s*(?P<range>\w+)\s*,\s*(?P<manip>\w+)\s*\)'
       description: "设置 NAT 信息"
-    - pattern: 'nf_nat_packet\s*\('
+      context: "softirq"
+      can_sleep: false
+
+    - pattern: 'nf_nat_packet\s*\(\s*(?P<ct>\w+)\s*,\s*(?P<ctinfo>\w+)\s*,\s*(?P<hooknum>\w+)\s*,\s*(?P<skb>\w+)\s*\)'
       description: "NAT 数据包处理"
+      context: "softirq"
+      can_sleep: false
+
     - pattern: 'nf_nat_mangle_udp_packet\s*\('
       description: "修改 UDP 数据包"
+      context: "softirq"
+      can_sleep: false
+
+    - pattern: 'nf_nat_mangle_tcp_packet\s*\('
+      description: "修改 TCP 数据包"
+      context: "softirq"
+      can_sleep: false
+
+  manip_types:
+    NF_NAT_MANIP_SRC:
+      description: "源地址转换 (SNAT)"
+    NF_NAT_MANIP_DST:
+      description: "目标地址转换 (DNAT)"
+
+  range_flags:
+    NF_NAT_RANGE_MAP_IPS:
+      description: "映射 IP 地址"
+    NF_NAT_RANGE_PROTO_SPECIFIED:
+      description: "指定端口范围"
+    NF_NAT_RANGE_PROTO_RANDOM:
+      description: "随机端口"
+    NF_NAT_RANGE_PERSISTENT:
+      description: "持久映射"
 
 # ============================================================
 # CALL CHAINS
 # ============================================================
 call_chains:
   nf_hook_slow:
-    description: "Netfilter Hook Processing"
+    description: "Netfilter Hook 处理"
+    trigger: "数据包经过 hook 点"
     chain:
-      - caller: "NF_HOOK"
-        callee: "nf_hook_slow"
-        description: "慢路径 hook 处理"
-      - caller: "nf_hook_slow"
-        callee: "nf_hook_entry_hookfn"
-        description: "调用注册的 hook"
+      - function: "NF_HOOK (宏)"
+        file: "include/linux/netfilter.h"
+        description: "Netfilter 入口"
+      - function: "nf_hook"
+        file: "include/linux/netfilter.h"
+        description: "检查 hook 是否存在"
+      - function: "nf_hook_slow"
+        file: "net/netfilter/core.c"
+        description: "慢路径处理"
         context: "softirq"
+      - function: "nf_hook_entry_hookfn"
+        description: "调用每个注册的 hook"
+      - function: "user_hook_fn"
+        description: "用户 hook 函数"
+        is_user_entry: true
+
   conntrack_in:
-    description: "Connection Tracking Input"
+    description: "连接跟踪输入处理"
+    trigger: "PRE_ROUTING hook"
     chain:
-      - caller: "nf_conntrack_in"
-        callee: "resolve_normal_ct"
+      - function: "nf_conntrack_in"
+        file: "net/netfilter/nf_conntrack_core.c"
+        description: "连接跟踪入口"
+        context: "softirq"
+      - function: "resolve_normal_ct"
+        file: "net/netfilter/nf_conntrack_core.c"
         description: "解析连接"
-      - caller: "resolve_normal_ct"
-        callee: "nf_conntrack_find_get"
+      - function: "nf_conntrack_find_get"
         description: "查找现有连接"
-      - caller: "resolve_normal_ct"
-        callee: "init_conntrack"
+      - function: "init_conntrack"
         description: "创建新连接"
+      - function: "__nf_ct_expect_find"
+        description: "检查期望连接"
+
+  iptables_do_table:
+    description: "iptables 规则匹配"
+    trigger: "表处理"
+    chain:
+      - function: "ipt_do_table"
+        file: "net/ipv4/netfilter/ip_tables.c"
+        description: "iptables 入口"
+        context: "softirq"
+      - function: "遍历规则"
+        description: "检查每条规则"
+      - function: "match->match"
+        description: "调用 match 函数"
+        is_user_entry: true
+      - function: "target->target"
+        description: "调用 target 函数"
+        is_user_entry: true
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "简单 Netfilter hook 模块"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/netfilter.h>
+      #include <linux/netfilter_ipv4.h>
+      #include <linux/ip.h>
+      #include <linux/tcp.h>
+      
+      static unsigned int my_hook_fn(void *priv,
+                                     struct sk_buff *skb,
+                                     const struct nf_hook_state *state)
+      {
+          struct iphdr *iph;
+          struct tcphdr *tcph;
+          
+          if (!skb)
+              return NF_ACCEPT;
+          
+          iph = ip_hdr(skb);
+          if (!iph)
+              return NF_ACCEPT;
+          
+          /* 只处理 TCP */
+          if (iph->protocol != IPPROTO_TCP)
+              return NF_ACCEPT;
+          
+          tcph = tcp_hdr(skb);
+          if (!tcph)
+              return NF_ACCEPT;
+          
+          /* 阻止目标端口 8080 */
+          if (ntohs(tcph->dest) == 8080) {
+              pr_info("Blocked packet to port 8080 from %pI4\n",
+                      &iph->saddr);
+              return NF_DROP;
+          }
+          
+          return NF_ACCEPT;
+      }
+      
+      static struct nf_hook_ops my_hook_ops = {
+          .hook     = my_hook_fn,
+          .pf       = NFPROTO_IPV4,
+          .hooknum  = NF_INET_PRE_ROUTING,
+          .priority = NF_IP_PRI_FIRST,
+      };
+      
+      static int __init my_hook_init(void)
+      {
+          int ret;
+          
+          ret = nf_register_net_hook(&init_net, &my_hook_ops);
+          if (ret) {
+              pr_err("Failed to register hook\n");
+              return ret;
+          }
+          
+          pr_info("Hook registered\n");
+          return 0;
+      }
+      
+      static void __exit my_hook_exit(void)
+      {
+          nf_unregister_net_hook(&init_net, &my_hook_ops);
+          pr_info("Hook unregistered\n");
+      }
+      
+      module_init(my_hook_init);
+      module_exit(my_hook_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "xtables target 模块"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/netfilter/x_tables.h>
+      #include <linux/netfilter_ipv4/ip_tables.h>
+      
+      struct xt_mytarget_info {
+          __u32 value;
+      };
+      
+      static unsigned int mytarget_tg(struct sk_buff *skb,
+                                      const struct xt_action_param *par)
+      {
+          const struct xt_mytarget_info *info = par->targinfo;
+          
+          /* 设置 skb mark */
+          skb->mark = info->value;
+          
+          pr_debug("Set mark to %u\n", info->value);
+          
+          return XT_CONTINUE;
+      }
+      
+      static int mytarget_tg_check(const struct xt_tgchk_param *par)
+      {
+          const struct xt_mytarget_info *info = par->targinfo;
+          
+          if (info->value == 0) {
+              pr_err("Invalid value\n");
+              return -EINVAL;
+          }
+          
+          return 0;
+      }
+      
+      static struct xt_target mytarget_tg_reg = {
+          .name       = "MYTARGET",
+          .revision   = 0,
+          .family     = NFPROTO_IPV4,
+          .target     = mytarget_tg,
+          .checkentry = mytarget_tg_check,
+          .targetsize = sizeof(struct xt_mytarget_info),
+          .me         = THIS_MODULE,
+      };
+      
+      static int __init mytarget_init(void)
+      {
+          return xt_register_target(&mytarget_tg_reg);
+      }
+      
+      static void __exit mytarget_exit(void)
+      {
+          xt_unregister_target(&mytarget_tg_reg);
+      }
+      
+      module_init(mytarget_init);
+      module_exit(mytarget_exit);
+      MODULE_LICENSE("GPL");
+      MODULE_ALIAS("ipt_MYTARGET");
+
+  - description: "nftables 表达式模块"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <net/netfilter/nf_tables.h>
+      
+      struct nft_myexpr {
+          u32 value;
+      };
+      
+      static void nft_myexpr_eval(const struct nft_expr *expr,
+                                  struct nft_regs *regs,
+                                  const struct nft_pktinfo *pkt)
+      {
+          const struct nft_myexpr *priv = nft_expr_priv(expr);
+          
+          /* 设置目标寄存器 */
+          regs->verdict.code = priv->value ? NFT_CONTINUE : NFT_BREAK;
+      }
+      
+      static const struct nla_policy nft_myexpr_policy[NFTA_MYEXPR_MAX + 1] = {
+          [NFTA_MYEXPR_VALUE] = { .type = NLA_U32 },
+      };
+      
+      static int nft_myexpr_init(const struct nft_ctx *ctx,
+                                 const struct nft_expr *expr,
+                                 const struct nlattr * const tb[])
+      {
+          struct nft_myexpr *priv = nft_expr_priv(expr);
+          
+          if (!tb[NFTA_MYEXPR_VALUE])
+              return -EINVAL;
+          
+          priv->value = ntohl(nla_get_be32(tb[NFTA_MYEXPR_VALUE]));
+          
+          return 0;
+      }
+      
+      static int nft_myexpr_dump(struct sk_buff *skb,
+                                 const struct nft_expr *expr)
+      {
+          const struct nft_myexpr *priv = nft_expr_priv(expr);
+          
+          if (nla_put_be32(skb, NFTA_MYEXPR_VALUE, htonl(priv->value)))
+              return -ENOSPC;
+          
+          return 0;
+      }
+      
+      static const struct nft_expr_ops nft_myexpr_ops = {
+          .type       = &nft_myexpr_type,
+          .size       = NFT_EXPR_SIZE(sizeof(struct nft_myexpr)),
+          .eval       = nft_myexpr_eval,
+          .init       = nft_myexpr_init,
+          .dump       = nft_myexpr_dump,
+      };
+      
+      static struct nft_expr_type nft_myexpr_type __read_mostly = {
+          .name       = "myexpr",
+          .ops        = &nft_myexpr_ops,
+          .policy     = nft_myexpr_policy,
+          .maxattr    = NFTA_MYEXPR_MAX,
+          .owner      = THIS_MODULE,
+      };
+      
+      static int __init nft_myexpr_module_init(void)
+      {
+          return nft_register_expr(&nft_myexpr_type);
+      }
+      
+      static void __exit nft_myexpr_module_exit(void)
+      {
+          nft_unregister_expr(&nft_myexpr_type);
+      }
+      
+      module_init(nft_myexpr_module_init);
+      module_exit(nft_myexpr_module_exit);
+      MODULE_LICENSE("GPL");
+      MODULE_ALIAS_NFT_EXPR("myexpr");

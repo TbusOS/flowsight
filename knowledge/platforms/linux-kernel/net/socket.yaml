@@ -1,125 +1,833 @@
 # Socket Layer Knowledge Base
 # Reference: https://www.kernel.org/doc/html/latest/networking/
+# Kernel Version: 5.0+
 
 # ============================================================
-# SOCKET OPERATIONS
+# SOCKET SYSTEM CALLS
 # ============================================================
-socket_ops:
-  description: "Socket Protocol Operations"
+socket_syscalls:
+  description: "Socket System Call Entry Points"
+  header: "net/socket.c"
+  icon: "📞"
+  kernel_version: "5.0+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+    description: "所有 socket 系统调用在进程上下文执行"
+
+  syscalls:
+    # ========== 创建和销毁 ==========
+    sys_socket:
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*socket\s*,'
+      description: "创建 socket"
+      signature: "int socket(int domain, int type, int protocol)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "domain"
+          description: "协议族 (AF_INET, AF_INET6, AF_UNIX, ...)"
+        - name: "type"
+          description: "类型 (SOCK_STREAM, SOCK_DGRAM, SOCK_RAW, ...)"
+        - name: "protocol"
+          description: "协议号 (IPPROTO_TCP, IPPROTO_UDP, ...)"
+      return_value:
+        success: "socket 文件描述符 (>= 0)"
+        failure: "-1 (errno 设置)"
+      call_chain:
+        - function: "__sys_socket"
+          file: "net/socket.c"
+        - function: "sock_create"
+          file: "net/socket.c"
+        - function: "__sock_create"
+          file: "net/socket.c"
+        - function: "pf->create (协议族创建)"
+          file: "如 net/ipv4/af_inet.c"
+          is_user_entry: true
+        - function: "sock_map_fd"
+          file: "net/socket.c"
+          description: "分配文件描述符"
+
+    sys_socketpair:
+      pattern: 'SYSCALL_DEFINE4\s*\(\s*socketpair\s*,'
+      description: "创建 socket 对"
+      signature: "int socketpair(int domain, int type, int protocol, int sv[2])"
+      context: "process"
+      can_sleep: true
+      notes: "通常用于 AF_UNIX"
+
+    sys_close:
+      description: "关闭 socket (通过 VFS close)"
+      signature: "int close(int fd)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "__close_fd"
+          file: "fs/file.c"
+        - function: "filp_close"
+          file: "fs/open.c"
+        - function: "fput"
+          file: "fs/file_table.c"
+        - function: "__fput"
+          file: "fs/file_table.c"
+        - function: "sock_close"
+          file: "net/socket.c"
+        - function: "ops->release"
+          description: "协议 release"
+          is_user_entry: true
+        - function: "sock_release"
+          file: "net/socket.c"
+
+    sys_shutdown:
+      pattern: 'SYSCALL_DEFINE2\s*\(\s*shutdown\s*,'
+      description: "关闭 socket 的一个方向"
+      signature: "int shutdown(int sockfd, int how)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "how"
+          values:
+            SHUT_RD: "关闭读端"
+            SHUT_WR: "关闭写端"
+            SHUT_RDWR: "关闭读写"
+
+    # ========== 地址绑定 ==========
+    sys_bind:
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*bind\s*,'
+      description: "绑定本地地址"
+      signature: "int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "__sys_bind"
+          file: "net/socket.c"
+        - function: "move_addr_to_kernel"
+          description: "复制用户空间地址"
+        - function: "sock->ops->bind"
+          description: "协议绑定"
+          is_user_entry: true
+      typical_errors:
+        EADDRINUSE: "地址已被使用"
+        EACCES: "绑定特权端口需要 CAP_NET_BIND_SERVICE"
+        EADDRNOTAVAIL: "地址不可用"
+
+    # ========== 连接管理 ==========
+    sys_listen:
+      pattern: 'SYSCALL_DEFINE2\s*\(\s*listen\s*,'
+      description: "开始监听连接"
+      signature: "int listen(int sockfd, int backlog)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "backlog"
+          description: "未完成连接队列最大长度"
+      call_chain:
+        - function: "__sys_listen"
+          file: "net/socket.c"
+        - function: "sock->ops->listen"
+          description: "协议 listen"
+          is_user_entry: true
+
+    sys_accept:
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*accept\s*,'
+      description: "接受连接"
+      signature: "int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "__sys_accept4"
+          file: "net/socket.c"
+        - function: "do_accept"
+          file: "net/socket.c"
+        - function: "sock->ops->accept"
+          description: "协议 accept"
+          is_user_entry: true
+        - function: "sock_alloc"
+          description: "分配新 socket"
+        - function: "sock_map_fd"
+          description: "映射到文件描述符"
+      blocking: true
+      notes: "阻塞直到有连接到达或设置 O_NONBLOCK"
+
+    sys_accept4:
+      pattern: 'SYSCALL_DEFINE4\s*\(\s*accept4\s*,'
+      description: "接受连接 (带 flags)"
+      signature: "int accept4(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int flags)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "flags"
+          values:
+            SOCK_NONBLOCK: "新 socket 设为非阻塞"
+            SOCK_CLOEXEC: "exec 时自动关闭"
+
+    sys_connect:
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*connect\s*,'
+      description: "连接到远端"
+      signature: "int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "__sys_connect"
+          file: "net/socket.c"
+        - function: "move_addr_to_kernel"
+          description: "复制用户空间地址"
+        - function: "sock->ops->connect"
+          description: "协议 connect"
+          is_user_entry: true
+      typical_errors:
+        ECONNREFUSED: "连接被拒绝"
+        ETIMEDOUT: "连接超时"
+        ENETUNREACH: "网络不可达"
+        EINPROGRESS: "非阻塞连接进行中"
+
+    # ========== 数据传输 ==========
+    sys_sendto:
+      pattern: 'SYSCALL_DEFINE6\s*\(\s*sendto\s*,'
+      description: "发送数据到指定地址"
+      signature: "ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "flags"
+          values:
+            MSG_DONTWAIT: "非阻塞操作"
+            MSG_NOSIGNAL: "不产生 SIGPIPE"
+            MSG_MORE: "还有更多数据"
+            MSG_OOB: "带外数据"
+      call_chain:
+        - function: "__sys_sendto"
+          file: "net/socket.c"
+        - function: "sock_sendmsg"
+          file: "net/socket.c"
+        - function: "sock_sendmsg_nosec"
+          file: "net/socket.c"
+        - function: "sock->ops->sendmsg"
+          description: "协议 sendmsg"
+          is_user_entry: true
+
+    sys_send:
+      description: "发送数据 (sendto 的简化版)"
+      signature: "ssize_t send(int sockfd, const void *buf, size_t len, int flags)"
+      context: "process"
+      can_sleep: true
+      notes: "等价于 sendto(sockfd, buf, len, flags, NULL, 0)"
+
+    sys_sendmsg:
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*sendmsg\s*,'
+      description: "发送消息 (支持多 iovec)"
+      signature: "ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "__sys_sendmsg"
+          file: "net/socket.c"
+        - function: "___sys_sendmsg"
+          file: "net/socket.c"
+        - function: "sock_sendmsg"
+          file: "net/socket.c"
+        - function: "sock->ops->sendmsg"
+          is_user_entry: true
+
+    sys_sendmmsg:
+      pattern: 'SYSCALL_DEFINE4\s*\(\s*sendmmsg\s*,'
+      description: "批量发送消息"
+      signature: "int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen, int flags)"
+      context: "process"
+      can_sleep: true
+      notes: "高性能应用使用，减少系统调用开销"
+
+    sys_recvfrom:
+      pattern: 'SYSCALL_DEFINE6\s*\(\s*recvfrom\s*,'
+      description: "从指定地址接收数据"
+      signature: "ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "flags"
+          values:
+            MSG_DONTWAIT: "非阻塞操作"
+            MSG_PEEK: "查看但不移除数据"
+            MSG_WAITALL: "等待完整数据"
+            MSG_TRUNC: "返回实际长度 (即使被截断)"
+      call_chain:
+        - function: "__sys_recvfrom"
+          file: "net/socket.c"
+        - function: "sock_recvmsg"
+          file: "net/socket.c"
+        - function: "sock->ops->recvmsg"
+          description: "协议 recvmsg"
+          is_user_entry: true
+
+    sys_recv:
+      description: "接收数据 (recvfrom 的简化版)"
+      signature: "ssize_t recv(int sockfd, void *buf, size_t len, int flags)"
+      context: "process"
+      can_sleep: true
+      notes: "等价于 recvfrom(sockfd, buf, len, flags, NULL, NULL)"
+
+    sys_recvmsg:
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*recvmsg\s*,'
+      description: "接收消息 (支持多 iovec)"
+      signature: "ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "__sys_recvmsg"
+          file: "net/socket.c"
+        - function: "___sys_recvmsg"
+          file: "net/socket.c"
+        - function: "sock_recvmsg"
+          file: "net/socket.c"
+        - function: "sock->ops->recvmsg"
+          is_user_entry: true
+
+    sys_recvmmsg:
+      pattern: 'SYSCALL_DEFINE5\s*\(\s*recvmmsg\s*,'
+      description: "批量接收消息"
+      signature: "int recvmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen, int flags, struct timespec *timeout)"
+      context: "process"
+      can_sleep: true
+      notes: "高性能应用使用，减少系统调用开销"
+
+    # ========== I/O 多路复用 ==========
+    sys_poll:
+      description: "等待多个文件描述符事件"
+      signature: "int poll(struct pollfd *fds, nfds_t nfds, int timeout)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "do_sys_poll"
+          file: "fs/select.c"
+        - function: "poll_initwait"
+        - function: "vfs_poll"
+        - function: "sock_poll"
+          file: "net/socket.c"
+        - function: "sock->ops->poll"
+          is_user_entry: true
+
+    sys_select:
+      description: "等待多个文件描述符事件 (旧 API)"
+      signature: "int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)"
+      context: "process"
+      can_sleep: true
+
+    sys_epoll_ctl:
+      description: "修改 epoll 监视列表"
+      signature: "int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)"
+      context: "process"
+      can_sleep: true
+
+    sys_epoll_wait:
+      description: "等待 epoll 事件"
+      signature: "int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)"
+      context: "process"
+      can_sleep: true
+
+    # ========== Socket 选项 ==========
+    sys_setsockopt:
+      pattern: 'SYSCALL_DEFINE5\s*\(\s*setsockopt\s*,'
+      description: "设置 socket 选项"
+      signature: "int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "level"
+          values:
+            SOL_SOCKET: "通用 socket 选项"
+            IPPROTO_TCP: "TCP 协议选项"
+            IPPROTO_IP: "IP 协议选项"
+            IPPROTO_IPV6: "IPv6 协议选项"
+      call_chain:
+        - function: "__sys_setsockopt"
+          file: "net/socket.c"
+        - function: "sock_setsockopt (SOL_SOCKET)"
+          file: "net/core/sock.c"
+        - function: "sock->ops->setsockopt (协议级)"
+          is_user_entry: true
+
+    sys_getsockopt:
+      pattern: 'SYSCALL_DEFINE5\s*\(\s*getsockopt\s*,'
+      description: "获取 socket 选项"
+      signature: "int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "__sys_getsockopt"
+          file: "net/socket.c"
+        - function: "sock_getsockopt (SOL_SOCKET)"
+          file: "net/core/sock.c"
+        - function: "sock->ops->getsockopt (协议级)"
+          is_user_entry: true
+
+    # ========== 地址查询 ==========
+    sys_getsockname:
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*getsockname\s*,'
+      description: "获取本地地址"
+      signature: "int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "__sys_getsockname"
+          file: "net/socket.c"
+        - function: "sock->ops->getname"
+          is_user_entry: true
+
+    sys_getpeername:
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*getpeername\s*,'
+      description: "获取对端地址"
+      signature: "int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "__sys_getpeername"
+          file: "net/socket.c"
+        - function: "sock->ops->getname"
+          is_user_entry: true
+
+    # ========== I/O 控制 ==========
+    sys_ioctl:
+      description: "Socket ioctl"
+      signature: "int ioctl(int fd, unsigned long request, ...)"
+      context: "process"
+      can_sleep: true
+      call_chain:
+        - function: "do_vfs_ioctl"
+          file: "fs/ioctl.c"
+        - function: "sock_ioctl"
+          file: "net/socket.c"
+        - function: "sock->ops->ioctl"
+          is_user_entry: true
+
+# ============================================================
+# PROTO_OPS - 协议操作
+# ============================================================
+proto_ops:
+  description: "Socket Protocol Operations - 协议操作回调"
   header: "linux/net.h"
   icon: "🔗"
+  kernel_version: "5.0+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    description: "proto_ops 回调在进程上下文执行"
+
   structure:
     name: "proto_ops"
-    callbacks:
-      release:
-        pattern: '\.release\s*=\s*(?P<handler>\w+)'
-        description: "关闭套接字"
-        context: "process"
-        can_sleep: true
-      bind:
-        pattern: '\.bind\s*=\s*(?P<handler>\w+)'
-        description: "绑定地址"
-        context: "process"
-        can_sleep: true
-      connect:
-        pattern: '\.connect\s*=\s*(?P<handler>\w+)'
-        description: "连接远端"
-        context: "process"
-        can_sleep: true
-      accept:
-        pattern: '\.accept\s*=\s*(?P<handler>\w+)'
-        description: "接受连接"
-        context: "process"
-        can_sleep: true
-      listen:
-        pattern: '\.listen\s*=\s*(?P<handler>\w+)'
-        description: "监听连接"
-        context: "process"
-        can_sleep: true
-      sendmsg:
-        pattern: '\.sendmsg\s*=\s*(?P<handler>\w+)'
-        description: "发送消息"
-        context: "process"
-        can_sleep: true
-      recvmsg:
-        pattern: '\.recvmsg\s*=\s*(?P<handler>\w+)'
-        description: "接收消息"
-        context: "process"
-        can_sleep: true
-      poll:
-        pattern: '\.poll\s*=\s*(?P<handler>\w+)'
-        description: "轮询事件"
-        context: "process"
-        can_sleep: false
-      ioctl:
-        pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
-        description: "IO 控制"
-        context: "process"
-        can_sleep: true
-      setsockopt:
-        pattern: '\.setsockopt\s*=\s*(?P<handler>\w+)'
-        description: "设置套接字选项"
-        context: "process"
-        can_sleep: true
-      getsockopt:
-        pattern: '\.getsockopt\s*=\s*(?P<handler>\w+)'
-        description: "获取套接字选项"
-        context: "process"
-        can_sleep: true
-      mmap:
-        pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
-        description: "内存映射"
-        context: "process"
-        can_sleep: true
+    pattern: 'static const struct proto_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "协议操作结构体"
+    fields:
+      - name: "family"
+        type: "int"
+        description: "协议族 (AF_INET, AF_UNIX, ...)"
+      - name: "owner"
+        type: "struct module *"
+        description: "所属模块"
+
+  callbacks:
+    release:
+      pattern: '\.release\s*=\s*(?P<handler>\w+)'
+      description: "关闭 socket"
+      trigger: "close() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*release)(struct socket *sock)"
+      typical_actions:
+        - "释放协议资源"
+        - "发送 FIN (TCP)"
+        - "释放端口"
+
+    bind:
+      pattern: '\.bind\s*=\s*(?P<handler>\w+)'
+      description: "绑定地址"
+      trigger: "bind() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*bind)(struct socket *sock, struct sockaddr *addr, int addrlen)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "验证地址"
+        - "分配端口 (TCP/UDP)"
+        - "绑定到接口"
+
+    connect:
+      pattern: '\.connect\s*=\s*(?P<handler>\w+)'
+      description: "连接到远端"
+      trigger: "connect() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*connect)(struct socket *sock, struct sockaddr *addr, int addrlen, int flags)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+        nonblock: "-EINPROGRESS (非阻塞)"
+      typical_actions:
+        - "DNS 解析 (用户空间)"
+        - "发送 SYN (TCP)"
+        - "等待 SYN-ACK"
+        - "完成三次握手"
+
+    accept:
+      pattern: '\.accept\s*=\s*(?P<handler>\w+)'
+      description: "接受连接"
+      trigger: "accept() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*accept)(struct socket *sock, struct socket *newsock, int flags, bool kern)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "从 accept 队列取出已完成的连接"
+        - "创建新 socket"
+        - "返回客户端信息"
+
+    listen:
+      pattern: '\.listen\s*=\s*(?P<handler>\w+)'
+      description: "开始监听"
+      trigger: "listen() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*listen)(struct socket *sock, int backlog)"
+      typical_actions:
+        - "设置 socket 为监听状态"
+        - "初始化 accept 队列"
+        - "设置 backlog 限制"
+
+    shutdown:
+      pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
+      description: "关闭一个方向"
+      trigger: "shutdown() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*shutdown)(struct socket *sock, int how)"
+
+    sendmsg:
+      pattern: '\.sendmsg\s*=\s*(?P<handler>\w+)'
+      description: "发送消息"
+      trigger: "send/sendto/sendmsg/write"
+      context: "process"
+      can_sleep: true
+      signature: "int (*sendmsg)(struct socket *sock, struct msghdr *msg, size_t len)"
+      return_value:
+        success: "发送的字节数"
+        failure: "-ERRNO"
+      typical_actions:
+        - "从用户空间复制数据"
+        - "构建协议头"
+        - "路由查找"
+        - "传递给 IP 层"
+
+    recvmsg:
+      pattern: '\.recvmsg\s*=\s*(?P<handler>\w+)'
+      description: "接收消息"
+      trigger: "recv/recvfrom/recvmsg/read"
+      context: "process"
+      can_sleep: true
+      signature: "int (*recvmsg)(struct socket *sock, struct msghdr *msg, size_t len, int flags)"
+      return_value:
+        success: "接收的字节数"
+        failure: "-ERRNO"
+        eof: "0 (连接关闭)"
+      typical_actions:
+        - "等待数据到达"
+        - "从接收队列取数据"
+        - "复制到用户空间"
+        - "更新窗口 (TCP)"
+
+    poll:
+      pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+      description: "检查 I/O 状态"
+      trigger: "poll/select/epoll"
+      context: "process"
+      can_sleep: false
+      signature: "__poll_t (*poll)(struct file *file, struct socket *sock, poll_table *wait)"
+      return_value:
+        POLLIN: "有数据可读"
+        POLLOUT: "可以写入"
+        POLLERR: "发生错误"
+        POLLHUP: "挂起"
+      typical_actions:
+        - "检查接收队列"
+        - "检查发送缓冲区"
+        - "检查错误状态"
+
+    ioctl:
+      pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
+      description: "设备控制"
+      trigger: "ioctl() 系统调用"
+      context: "process"
+      can_sleep: true
+      signature: "int (*ioctl)(struct socket *sock, unsigned int cmd, unsigned long arg)"
+      common_cmds:
+        SIOCGIFADDR: "获取接口地址"
+        SIOCSIFADDR: "设置接口地址"
+        SIOCGIFFLAGS: "获取接口标志"
+        SIOCSIFFLAGS: "设置接口标志"
+
+    getname:
+      pattern: '\.getname\s*=\s*(?P<handler>\w+)'
+      description: "获取地址"
+      trigger: "getsockname/getpeername"
+      context: "process"
+      can_sleep: true
+      signature: "int (*getname)(struct socket *sock, struct sockaddr *addr, int peer)"
+      parameters:
+        - name: "peer"
+          values:
+            0: "获取本地地址 (getsockname)"
+            1: "获取对端地址 (getpeername)"
+
+    setsockopt:
+      pattern: '\.setsockopt\s*=\s*(?P<handler>\w+)'
+      description: "设置协议选项"
+      trigger: "setsockopt() (非 SOL_SOCKET 级别)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*setsockopt)(struct socket *sock, int level, int optname, sockptr_t optval, unsigned int optlen)"
+
+    getsockopt:
+      pattern: '\.getsockopt\s*=\s*(?P<handler>\w+)'
+      description: "获取协议选项"
+      trigger: "getsockopt() (非 SOL_SOCKET 级别)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*getsockopt)(struct socket *sock, int level, int optname, char __user *optval, int __user *optlen)"
+
+    sendpage:
+      pattern: '\.sendpage\s*=\s*(?P<handler>\w+)'
+      description: "发送页面 (零拷贝)"
+      trigger: "sendfile()"
+      context: "process"
+      can_sleep: true
+      signature: "ssize_t (*sendpage)(struct socket *sock, struct page *page, int offset, size_t size, int flags)"
+      notes: "高性能文件发送，零拷贝"
+
+    splice_read:
+      pattern: '\.splice_read\s*=\s*(?P<handler>\w+)'
+      description: "splice 读取"
+      trigger: "splice()"
+      context: "process"
+      can_sleep: true
+      signature: "ssize_t (*splice_read)(struct socket *sock, loff_t *ppos, struct pipe_inode_info *pipe, size_t len, unsigned int flags)"
+
+    mmap:
+      pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
+      description: "内存映射"
+      context: "process"
+      can_sleep: true
+      signature: "int (*mmap)(struct file *file, struct socket *sock, struct vm_area_struct *vma)"
+      notes: "AF_PACKET 使用 ring buffer"
+
+  common_implementations:
+    inet_stream_ops:
+      description: "TCP (AF_INET, SOCK_STREAM)"
+      file: "net/ipv4/af_inet.c"
+    inet_dgram_ops:
+      description: "UDP (AF_INET, SOCK_DGRAM)"
+      file: "net/ipv4/af_inet.c"
+    inet_sockraw_ops:
+      description: "Raw IP (AF_INET, SOCK_RAW)"
+      file: "net/ipv4/af_inet.c"
+    unix_stream_ops:
+      description: "Unix Stream (AF_UNIX, SOCK_STREAM)"
+      file: "net/unix/af_unix.c"
+    unix_dgram_ops:
+      description: "Unix Datagram (AF_UNIX, SOCK_DGRAM)"
+      file: "net/unix/af_unix.c"
 
 # ============================================================
-# PROTOCOL HANDLER
+# PROTOCOL REGISTRATION - 协议注册
 # ============================================================
-net_protocol:
-  description: "Network Protocol Handler"
-  header: "linux/netdevice.h"
-  icon: "📡"
-  registration:
-    - pattern: 'inet_add_protocol\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<num>\w+)\s*\)'
-      description: "注册 IPv4 协议"
-    - pattern: 'inet6_add_protocol\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<num>\w+)\s*\)'
-      description: "注册 IPv6 协议"
-    - pattern: 'proto_register\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<alloc>\w+)\s*\)'
-      description: "注册套接字协议"
-    - pattern: 'sock_register\s*\(\s*&(?P<family>\w+)\s*\)'
-      description: "注册套接字族"
-  structure:
-    name: "net_protocol"
-    callbacks:
-      handler:
-        pattern: '\.handler\s*=\s*(?P<handler>\w+)'
-        description: "协议处理函数"
-        context: "softirq"
-        can_sleep: false
-      err_handler:
-        pattern: '\.err_handler\s*=\s*(?P<handler>\w+)'
-        description: "错误处理函数"
-        context: "softirq"
-        can_sleep: false
+protocol_registration:
+  description: "Protocol Registration APIs"
+  header: "net/sock.h"
+  icon: "📝"
+  kernel_version: "5.0+"
 
-# ============================================================
-# SOCKET FAMILY
-# ============================================================
-net_proto_family:
-  description: "Socket Family"
-  header: "linux/net.h"
-  icon: "👨‍👩‍👧‍👦"
-  registration:
-    - pattern: 'sock_register\s*\(\s*&(?P<family>\w+)\s*\)'
-      description: "注册套接字族"
-  structure:
-    name: "net_proto_family"
-    callbacks:
-      create:
-        pattern: '\.create\s*=\s*(?P<handler>\w+)'
-        description: "创建套接字"
-        context: "process"
+  sock_proto:
+    description: "struct proto - 传输层协议"
+    header: "include/net/sock.h"
+    registration:
+      - pattern: 'proto_register\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<alloc>\d+)\s*\)'
+        description: "注册传输协议"
+        context: "process (init)"
         can_sleep: true
+        parameters:
+          - name: "proto"
+            description: "struct proto 指针"
+          - name: "alloc"
+            description: "是否分配 slab cache"
+      - pattern: 'proto_unregister\s*\(\s*&(?P<proto>\w+)\s*\)'
+        description: "注销传输协议"
+        context: "process (exit)"
+        can_sleep: true
+
+    structure:
+      name: "proto"
+      fields:
+        - name: "name"
+          type: "char[32]"
+          description: "协议名称"
+        - name: "owner"
+          type: "struct module *"
+          description: "所属模块"
+        - name: "obj_size"
+          type: "unsigned int"
+          description: "socket 对象大小"
+        - name: "close"
+          type: "void (*)(struct sock *, long)"
+          description: "关闭连接"
+        - name: "connect"
+          type: "int (*)(struct sock *, struct sockaddr *, int)"
+          description: "连接"
+        - name: "disconnect"
+          type: "int (*)(struct sock *, int)"
+          description: "断开"
+        - name: "accept"
+          type: "struct sock *(*)(struct sock *, int, int *, bool)"
+          description: "接受连接"
+        - name: "init"
+          type: "int (*)(struct sock *)"
+          description: "初始化 sock"
+        - name: "destroy"
+          type: "void (*)(struct sock *)"
+          description: "销毁 sock"
+        - name: "sendmsg"
+          type: "int (*)(struct sock *, struct msghdr *, size_t)"
+          description: "发送消息"
+        - name: "recvmsg"
+          type: "int (*)(struct sock *, struct msghdr *, size_t, int, int *)"
+          description: "接收消息"
+        - name: "hash"
+          type: "int (*)(struct sock *)"
+          description: "加入哈希表"
+        - name: "unhash"
+          type: "void (*)(struct sock *)"
+          description: "从哈希表移除"
+        - name: "get_port"
+          type: "int (*)(struct sock *, unsigned short)"
+          description: "获取端口"
+
+    common_implementations:
+      - name: "tcp_prot"
+        file: "net/ipv4/tcp_ipv4.c"
+        description: "TCP 协议"
+      - name: "udp_prot"
+        file: "net/ipv4/udp.c"
+        description: "UDP 协议"
+      - name: "raw_prot"
+        file: "net/ipv4/raw.c"
+        description: "Raw IP 协议"
+      - name: "unix_stream_proto"
+        file: "net/unix/af_unix.c"
+        description: "Unix Stream"
+
+  net_proto_family:
+    description: "struct net_proto_family - 协议族"
+    header: "include/linux/net.h"
+    registration:
+      - pattern: 'sock_register\s*\(\s*&(?P<family>\w+)\s*\)'
+        description: "注册协议族"
+        context: "process (init)"
+        can_sleep: true
+      - pattern: 'sock_unregister\s*\(\s*(?P<family>\d+)\s*\)'
+        description: "注销协议族"
+        context: "process (exit)"
+        can_sleep: true
+
+    structure:
+      name: "net_proto_family"
+      fields:
+        - name: "family"
+          type: "int"
+          description: "协议族号 (AF_INET, AF_UNIX, ...)"
+        - name: "create"
+          type: "int (*)(struct net *, struct socket *, int, int)"
+          description: "创建 socket"
+        - name: "owner"
+          type: "struct module *"
+          description: "所属模块"
+
+    common_families:
+      - name: "inet_family_ops"
+        family: "AF_INET"
+        file: "net/ipv4/af_inet.c"
+      - name: "inet6_family_ops"
+        family: "AF_INET6"
+        file: "net/ipv6/af_inet6.c"
+      - name: "unix_family_ops"
+        family: "AF_UNIX"
+        file: "net/unix/af_unix.c"
+      - name: "netlink_family_ops"
+        family: "AF_NETLINK"
+        file: "net/netlink/af_netlink.c"
+      - name: "packet_family_ops"
+        family: "AF_PACKET"
+        file: "net/packet/af_packet.c"
+
+  inet_protocol:
+    description: "struct net_protocol - IP 协议处理"
+    header: "include/net/protocol.h"
+    registration:
+      - pattern: 'inet_add_protocol\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<num>\w+)\s*\)'
+        description: "注册 IPv4 协议处理"
+        context: "process (init)"
+        can_sleep: true
+        parameters:
+          - name: "proto"
+            description: "struct net_protocol 指针"
+          - name: "num"
+            description: "协议号 (IPPROTO_TCP, IPPROTO_UDP, ...)"
+      - pattern: 'inet_del_protocol\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<num>\w+)\s*\)'
+        description: "注销 IPv4 协议处理"
+        context: "process (exit)"
+        can_sleep: true
+      - pattern: 'inet6_add_protocol\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<num>\w+)\s*\)'
+        description: "注册 IPv6 协议处理"
+        context: "process (init)"
+        can_sleep: true
+      - pattern: 'inet6_del_protocol\s*\(\s*&(?P<proto>\w+)\s*,\s*(?P<num>\w+)\s*\)'
+        description: "注销 IPv6 协议处理"
+        context: "process (exit)"
+        can_sleep: true
+
+    structure:
+      name: "net_protocol"
+      fields:
+        - name: "handler"
+          type: "int (*)(struct sk_buff *)"
+          description: "协议处理函数"
+          context: "softirq"
+        - name: "err_handler"
+          type: "int (*)(struct sk_buff *, u32)"
+          description: "ICMP 错误处理"
+          context: "softirq"
+        - name: "no_policy"
+          type: "unsigned int"
+          description: "跳过 IPsec 策略检查"
+        - name: "netns_ok"
+          type: "unsigned int"
+          description: "支持网络命名空间"
+
+    common_protocols:
+      - name: "tcp_protocol"
+        num: "IPPROTO_TCP"
+        handler: "tcp_v4_rcv"
+        file: "net/ipv4/tcp_ipv4.c"
+      - name: "udp_protocol"
+        num: "IPPROTO_UDP"
+        handler: "udp_rcv"
+        file: "net/ipv4/udp.c"
+      - name: "icmp_protocol"
+        num: "IPPROTO_ICMP"
+        handler: "icmp_rcv"
+        file: "net/ipv4/icmp.c"
 
 # ============================================================
 # SK_BUFF OPERATIONS
@@ -128,68 +836,492 @@ skb_ops:
   description: "Socket Buffer Operations"
   header: "linux/skbuff.h"
   icon: "📦"
+  kernel_version: "5.0+"
+
+  context:
+    description: "SKB 操作可在多种上下文执行"
+
+  structure:
+    name: "sk_buff"
+    description: "网络数据包缓冲区"
+    key_fields:
+      - name: "head"
+        type: "unsigned char *"
+        description: "缓冲区起始"
+      - name: "data"
+        type: "unsigned char *"
+        description: "数据起始"
+      - name: "tail"
+        type: "sk_buff_data_t"
+        description: "数据结尾"
+      - name: "end"
+        type: "sk_buff_data_t"
+        description: "缓冲区结尾"
+      - name: "len"
+        type: "unsigned int"
+        description: "数据长度"
+      - name: "protocol"
+        type: "__be16"
+        description: "L3 协议类型"
+      - name: "sk"
+        type: "struct sock *"
+        description: "关联的 socket"
+      - name: "dev"
+        type: "struct net_device *"
+        description: "关联的网络设备"
+
   allocation:
     - pattern: 'alloc_skb\s*\(\s*(?P<size>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
       description: "分配 SKB"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+
     - pattern: 'dev_alloc_skb\s*\(\s*(?P<size>\w+)\s*\)'
-      description: "为设备分配 SKB"
+      description: "为设备分配 SKB (GFP_ATOMIC)"
+      context: "any"
+      can_sleep: false
+
     - pattern: 'netdev_alloc_skb\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<size>\w+)\s*\)'
       description: "为网络设备分配 SKB"
+      context: "any"
+      can_sleep: false
+
+    - pattern: 'netdev_alloc_skb_ip_align\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "分配 IP 对齐的 SKB"
+      context: "any"
+      can_sleep: false
+      notes: "预留 NET_IP_ALIGN 字节确保 IP 头对齐"
+
     - pattern: 'napi_alloc_skb\s*\(\s*(?P<napi>\w+)\s*,\s*(?P<size>\w+)\s*\)'
-      description: "NAPI 分配 SKB"
+      description: "NAPI 上下文分配 SKB"
+      context: "softirq"
+      can_sleep: false
+      notes: "使用 per-CPU 缓存，更高效"
+
+    - pattern: '__netdev_alloc_skb\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<size>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "指定 GFP 标志分配 SKB"
+      context: "depends on GFP"
+
   free:
     - pattern: 'kfree_skb\s*\(\s*(?P<skb>\w+)\s*\)'
-      description: "释放 SKB"
-    - pattern: 'dev_kfree_skb\s*\(\s*(?P<skb>\w+)\s*\)'
-      description: "设备释放 SKB"
+      description: "释放 SKB (错误路径)"
+      context: "any"
+      can_sleep: false
+      notes: "增加 drop 计数"
+
+    - pattern: 'kfree_skb_reason\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<reason>\w+)\s*\)'
+      description: "带原因释放 SKB"
+      context: "any"
+      can_sleep: false
+      notes: "用于调试和跟踪"
+
     - pattern: 'consume_skb\s*\(\s*(?P<skb>\w+)\s*\)'
-      description: "消费 SKB（正常路径）"
+      description: "消费 SKB (正常路径)"
+      context: "any"
+      can_sleep: false
+      notes: "不增加 drop 计数"
+
+    - pattern: 'dev_kfree_skb\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "设备释放 SKB (已废弃)"
+      context: "process"
+      notes: "使用 dev_kfree_skb_any 或 dev_consume_skb_any"
+
+    - pattern: 'dev_kfree_skb_any\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "任意上下文释放 SKB (错误)"
+      context: "any"
+      can_sleep: false
+
     - pattern: 'dev_consume_skb_any\s*\(\s*(?P<skb>\w+)\s*\)'
-      description: "任意上下文消费 SKB"
+      description: "任意上下文消费 SKB (正常)"
+      context: "any"
+      can_sleep: false
+
   manipulation:
     - pattern: 'skb_put\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
       description: "扩展数据尾部"
+      signature: "void *skb_put(struct sk_buff *skb, unsigned int len)"
+      return_type: "void * (指向新空间)"
+      typical_usage: "接收数据后设置长度"
+
     - pattern: 'skb_push\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
       description: "扩展数据头部"
+      signature: "void *skb_push(struct sk_buff *skb, unsigned int len)"
+      return_type: "void * (指向新空间)"
+      typical_usage: "添加协议头"
+
     - pattern: 'skb_pull\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
       description: "移除数据头部"
+      signature: "void *skb_pull(struct sk_buff *skb, unsigned int len)"
+      return_type: "void * (指向新的 data)"
+      typical_usage: "剥离协议头"
+
     - pattern: 'skb_reserve\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
       description: "预留头部空间"
+      signature: "void skb_reserve(struct sk_buff *skb, int len)"
+      typical_usage: "分配后立即调用，预留协议头空间"
+
+    - pattern: 'skb_headroom\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "获取头部可用空间"
+      signature: "unsigned int skb_headroom(const struct sk_buff *skb)"
+
+    - pattern: 'skb_tailroom\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "获取尾部可用空间"
+      signature: "unsigned int skb_tailroom(const struct sk_buff *skb)"
+
+    - pattern: 'skb_clone\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "克隆 SKB (共享数据)"
+      signature: "struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp)"
+      notes: "数据共享，修改需要 skb_unshare"
+
+    - pattern: 'skb_copy\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "复制 SKB (独立数据)"
+      signature: "struct sk_buff *skb_copy(const struct sk_buff *skb, gfp_t gfp)"
+      notes: "完全独立副本"
+
+    - pattern: 'skb_trim\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
+      description: "裁剪到指定长度"
+      signature: "void skb_trim(struct sk_buff *skb, unsigned int len)"
+
+    - pattern: 'pskb_trim\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<len>\w+)\s*\)'
+      description: "裁剪 (处理分页)"
+      signature: "int pskb_trim(struct sk_buff *skb, unsigned int len)"
+
+  access:
+    - pattern: 'skb_network_header\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "获取网络层头部指针"
+      signature: "unsigned char *skb_network_header(const struct sk_buff *skb)"
+
+    - pattern: 'skb_transport_header\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "获取传输层头部指针"
+      signature: "unsigned char *skb_transport_header(const struct sk_buff *skb)"
+
+    - pattern: 'skb_mac_header\s*\(\s*(?P<skb>\w+)\s*\)'
+      description: "获取 MAC 层头部指针"
+      signature: "unsigned char *skb_mac_header(const struct sk_buff *skb)"
+
+    - pattern: 'eth_type_trans\s*\(\s*(?P<skb>\w+)\s*,\s*(?P<dev>\w+)\s*\)'
+      description: "解析以太网类型"
+      signature: "__be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev)"
+      typical_usage: "接收路径设置 skb->protocol"
 
 # ============================================================
 # CALL CHAINS
 # ============================================================
 call_chains:
   socket_create:
-    description: "Socket Creation"
+    description: "Socket 创建调用链"
+    trigger: "socket() 系统调用"
     chain:
-      - caller: "sys_socket"
-        callee: "__sock_create"
-        description: "创建套接字"
-      - caller: "__sock_create"
-        callee: "pf->create"
-        description: "调用协议族创建函数"
-  packet_receive:
-    description: "Packet Receive Path"
+      - function: "sys_socket"
+        file: "net/socket.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "__sys_socket"
+        file: "net/socket.c"
+        description: "内部实现"
+      - function: "sock_create"
+        file: "net/socket.c"
+        description: "创建 socket"
+      - function: "__sock_create"
+        file: "net/socket.c"
+        description: "内部创建逻辑"
+      - function: "security_socket_create"
+        description: "LSM 安全检查"
+      - function: "pf->create"
+        description: "协议族创建 (如 inet_create)"
+        is_user_entry: true
+      - function: "sock_init_data"
+        file: "net/core/sock.c"
+        description: "初始化 sock 结构"
+      - function: "sock_map_fd"
+        file: "net/socket.c"
+        description: "分配文件描述符"
+
+  tcp_connect:
+    description: "TCP 连接调用链"
+    trigger: "connect() 系统调用 (TCP)"
     chain:
-      - caller: "netif_receive_skb"
-        callee: "__netif_receive_skb_core"
-        context: "softirq"
-      - caller: "__netif_receive_skb_core"
-        callee: "deliver_skb"
-        description: "分发到协议处理"
-      - caller: "deliver_skb"
-        callee: "pt_prev->func"
-        description: "协议处理函数"
+      - function: "sys_connect"
+        file: "net/socket.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "__sys_connect"
+        file: "net/socket.c"
+      - function: "inet_stream_connect"
+        file: "net/ipv4/af_inet.c"
+        description: "TCP 连接"
+      - function: "__inet_stream_connect"
+        file: "net/ipv4/af_inet.c"
+      - function: "tcp_v4_connect"
+        file: "net/ipv4/tcp_ipv4.c"
+        description: "建立 TCP 连接"
+      - function: "tcp_connect"
+        file: "net/ipv4/tcp_output.c"
+        description: "发送 SYN"
+      - function: "inet_wait_for_connect"
+        description: "等待连接完成"
+        context: "可能阻塞"
+
+  tcp_accept:
+    description: "TCP Accept 调用链"
+    trigger: "accept() 系统调用 (TCP)"
+    chain:
+      - function: "sys_accept4"
+        file: "net/socket.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "do_accept"
+        file: "net/socket.c"
+      - function: "inet_accept"
+        file: "net/ipv4/af_inet.c"
+      - function: "inet_csk_accept"
+        file: "net/ipv4/inet_connection_sock.c"
+        description: "从 accept 队列取连接"
+      - function: "inet_csk_wait_for_connect"
+        description: "等待新连接"
+        context: "可能阻塞"
+
   tcp_send:
-    description: "TCP Send Path"
+    description: "TCP 发送调用链"
+    trigger: "send/write (TCP)"
     chain:
-      - caller: "tcp_sendmsg"
-        callee: "tcp_push"
+      - function: "sys_sendto / sys_write"
+        file: "net/socket.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "sock_sendmsg"
+        file: "net/socket.c"
+      - function: "tcp_sendmsg"
+        file: "net/ipv4/tcp.c"
+        description: "TCP 发送消息"
+      - function: "tcp_sendmsg_locked"
+        file: "net/ipv4/tcp.c"
+      - function: "tcp_push"
+        file: "net/ipv4/tcp.c"
         description: "推送数据"
-      - caller: "tcp_push"
-        callee: "tcp_write_xmit"
-        description: "发送数据"
-      - caller: "tcp_write_xmit"
-        callee: "ip_queue_xmit"
+      - function: "tcp_write_xmit"
+        file: "net/ipv4/tcp_output.c"
+        description: "发送到 IP 层"
+      - function: "__tcp_transmit_skb"
+        file: "net/ipv4/tcp_output.c"
+      - function: "ip_queue_xmit"
+        file: "net/ipv4/ip_output.c"
         description: "IP 层发送"
+
+  packet_receive:
+    description: "数据包接收调用链"
+    trigger: "网卡 NAPI 接收"
+    chain:
+      - function: "napi_gro_receive"
+        file: "net/core/gro.c"
+        description: "NAPI 接收"
+        context: "softirq"
+      - function: "netif_receive_skb_internal"
+        file: "net/core/dev.c"
+      - function: "__netif_receive_skb"
+        file: "net/core/dev.c"
+      - function: "__netif_receive_skb_core"
+        file: "net/core/dev.c"
+        description: "分发到协议"
+      - function: "deliver_skb"
+        file: "net/core/dev.c"
+      - function: "ip_rcv"
+        file: "net/ipv4/ip_input.c"
+        description: "IPv4 接收"
+      - function: "ip_rcv_finish"
+        file: "net/ipv4/ip_input.c"
+      - function: "ip_local_deliver"
+        file: "net/ipv4/ip_input.c"
+        description: "本地投递"
+      - function: "ip_local_deliver_finish"
+        file: "net/ipv4/ip_input.c"
+      - function: "tcp_v4_rcv"
+        file: "net/ipv4/tcp_ipv4.c"
+        description: "TCP 接收"
+      - function: "tcp_v4_do_rcv"
+        file: "net/ipv4/tcp_ipv4.c"
+      - function: "tcp_rcv_state_process / tcp_rcv_established"
+        description: "TCP 状态机处理"
+      - function: "sk->sk_data_ready"
+        description: "通知数据可读"
+      - function: "sock_def_readable"
+        file: "net/core/sock.c"
+        description: "唤醒等待进程"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "简单协议族注册"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/net.h>
+      #include <net/sock.h>
+      
+      #define MY_PROTO 42
+      
+      /* proto_ops - socket 操作 */
+      static int my_release(struct socket *sock)
+      {
+          struct sock *sk = sock->sk;
+          
+          if (!sk)
+              return 0;
+          
+          sock_orphan(sk);
+          sock_put(sk);
+          return 0;
+      }
+      
+      static int my_bind(struct socket *sock, struct sockaddr *addr, int addrlen)
+      {
+          /* 绑定实现 */
+          return 0;
+      }
+      
+      static int my_connect(struct socket *sock, struct sockaddr *addr,
+                           int addrlen, int flags)
+      {
+          /* 连接实现 */
+          return 0;
+      }
+      
+      static int my_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
+      {
+          struct sock *sk = sock->sk;
+          struct sk_buff *skb;
+          int err;
+          
+          skb = sock_alloc_send_skb(sk, len, 
+                                     msg->msg_flags & MSG_DONTWAIT, &err);
+          if (!skb)
+              return err;
+          
+          /* 复制数据到 skb */
+          err = skb_copy_datagram_from_iter(skb, 0, &msg->msg_iter, len);
+          if (err) {
+              kfree_skb(skb);
+              return err;
+          }
+          
+          /* 发送... */
+          consume_skb(skb);
+          return len;
+      }
+      
+      static int my_recvmsg(struct socket *sock, struct msghdr *msg,
+                           size_t len, int flags)
+      {
+          struct sock *sk = sock->sk;
+          struct sk_buff *skb;
+          int copied;
+          
+          skb = skb_recv_datagram(sk, flags, &err);
+          if (!skb)
+              return err;
+          
+          copied = min_t(size_t, len, skb->len);
+          err = skb_copy_datagram_msg(skb, 0, msg, copied);
+          
+          skb_free_datagram(sk, skb);
+          return err ?: copied;
+      }
+      
+      static __poll_t my_poll(struct file *file, struct socket *sock,
+                             poll_table *wait)
+      {
+          struct sock *sk = sock->sk;
+          __poll_t mask = 0;
+          
+          sock_poll_wait(file, sock, wait);
+          
+          if (!skb_queue_empty(&sk->sk_receive_queue))
+              mask |= EPOLLIN | EPOLLRDNORM;
+          
+          if (sock_writeable(sk))
+              mask |= EPOLLOUT | EPOLLWRNORM;
+          
+          return mask;
+      }
+      
+      static const struct proto_ops my_proto_ops = {
+          .family     = MY_PROTO,
+          .owner      = THIS_MODULE,
+          .release    = my_release,
+          .bind       = my_bind,
+          .connect    = my_connect,
+          .accept     = sock_no_accept,
+          .listen     = sock_no_listen,
+          .sendmsg    = my_sendmsg,
+          .recvmsg    = my_recvmsg,
+          .poll       = my_poll,
+          .ioctl      = sock_no_ioctl,
+          .getname    = sock_no_getname,
+          .shutdown   = sock_no_shutdown,
+          .setsockopt = sock_no_setsockopt,
+          .getsockopt = sock_no_getsockopt,
+          .mmap       = sock_no_mmap,
+      };
+      
+      /* struct proto - 传输协议 */
+      static struct proto my_proto = {
+          .name       = "MY_PROTO",
+          .owner      = THIS_MODULE,
+          .obj_size   = sizeof(struct sock),
+      };
+      
+      /* 创建 socket */
+      static int my_create(struct net *net, struct socket *sock,
+                          int protocol, int kern)
+      {
+          struct sock *sk;
+          
+          if (sock->type != SOCK_DGRAM)
+              return -ESOCKTNOSUPPORT;
+          
+          sk = sk_alloc(net, MY_PROTO, GFP_KERNEL, &my_proto, kern);
+          if (!sk)
+              return -ENOMEM;
+          
+          sock_init_data(sock, sk);
+          sock->ops = &my_proto_ops;
+          
+          return 0;
+      }
+      
+      /* 协议族 */
+      static const struct net_proto_family my_family = {
+          .family = MY_PROTO,
+          .create = my_create,
+          .owner  = THIS_MODULE,
+      };
+      
+      static int __init my_init(void)
+      {
+          int err;
+          
+          err = proto_register(&my_proto, 1);
+          if (err)
+              return err;
+          
+          err = sock_register(&my_family);
+          if (err) {
+              proto_unregister(&my_proto);
+              return err;
+          }
+          
+          pr_info("My protocol registered\n");
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          sock_unregister(MY_PROTO);
+          proto_unregister(&my_proto);
+          pr_info("My protocol unregistered\n");
+      }
+      
+      module_init(my_init);
+      module_exit(my_exit);
+      MODULE_LICENSE("GPL");

@@ -3,101 +3,240 @@
 # Reference: https://www.kernel.org/doc/html/latest/driver-api/reset.html
 
 # ============================================================
-# RESET CORE
+# RESET CONTROLLER DEVICE
 # ============================================================
 
-reset_core:
-  description: "Reset Core - 复位控制器核心"
-  header: "linux/reset.h"
+reset_controller_dev:
+  description: "Reset Controller Device - 复位控制器设备"
+  header: "linux/reset-controller.h"
   icon: "🔄"
+  kernel_version: "3.11+"
 
   context:
     type: "process"
-    can_sleep: false
-    can_schedule: false
-    preemptible: false
-    atomic_context: true
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+    note: "复位操作通常在进程上下文执行"
 
-  bind_patterns:
-    # reset_controller_register - 注册复位控制器
+  structure:
+    pattern: 'struct reset_controller_dev\s+(?P<name>\w+)\s*=\s*\{'
+    description: "复位控制器设备结构体定义"
+    fields:
+      - name: "ops"
+        type: "const struct reset_control_ops *"
+        description: "复位操作函数集"
+        mandatory: true
+      - name: "owner"
+        type: "struct module *"
+        description: "模块所有者"
+        mandatory: true
+      - name: "list"
+        type: "struct list_head"
+        description: "内部链表节点"
+        internal: true
+      - name: "reset_control_head"
+        type: "struct list_head"
+        description: "已请求的复位控制链表头"
+        internal: true
+      - name: "of_node"
+        type: "struct device_node *"
+        description: "设备树节点"
+      - name: "of_reset_n_cells"
+        type: "int"
+        description: "设备树复位说明符的单元格数"
+        default: 1
+      - name: "of_xlate"
+        type: "int (*)(struct reset_controller_dev *, const struct of_phandle_args *)"
+        description: "设备树到复位 ID 的转换函数"
+        optional: true
+      - name: "nr_resets"
+        type: "unsigned int"
+        description: "此控制器支持的复位数量"
+        mandatory: true
+
+  registration:
     - pattern: 'reset_controller_register\s*\(\s*(?P<rcdev>[^)]+)\s*\)'
-      variable_capture: "rcdev"
       description: "注册复位控制器"
+      signature: "int reset_controller_register(struct reset_controller_dev *rcdev)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
 
-    # reset_controller_unregister - 注销复位控制器
     - pattern: 'reset_controller_unregister\s*\(\s*(?P<rcdev>[^)]+)\s*\)'
-      variable_capture: "rcdev"
       description: "注销复位控制器"
+      signature: "void reset_controller_unregister(struct reset_controller_dev *rcdev)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_reset_controller_register\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<rcdev>[^)]+)\s*\)'
+      description: "资源管理方式注册复位控制器 (推荐)"
+      signature: "int devm_reset_controller_register(struct device *dev, struct reset_controller_dev *rcdev)"
+      context: "process"
+      can_sleep: true
 
 
 # ============================================================
-# RESET CONSUMER
+# RESET CONTROL OPS
 # ============================================================
 
-reset_consumer:
-  description: "Reset Consumer - 复位消费者"
-  header: "linux/reset.h"
+reset_control_ops:
+  description: "Reset Control Operations - 复位控制操作函数集"
+  header: "linux/reset-controller.h"
+  icon: "⚙️"
 
-  bind_patterns:
-    # reset_control_get - 获取复位控制
-    - pattern: 'reset_control_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "获取复位控制"
-
-    # reset_control_get_exclusive - 独占获取复位
-    - pattern: 'reset_control_get_exclusive\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "独占获取复位控制"
-
-    # reset_control_get_optional - 可选获取复位
-    - pattern: 'reset_control_get_optional\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "可选获取复位控制"
-
-    # devm_reset_control_get - 资源管理获取复位
-    - pattern: 'devm_reset_control_get\s*\(\s*(?P<dev>[^)]+)\s*,\s*(?P<id>[^)]+)\s*\)'
-      variable_capture: "dev"
-      description: "资源管理获取复位控制"
-
-    # reset_control_put - 释放复位控制
-    - pattern: 'reset_control_put\s*\(\s*(?P<rst>[^)]+)\s*\)'
-      variable_capture: "rst"
-      description: "释放复位控制"
-
-
-# ============================================================
-# RESET OPERATIONS
-# ============================================================
-
-reset_ops:
-  description: "Reset Operations - 复位操作"
-  header: "linux/reset.h"
-
-  bind_patterns:
-    # struct reset_control_ops
-    - pattern: 'struct reset_control_ops\s*\{[^}]+\}'
-      description: "复位操作结构"
+  structure:
+    pattern: 'static const struct reset_control_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "复位操作结构体定义"
+    fields:
+      - name: "reset"
+        type: "int (*)(struct reset_controller_dev *, unsigned long)"
+        description: "执行自复位 (assert + delay + deassert)"
+        note: "用于自动解除复位的硬件"
+      - name: "assert"
+        type: "int (*)(struct reset_controller_dev *, unsigned long)"
+        description: "断言复位 (将设备置于复位状态)"
+      - name: "deassert"
+        type: "int (*)(struct reset_controller_dev *, unsigned long)"
+        description: "解除复位 (将设备从复位状态释放)"
+      - name: "status"
+        type: "int (*)(struct reset_controller_dev *, unsigned long)"
+        description: "获取复位状态"
 
   callbacks:
     reset:
       pattern: '\.reset\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "复位回调"
+      description: "执行完整复位操作回调"
+      trigger: "消费者调用 reset_control_reset()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct reset_controller_dev *rcdev, unsigned long id)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "断言复位信号"
+        - "等待适当的延迟时间"
+        - "解除复位信号"
+      note: "适用于自动解除复位的硬件，无需分别调用 assert/deassert"
 
     assert:
       pattern: '\.assert\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "断言复位"
+      description: "断言复位回调"
+      trigger: "消费者调用 reset_control_assert()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct reset_controller_dev *rcdev, unsigned long id)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "设置复位控制寄存器的对应位"
+        - "将目标设备置于复位状态"
 
     deassert:
       pattern: '\.deassert\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "取消复位"
+      description: "解除复位回调"
+      trigger: "消费者调用 reset_control_deassert()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct reset_controller_dev *rcdev, unsigned long id)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "清除复位控制寄存器的对应位"
+        - "将目标设备从复位状态释放"
 
     status:
       pattern: '\.status\s*=\s*(?P<handler>\w+)'
-      handler_capture: "handler"
-      description: "获取复位状态"
+      description: "获取复位状态回调"
+      trigger: "消费者调用 reset_control_status()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct reset_controller_dev *rcdev, unsigned long id)"
+      return_value:
+        asserted: "1 (设备处于复位状态)"
+        deasserted: "0 (设备正常运行)"
+        failure: "-ERRNO"
+
+
+# ============================================================
+# RESET CONSUMER API
+# ============================================================
+
+reset_consumer:
+  description: "Reset Consumer API - 复位消费者 API"
+  header: "linux/reset.h"
+  icon: "📥"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  get_functions:
+    - pattern: 'reset_control_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "获取复位控制 (独占模式)"
+      signature: "struct reset_control *reset_control_get(struct device *dev, const char *id)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "有效的 reset_control 指针"
+        failure: "ERR_PTR(-ERRNO)"
+
+    - pattern: 'reset_control_get_exclusive\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "获取独占复位控制 (明确语义)"
+      signature: "struct reset_control *reset_control_get_exclusive(struct device *dev, const char *id)"
+      note: "与 reset_control_get 等效，语义更明确"
+
+    - pattern: 'reset_control_get_shared\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "获取共享复位控制"
+      signature: "struct reset_control *reset_control_get_shared(struct device *dev, const char *id)"
+      note: "多个消费者可以共享同一复位线"
+
+    - pattern: 'reset_control_get_optional\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "可选获取独占复位控制"
+      signature: "struct reset_control *reset_control_get_optional_exclusive(struct device *dev, const char *id)"
+      return_value:
+        success: "有效的 reset_control 指针"
+        not_found: "NULL (不是错误)"
+        failure: "ERR_PTR(-ERRNO)"
+
+    - pattern: 'reset_control_get_optional_shared\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "可选获取共享复位控制"
+      signature: "struct reset_control *reset_control_get_optional_shared(struct device *dev, const char *id)"
+
+    - pattern: 'devm_reset_control_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "资源管理获取独占复位控制 (推荐)"
+      signature: "struct reset_control *devm_reset_control_get(struct device *dev, const char *id)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_reset_control_get_exclusive\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "资源管理获取独占复位控制 (明确语义)"
+      signature: "struct reset_control *devm_reset_control_get_exclusive(struct device *dev, const char *id)"
+
+    - pattern: 'devm_reset_control_get_shared\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "资源管理获取共享复位控制"
+      signature: "struct reset_control *devm_reset_control_get_shared(struct device *dev, const char *id)"
+
+    - pattern: 'devm_reset_control_get_optional_exclusive\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "资源管理可选获取独占复位控制"
+      signature: "struct reset_control *devm_reset_control_get_optional_exclusive(struct device *dev, const char *id)"
+
+    - pattern: 'devm_reset_control_get_optional_shared\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "资源管理可选获取共享复位控制"
+      signature: "struct reset_control *devm_reset_control_get_optional_shared(struct device *dev, const char *id)"
+
+  put_functions:
+    - pattern: 'reset_control_put\s*\(\s*(?P<rstc>[^)]+)\s*\)'
+      description: "释放复位控制"
+      signature: "void reset_control_put(struct reset_control *rstc)"
+      note: "使用 devm_* 版本时不需要调用"
 
 
 # ============================================================
@@ -107,51 +246,237 @@ reset_ops:
 reset_actions:
   description: "Reset Actions - 复位操作"
   header: "linux/reset.h"
+  icon: "▶️"
 
-  bind_patterns:
-    # reset_control_reset - 执行复位
-    - pattern: 'reset_control_reset\s*\(\s*(?P<rst>[^)]+)\s*\)'
-      variable_capture: "rst"
-      description: "执行复位"
+  operations:
+    - pattern: 'reset_control_reset\s*\(\s*(?P<rstc>[^)]+)\s*\)'
+      description: "执行完整复位 (assert + 延迟 + deassert)"
+      signature: "int reset_control_reset(struct reset_control *rstc)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_usage: |
+        /* 一次性复位设备 */
+        ret = reset_control_reset(rst);
+        if (ret)
+            return ret;
+      note: "适用于自动解除复位的硬件"
 
-    # reset_control_assert - 断言复位
-    - pattern: 'reset_control_assert\s*\(\s*(?P<rst>[^)]+)\s*\)'
-      variable_capture: "rst"
-      description: "断言复位"
+    - pattern: 'reset_control_assert\s*\(\s*(?P<rstc>[^)]+)\s*\)'
+      description: "断言复位 (将设备置于复位状态)"
+      signature: "int reset_control_assert(struct reset_control *rstc)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_usage: |
+        /* 断言复位 */
+        reset_control_assert(rst);
+        /* 延迟 */
+        usleep_range(10, 20);
+        /* 解除复位 */
+        reset_control_deassert(rst);
 
-    # reset_control_deassert - 取消复位
-    - pattern: 'reset_control_deassert\s*\(\s*(?P<rst>[^)]+)\s*\)'
-      variable_capture: "rst"
-      description: "取消复位"
+    - pattern: 'reset_control_deassert\s*\(\s*(?P<rstc>[^)]+)\s*\)'
+      description: "解除复位 (将设备从复位状态释放)"
+      signature: "int reset_control_deassert(struct reset_control *rstc)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
 
-    # reset_control_status - 获取复位状态
-    - pattern: 'reset_control_status\s*\(\s*(?P<rst>[^)]+)\s*\)'
-      variable_capture: "rst"
+    - pattern: 'reset_control_status\s*\(\s*(?P<rstc>[^)]+)\s*\)'
       description: "获取复位状态"
+      signature: "int reset_control_status(struct reset_control *rstc)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        asserted: "1 (设备处于复位状态)"
+        deasserted: "0 (设备正常运行)"
+        failure: "-ERRNO"
 
-    # reset_control_acquire - 获取复位
-    - pattern: 'reset_control_acquire\s*\(\s*(?P<rst>[^)]+)\s*\)'
-      variable_capture: "rst"
-      description: "获取复位"
+    - pattern: 'reset_control_acquire\s*\(\s*(?P<rstc>[^)]+)\s*\)'
+      description: "获取共享复位控制的独占访问权"
+      signature: "int reset_control_acquire(struct reset_control *rstc)"
+      context: "process"
+      can_sleep: true
+      note: "用于共享复位线的临时独占操作"
 
-    # reset_control_release - 释放复位
-    - pattern: 'reset_control_release\s*\(\s*(?P<rst>[^)]+)\s*\)'
-      variable_capture: "rst"
-      description: "释放复位"
+    - pattern: 'reset_control_release\s*\(\s*(?P<rstc>[^)]+)\s*\)'
+      description: "释放共享复位控制的独占访问权"
+      signature: "void reset_control_release(struct reset_control *rstc)"
+      context: "process"
+      can_sleep: true
 
 
 # ============================================================
-# RESET DEVICE
+# RESET ARRAY API
 # ============================================================
 
-reset_device:
-  description: "Reset Device - 复位设备"
+reset_array:
+  description: "Reset Array API - 复位数组 API"
   header: "linux/reset.h"
+  icon: "📚"
 
-  bind_patterns:
-    # struct reset_controller_dev
-    - pattern: 'struct reset_controller_dev\s*\{[^}]+\}'
-      description: "复位控制器设备结构"
+  overview: |
+    当设备有多个复位线需要同时操作时，可以使用数组 API。
+    这简化了多复位线的管理。
+
+  get_functions:
+    - pattern: 'devm_reset_control_array_get\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<exclusive>[^,]+)\s*,\s*(?P<optional>[^)]+)\s*\)'
+      description: "获取设备所有复位控制的数组"
+      signature: "struct reset_control *devm_reset_control_array_get(struct device *dev, bool exclusive, bool optional)"
+
+    - pattern: 'of_reset_control_array_get\s*\(\s*(?P<np>[^,]+)\s*,\s*(?P<shared>[^,]+)\s*,\s*(?P<optional>[^)]+)\s*\)'
+      description: "从设备树获取复位控制数组"
+      signature: "struct reset_control *of_reset_control_array_get(struct device_node *np, bool shared, bool optional)"
+
+
+# ============================================================
+# EXCLUSIVE VS SHARED
+# ============================================================
+
+exclusive_vs_shared:
+  description: "Exclusive vs Shared Reset Control"
+  icon: "🔐"
+
+  exclusive:
+    description: "独占复位控制"
+    characteristics:
+      - "一次只能有一个消费者持有"
+      - "获取时如果已被占用会失败"
+      - "可以直接调用 assert/deassert/reset"
+    use_case: "设备专属的复位线"
+    api: "reset_control_get() / reset_control_get_exclusive()"
+
+  shared:
+    description: "共享复位控制"
+    characteristics:
+      - "多个消费者可以同时持有"
+      - "使用引用计数管理"
+      - "deassert 只在最后一个消费者调用时生效"
+      - "assert 只在没有其他消费者时生效"
+    use_case: "多个设备共享同一复位线"
+    api: "reset_control_get_shared()"
+    note: |
+      共享复位的行为:
+      - deassert: 引用计数 +1, 仅首次调用时实际解除复位
+      - assert: 引用计数 -1, 仅计数归零时实际断言复位
+      - reset: 不支持 (返回 -EINVAL)
+
+
+# ============================================================
+# RESET CALL CHAINS
+# ============================================================
+
+call_chains:
+  reset_control_reset_flow:
+    description: "reset_control_reset() 调用链"
+    trigger: "消费者驱动调用 reset_control_reset()"
+    chain:
+      - function: "reset_control_reset"
+        file: "drivers/reset/core.c"
+        description: "消费者 API 入口"
+        context: "process"
+      - function: "rstc->rcdev->ops->reset"
+        file: "用户驱动代码"
+        description: "调用控制器的 reset 回调"
+        is_user_entry: true
+
+  reset_control_deassert_flow:
+    description: "reset_control_deassert() 调用链"
+    trigger: "消费者驱动调用 reset_control_deassert()"
+    chain:
+      - function: "reset_control_deassert"
+        file: "drivers/reset/core.c"
+        description: "消费者 API 入口"
+        context: "process"
+      - function: "__reset_control_deassert"
+        file: "drivers/reset/core.c"
+        description: "内部实现 (处理共享计数)"
+      - function: "rstc->rcdev->ops->deassert"
+        file: "用户驱动代码"
+        description: "调用控制器的 deassert 回调"
+        is_user_entry: true
+
+  reset_controller_registration_flow:
+    description: "复位控制器注册调用链"
+    trigger: "控制器驱动 probe 函数调用注册"
+    chain:
+      - function: "my_reset_probe"
+        file: "用户驱动代码"
+        description: "控制器驱动探测函数"
+        context: "process"
+        is_user_entry: true
+      - function: "devm_reset_controller_register"
+        file: "drivers/reset/core.c"
+        description: "资源管理注册"
+      - function: "reset_controller_register"
+        file: "drivers/reset/core.c"
+        description: "核心注册函数"
+      - function: "list_add"
+        file: "drivers/reset/core.c"
+        description: "添加到全局复位控制器链表"
+
+  consumer_probe_flow:
+    description: "复位消费者 probe 调用链"
+    trigger: "消费者驱动 probe 时获取复位控制"
+    chain:
+      - function: "my_device_probe"
+        file: "用户驱动代码"
+        description: "消费者驱动探测函数"
+        context: "process"
+        is_user_entry: true
+      - function: "devm_reset_control_get"
+        file: "drivers/reset/core.c"
+        description: "获取复位控制"
+      - function: "__of_reset_control_get"
+        file: "drivers/reset/core.c"
+        description: "从设备树解析复位信息"
+      - function: "__reset_control_get"
+        file: "drivers/reset/core.c"
+        description: "创建 reset_control 结构"
+      - function: "reset_control_deassert"
+        file: "用户驱动代码"
+        description: "解除复位以初始化设备"
+        is_user_entry: true
+
+
+# ============================================================
+# DEVICE TREE BINDING
+# ============================================================
+
+device_tree:
+  description: "Device Tree Binding - 设备树绑定"
+  icon: "🌳"
+
+  controller_binding:
+    description: "复位控制器设备树节点"
+    example: |
+      reset: reset-controller@1000 {
+          compatible = "vendor,my-reset";
+          reg = <0x1000 0x100>;
+          #reset-cells = <1>;  /* 复位说明符单元格数 */
+      };
+
+  consumer_binding:
+    description: "复位消费者设备树节点"
+    example: |
+      device@2000 {
+          compatible = "vendor,my-device";
+          reg = <0x2000 0x100>;
+          /* 单个复位 */
+          resets = <&reset 0>;
+          reset-names = "core";
+
+          /* 多个复位 */
+          /* resets = <&reset 0>, <&reset 1>;
+             reset-names = "core", "bus"; */
+      };
 
 
 # ============================================================
@@ -159,31 +484,87 @@ reset_device:
 # ============================================================
 
 examples:
-  - description: "复位控制器驱动"
+  - description: "完整复位控制器驱动示例"
+    kernel_version: "4.0+"
     code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/reset-controller.h>
+      #include <linux/io.h>
+      #include <linux/delay.h>
+
+      #define RST_CTRL    0x00  /* 复位控制寄存器 */
+      #define RST_STATUS  0x04  /* 复位状态寄存器 */
+      #define NR_RESETS   32    /* 支持的复位数量 */
+
+      struct my_reset {
+          void __iomem *base;
+          spinlock_t lock;
+          struct reset_controller_dev rcdev;
+      };
+
       static int my_reset_reset(struct reset_controller_dev *rcdev,
-                                unsigned long id) {
-          writel(BIT(id), rst_base + RST_ASSERT_REG);
-          udelay(10);
-          writel(BIT(id), rst_base + RST_DEASSERT_REG);
+                                unsigned long id)
+      {
+          struct my_reset *rst = container_of(rcdev, struct my_reset, rcdev);
+          unsigned long flags;
+
+          spin_lock_irqsave(&rst->lock, flags);
+
+          /* 断言复位 */
+          writel(readl(rst->base + RST_CTRL) | BIT(id), rst->base + RST_CTRL);
+
+          spin_unlock_irqrestore(&rst->lock, flags);
+
+          /* 等待复位稳定 */
+          usleep_range(10, 20);
+
+          spin_lock_irqsave(&rst->lock, flags);
+
+          /* 解除复位 */
+          writel(readl(rst->base + RST_CTRL) & ~BIT(id), rst->base + RST_CTRL);
+
+          spin_unlock_irqrestore(&rst->lock, flags);
+
           return 0;
       }
 
       static int my_reset_assert(struct reset_controller_dev *rcdev,
-                                 unsigned long id) {
-          writel(BIT(id), rst_base + RST_ASSERT_REG);
+                                 unsigned long id)
+      {
+          struct my_reset *rst = container_of(rcdev, struct my_reset, rcdev);
+          unsigned long flags;
+
+          spin_lock_irqsave(&rst->lock, flags);
+
+          writel(readl(rst->base + RST_CTRL) | BIT(id), rst->base + RST_CTRL);
+
+          spin_unlock_irqrestore(&rst->lock, flags);
+
           return 0;
       }
 
       static int my_reset_deassert(struct reset_controller_dev *rcdev,
-                                   unsigned long id) {
-          writel(BIT(id), rst_base + RST_DEASSERT_REG);
+                                   unsigned long id)
+      {
+          struct my_reset *rst = container_of(rcdev, struct my_reset, rcdev);
+          unsigned long flags;
+
+          spin_lock_irqsave(&rst->lock, flags);
+
+          writel(readl(rst->base + RST_CTRL) & ~BIT(id), rst->base + RST_CTRL);
+
+          spin_unlock_irqrestore(&rst->lock, flags);
+
           return 0;
       }
 
       static int my_reset_status(struct reset_controller_dev *rcdev,
-                                 unsigned long id) {
-          return readl(rst_base + RST_STATUS_REG) & BIT(id);
+                                 unsigned long id)
+      {
+          struct my_reset *rst = container_of(rcdev, struct my_reset, rcdev);
+
+          return !!(readl(rst->base + RST_STATUS) & BIT(id));
       }
 
       static const struct reset_control_ops my_reset_ops = {
@@ -193,32 +574,204 @@ examples:
           .status = my_reset_status,
       };
 
-      static struct reset_controller_dev my_rcdev = {
-          .ops = &my_reset_ops,
-          .owner = THIS_MODULE,
-          .nr_resets = 32,
-          .of_node = dev->of_node,
-      };
+      static int my_reset_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct my_reset *rst;
+          struct resource *res;
 
-      static int __init my_init(void) {
-          return reset_controller_register(&my_rcdev);
+          rst = devm_kzalloc(dev, sizeof(*rst), GFP_KERNEL);
+          if (!rst)
+              return -ENOMEM;
+
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          rst->base = devm_ioremap_resource(dev, res);
+          if (IS_ERR(rst->base))
+              return PTR_ERR(rst->base);
+
+          spin_lock_init(&rst->lock);
+
+          rst->rcdev.owner = THIS_MODULE;
+          rst->rcdev.ops = &my_reset_ops;
+          rst->rcdev.of_node = dev->of_node;
+          rst->rcdev.nr_resets = NR_RESETS;
+          rst->rcdev.of_reset_n_cells = 1;
+
+          return devm_reset_controller_register(dev, &rst->rcdev);
       }
 
-      /* 消费者使用示例 */
-      static int my_probe(struct platform_device *pdev) {
-          struct reset_control *rst;
+      static const struct of_device_id my_reset_of_match[] = {
+          { .compatible = "vendor,my-reset" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_reset_of_match);
 
-          rst = devm_reset_control_get(&pdev->dev, NULL);
+      static struct platform_driver my_reset_driver = {
+          .probe = my_reset_probe,
+          .driver = {
+              .name = "my-reset",
+              .of_match_table = my_reset_of_match,
+          },
+      };
+      module_platform_driver(my_reset_driver);
+
+      MODULE_LICENSE("GPL");
+      MODULE_DESCRIPTION("My Reset Controller Driver");
+      MODULE_AUTHOR("Author");
+
+  - description: "复位消费者驱动示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/reset.h>
+      #include <linux/delay.h>
+
+      struct my_device {
+          void __iomem *base;
+          struct reset_control *rst;
+          struct reset_control *rst_bus;  /* 可选的第二个复位 */
+      };
+
+      static int my_device_init_hw(struct my_device *dev)
+      {
+          int ret;
+
+          /* 方式 1: 使用 reset (自动 assert + delay + deassert) */
+          ret = reset_control_reset(dev->rst);
+          if (ret)
+              return ret;
+
+          /* 方式 2: 手动控制 */
+          /*
+          reset_control_assert(dev->rst);
+          usleep_range(10, 20);
+          reset_control_deassert(dev->rst);
+          */
+
+          return 0;
+      }
+
+      static int my_device_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct my_device *priv;
+          struct resource *res;
+          int ret;
+
+          priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+          if (!priv)
+              return -ENOMEM;
+
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          priv->base = devm_ioremap_resource(dev, res);
+          if (IS_ERR(priv->base))
+              return PTR_ERR(priv->base);
+
+          /* 获取必需的复位控制 */
+          priv->rst = devm_reset_control_get_exclusive(dev, "core");
+          if (IS_ERR(priv->rst)) {
+              dev_err(dev, "Failed to get reset control\n");
+              return PTR_ERR(priv->rst);
+          }
+
+          /* 获取可选的复位控制 */
+          priv->rst_bus = devm_reset_control_get_optional_exclusive(dev, "bus");
+          if (IS_ERR(priv->rst_bus))
+              priv->rst_bus = NULL;
+
+          /* 解除复位以初始化设备 */
+          if (priv->rst_bus) {
+              ret = reset_control_deassert(priv->rst_bus);
+              if (ret)
+                  return ret;
+          }
+
+          ret = reset_control_deassert(priv->rst);
+          if (ret) {
+              if (priv->rst_bus)
+                  reset_control_assert(priv->rst_bus);
+              return ret;
+          }
+
+          platform_set_drvdata(pdev, priv);
+
+          /* 设备初始化... */
+
+          return 0;
+      }
+
+      static void my_device_remove(struct platform_device *pdev)
+      {
+          struct my_device *priv = platform_get_drvdata(pdev);
+
+          /* 断言复位以关闭设备 */
+          reset_control_assert(priv->rst);
+          if (priv->rst_bus)
+              reset_control_assert(priv->rst_bus);
+      }
+
+      static const struct of_device_id my_device_of_match[] = {
+          { .compatible = "vendor,my-device" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_device_of_match);
+
+      static struct platform_driver my_device_driver = {
+          .probe = my_device_probe,
+          .remove = my_device_remove,
+          .driver = {
+              .name = "my-device",
+              .of_match_table = my_device_of_match,
+          },
+      };
+      module_platform_driver(my_device_driver);
+
+      MODULE_LICENSE("GPL");
+      MODULE_DESCRIPTION("My Device Driver with Reset");
+      MODULE_AUTHOR("Author");
+
+  - description: "共享复位控制示例"
+    code: |
+      /*
+       * 共享复位使用场景:
+       * 当多个设备共享同一个复位信号时，使用共享复位控制。
+       * 
+       * 设备树示例:
+       *   device1: device@1000 {
+       *       resets = <&reset 0>;
+       *   };
+       *   device2: device@2000 {
+       *       resets = <&reset 0>;  // 共享同一个复位
+       *   };
+       */
+
+      static int shared_device_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct reset_control *rst;
+          int ret;
+
+          /* 获取共享复位控制 */
+          rst = devm_reset_control_get_shared(dev, NULL);
           if (IS_ERR(rst))
               return PTR_ERR(rst);
 
-          /* 解除复位 */
-          reset_control_deassert(rst);
+          /*
+           * 解除复位 - 引用计数增加
+           * 只有第一个调用者会实际解除复位
+           */
+          ret = reset_control_deassert(rst);
+          if (ret)
+              return ret;
 
-          /* 设备操作 */
+          /* ... 设备操作 ... */
 
-          /* 断言复位 */
-          reset_control_assert(rst);
+          /*
+           * 断言复位 - 引用计数减少
+           * 只有最后一个调用者会实际断言复位
+           */
+          /* reset_control_assert(rst); */
 
           return 0;
       }
