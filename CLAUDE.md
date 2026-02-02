@@ -191,6 +191,7 @@ flowsight/
 > - **隐私保护（必须！）**:
 >   - **禁止**在 commit 中暴露真实邮箱地址
 >   - **禁止**使用 `@xxxxx.local` 等自动生成的邮箱
+>   - **禁止**在 commit message 中添加 `Co-authored-by` 行（包括 Cursor/Claude 等）
 >   - 首次提交前**必须**配置匿名用户信息:
 >     ```bash
 >     git config user.name "FlowSight"
@@ -201,7 +202,13 @@ flowsight/
 >     git config user.name "DeskPilot"
 >     git config user.email ""
 >     ```
->   - 如果发现已提交包含邮箱，立即用 `git filter-branch` 清除并 force push
+>   - 如果发现已提交包含邮箱或 Co-authored-by，用 `git-filter-repo` 清除并 force push:
+>     ```bash
+>     pip3 install git-filter-repo
+>     git-filter-repo --message-callback 'return message.replace(b"Co-authored-by: Cursor <cursoragent@cursor.com>\n", b"")' --force
+>     git remote add origin git@github.com:TbusOS/flowsight.git
+>     git push origin --force --all
+>     ```
 
 ### 快速开始
 
