@@ -18,6 +18,7 @@ import "@xyflow/react/dist/style.css"
 import { invoke } from "../../lib/tauri-api"
 import { Loader2, Zap, Play, RefreshCw, Download, Copy, Check, Search, Filter, X, GitBranch, AlignLeft, Network, FileOutput } from "lucide-react"
 import { cn } from "../../lib/utils"
+import { useDebounce } from "../../hooks/usePerformance"
 import { useAtomValue, useSetAtom, useAtom } from "jotai"
 import { 
   currentFileAtom, 
@@ -63,9 +64,9 @@ function getContextInfo(context: FunctionNodeData["context"]) {
   }
 }
 
-// 自定义函数节点组件
-function FunctionNode({ data }: { data: FunctionNodeData }) {
-  const getNodeStyle = () => {
+// 自定义函数节点组件 - 使用 React.memo 优化重渲染
+const FunctionNode = React.memo(function FunctionNode({ data }: { data: FunctionNodeData }) {
+  const nodeStyle = React.useMemo(() => {
     switch (data.type) {
       case "entry":
         return "bg-[var(--accent)] text-white border-[var(--accent)]"
@@ -76,15 +77,15 @@ function FunctionNode({ data }: { data: FunctionNodeData }) {
       default:
         return "bg-[var(--bg-tertiary)] text-[var(--text-primary)] border-[var(--border-light)]"
     }
-  }
+  }, [data.type])
 
-  const contextInfo = getContextInfo(data.context)
+  const contextInfo = React.useMemo(() => getContextInfo(data.context), [data.context])
 
   return (
     <div
       className={cn(
         "px-3 py-2 rounded-lg border-2 shadow-lg min-w-[120px] text-center relative",
-        getNodeStyle()
+        nodeStyle
       )}
     >
       <Handle type="target" position={Position.Top} className="!bg-[var(--accent)]" />
@@ -120,7 +121,7 @@ function FunctionNode({ data }: { data: FunctionNodeData }) {
       <Handle type="source" position={Position.Bottom} className="!bg-[var(--accent)]" />
     </div>
   )
-}
+})
 
 const nodeTypes = {
   function: FunctionNode,
@@ -232,11 +233,14 @@ export function FlowView({ className }: FlowViewProps) {
   const [searchQuery, setSearchQuery] = React.useState("")
   const [filterType, setFilterType] = React.useState<"all" | "async" | "callback" | "function">("all")
   const [showSearch, setShowSearch] = React.useState(false)
+  
+  // 搜索防抖 - 300ms 延迟，避免频繁重渲染
+  const debouncedSearchQuery = useDebounce(searchQuery, 300)
 
   // ftrace 格式数据
   const [ftraceOutput, setFtraceOutput] = React.useState<string>("")
 
-  // 过滤后的节点和边
+  // 过滤后的节点和边 - 使用防抖后的搜索词
   const filteredNodes = React.useMemo(() => {
     let result = nodes
     
@@ -245,16 +249,16 @@ export function FlowView({ className }: FlowViewProps) {
       result = result.filter(node => node.data.type === filterType)
     }
     
-    // 按搜索关键词过滤
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
+    // 按搜索关键词过滤 (使用防抖后的值)
+    if (debouncedSearchQuery.trim()) {
+      const query = debouncedSearchQuery.toLowerCase()
       result = result.filter(node => 
         node.data.label.toLowerCase().includes(query)
       )
     }
     
     return result
-  }, [nodes, filterType, searchQuery])
+  }, [nodes, filterType, debouncedSearchQuery])
 
   // 过滤后的边（只保留两端节点都存在的边）
   const filteredEdges = React.useMemo(() => {
