@@ -423,6 +423,20 @@ export const Icons = {
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </IconWrapper>
   ),
+
+  // 筛选器
+  Filter: ({ size = 14, className }: IconProps) => (
+    <IconWrapper size={size} className={className}>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </IconWrapper>
+  ),
+
+  // 盾牌/置信度
+  Shield: ({ size = 14, className }: IconProps) => (
+    <IconWrapper size={size} className={className}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </IconWrapper>
+  ),
 }
 
 export default Icons

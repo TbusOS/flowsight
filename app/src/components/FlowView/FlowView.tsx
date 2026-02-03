@@ -59,6 +59,10 @@ const ASYNC_COLORS: Record<string, string> = {
   Rcu: 'var(--async-rcu)',
 }
 
+// Filter options
+export type AsyncFilterType = 'all' | 'WorkQueue' | 'Timer' | 'Irq' | 'Tasklet' | 'KThread' | 'Softirq' | 'Completion' | 'Rcu'
+export type ConfidenceFilterType = 'all' | 'Certain' | 'Possible' | 'Unknown'
+
 // Interface
 interface FlowViewProps {
   flowTrees: FlowTreeNode[]
@@ -142,6 +146,17 @@ function buildFunctionMap(flowTrees: FlowTreeNode[]): Map<string, FlowTreeNode> 
 
   flowTrees.forEach(traverse)
   return map
+}
+
+// Helper: Count nodes in a tree
+function countNodes(node: FlowTreeNode): number {
+  let count = 1
+  if (node.children) {
+    for (const child of node.children) {
+      count += countNodes(child)
+    }
+  }
+  return count
 }
 
 // Dagre layout algorithm
@@ -365,6 +380,11 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction, executionFlow
   const [hideKernelApi, setHideKernelApi] = useState(false)
   const [hoveredNode, setHoveredNode] = useState<string | null>(null)
   const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 })
+  
+  // Filter state
+  const [asyncFilter, setAsyncFilter] = useState<AsyncFilterType>('all')
+  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilterType>('all')
+  const [showFilterPanel, setShowFilterPanel] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<string[]>([])
   const [searchIndex, setSearchIndex] = useState(0)
@@ -399,10 +419,54 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction, executionFlow
     }
   }, [flowTrees])
 
+  // Filter helper: check if node matches async filter
+  const matchesAsyncFilter = useCallback((node: FlowTreeNode): boolean => {
+    if (asyncFilter === 'all') return true
+    const label = getAsyncLabel(node.node_type)
+    return label === asyncFilter
+  }, [asyncFilter])
+
+  // Filter helper: check if node matches confidence filter
+  const matchesConfidenceFilter = useCallback((node: FlowTreeNode): boolean => {
+    if (confidenceFilter === 'all') return true
+    return node.confidence?.level === confidenceFilter
+  }, [confidenceFilter])
+
+  // Filter trees recursively
+  const filteredFlowTrees = useMemo(() => {
+    if (asyncFilter === 'all' && confidenceFilter === 'all') {
+      return flowTrees
+    }
+
+    const filterTree = (node: FlowTreeNode): FlowTreeNode | null => {
+      // Filter children first
+      const filteredChildren = node.children
+        ?.map(filterTree)
+        .filter((c): c is FlowTreeNode => c !== null)
+
+      // Check if this node matches or has matching children
+      const nodeMatches = matchesAsyncFilter(node) && matchesConfidenceFilter(node)
+      const hasMatchingChildren = filteredChildren && filteredChildren.length > 0
+
+      if (nodeMatches || hasMatchingChildren) {
+        return {
+          ...node,
+          children: filteredChildren,
+        }
+      }
+
+      return null
+    }
+
+    return flowTrees
+      .map(filterTree)
+      .filter((t): t is FlowTreeNode => t !== null)
+  }, [flowTrees, asyncFilter, confidenceFilter, matchesAsyncFilter, matchesConfidenceFilter])
+
   // Build nodes and edges
   const { nodes: layoutedNodes, edges, nodeIdMap } = useMemo(() => {
-    return buildFlowGraph(flowTrees, expandedNodes, hideKernelApi, selectedFunction, highlightPath)
-  }, [flowTrees, expandedNodes, hideKernelApi, selectedFunction, highlightPath])
+    return buildFlowGraph(filteredFlowTrees, expandedNodes, hideKernelApi, selectedFunction, highlightPath)
+  }, [filteredFlowTrees, expandedNodes, hideKernelApi, selectedFunction, highlightPath])
 
   // React Flow state
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(layoutedNodes)
@@ -689,6 +753,17 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction, executionFlow
           <Icons.Download size={14} />
         </button>
 
+        <div className="toolbar-divider" />
+
+        {/* Filter Toggle */}
+        <button
+          onClick={() => setShowFilterPanel(!showFilterPanel)}
+          className={showFilterPanel ? 'active' : ''}
+          title="筛选"
+        >
+          <Icons.Filter size={14} />
+        </button>
+
         {/* Search */}
         <div className="flow-search">
           <Icons.Search size={12} />
@@ -707,6 +782,61 @@ function FlowViewInner({ flowTrees, onNodeClick, selectedFunction, executionFlow
           )}
         </div>
       </div>
+
+      {/* Filter Panel */}
+      {showFilterPanel && (
+        <div className="flow-filter-panel">
+          <div className="filter-section">
+            <label className="filter-label">
+              <Icons.Zap size={11} />
+              异步机制
+            </label>
+            <div className="filter-options">
+              {(['all', 'WorkQueue', 'Timer', 'Irq', 'Tasklet', 'KThread', 'Softirq', 'Completion', 'Rcu'] as AsyncFilterType[]).map((type) => (
+                <button
+                  key={type}
+                  className={`filter-btn ${asyncFilter === type ? 'active' : ''}`}
+                  onClick={() => setAsyncFilter(type)}
+                  style={type !== 'all' ? { '--async-color': ASYNC_COLORS[type] } as React.CSSProperties : undefined}
+                >
+                  {type === 'all' ? '全部' : type}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="filter-section">
+            <label className="filter-label">
+              <Icons.Shield size={11} />
+              置信度
+            </label>
+            <div className="filter-options">
+              {(['all', 'Certain', 'Possible', 'Unknown'] as ConfidenceFilterType[]).map((type) => (
+                <button
+                  key={type}
+                  className={`filter-btn confidence-${type.toLowerCase()} ${confidenceFilter === type ? 'active' : ''}`}
+                  onClick={() => setConfidenceFilter(type)}
+                >
+                  {type === 'all' ? '全部' : type === 'Certain' ? '确定' : type === 'Possible' ? '可能' : '未知'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {(asyncFilter !== 'all' || confidenceFilter !== 'all') && (
+            <div className="filter-status">
+              <span className="filter-count">
+                显示 {filteredFlowTrees.length > 0 ? 
+                  filteredFlowTrees.reduce((acc, t) => acc + countNodes(t), 0) : 0} 个节点
+              </span>
+              <button 
+                className="clear-filter"
+                onClick={() => { setAsyncFilter('all'); setConfidenceFilter('all'); }}
+              >
+                清除筛选
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ExecutionFlow info panel (Phase 2) */}
       {executionFlow && (
