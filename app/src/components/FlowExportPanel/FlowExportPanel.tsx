@@ -30,6 +30,8 @@ import {
   Eye,
   FileCode,
   RefreshCw,
+  Image,
+  FileImage,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import mermaid from 'mermaid'
@@ -228,6 +230,89 @@ export function FlowExportPanel({ filePath, entryFunction, onClose }: FlowExport
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('复制失败:', err)
+    }
+  }
+
+  // 导出为 SVG 图像
+  const handleExportSvg = async () => {
+    if (!mermaidSvg) {
+      console.error('No SVG available')
+      return
+    }
+    try {
+      const path = await save({
+        defaultPath: `${entryFunction}-flow.svg`,
+        filters: [{ name: 'SVG', extensions: ['svg'] }],
+      })
+      if (path) {
+        await invoke('write_file', {
+          path,
+          contents: mermaidSvg,
+        })
+      }
+    } catch (err) {
+      console.error('SVG 导出失败:', err)
+    }
+  }
+
+  // 导出为 PNG 图像
+  const handleExportPng = async () => {
+    if (!mermaidSvg) {
+      console.error('No SVG available')
+      return
+    }
+    try {
+      // 创建 Canvas 将 SVG 转换为 PNG
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+
+      // 从 SVG 中提取尺寸
+      const parser = new DOMParser()
+      const svgDoc = parser.parseFromString(mermaidSvg, 'image/svg+xml')
+      const svgElement = svgDoc.querySelector('svg')
+      
+      // 获取 SVG 尺寸，设置 2x 分辨率
+      const width = svgElement?.getAttribute('width') || '800'
+      const height = svgElement?.getAttribute('height') || '600'
+      const scale = 2
+      canvas.width = parseInt(width) * scale
+      canvas.height = parseInt(height) * scale
+      ctx.scale(scale, scale)
+
+      // 设置背景色
+      ctx.fillStyle = '#111827'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      // 将 SVG 转换为 Data URL
+      const svgBlob = new Blob([mermaidSvg], { type: 'image/svg+xml' })
+      const svgUrl = URL.createObjectURL(svgBlob)
+
+      // 创建图像并绘制到 Canvas
+      const img = new window.Image()
+      img.onload = async () => {
+        ctx.drawImage(img, 0, 0)
+        URL.revokeObjectURL(svgUrl)
+
+        // 导出为 PNG
+        const pngDataUrl = canvas.toDataURL('image/png')
+        const pngData = pngDataUrl.split(',')[1] // Base64 数据
+
+        const path = await save({
+          defaultPath: `${entryFunction}-flow.png`,
+          filters: [{ name: 'PNG', extensions: ['png'] }],
+        })
+        if (path) {
+          // 使用 Tauri 写入二进制文件
+          await invoke('write_file_base64', {
+            path,
+            base64: pngData,
+          })
+        }
+      }
+      img.src = svgUrl
+    } catch (err) {
+      console.error('PNG 导出失败:', err)
     }
   }
 
@@ -499,6 +584,34 @@ export function FlowExportPanel({ filePath, entryFunction, onClose }: FlowExport
             title="导出文件"
           >
             <Download className="h-4 w-4" />
+          </button>
+          {/* 导出 SVG */}
+          <button
+            onClick={handleExportSvg}
+            disabled={!mermaidSvg}
+            className={cn(
+              "p-1.5 rounded transition-colors",
+              mermaidSvg 
+                ? "hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                : "text-[var(--text-muted)]/30 cursor-not-allowed"
+            )}
+            title="导出 SVG 图像"
+          >
+            <FileImage className="h-4 w-4" />
+          </button>
+          {/* 导出 PNG */}
+          <button
+            onClick={handleExportPng}
+            disabled={!mermaidSvg}
+            className={cn(
+              "p-1.5 rounded transition-colors",
+              mermaidSvg 
+                ? "hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                : "text-[var(--text-muted)]/30 cursor-not-allowed"
+            )}
+            title="导出 PNG 图像"
+          >
+            <Image className="h-4 w-4" />
           </button>
           {/* 关闭 */}
           {onClose && (

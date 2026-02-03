@@ -25,6 +25,7 @@ pub fn run() {
             commands::get_functions,
             commands::read_file,
             commands::write_file,
+            commands::write_file_base64,
             commands::open_project,
             commands::search_symbols,
             commands::get_index_stats,

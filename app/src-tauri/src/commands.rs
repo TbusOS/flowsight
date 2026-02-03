@@ -103,6 +103,17 @@ pub async fn write_file(path: String, content: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Write binary file from base64 encoded content
+#[tauri::command]
+pub async fn write_file_base64(path: String, base64: String) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&base64)
+        .map_err(|e| format!("Base64 decode failed: {}", e))?;
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Global index state - 使用 RwLock 优化并发读取性能
 static INDEX: Lazy<RwLock<SymbolIndex>> = Lazy::new(|| RwLock::new(SymbolIndex::new()));
 

@@ -34,4 +34,5 @@ once_cell = "1.19"
 walkdir = "2.4"
 rayon = "1.10"
 regex = "1.10"
+base64 = "0.22"
 
