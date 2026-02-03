@@ -202,6 +202,20 @@ cache_management:
       variable_capture: "struct"
       description: "快速创建支持用户拷贝的缓存"
 
+    # kmem_cache_size - 获取缓存对象大小
+    - pattern: 'kmem_cache_size\s*\(\s*(?P<cache>[^)]+)\s*\)'
+      variable_capture: "cache"
+      description: "获取缓存的对象大小"
+
+    # kmem_cache_name - 获取缓存名称
+    - pattern: 'kmem_cache_name\s*\(\s*(?P<cache>[^)]+)\s*\)'
+      variable_capture: "cache"
+      description: "获取缓存的名称"
+
+    # slab_is_available - 检查 SLAB 是否可用
+    - pattern: 'slab_is_available\s*\(\s*\)'
+      description: "检查 SLAB 分配器是否初始化完成"
+
   cache_flags:
     - name: "SLAB_HWCACHE_ALIGN"
       description: "硬件缓存行对齐"

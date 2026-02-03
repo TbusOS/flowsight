@@ -1,0 +1,855 @@
+# Linux Kernel Memory-Mapped I/O Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/device-io.html
+# Source: include/asm-generic/io.h, arch/*/include/asm/io.h
+# Completeness: 95%+ (KB-Memory Agent)
+
+# ============================================================
+# MMIO OVERVIEW
+# ============================================================
+
+mmio_overview:
+  description: "Memory-Mapped I/O - 内存映射 I/O"
+  header: "linux/io.h"
+  icon: "🖥️"
+  kernel_version: "2.6+"
+  
+  context:
+    type: "any"
+    can_sleep: "depends on function"
+    can_schedule: "depends on function"
+    preemptible: "depends on function"
+  
+  overview: |
+    MMIO 允许通过内存地址访问设备寄存器。
+    - 必须先使用 ioremap 映射物理地址
+    - 使用专用函数 (readl/writel 等) 访问
+    - 避免编译器优化和缓存问题
+    - 不同架构可能有不同的内存屏障语义
+
+# ============================================================
+# IOREMAP FUNCTIONS
+# ============================================================
+
+ioremap_functions:
+  description: "Ioremap Functions - IO 内存映射函数"
+  header: "asm/io.h"
+  icon: "🗺️"
+
+  bind_patterns:
+    # ioremap - 映射 IO 内存
+    - pattern: 'ioremap\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "映射物理 IO 地址到虚拟地址"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "void __iomem *"
+        failure: "NULL"
+      note: "返回的指针必须用于 readl/writel 等函数"
+
+    # ioremap_nocache - 非缓存映射 (已废弃)
+    - pattern: 'ioremap_nocache\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "非缓存映射 IO 内存 (已废弃)"
+      deprecated: true
+      replacement: "ioremap"
+
+    # ioremap_wc - Write-Combining 映射
+    - pattern: 'ioremap_wc\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "Write-Combining 映射 (适合帧缓冲)"
+      context: "process"
+      can_sleep: true
+      use_case: "显存、大块连续写入"
+
+    # ioremap_wt - Write-Through 映射
+    - pattern: 'ioremap_wt\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "Write-Through 映射"
+      context: "process"
+      can_sleep: true
+
+    # ioremap_cache - 可缓存映射
+    - pattern: 'ioremap_cache\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "可缓存映射 (仅限 RAM)"
+      context: "process"
+      can_sleep: true
+      warning: "不要用于真正的设备寄存器"
+
+    # ioremap_np - 非 posted 映射
+    - pattern: 'ioremap_np\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "非 posted 写入映射"
+      context: "process"
+      can_sleep: true
+      note: "写入立即完成，不被缓冲"
+
+    # iounmap - 取消映射
+    - pattern: 'iounmap\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "取消 ioremap 映射"
+      context: "process"
+      can_sleep: true
+
+    # memremap - 通用内存重映射
+    - pattern: 'memremap\s*\(\s*(?P<offset>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+      variable_capture: "offset"
+      description: "通用内存重映射接口"
+      context: "process"
+      can_sleep: true
+
+    # memunmap - 取消 memremap 映射
+    - pattern: 'memunmap\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "取消 memremap 映射"
+      context: "process"
+      can_sleep: true
+
+# ============================================================
+# DEVM IOREMAP (DEVICE MANAGED)
+# ============================================================
+
+devm_ioremap:
+  description: "Device Managed Ioremap - 设备管理的映射"
+  header: "linux/io.h"
+  icon: "🔧"
+
+  bind_patterns:
+    # devm_ioremap - 设备管理的映射
+    - pattern: 'devm_ioremap\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "设备管理的 IO 内存映射"
+      context: "process"
+      can_sleep: true
+      note: "设备移除时自动 iounmap"
+
+    # devm_ioremap_wc - 设备管理的 WC 映射
+    - pattern: 'devm_ioremap_wc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "设备管理的 Write-Combining 映射"
+      context: "process"
+      can_sleep: true
+
+    # devm_ioremap_resource - 映射平台资源
+    - pattern: 'devm_ioremap_resource\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<res>[^)]+)\s*\)'
+      variable_capture: "res"
+      description: "映射平台设备资源 (推荐)"
+      context: "process"
+      can_sleep: true
+      note: "自动检查资源类型和请求区域"
+      return_value:
+        success: "void __iomem *"
+        failure: "ERR_PTR(-ERRNO)"
+
+    # devm_platform_ioremap_resource - 平台设备映射
+    - pattern: 'devm_platform_ioremap_resource\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<index>[^)]+)\s*\)'
+      variable_capture: "pdev"
+      description: "映射平台设备第 N 个资源"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "void __iomem *"
+        failure: "ERR_PTR(-ERRNO)"
+
+    # devm_platform_ioremap_resource_byname - 按名称映射
+    - pattern: 'devm_platform_ioremap_resource_byname\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "name"
+      description: "按名称映射平台设备资源"
+      context: "process"
+      can_sleep: true
+
+    # devm_platform_get_and_ioremap_resource - 获取并映射
+    - pattern: 'devm_platform_get_and_ioremap_resource\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<res>[^)]+)\s*\)'
+      variable_capture: "pdev"
+      description: "获取资源信息并映射"
+      context: "process"
+      can_sleep: true
+
+    # devm_iounmap - 设备管理的取消映射 (通常不需要)
+    - pattern: 'devm_iounmap\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "手动取消设备管理的映射"
+      note: "通常不需要调用"
+
+# ============================================================
+# MMIO READ FUNCTIONS
+# ============================================================
+
+mmio_read:
+  description: "MMIO Read Functions - 内存映射读取"
+  header: "asm/io.h"
+  icon: "📖"
+
+  bind_patterns:
+    # readb - 读取 8 位
+    - pattern: 'readb\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "读取 8 位 (1 字节)"
+      context: "any"
+      can_sleep: false
+      return_type: "u8"
+
+    # readw - 读取 16 位
+    - pattern: 'readw\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "读取 16 位 (2 字节)"
+      context: "any"
+      can_sleep: false
+      return_type: "u16"
+
+    # readl - 读取 32 位
+    - pattern: 'readl\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "读取 32 位 (4 字节)"
+      context: "any"
+      can_sleep: false
+      return_type: "u32"
+
+    # readq - 读取 64 位
+    - pattern: 'readq\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "读取 64 位 (8 字节)"
+      context: "any"
+      can_sleep: false
+      return_type: "u64"
+      note: "仅 64 位架构可用"
+
+    # ioread8 - 通用 8 位读取
+    - pattern: 'ioread8\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "通用 8 位读取 (MMIO/PIO)"
+      context: "any"
+      can_sleep: false
+
+    # ioread16 - 通用 16 位读取
+    - pattern: 'ioread16\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "通用 16 位读取 (MMIO/PIO)"
+      context: "any"
+      can_sleep: false
+
+    # ioread32 - 通用 32 位读取
+    - pattern: 'ioread32\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "通用 32 位读取 (MMIO/PIO)"
+      context: "any"
+      can_sleep: false
+
+    # ioread64 - 通用 64 位读取
+    - pattern: 'ioread64\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "通用 64 位读取 (MMIO/PIO)"
+      context: "any"
+      can_sleep: false
+
+    # readb_relaxed - 无屏障 8 位读取
+    - pattern: 'readb_relaxed\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "无内存屏障的 8 位读取"
+      note: "性能更好，但需要手动屏障"
+
+    # readw_relaxed - 无屏障 16 位读取
+    - pattern: 'readw_relaxed\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "无内存屏障的 16 位读取"
+
+    # readl_relaxed - 无屏障 32 位读取
+    - pattern: 'readl_relaxed\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "无内存屏障的 32 位读取"
+
+    # readq_relaxed - 无屏障 64 位读取
+    - pattern: 'readq_relaxed\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "无内存屏障的 64 位读取"
+
+    # ioread8_rep - 重复 8 位读取
+    - pattern: 'ioread8_rep\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "重复读取 8 位到缓冲区"
+
+    # ioread16_rep - 重复 16 位读取
+    - pattern: 'ioread16_rep\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "重复读取 16 位到缓冲区"
+
+    # ioread32_rep - 重复 32 位读取
+    - pattern: 'ioread32_rep\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "重复读取 32 位到缓冲区"
+
+# ============================================================
+# MMIO WRITE FUNCTIONS
+# ============================================================
+
+mmio_write:
+  description: "MMIO Write Functions - 内存映射写入"
+  header: "asm/io.h"
+  icon: "✏️"
+
+  bind_patterns:
+    # writeb - 写入 8 位
+    - pattern: 'writeb\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "写入 8 位 (1 字节)"
+      context: "any"
+      can_sleep: false
+
+    # writew - 写入 16 位
+    - pattern: 'writew\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "写入 16 位 (2 字节)"
+      context: "any"
+      can_sleep: false
+
+    # writel - 写入 32 位
+    - pattern: 'writel\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "写入 32 位 (4 字节)"
+      context: "any"
+      can_sleep: false
+
+    # writeq - 写入 64 位
+    - pattern: 'writeq\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "写入 64 位 (8 字节)"
+      context: "any"
+      can_sleep: false
+      note: "仅 64 位架构可用"
+
+    # iowrite8 - 通用 8 位写入
+    - pattern: 'iowrite8\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "通用 8 位写入 (MMIO/PIO)"
+      context: "any"
+      can_sleep: false
+
+    # iowrite16 - 通用 16 位写入
+    - pattern: 'iowrite16\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "通用 16 位写入 (MMIO/PIO)"
+      context: "any"
+      can_sleep: false
+
+    # iowrite32 - 通用 32 位写入
+    - pattern: 'iowrite32\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "通用 32 位写入 (MMIO/PIO)"
+      context: "any"
+      can_sleep: false
+
+    # iowrite64 - 通用 64 位写入
+    - pattern: 'iowrite64\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "通用 64 位写入 (MMIO/PIO)"
+      context: "any"
+      can_sleep: false
+
+    # writeb_relaxed - 无屏障 8 位写入
+    - pattern: 'writeb_relaxed\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "无内存屏障的 8 位写入"
+
+    # writew_relaxed - 无屏障 16 位写入
+    - pattern: 'writew_relaxed\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "无内存屏障的 16 位写入"
+
+    # writel_relaxed - 无屏障 32 位写入
+    - pattern: 'writel_relaxed\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "无内存屏障的 32 位写入"
+
+    # writeq_relaxed - 无屏障 64 位写入
+    - pattern: 'writeq_relaxed\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "无内存屏障的 64 位写入"
+
+    # iowrite8_rep - 重复 8 位写入
+    - pattern: 'iowrite8_rep\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "重复从缓冲区写入 8 位"
+
+    # iowrite16_rep - 重复 16 位写入
+    - pattern: 'iowrite16_rep\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "重复从缓冲区写入 16 位"
+
+    # iowrite32_rep - 重复 32 位写入
+    - pattern: 'iowrite32_rep\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "重复从缓冲区写入 32 位"
+
+# ============================================================
+# MEMORY COPY FUNCTIONS
+# ============================================================
+
+mmio_copy:
+  description: "MMIO Copy Functions - IO 内存复制"
+  header: "asm/io.h"
+  icon: "📋"
+
+  bind_patterns:
+    # memcpy_fromio - 从 IO 复制到内存
+    - pattern: 'memcpy_fromio\s*\(\s*(?P<dest>[^,]+)\s*,\s*(?P<src>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "src"
+      description: "从 IO 内存复制到普通内存"
+      context: "any"
+      can_sleep: false
+
+    # memcpy_toio - 从内存复制到 IO
+    - pattern: 'memcpy_toio\s*\(\s*(?P<dest>[^,]+)\s*,\s*(?P<src>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "dest"
+      description: "从普通内存复制到 IO 内存"
+      context: "any"
+      can_sleep: false
+
+    # memset_io - IO 内存填充
+    - pattern: 'memset_io\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<val>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "用值填充 IO 内存"
+      context: "any"
+      can_sleep: false
+
+# ============================================================
+# MEMORY BARRIERS
+# ============================================================
+
+memory_barriers:
+  description: "Memory Barriers - 内存屏障"
+  header: "asm/barrier.h"
+  icon: "🚧"
+
+  bind_patterns:
+    # mb - 完全内存屏障
+    - pattern: 'mb\s*\(\s*\)'
+      description: "完全内存屏障 (读写)"
+      note: "阻止所有内存操作的重排序"
+
+    # rmb - 读内存屏障
+    - pattern: 'rmb\s*\(\s*\)'
+      description: "读内存屏障"
+      note: "阻止读操作的重排序"
+
+    # wmb - 写内存屏障
+    - pattern: 'wmb\s*\(\s*\)'
+      description: "写内存屏障"
+      note: "阻止写操作的重排序"
+
+    # smp_mb - SMP 内存屏障
+    - pattern: 'smp_mb\s*\(\s*\)'
+      description: "SMP 内存屏障"
+      note: "仅在 SMP 系统上有效"
+
+    # smp_rmb - SMP 读屏障
+    - pattern: 'smp_rmb\s*\(\s*\)'
+      description: "SMP 读内存屏障"
+
+    # smp_wmb - SMP 写屏障
+    - pattern: 'smp_wmb\s*\(\s*\)'
+      description: "SMP 写内存屏障"
+
+    # dma_rmb - DMA 读屏障
+    - pattern: 'dma_rmb\s*\(\s*\)'
+      description: "DMA 读内存屏障"
+      note: "用于 DMA 描述符读取前"
+
+    # dma_wmb - DMA 写屏障
+    - pattern: 'dma_wmb\s*\(\s*\)'
+      description: "DMA 写内存屏障"
+      note: "用于 DMA 描述符写入后"
+
+    # mmiowb - MMIO 写屏障
+    - pattern: 'mmiowb\s*\(\s*\)'
+      description: "MMIO 写屏障"
+      note: "确保 MMIO 写入对设备可见"
+      deprecated: "5.2+ 不再需要显式调用"
+
+# ============================================================
+# PORT I/O (x86)
+# ============================================================
+
+port_io:
+  description: "Port I/O - 端口 I/O (x86)"
+  header: "asm/io.h"
+  icon: "🔌"
+  arch: "x86"
+
+  bind_patterns:
+    # inb - 读取端口 8 位
+    - pattern: 'inb\s*\(\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "从端口读取 8 位"
+
+    # inw - 读取端口 16 位
+    - pattern: 'inw\s*\(\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "从端口读取 16 位"
+
+    # inl - 读取端口 32 位
+    - pattern: 'inl\s*\(\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "从端口读取 32 位"
+
+    # outb - 写入端口 8 位
+    - pattern: 'outb\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "向端口写入 8 位"
+
+    # outw - 写入端口 16 位
+    - pattern: 'outw\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "向端口写入 16 位"
+
+    # outl - 写入端口 32 位
+    - pattern: 'outl\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "向端口写入 32 位"
+
+    # insb - 批量读取 8 位
+    - pattern: 'insb\s*\(\s*(?P<port>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "从端口批量读取 8 位"
+
+    # insw - 批量读取 16 位
+    - pattern: 'insw\s*\(\s*(?P<port>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "从端口批量读取 16 位"
+
+    # insl - 批量读取 32 位
+    - pattern: 'insl\s*\(\s*(?P<port>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "从端口批量读取 32 位"
+
+    # outsb - 批量写入 8 位
+    - pattern: 'outsb\s*\(\s*(?P<port>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "向端口批量写入 8 位"
+
+    # outsw - 批量写入 16 位
+    - pattern: 'outsw\s*\(\s*(?P<port>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "向端口批量写入 16 位"
+
+    # outsl - 批量写入 32 位
+    - pattern: 'outsl\s*\(\s*(?P<port>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "向端口批量写入 32 位"
+
+# ============================================================
+# IO PORT MAPPING (GENERIC)
+# ============================================================
+
+ioport_mapping:
+  description: "IO Port Mapping - IO 端口映射"
+  header: "linux/ioport.h"
+  icon: "🔧"
+
+  bind_patterns:
+    # ioport_map - 映射 IO 端口
+    - pattern: 'ioport_map\s*\(\s*(?P<port>[^,]+)\s*,\s*(?P<nr>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "将 IO 端口映射为 MMIO 风格访问"
+      note: "返回可用于 ioread/iowrite 的指针"
+
+    # ioport_unmap - 取消 IO 端口映射
+    - pattern: 'ioport_unmap\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "取消 ioport_map 映射"
+
+    # pci_iomap - PCI IO 映射
+    - pattern: 'pci_iomap\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>[^,]+)\s*,\s*(?P<maxlen>[^)]+)\s*\)'
+      variable_capture: "pdev"
+      description: "映射 PCI BAR 空间"
+
+    # pci_iounmap - 取消 PCI IO 映射
+    - pattern: 'pci_iounmap\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "取消 pci_iomap 映射"
+
+    # pcim_iomap - 设备管理的 PCI 映射
+    - pattern: 'pcim_iomap\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>[^,]+)\s*,\s*(?P<maxlen>[^)]+)\s*\)'
+      variable_capture: "pdev"
+      description: "设备管理的 PCI BAR 映射"
+
+    # pcim_iomap_table - 获取映射表
+    - pattern: 'pcim_iomap_table\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      variable_capture: "pdev"
+      description: "获取 PCI 设备的映射指针数组"
+
+    # pcim_iomap_regions - 映射多个区域
+    - pattern: 'pcim_iomap_regions\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<mask>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "pdev"
+      description: "映射多个 PCI BAR 区域"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  ioremap_path:
+    description: "ioremap 映射路径"
+    trigger: "调用 ioremap()"
+    chain:
+      - function: "ioremap"
+        file: "arch/*/mm/ioremap.c"
+        description: "映射入口"
+      - function: "__ioremap"
+        file: "arch/*/mm/ioremap.c"
+        description: "内部实现"
+      - function: "ioremap_prot"
+        file: "arch/*/mm/ioremap.c"
+        description: "带保护位映射"
+      - function: "get_vm_area_caller"
+        file: "mm/vmalloc.c"
+        description: "获取虚拟区域"
+      - function: "ioremap_page_range"
+        file: "lib/ioremap.c"
+        description: "建立页表映射"
+
+  devm_ioremap_resource_path:
+    description: "devm_ioremap_resource 路径"
+    trigger: "调用 devm_ioremap_resource()"
+    chain:
+      - function: "devm_ioremap_resource"
+        file: "lib/devres.c"
+        description: "入口函数"
+      - function: "devm_request_mem_region"
+        file: "lib/devres.c"
+        description: "请求内存区域"
+      - function: "devm_ioremap"
+        file: "lib/devres.c"
+        description: "设备管理映射"
+      - function: "ioremap"
+        file: "arch/*/mm/ioremap.c"
+        description: "实际映射"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 ioremap 使用"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/io.h>
+      
+      #define DEVICE_BASE  0x10000000
+      #define DEVICE_SIZE  0x1000
+      
+      /* 寄存器偏移 */
+      #define REG_CTRL     0x00
+      #define REG_STATUS   0x04
+      #define REG_DATA     0x08
+      
+      struct my_device {
+          void __iomem *regs;
+      };
+      
+      static int map_device(struct my_device *dev)
+      {
+          /* 映射设备寄存器 */
+          dev->regs = ioremap(DEVICE_BASE, DEVICE_SIZE);
+          if (!dev->regs) {
+              pr_err("ioremap failed\n");
+              return -ENOMEM;
+          }
+          
+          /* 读取状态寄存器 */
+          u32 status = readl(dev->regs + REG_STATUS);
+          pr_info("Status: 0x%08x\n", status);
+          
+          /* 写入控制寄存器 */
+          writel(0x01, dev->regs + REG_CTRL);
+          
+          /* 确保写入完成 */
+          (void)readl(dev->regs + REG_CTRL);
+          
+          return 0;
+      }
+      
+      static void unmap_device(struct my_device *dev)
+      {
+          if (dev->regs) {
+              iounmap(dev->regs);
+              dev->regs = NULL;
+          }
+      }
+
+  - description: "推荐: devm_ioremap_resource"
+    kernel_version: "3.5+"
+    code: |
+      #include <linux/io.h>
+      #include <linux/platform_device.h>
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct resource *res;
+          void __iomem *base;
+          
+          /* 获取并映射第一个内存资源 */
+          base = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(base)) {
+              dev_err(&pdev->dev, "ioremap failed\n");
+              return PTR_ERR(base);
+          }
+          
+          /* 或者使用 devm_ioremap_resource */
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          base = devm_ioremap_resource(&pdev->dev, res);
+          if (IS_ERR(base))
+              return PTR_ERR(base);
+          
+          /* 使用 base 访问寄存器 */
+          u32 val = readl(base + 0x00);
+          
+          /* 无需手动 iounmap - 设备移除时自动处理 */
+          return 0;
+      }
+
+  - description: "正确使用 relaxed 访问"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/io.h>
+      
+      /* 使用 relaxed 版本提高性能 */
+      static void fast_register_access(void __iomem *base)
+      {
+          int i;
+          
+          /* 批量写入 - 使用 relaxed 提高性能 */
+          for (i = 0; i < 100; i++) {
+              writel_relaxed(i, base + REG_DATA);
+          }
+          
+          /* 最后一次写入确保所有之前的写入完成 */
+          writel(0x100, base + REG_CTRL);
+          
+          /* 或者使用显式屏障 */
+          writel_relaxed(0x100, base + REG_CTRL);
+          wmb();  /* 写内存屏障 */
+      }
+      
+      /* 读取时的 relaxed 使用 */
+      static u32 fast_read_status(void __iomem *base)
+      {
+          u32 val;
+          
+          /* 读取前确保之前的写入对设备可见 */
+          wmb();
+          
+          val = readl_relaxed(base + REG_STATUS);
+          
+          /* 使用值前确保读取完成 */
+          rmb();
+          
+          return val;
+      }
+
+  - description: "PCI 设备映射"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/pci.h>
+      #include <linux/io.h>
+      
+      static int my_pci_probe(struct pci_dev *pdev,
+                              const struct pci_device_id *id)
+      {
+          void __iomem *bar0, *bar1;
+          int ret;
+          
+          /* 启用设备 */
+          ret = pcim_enable_device(pdev);
+          if (ret)
+              return ret;
+          
+          /* 映射 BAR0 (MMIO) */
+          bar0 = pcim_iomap(pdev, 0, 0);
+          if (!bar0) {
+              dev_err(&pdev->dev, "BAR0 iomap failed\n");
+              return -ENOMEM;
+          }
+          
+          /* 或使用 pcim_iomap_regions 映射多个 BAR */
+          ret = pcim_iomap_regions(pdev, BIT(0) | BIT(1), "my_driver");
+          if (ret)
+              return ret;
+          
+          /* 获取映射表 */
+          void __iomem * const *iomap = pcim_iomap_table(pdev);
+          bar0 = iomap[0];
+          bar1 = iomap[1];
+          
+          /* 使用 BAR */
+          u32 val = readl(bar0 + 0x00);
+          
+          /* 无需手动 iounmap - 设备移除时自动处理 */
+          return 0;
+      }
+
+  - description: "安全的寄存器访问封装"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/io.h>
+      
+      struct my_hw {
+          void __iomem *regs;
+          spinlock_t lock;
+      };
+      
+      /* 读寄存器 (可在中断中使用) */
+      static inline u32 my_read_reg(struct my_hw *hw, u32 offset)
+      {
+          return readl(hw->regs + offset);
+      }
+      
+      /* 写寄存器 (可在中断中使用) */
+      static inline void my_write_reg(struct my_hw *hw, u32 offset, u32 val)
+      {
+          writel(val, hw->regs + offset);
+      }
+      
+      /* 修改寄存器位 (需要锁保护) */
+      static void my_set_bits(struct my_hw *hw, u32 offset, u32 bits)
+      {
+          unsigned long flags;
+          u32 val;
+          
+          spin_lock_irqsave(&hw->lock, flags);
+          val = readl(hw->regs + offset);
+          val |= bits;
+          writel(val, hw->regs + offset);
+          spin_unlock_irqrestore(&hw->lock, flags);
+      }
+      
+      static void my_clear_bits(struct my_hw *hw, u32 offset, u32 bits)
+      {
+          unsigned long flags;
+          u32 val;
+          
+          spin_lock_irqsave(&hw->lock, flags);
+          val = readl(hw->regs + offset);
+          val &= ~bits;
+          writel(val, hw->regs + offset);
+          spin_unlock_irqrestore(&hw->lock, flags);
+      }
+      
+      /* 带超时的状态轮询 */
+      static int my_wait_status(struct my_hw *hw, u32 mask, u32 expected,
+                                unsigned long timeout_us)
+      {
+          unsigned long deadline = jiffies + usecs_to_jiffies(timeout_us);
+          u32 val;
+          
+          do {
+              val = readl(hw->regs + REG_STATUS);
+              if ((val & mask) == expected)
+                  return 0;
+              
+              if (time_after(jiffies, deadline))
+                  return -ETIMEDOUT;
+              
+              cpu_relax();
+          } while (1);
+      }

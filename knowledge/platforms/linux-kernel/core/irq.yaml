@@ -1534,43 +1534,96 @@ irq_control:
   icon: "🎛️"
 
   local_irq_control:
-    - pattern: 'local_irq_disable\s*\(\s*\)'
-      description: "禁用本地 CPU 中断"
-      context: "任何"
+    description: "本地 CPU 中断控制 - 只影响当前 CPU"
+    notes:
+      - "local_irq_disable/enable 不可嵌套，使用 save/restore 处理嵌套"
+      - "禁用中断时不能睡眠"
+      - "中断禁用时间应尽量短"
 
-    - pattern: 'local_irq_enable\s*\(\s*\)'
-      description: "启用本地 CPU 中断"
-      context: "中断禁用状态"
+    patterns:
+      - pattern: 'local_irq_disable\s*\(\s*\)'
+        description: "禁用本地 CPU 中断"
+        context: "any"
+        can_sleep: false
+        notes: "简单禁用，不保存状态，不可嵌套"
 
-    - pattern: 'local_irq_save\s*\(\s*(?P<flags>\w+)\s*\)'
-      description: "保存中断状态并禁用"
-      extra_captures:
-        - name: "flags"
-          description: "保存状态的变量"
+      - pattern: 'local_irq_enable\s*\(\s*\)'
+        description: "启用本地 CPU 中断"
+        context: "中断禁用状态"
+        notes: "简单启用，不可嵌套使用"
 
-    - pattern: 'local_irq_restore\s*\(\s*(?P<flags>\w+)\s*\)'
-      description: "恢复之前保存的中断状态"
+      - pattern: 'local_irq_save\s*\(\s*(?P<flags>\w+)\s*\)'
+        description: "保存中断状态并禁用"
+        context: "any"
+        can_sleep: false
+        extra_captures:
+          - name: "flags"
+            description: "保存状态的 unsigned long 变量"
+        notes: "推荐使用，支持嵌套"
 
-    - pattern: 'irqs_disabled\s*\(\s*\)'
-      description: "检查本地中断是否禁用"
-      return: "bool"
+      - pattern: 'local_irq_restore\s*\(\s*(?P<flags>\w+)\s*\)'
+        description: "恢复之前保存的中断状态"
+        context: "中断禁用状态"
+        extra_captures:
+          - name: "flags"
+            description: "之前保存的状态变量"
+        notes: "必须与 local_irq_save 配对使用"
+
+      - pattern: 'irqs_disabled\s*\(\s*\)'
+        description: "检查本地中断是否禁用"
+        return: "bool (非零表示中断已禁用)"
+        context: "any"
+
+      - pattern: 'raw_local_irq_save\s*\(\s*(?P<flags>\w+)\s*\)'
+        description: "原始版本的中断保存 (无 lockdep)"
+        context: "any"
+        notes: "底层实现，通常使用 local_irq_save"
+
+      - pattern: 'raw_local_irq_restore\s*\(\s*(?P<flags>\w+)\s*\)'
+        description: "原始版本的中断恢复 (无 lockdep)"
+        context: "中断禁用状态"
 
   specific_irq_control:
     - pattern: 'disable_irq\s*\(\s*(?P<irq>[^)]+)\s*\)'
       description: "禁用指定中断 (等待完成)"
       context: "process"
+      can_sleep: true
+      notes: "会等待正在执行的中断处理完成"
 
     - pattern: 'disable_irq_nosync\s*\(\s*(?P<irq>[^)]+)\s*\)'
       description: "禁用指定中断 (不等待)"
+      context: "任意"
+      can_sleep: false
+      notes: "不等待正在执行的中断，用于中断处理函数中"
 
     - pattern: 'enable_irq\s*\(\s*(?P<irq>[^)]+)\s*\)'
       description: "启用指定中断"
+      context: "任意"
 
     - pattern: 'synchronize_irq\s*\(\s*(?P<irq>[^)]+)\s*\)'
       description: "等待中断处理完成"
+      context: "process"
+      can_sleep: true
 
     - pattern: 'disable_hardirq\s*\(\s*(?P<irq>[^)]+)\s*\)'
       description: "禁用硬中断 (不包括线程化)"
+
+    - pattern: 'irq_set_irq_type\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<type>[^)]+)\s*\)'
+      description: "设置中断触发类型"
+      context: "process"
+      extra_captures:
+        - name: "type"
+          description: "触发类型 (IRQ_TYPE_EDGE_RISING, IRQ_TYPE_LEVEL_HIGH, etc.)"
+      return: "int (0 成功, -errno 失败)"
+
+    - pattern: 'irq_set_affinity\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<cpumask>[^)]+)\s*\)'
+      description: "设置中断的 CPU 亲和性"
+      context: "process"
+      return: "int (0 成功, -errno 失败)"
+
+    - pattern: 'irq_set_affinity_hint\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<cpumask>[^)]+)\s*\)'
+      description: "设置亲和性提示 (用于 irqbalance)"
+      context: "process"
 
   preempt_control:
     - pattern: 'preempt_disable\s*\(\s*\)'

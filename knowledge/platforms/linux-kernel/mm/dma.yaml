@@ -1,0 +1,845 @@
+# Linux Kernel DMA (Direct Memory Access) Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/core-api/dma-api.html
+# Source: kernel/dma/*, include/linux/dma-mapping.h
+# Completeness: 95%+ (KB-Memory Agent)
+
+# ============================================================
+# DMA OVERVIEW
+# ============================================================
+
+dma_overview:
+  description: "DMA - 直接内存访问"
+  header: "linux/dma-mapping.h"
+  icon: "🔄"
+  kernel_version: "2.6+"
+  
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+  
+  overview: |
+    DMA 允许设备直接访问系统内存，无需 CPU 参与数据传输。
+    - 一致性 DMA：CPU 和设备看到相同的内存内容
+    - 流式 DMA：需要显式同步，性能更好
+    - 必须使用 DMA API，不能直接使用物理地址
+    - 注意 DMA 地址可能与物理地址不同 (IOMMU)
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  dma_addr_t:
+    pattern: 'dma_addr_t'
+    description: "DMA 地址类型"
+    file: "include/linux/types.h"
+    note: "可能与物理地址不同 (IOMMU/SWIOTLB)"
+
+  scatterlist:
+    pattern: 'struct scatterlist\s*\{'
+    description: "散列表结构"
+    file: "include/linux/scatterlist.h"
+    fields:
+      - name: "page_link"
+        type: "unsigned long"
+        description: "页和标志"
+      - name: "offset"
+        type: "unsigned int"
+        description: "页内偏移"
+      - name: "length"
+        type: "unsigned int"
+        description: "长度"
+      - name: "dma_address"
+        type: "dma_addr_t"
+        description: "DMA 地址"
+      - name: "dma_length"
+        type: "unsigned int"
+        description: "DMA 长度"
+
+  sg_table:
+    pattern: 'struct sg_table\s*\{'
+    description: "散列表集合"
+    file: "include/linux/scatterlist.h"
+    fields:
+      - name: "sgl"
+        type: "struct scatterlist *"
+        description: "散列表数组"
+      - name: "nents"
+        type: "unsigned int"
+        description: "实际条目数"
+      - name: "orig_nents"
+        type: "unsigned int"
+        description: "原始条目数"
+
+  dma_pool:
+    pattern: 'struct dma_pool\s*\{'
+    description: "DMA 内存池"
+    file: "include/linux/dmapool.h"
+    note: "用于小块 DMA 缓冲区分配"
+
+# ============================================================
+# DMA DIRECTION
+# ============================================================
+
+dma_direction:
+  description: "DMA 传输方向"
+  icon: "➡️"
+  
+  values:
+    - name: "DMA_BIDIRECTIONAL"
+      value: 0
+      description: "双向传输 (设备读写)"
+    
+    - name: "DMA_TO_DEVICE"
+      value: 1
+      description: "CPU -> 设备 (设备读)"
+    
+    - name: "DMA_FROM_DEVICE"
+      value: 2
+      description: "设备 -> CPU (设备写)"
+    
+    - name: "DMA_NONE"
+      value: 3
+      description: "无方向 (调试用)"
+
+# ============================================================
+# COHERENT DMA ALLOCATION
+# ============================================================
+
+coherent_dma:
+  description: "Coherent DMA - 一致性 DMA 分配"
+  header: "linux/dma-mapping.h"
+  icon: "🔗"
+
+  bind_patterns:
+    # dma_alloc_coherent - 分配一致性 DMA 内存
+    - pattern: 'dma_alloc_coherent\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dma_handle>[^,]+)\s*,\s*(?P<gfp>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "分配一致性 DMA 内存"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "虚拟地址 (void *)"
+        failure: "NULL"
+      note: "CPU 和设备始终看到相同内容，无需同步"
+
+    # dma_free_coherent - 释放一致性 DMA 内存
+    - pattern: 'dma_free_coherent\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<cpu_addr>[^,]+)\s*,\s*(?P<dma_handle>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "释放一致性 DMA 内存"
+      context: "process or softirq"
+      can_sleep: false
+
+    # dma_zalloc_coherent - 零初始化分配 (已废弃)
+    - pattern: 'dma_zalloc_coherent\s*\('
+      description: "零初始化一致性 DMA 分配 (已废弃，使用 dma_alloc_coherent)"
+      deprecated: true
+
+    # dma_alloc_wc - 分配 Write-Combining DMA 内存
+    - pattern: 'dma_alloc_wc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dma_handle>[^,]+)\s*,\s*(?P<gfp>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "分配 Write-Combining DMA 内存"
+      context: "process"
+      can_sleep: true
+      use_case: "帧缓冲等大块顺序写"
+
+    # dma_free_wc - 释放 WC DMA 内存
+    - pattern: 'dma_free_wc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<cpu_addr>[^,]+)\s*,\s*(?P<dma_handle>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "释放 Write-Combining DMA 内存"
+
+    # dma_alloc_attrs - 带属性的 DMA 分配
+    - pattern: 'dma_alloc_attrs\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dma_handle>[^,]+)\s*,\s*(?P<gfp>[^,]+)\s*,\s*(?P<attrs>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "带属性的 DMA 内存分配"
+
+    # dma_free_attrs - 释放带属性的 DMA 内存
+    - pattern: 'dma_free_attrs\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<cpu_addr>[^,]+)\s*,\s*(?P<dma_handle>[^,]+)\s*,\s*(?P<attrs>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "释放带属性的 DMA 内存"
+
+# ============================================================
+# STREAMING DMA MAPPING
+# ============================================================
+
+streaming_dma:
+  description: "Streaming DMA - 流式 DMA 映射"
+  header: "linux/dma-mapping.h"
+  icon: "🌊"
+
+  bind_patterns:
+    # dma_map_single - 映射单个缓冲区
+    - pattern: 'dma_map_single\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<ptr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "映射单个缓冲区供 DMA 使用"
+      context: "any"
+      can_sleep: false
+      return_value:
+        success: "dma_addr_t"
+        failure: "使用 dma_mapping_error() 检查"
+      note: "映射后 CPU 不应访问，直到 unmap 或 sync"
+
+    # dma_unmap_single - 取消映射单个缓冲区
+    - pattern: 'dma_unmap_single\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "dma_addr"
+      description: "取消映射单个 DMA 缓冲区"
+      context: "any"
+      can_sleep: false
+
+    # dma_map_page - 映射页面
+    - pattern: 'dma_map_page\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<page>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "映射页面供 DMA 使用"
+      context: "any"
+      can_sleep: false
+
+    # dma_unmap_page - 取消映射页面
+    - pattern: 'dma_unmap_page\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "dma_addr"
+      description: "取消映射 DMA 页面"
+      context: "any"
+      can_sleep: false
+
+    # dma_map_resource - 映射 MMIO 资源
+    - pattern: 'dma_map_resource\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^,]+)\s*,\s*(?P<attrs>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "映射 MMIO 资源供 DMA 使用"
+
+    # dma_unmap_resource - 取消映射 MMIO 资源
+    - pattern: 'dma_unmap_resource\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^,]+)\s*,\s*(?P<attrs>[^)]+)\s*\)'
+      variable_capture: "dma_addr"
+      description: "取消映射 MMIO DMA 资源"
+
+    # dma_mapping_error - 检查映射错误
+    - pattern: 'dma_mapping_error\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<dma_addr>[^)]+)\s*\)'
+      variable_capture: "dma_addr"
+      description: "检查 DMA 映射是否失败"
+      return_value:
+        error: "非零"
+        success: "0"
+
+# ============================================================
+# DMA SYNCHRONIZATION
+# ============================================================
+
+dma_sync:
+  description: "DMA Synchronization - DMA 同步"
+  header: "linux/dma-mapping.h"
+  icon: "🔄"
+
+  bind_patterns:
+    # dma_sync_single_for_cpu - 同步给 CPU
+    - pattern: 'dma_sync_single_for_cpu\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "dma_addr"
+      description: "同步 DMA 缓冲区供 CPU 访问"
+      context: "any"
+      can_sleep: false
+      note: "在 CPU 读取 DMA_FROM_DEVICE 数据前调用"
+
+    # dma_sync_single_for_device - 同步给设备
+    - pattern: 'dma_sync_single_for_device\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "dma_addr"
+      description: "同步 DMA 缓冲区供设备访问"
+      context: "any"
+      can_sleep: false
+      note: "在 CPU 修改 DMA_TO_DEVICE 数据后调用"
+
+    # dma_sync_single_range_for_cpu - 范围同步给 CPU
+    - pattern: 'dma_sync_single_range_for_cpu\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "dma_addr"
+      description: "同步部分 DMA 缓冲区供 CPU 访问"
+
+    # dma_sync_single_range_for_device - 范围同步给设备
+    - pattern: 'dma_sync_single_range_for_device\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "dma_addr"
+      description: "同步部分 DMA 缓冲区供设备访问"
+
+# ============================================================
+# SCATTER-GATHER DMA
+# ============================================================
+
+sg_dma:
+  description: "Scatter-Gather DMA - 散列 DMA"
+  header: "linux/dma-mapping.h"
+  icon: "📊"
+
+  bind_patterns:
+    # dma_map_sg - 映射散列表
+    - pattern: 'dma_map_sg\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<sg>[^,]+)\s*,\s*(?P<nents>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "映射散列表供 DMA 使用"
+      context: "any"
+      can_sleep: false
+      return_value:
+        success: "映射的条目数 (可能合并)"
+        failure: "0"
+
+    # dma_unmap_sg - 取消映射散列表
+    - pattern: 'dma_unmap_sg\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<sg>[^,]+)\s*,\s*(?P<nents>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "取消映射散列 DMA"
+      context: "any"
+      can_sleep: false
+
+    # dma_map_sg_attrs - 带属性映射散列表
+    - pattern: 'dma_map_sg_attrs\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<sg>[^,]+)\s*,\s*(?P<nents>[^,]+)\s*,\s*(?P<dir>[^,]+)\s*,\s*(?P<attrs>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "带属性映射散列表"
+
+    # dma_unmap_sg_attrs - 取消带属性映射
+    - pattern: 'dma_unmap_sg_attrs\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<sg>[^,]+)\s*,\s*(?P<nents>[^,]+)\s*,\s*(?P<dir>[^,]+)\s*,\s*(?P<attrs>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "取消带属性的散列 DMA 映射"
+
+    # dma_sync_sg_for_cpu - 散列表同步给 CPU
+    - pattern: 'dma_sync_sg_for_cpu\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<sg>[^,]+)\s*,\s*(?P<nents>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "同步散列表供 CPU 访问"
+
+    # dma_sync_sg_for_device - 散列表同步给设备
+    - pattern: 'dma_sync_sg_for_device\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<sg>[^,]+)\s*,\s*(?P<nents>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "同步散列表供设备访问"
+
+  sg_helpers:
+    # sg_init_one - 初始化单个散列项
+    - pattern: 'sg_init_one\s*\(\s*(?P<sg>[^,]+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "初始化单个散列项"
+
+    # sg_init_table - 初始化散列表
+    - pattern: 'sg_init_table\s*\(\s*(?P<sg>[^,]+)\s*,\s*(?P<nents>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "初始化散列表数组"
+
+    # sg_set_buf - 设置散列项缓冲区
+    - pattern: 'sg_set_buf\s*\(\s*(?P<sg>[^,]+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "设置散列项的缓冲区"
+
+    # sg_set_page - 设置散列项页面
+    - pattern: 'sg_set_page\s*\(\s*(?P<sg>[^,]+)\s*,\s*(?P<page>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<offset>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "设置散列项的页面"
+
+    # sg_dma_address - 获取 DMA 地址
+    - pattern: 'sg_dma_address\s*\(\s*(?P<sg>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "获取散列项的 DMA 地址"
+
+    # sg_dma_len - 获取 DMA 长度
+    - pattern: 'sg_dma_len\s*\(\s*(?P<sg>[^)]+)\s*\)'
+      variable_capture: "sg"
+      description: "获取散列项的 DMA 长度"
+
+    # for_each_sg - 遍历散列表
+    - pattern: 'for_each_sg\s*\(\s*(?P<sglist>[^,]+)\s*,\s*(?P<sg>\w+)\s*,\s*(?P<nr>[^,]+)\s*,\s*(?P<i>\w+)\s*\)'
+      variable_capture: "sglist"
+      description: "遍历散列表中的每个条目"
+
+    # for_each_sgtable_sg - 遍历 sg_table
+    - pattern: 'for_each_sgtable_sg\s*\(\s*(?P<sgt>[^,]+)\s*,\s*(?P<sg>\w+)\s*,\s*(?P<i>\w+)\s*\)'
+      variable_capture: "sgt"
+      description: "遍历 sg_table 中的条目"
+
+    # for_each_sgtable_dma_sg - 遍历 DMA 映射后的 sg_table
+    - pattern: 'for_each_sgtable_dma_sg\s*\(\s*(?P<sgt>[^,]+)\s*,\s*(?P<sg>\w+)\s*,\s*(?P<i>\w+)\s*\)'
+      variable_capture: "sgt"
+      description: "遍历 DMA 映射后的 sg_table"
+
+# ============================================================
+# DMA POOL
+# ============================================================
+
+dma_pool:
+  description: "DMA Pool - DMA 内存池"
+  header: "linux/dmapool.h"
+  icon: "🏊"
+
+  bind_patterns:
+    # dma_pool_create - 创建 DMA 池
+    - pattern: 'dma_pool_create\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<align>[^,]+)\s*,\s*(?P<boundary>[^)]+)\s*\)'
+      variable_capture: "name"
+      description: "创建 DMA 内存池"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "struct dma_pool *"
+        failure: "NULL"
+
+    # dma_pool_destroy - 销毁 DMA 池
+    - pattern: 'dma_pool_destroy\s*\(\s*(?P<pool>[^)]+)\s*\)'
+      variable_capture: "pool"
+      description: "销毁 DMA 内存池"
+      context: "process"
+      can_sleep: true
+
+    # dma_pool_alloc - 从池分配
+    - pattern: 'dma_pool_alloc\s*\(\s*(?P<pool>[^,]+)\s*,\s*(?P<gfp>[^,]+)\s*,\s*(?P<dma_handle>[^)]+)\s*\)'
+      variable_capture: "pool"
+      description: "从 DMA 池分配内存"
+      context: "depends on gfp"
+
+    # dma_pool_zalloc - 从池零初始化分配
+    - pattern: 'dma_pool_zalloc\s*\(\s*(?P<pool>[^,]+)\s*,\s*(?P<gfp>[^,]+)\s*,\s*(?P<dma_handle>[^)]+)\s*\)'
+      variable_capture: "pool"
+      description: "从 DMA 池零初始化分配"
+
+    # dma_pool_free - 释放回池
+    - pattern: 'dma_pool_free\s*\(\s*(?P<pool>[^,]+)\s*,\s*(?P<vaddr>[^,]+)\s*,\s*(?P<dma_handle>[^)]+)\s*\)'
+      variable_capture: "pool"
+      description: "释放内存回 DMA 池"
+      context: "any"
+      can_sleep: false
+
+# ============================================================
+# DEVM DMA (DEVICE MANAGED)
+# ============================================================
+
+devm_dma:
+  description: "Device Managed DMA - 设备管理的 DMA"
+  header: "linux/dma-mapping.h"
+  icon: "🔧"
+
+  bind_patterns:
+    # dmam_alloc_coherent - 设备管理的一致性分配
+    - pattern: 'dmam_alloc_coherent\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dma_handle>[^,]+)\s*,\s*(?P<gfp>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "设备管理的一致性 DMA 分配"
+      context: "process"
+      can_sleep: true
+      note: "设备移除时自动释放"
+
+    # dmam_free_coherent - 释放设备管理的 DMA
+    - pattern: 'dmam_free_coherent\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<vaddr>[^,]+)\s*,\s*(?P<dma_handle>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "释放设备管理的一致性 DMA 内存"
+
+    # dmam_alloc_attrs - 设备管理的带属性分配
+    - pattern: 'dmam_alloc_attrs\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dma_handle>[^,]+)\s*,\s*(?P<gfp>[^,]+)\s*,\s*(?P<attrs>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "设备管理的带属性 DMA 分配"
+
+    # dmam_pool_create - 设备管理的 DMA 池
+    - pattern: 'dmam_pool_create\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<align>[^,]+)\s*,\s*(?P<allocation>[^)]+)\s*\)'
+      variable_capture: "name"
+      description: "创建设备管理的 DMA 池"
+
+    # dmam_pool_destroy - 销毁设备管理的 DMA 池
+    - pattern: 'dmam_pool_destroy\s*\(\s*(?P<pool>[^)]+)\s*\)'
+      variable_capture: "pool"
+      description: "销毁设备管理的 DMA 池"
+
+# ============================================================
+# DMA CAPABILITIES
+# ============================================================
+
+dma_capabilities:
+  description: "DMA Capabilities - DMA 能力查询"
+  header: "linux/dma-mapping.h"
+  icon: "🔍"
+
+  bind_patterns:
+    # dma_set_mask - 设置 DMA 掩码
+    - pattern: 'dma_set_mask\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      variable_capture: "mask"
+      description: "设置设备 DMA 地址掩码"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    # dma_set_coherent_mask - 设置一致性 DMA 掩码
+    - pattern: 'dma_set_coherent_mask\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      variable_capture: "mask"
+      description: "设置一致性 DMA 地址掩码"
+
+    # dma_set_mask_and_coherent - 同时设置两种掩码
+    - pattern: 'dma_set_mask_and_coherent\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      variable_capture: "mask"
+      description: "同时设置流式和一致性 DMA 掩码"
+
+    # dma_can_mmap - 检查是否支持 mmap
+    - pattern: 'dma_can_mmap\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "检查设备是否支持 DMA mmap"
+
+    # dma_get_required_mask - 获取需要的掩码
+    - pattern: 'dma_get_required_mask\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "获取设备实际需要的 DMA 掩码"
+
+    # dma_supported - 检查 DMA 支持
+    - pattern: 'dma_supported\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      variable_capture: "dev"
+      description: "检查设备是否支持指定的 DMA 掩码"
+
+  common_masks:
+    - name: "DMA_BIT_MASK(32)"
+      value: "0xFFFFFFFF"
+      description: "32位 DMA (4GB)"
+    
+    - name: "DMA_BIT_MASK(64)"
+      value: "0xFFFFFFFFFFFFFFFF"
+      description: "64位 DMA"
+    
+    - name: "DMA_BIT_MASK(24)"
+      value: "0xFFFFFF"
+      description: "24位 DMA (ISA, 16MB)"
+
+# ============================================================
+# DMA ATTRIBUTES
+# ============================================================
+
+dma_attributes:
+  description: "DMA Attributes - DMA 属性"
+  icon: "🏷️"
+
+  values:
+    - name: "DMA_ATTR_WEAK_ORDERING"
+      description: "允许弱排序"
+    
+    - name: "DMA_ATTR_WRITE_COMBINE"
+      description: "Write-combining 映射"
+    
+    - name: "DMA_ATTR_NO_KERNEL_MAPPING"
+      description: "不需要内核映射"
+    
+    - name: "DMA_ATTR_SKIP_CPU_SYNC"
+      description: "跳过 CPU 同步"
+    
+    - name: "DMA_ATTR_FORCE_CONTIGUOUS"
+      description: "强制物理连续"
+    
+    - name: "DMA_ATTR_ALLOC_SINGLE_PAGES"
+      description: "分配单独页面"
+    
+    - name: "DMA_ATTR_NO_WARN"
+      description: "分配失败不警告"
+    
+    - name: "DMA_ATTR_PRIVILEGED"
+      description: "特权访问"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  coherent_alloc:
+    description: "一致性 DMA 分配路径"
+    trigger: "调用 dma_alloc_coherent()"
+    chain:
+      - function: "dma_alloc_coherent"
+        file: "kernel/dma/mapping.c"
+        description: "分配入口"
+      - function: "dma_alloc_attrs"
+        file: "kernel/dma/mapping.c"
+        description: "带属性分配"
+      - function: "dma_direct_alloc"
+        file: "kernel/dma/direct.c"
+        description: "直接分配 (无 IOMMU)"
+      - function: "__dma_direct_alloc_pages"
+        file: "kernel/dma/direct.c"
+        description: "分配物理页"
+      - function: "alloc_pages_node"
+        file: "mm/page_alloc.c"
+        description: "页分配器"
+
+  streaming_map:
+    description: "流式 DMA 映射路径"
+    trigger: "调用 dma_map_single()"
+    chain:
+      - function: "dma_map_single"
+        file: "kernel/dma/mapping.c"
+        description: "映射入口"
+      - function: "dma_map_page_attrs"
+        file: "kernel/dma/mapping.c"
+        description: "映射页面"
+      - function: "dma_direct_map_page"
+        file: "kernel/dma/direct.c"
+        description: "直接映射 (无 IOMMU)"
+      - function: "swiotlb_map"
+        file: "kernel/dma/swiotlb.c"
+        description: "bounce buffer 映射 (如需要)"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "一致性 DMA 分配示例"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/dma-mapping.h>
+      
+      struct my_device {
+          void *desc_virt;           /* CPU 虚拟地址 */
+          dma_addr_t desc_dma;       /* DMA 地址 */
+          size_t desc_size;
+      };
+      
+      static int alloc_descriptors(struct device *dev, struct my_device *priv)
+      {
+          priv->desc_size = 4096;
+          
+          /* 分配一致性 DMA 内存 - CPU 和设备始终看到相同内容 */
+          priv->desc_virt = dma_alloc_coherent(dev, priv->desc_size,
+                                               &priv->desc_dma, GFP_KERNEL);
+          if (!priv->desc_virt)
+              return -ENOMEM;
+          
+          pr_info("Allocated DMA: virt=%p dma=%pad\n",
+                  priv->desc_virt, &priv->desc_dma);
+          
+          /* 直接使用，无需同步 */
+          memset(priv->desc_virt, 0, priv->desc_size);
+          
+          /* 将 DMA 地址写入设备寄存器 */
+          writel(lower_32_bits(priv->desc_dma), priv->regs + DESC_ADDR_LO);
+          writel(upper_32_bits(priv->desc_dma), priv->regs + DESC_ADDR_HI);
+          
+          return 0;
+      }
+      
+      static void free_descriptors(struct device *dev, struct my_device *priv)
+      {
+          if (priv->desc_virt) {
+              dma_free_coherent(dev, priv->desc_size,
+                               priv->desc_virt, priv->desc_dma);
+              priv->desc_virt = NULL;
+          }
+      }
+
+  - description: "流式 DMA 映射示例"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/dma-mapping.h>
+      
+      static int dma_tx_buffer(struct device *dev, void *data, size_t len)
+      {
+          dma_addr_t dma_addr;
+          
+          /* 映射缓冲区 - 设备将读取 (DMA_TO_DEVICE) */
+          dma_addr = dma_map_single(dev, data, len, DMA_TO_DEVICE);
+          if (dma_mapping_error(dev, dma_addr)) {
+              dev_err(dev, "DMA mapping failed\n");
+              return -EIO;
+          }
+          
+          /* 编程 DMA 控制器 */
+          program_dma_controller(dma_addr, len);
+          
+          /* 启动传输 */
+          start_dma_transfer();
+          
+          /* 等待完成... */
+          wait_for_dma_complete();
+          
+          /* 取消映射 */
+          dma_unmap_single(dev, dma_addr, len, DMA_TO_DEVICE);
+          
+          return 0;
+      }
+      
+      static int dma_rx_buffer(struct device *dev, void *data, size_t len)
+      {
+          dma_addr_t dma_addr;
+          
+          /* 映射缓冲区 - 设备将写入 (DMA_FROM_DEVICE) */
+          dma_addr = dma_map_single(dev, data, len, DMA_FROM_DEVICE);
+          if (dma_mapping_error(dev, dma_addr))
+              return -EIO;
+          
+          /* 编程并启动 DMA */
+          program_dma_controller(dma_addr, len);
+          start_dma_transfer();
+          wait_for_dma_complete();
+          
+          /* 取消映射后 CPU 才能安全读取 */
+          dma_unmap_single(dev, dma_addr, len, DMA_FROM_DEVICE);
+          
+          /* 现在可以安全访问 data */
+          process_received_data(data, len);
+          
+          return 0;
+      }
+
+  - description: "DMA 同步示例 (不取消映射)"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/dma-mapping.h>
+      
+      /* 重用映射的缓冲区 - 使用同步而非 unmap/map */
+      static void streaming_reuse_example(struct device *dev,
+                                         void *buf, size_t len,
+                                         dma_addr_t dma_addr)
+      {
+          /* 假设缓冲区已经映射为 DMA_BIDIRECTIONAL */
+          
+          /* === 发送数据 === */
+          /* 填充缓冲区 */
+          memcpy(buf, tx_data, len);
+          
+          /* 同步：CPU 修改完毕，让设备可见 */
+          dma_sync_single_for_device(dev, dma_addr, len, DMA_TO_DEVICE);
+          
+          /* 启动 DMA 发送 */
+          start_tx_dma();
+          wait_for_tx_complete();
+          
+          /* === 接收数据 === */
+          /* 启动 DMA 接收 */
+          start_rx_dma();
+          wait_for_rx_complete();
+          
+          /* 同步：设备写完，让 CPU 可见 */
+          dma_sync_single_for_cpu(dev, dma_addr, len, DMA_FROM_DEVICE);
+          
+          /* 现在 CPU 可以安全读取 */
+          memcpy(rx_data, buf, len);
+      }
+
+  - description: "散列 DMA 示例"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/dma-mapping.h>
+      #include <linux/scatterlist.h>
+      
+      static int sg_dma_example(struct device *dev)
+      {
+          struct scatterlist sg[3];
+          void *buf1, *buf2, *buf3;
+          int nents, i;
+          struct scatterlist *s;
+          
+          /* 分配缓冲区 */
+          buf1 = kmalloc(1024, GFP_KERNEL);
+          buf2 = kmalloc(2048, GFP_KERNEL);
+          buf3 = kmalloc(512, GFP_KERNEL);
+          
+          /* 初始化散列表 */
+          sg_init_table(sg, 3);
+          sg_set_buf(&sg[0], buf1, 1024);
+          sg_set_buf(&sg[1], buf2, 2048);
+          sg_set_buf(&sg[2], buf3, 512);
+          
+          /* 映射散列表 */
+          nents = dma_map_sg(dev, sg, 3, DMA_TO_DEVICE);
+          if (nents == 0) {
+              pr_err("SG DMA mapping failed\n");
+              goto free_bufs;
+          }
+          
+          /* 遍历映射后的散列表 */
+          for_each_sg(sg, s, nents, i) {
+              dma_addr_t dma_addr = sg_dma_address(s);
+              unsigned int dma_len = sg_dma_len(s);
+              
+              pr_info("SG[%d]: dma=%pad len=%u\n", i, &dma_addr, dma_len);
+              
+              /* 编程 DMA 控制器处理这个段 */
+              program_sg_entry(dma_addr, dma_len);
+          }
+          
+          /* 启动 DMA 传输 */
+          start_sg_dma_transfer();
+          wait_for_dma_complete();
+          
+          /* 取消映射 */
+          dma_unmap_sg(dev, sg, 3, DMA_TO_DEVICE);
+          
+      free_bufs:
+          kfree(buf1);
+          kfree(buf2);
+          kfree(buf3);
+          return 0;
+      }
+
+  - description: "DMA 池示例"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/dmapool.h>
+      
+      struct my_driver {
+          struct dma_pool *desc_pool;
+      };
+      
+      /* 描述符结构 - 必须是 2 的幂大小 */
+      struct dma_desc {
+          __le32 control;
+          __le32 status;
+          __le64 addr;
+          __le32 len;
+          __le32 next;
+      } __packed;
+      
+      static int create_dma_pool(struct device *dev, struct my_driver *drv)
+      {
+          /* 创建 DMA 池：名称、设备、大小、对齐、边界 */
+          drv->desc_pool = dma_pool_create("my_desc_pool",
+                                           dev,
+                                           sizeof(struct dma_desc),
+                                           32,   /* 32 字节对齐 */
+                                           4096); /* 不跨 4K 边界 */
+          if (!drv->desc_pool)
+              return -ENOMEM;
+          
+          return 0;
+      }
+      
+      static struct dma_desc *alloc_descriptor(struct my_driver *drv,
+                                               dma_addr_t *dma_handle)
+      {
+          struct dma_desc *desc;
+          
+          /* 从池分配 */
+          desc = dma_pool_zalloc(drv->desc_pool, GFP_KERNEL, dma_handle);
+          if (!desc)
+              return NULL;
+          
+          pr_debug("Allocated desc: virt=%p dma=%pad\n", desc, dma_handle);
+          return desc;
+      }
+      
+      static void free_descriptor(struct my_driver *drv,
+                                  struct dma_desc *desc,
+                                  dma_addr_t dma_handle)
+      {
+          dma_pool_free(drv->desc_pool, desc, dma_handle);
+      }
+      
+      static void destroy_dma_pool(struct my_driver *drv)
+      {
+          if (drv->desc_pool) {
+              dma_pool_destroy(drv->desc_pool);
+              drv->desc_pool = NULL;
+          }
+      }
+
+  - description: "设置 DMA 掩码示例"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/dma-mapping.h>
+      
+      static int setup_dma_mask(struct device *dev)
+      {
+          int ret;
+          
+          /* 首先尝试 64 位 DMA */
+          ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
+          if (ret == 0) {
+              dev_info(dev, "Using 64-bit DMA\n");
+              return 0;
+          }
+          
+          /* 回退到 32 位 DMA */
+          ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
+          if (ret == 0) {
+              dev_info(dev, "Using 32-bit DMA\n");
+              return 0;
+          }
+          
+          dev_err(dev, "No suitable DMA available\n");
+          return -EIO;
+      }

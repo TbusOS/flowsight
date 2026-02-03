@@ -592,244 +592,583 @@ address_space_operations:
 # FILE OPERATIONS
 # ============================================================
 file_operations:
-  description: "File Operations"
+  description: "File Operations - 文件操作回调"
   header: "linux/fs.h"
   icon: "📄"
+  kernel_version: "2.6+"
+
+  bind_patterns:
+    # struct file_operations 定义
+    - pattern: 'static const struct file_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "文件操作结构定义 (const)"
+
+    - pattern: 'static struct file_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "文件操作结构定义"
+
   structure:
     name: "file_operations"
     callbacks:
+      # === 基本操作 ===
       open:
         pattern: '\.open\s*=\s*(?P<handler>\w+)'
         description: "打开文件"
         context: "process"
         can_sleep: true
+        signature: "int (*)(struct inode *, struct file *)"
+
       release:
         pattern: '\.release\s*=\s*(?P<handler>\w+)'
-        description: "关闭文件"
+        description: "关闭文件 (最后引用释放时)"
         context: "process"
         can_sleep: true
+        signature: "int (*)(struct inode *, struct file *)"
+
+      flush:
+        pattern: '\.flush\s*=\s*(?P<handler>\w+)'
+        description: "刷新文件 (每次 close 时)"
+        context: "process"
+        can_sleep: true
+        signature: "int (*)(struct file *, fl_owner_t)"
+
+      # === 读写操作 ===
       read:
         pattern: '\.read\s*=\s*(?P<handler>\w+)'
-        description: "读取文件（旧 API）"
+        description: "读取文件 (旧 API)"
         context: "process"
         can_sleep: true
+        signature: "ssize_t (*)(struct file *, char __user *, size_t, loff_t *)"
+
       write:
         pattern: '\.write\s*=\s*(?P<handler>\w+)'
-        description: "写入文件（旧 API）"
+        description: "写入文件 (旧 API)"
         context: "process"
         can_sleep: true
+        signature: "ssize_t (*)(struct file *, const char __user *, size_t, loff_t *)"
+
       read_iter:
         pattern: '\.read_iter\s*=\s*(?P<handler>\w+)'
-        description: "读取文件（新 API）"
+        description: "读取文件 (新 API, 推荐)"
         context: "process"
         can_sleep: true
+        signature: "ssize_t (*)(struct kiocb *, struct iov_iter *)"
+
       write_iter:
         pattern: '\.write_iter\s*=\s*(?P<handler>\w+)'
-        description: "写入文件（新 API）"
+        description: "写入文件 (新 API, 推荐)"
         context: "process"
         can_sleep: true
+        signature: "ssize_t (*)(struct kiocb *, struct iov_iter *)"
+
+      # === 定位 ===
       llseek:
         pattern: '\.llseek\s*=\s*(?P<handler>\w+)'
         description: "定位文件"
         context: "process"
         can_sleep: true
+        signature: "loff_t (*)(struct file *, loff_t, int)"
+
+      # === 内存映射 ===
       mmap:
         pattern: '\.mmap\s*=\s*(?P<handler>\w+)'
         description: "内存映射"
         context: "process"
         can_sleep: true
+        signature: "int (*)(struct file *, struct vm_area_struct *)"
+
+      # === 轮询/异步 ===
       poll:
         pattern: '\.poll\s*=\s*(?P<handler>\w+)'
-        description: "轮询"
+        description: "轮询 (select/poll/epoll)"
         context: "process"
         can_sleep: false
+        signature: "__poll_t (*)(struct file *, struct poll_table_struct *)"
+
+      fasync:
+        pattern: '\.fasync\s*=\s*(?P<handler>\w+)'
+        description: "异步通知设置"
+        context: "process"
+        can_sleep: true
+        signature: "int (*)(int, struct file *, int)"
+
+      # === I/O 控制 ===
       unlocked_ioctl:
         pattern: '\.unlocked_ioctl\s*=\s*(?P<handler>\w+)'
-        description: "IO 控制"
+        description: "I/O 控制 (64 位)"
         context: "process"
         can_sleep: true
+        signature: "long (*)(struct file *, unsigned int, unsigned long)"
+
       compat_ioctl:
         pattern: '\.compat_ioctl\s*=\s*(?P<handler>\w+)'
-        description: "兼容 IO 控制"
+        description: "I/O 控制 (32 位兼容)"
         context: "process"
         can_sleep: true
+        signature: "long (*)(struct file *, unsigned int, unsigned long)"
+
+      # === 同步 ===
       fsync:
         pattern: '\.fsync\s*=\s*(?P<handler>\w+)'
         description: "同步文件"
         context: "process"
         can_sleep: true
-      fasync:
-        pattern: '\.fasync\s*=\s*(?P<handler>\w+)'
-        description: "异步通知"
-        context: "process"
-        can_sleep: true
+        signature: "int (*)(struct file *, loff_t, loff_t, int)"
+
+      # === 零拷贝 ===
       splice_read:
         pattern: '\.splice_read\s*=\s*(?P<handler>\w+)'
         description: "零拷贝读取"
+        context: "process"
+        can_sleep: true
+
       splice_write:
         pattern: '\.splice_write\s*=\s*(?P<handler>\w+)'
         description: "零拷贝写入"
+        context: "process"
+        can_sleep: true
+
+      # === 锁操作 ===
+      lock:
+        pattern: '\.lock\s*=\s*(?P<handler>\w+)'
+        description: "文件锁操作"
+        context: "process"
+        can_sleep: true
+
+      flock:
+        pattern: '\.flock\s*=\s*(?P<handler>\w+)'
+        description: "BSD flock 操作"
+        context: "process"
+        can_sleep: true
+
+      # === 目录操作 ===
+      iterate_shared:
+        pattern: '\.iterate_shared\s*=\s*(?P<handler>\w+)'
+        description: "目录迭代 (新 API)"
+        context: "process"
+        can_sleep: true
+
+      # === 其他 ===
+      get_unmapped_area:
+        pattern: '\.get_unmapped_area\s*=\s*(?P<handler>\w+)'
+        description: "获取未映射区域"
+        context: "process"
+        can_sleep: true
+
+      show_fdinfo:
+        pattern: '\.show_fdinfo\s*=\s*(?P<handler>\w+)'
+        description: "显示 fdinfo"
+        context: "process"
+        can_sleep: true
 
 # ============================================================
 # INODE OPERATIONS
 # ============================================================
 inode_operations:
-  description: "Inode Operations"
+  description: "Inode Operations - 索引节点操作"
   header: "linux/fs.h"
   icon: "📁"
+  kernel_version: "2.6+"
+
+  bind_patterns:
+    # struct inode_operations 定义
+    - pattern: 'static const struct inode_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "inode 操作结构定义 (const)"
+
+    - pattern: 'static struct inode_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "inode 操作结构定义"
+
   structure:
     name: "inode_operations"
     callbacks:
+      # === 目录项操作 ===
       lookup:
         pattern: '\.lookup\s*=\s*(?P<handler>\w+)'
-        description: "查找目录项"
+        description: "在目录中查找文件名"
         context: "process"
         can_sleep: true
+        signature: "struct dentry *(*)(struct inode *, struct dentry *, unsigned int)"
+
       create:
         pattern: '\.create\s*=\s*(?P<handler>\w+)'
-        description: "创建文件"
+        description: "创建新文件"
         context: "process"
         can_sleep: true
+        signature: "int (*)(struct user_namespace *, struct inode *, struct dentry *, umode_t, bool)"
+
       link:
         pattern: '\.link\s*=\s*(?P<handler>\w+)'
         description: "创建硬链接"
         context: "process"
         can_sleep: true
+
       unlink:
         pattern: '\.unlink\s*=\s*(?P<handler>\w+)'
         description: "删除文件"
         context: "process"
         can_sleep: true
+
       symlink:
         pattern: '\.symlink\s*=\s*(?P<handler>\w+)'
         description: "创建符号链接"
         context: "process"
         can_sleep: true
+
       mkdir:
         pattern: '\.mkdir\s*=\s*(?P<handler>\w+)'
         description: "创建目录"
         context: "process"
         can_sleep: true
+
       rmdir:
         pattern: '\.rmdir\s*=\s*(?P<handler>\w+)'
         description: "删除目录"
         context: "process"
         can_sleep: true
+
+      mknod:
+        pattern: '\.mknod\s*=\s*(?P<handler>\w+)'
+        description: "创建特殊文件"
+        context: "process"
+        can_sleep: true
+
       rename:
         pattern: '\.rename\s*=\s*(?P<handler>\w+)'
-        description: "重命名"
+        description: "重命名文件或目录"
         context: "process"
         can_sleep: true
+
+      # === 属性操作 ===
       getattr:
         pattern: '\.getattr\s*=\s*(?P<handler>\w+)'
-        description: "获取属性"
+        description: "获取文件属性 (stat)"
         context: "process"
         can_sleep: true
+
       setattr:
         pattern: '\.setattr\s*=\s*(?P<handler>\w+)'
-        description: "设置属性"
+        description: "设置文件属性"
         context: "process"
         can_sleep: true
+
+      # === 权限检查 ===
       permission:
         pattern: '\.permission\s*=\s*(?P<handler>\w+)'
-        description: "检查权限"
+        description: "检查访问权限"
+        context: "process/rcu"
+        can_sleep: "depends on MAY_NOT_BLOCK"
+
+      # === ACL 操作 ===
+      get_acl:
+        pattern: '\.get_acl\s*=\s*(?P<handler>\w+)'
+        description: "获取 POSIX ACL"
         context: "process"
         can_sleep: true
+
+      set_acl:
+        pattern: '\.set_acl\s*=\s*(?P<handler>\w+)'
+        description: "设置 POSIX ACL"
+        context: "process"
+        can_sleep: true
+
+      # === 扩展属性 ===
       listxattr:
         pattern: '\.listxattr\s*=\s*(?P<handler>\w+)'
         description: "列出扩展属性"
+        context: "process"
+        can_sleep: true
+
+      # === 符号链接 ===
+      get_link:
+        pattern: '\.get_link\s*=\s*(?P<handler>\w+)'
+        description: "获取符号链接目标"
+        context: "process/rcu"
+        can_sleep: "depends on dentry arg"
+
+      # === 文件范围 ===
+      fiemap:
+        pattern: '\.fiemap\s*=\s*(?P<handler>\w+)'
+        description: "文件范围映射"
+        context: "process"
+        can_sleep: true
+
+      # === 原子操作 ===
+      atomic_open:
+        pattern: '\.atomic_open\s*=\s*(?P<handler>\w+)'
+        description: "原子打开/创建"
+        context: "process"
+        can_sleep: true
+
+      tmpfile:
+        pattern: '\.tmpfile\s*=\s*(?P<handler>\w+)'
+        description: "创建临时文件 (O_TMPFILE)"
+        context: "process"
+        can_sleep: true
 
 # ============================================================
 # SUPER BLOCK OPERATIONS
 # ============================================================
 super_operations:
-  description: "Super Block Operations"
+  description: "Super Block Operations - 超级块操作"
   header: "linux/fs.h"
   icon: "💿"
+  kernel_version: "2.6+"
+
+  bind_patterns:
+    # struct super_operations 定义
+    - pattern: 'static const struct super_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "超级块操作结构定义 (const)"
+
+    - pattern: 'static struct super_operations\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "超级块操作结构定义"
+
   structure:
     name: "super_operations"
     callbacks:
+      # === inode 管理 ===
       alloc_inode:
         pattern: '\.alloc_inode\s*=\s*(?P<handler>\w+)'
-        description: "分配 inode"
+        description: "分配 inode 结构"
         context: "process"
         can_sleep: true
+        signature: "struct inode *(*)(struct super_block *)"
+
       destroy_inode:
         pattern: '\.destroy_inode\s*=\s*(?P<handler>\w+)'
-        description: "销毁 inode"
+        description: "销毁 inode (清理私有数据)"
         context: "process"
         can_sleep: true
+
       free_inode:
         pattern: '\.free_inode\s*=\s*(?P<handler>\w+)'
-        description: "释放 inode（RCU 回调）"
+        description: "释放 inode 内存 (RCU 回调)"
         context: "softirq"
         can_sleep: false
+
+      dirty_inode:
+        pattern: '\.dirty_inode\s*=\s*(?P<handler>\w+)'
+        description: "标记 inode 为脏"
+        context: "process/atomic"
+        can_sleep: "depends on flags"
+
       write_inode:
         pattern: '\.write_inode\s*=\s*(?P<handler>\w+)'
-        description: "写入 inode"
+        description: "将 inode 写入存储"
         context: "process"
         can_sleep: true
+
       drop_inode:
         pattern: '\.drop_inode\s*=\s*(?P<handler>\w+)'
-        description: "丢弃 inode"
-        context: "process"
+        description: "决定是否丢弃 inode"
+        context: "atomic"
         can_sleep: false
+
       evict_inode:
         pattern: '\.evict_inode\s*=\s*(?P<handler>\w+)'
-        description: "驱逐 inode"
+        description: "驱逐 inode (删除时)"
         context: "process"
         can_sleep: true
+
+      # === 超级块管理 ===
       put_super:
         pattern: '\.put_super\s*=\s*(?P<handler>\w+)'
-        description: "释放超级块"
+        description: "卸载时释放超级块"
         context: "process"
         can_sleep: true
+
       sync_fs:
         pattern: '\.sync_fs\s*=\s*(?P<handler>\w+)'
         description: "同步文件系统"
         context: "process"
         can_sleep: true
+
+      freeze_fs:
+        pattern: '\.freeze_fs\s*=\s*(?P<handler>\w+)'
+        description: "冻结文件系统"
+        context: "process"
+        can_sleep: true
+
+      unfreeze_fs:
+        pattern: '\.unfreeze_fs\s*=\s*(?P<handler>\w+)'
+        description: "解冻文件系统"
+        context: "process"
+        can_sleep: true
+
       statfs:
         pattern: '\.statfs\s*=\s*(?P<handler>\w+)'
-        description: "获取文件系统状态"
+        description: "获取文件系统统计"
         context: "process"
         can_sleep: true
+
       remount_fs:
         pattern: '\.remount_fs\s*=\s*(?P<handler>\w+)'
-        description: "重新挂载"
+        description: "重新挂载 (旧 API)"
         context: "process"
         can_sleep: true
+        deprecated: "使用 fc->ops->reconfigure"
+
+      umount_begin:
+        pattern: '\.umount_begin\s*=\s*(?P<handler>\w+)'
+        description: "卸载开始 (强制卸载)"
+        context: "process"
+        can_sleep: true
+
+      # === 显示信息 ===
       show_options:
         pattern: '\.show_options\s*=\s*(?P<handler>\w+)'
         description: "显示挂载选项"
+        context: "process"
+        can_sleep: true
+
+      show_devname:
+        pattern: '\.show_devname\s*=\s*(?P<handler>\w+)'
+        description: "显示设备名"
+        context: "process"
+        can_sleep: true
+
+      show_path:
+        pattern: '\.show_path\s*=\s*(?P<handler>\w+)'
+        description: "显示挂载路径"
+        context: "process"
+        can_sleep: true
+
+      show_stats:
+        pattern: '\.show_stats\s*=\s*(?P<handler>\w+)'
+        description: "显示统计信息"
+        context: "process"
+        can_sleep: true
+
+      # === 配额 ===
+      quota_read:
+        pattern: '\.quota_read\s*=\s*(?P<handler>\w+)'
+        description: "读取配额数据"
+        context: "process"
+        can_sleep: true
+
+      quota_write:
+        pattern: '\.quota_write\s*=\s*(?P<handler>\w+)'
+        description: "写入配额数据"
+        context: "process"
+        can_sleep: true
+
+      get_dquots:
+        pattern: '\.get_dquots\s*=\s*(?P<handler>\w+)'
+        description: "获取配额结构"
+        context: "process"
+        can_sleep: true
 
 # ============================================================
 # FILE SYSTEM TYPE
 # ============================================================
 file_system_type:
-  description: "File System Type"
+  description: "File System Type - 文件系统类型"
   header: "linux/fs.h"
   icon: "🗄️"
+  kernel_version: "2.4+"
+
+  bind_patterns:
+    # struct file_system_type 定义
+    - pattern: 'static struct file_system_type\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "文件系统类型结构定义"
+
   registration:
-    - pattern: 'register_filesystem\s*\(\s*&(?P<fs>\w+)\s*\)'
+    - pattern: 'register_filesystem\s*\(\s*&?(?P<fs>\w+)\s*\)'
       description: "注册文件系统"
+      context: "process"
+      can_sleep: true
+
     - pattern: 'module_init\s*\(\s*(?P<init>\w+)\s*\)'
-      description: "模块初始化"
+      description: "模块初始化入口"
+
   unregistration:
-    - pattern: 'unregister_filesystem\s*\(\s*&(?P<fs>\w+)\s*\)'
+    - pattern: 'unregister_filesystem\s*\(\s*&?(?P<fs>\w+)\s*\)'
       description: "注销文件系统"
+      context: "process"
+      can_sleep: true
+
+  mount_helpers:
+    - pattern: 'mount_bdev\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<dev_name>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      description: "挂载块设备文件系统"
+      context: "process"
+
+    - pattern: 'mount_nodev\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      description: "挂载无设备文件系统"
+      context: "process"
+
+    - pattern: 'mount_single\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      description: "挂载单实例文件系统"
+      context: "process"
+
+  kill_helpers:
+    - pattern: 'kill_block_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      description: "卸载块设备超级块"
+      context: "process"
+
+    - pattern: 'kill_litter_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      description: "卸载并清理超级块"
+      context: "process"
+
+    - pattern: 'kill_anon_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      description: "卸载匿名超级块"
+      context: "process"
+
+  new_api_helpers:
+    - pattern: 'get_tree_nodev\s*\(\s*(?P<fc>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      description: "无设备获取树 (5.1+)"
+      context: "process"
+
+    - pattern: 'get_tree_bdev\s*\(\s*(?P<fc>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      description: "块设备获取树 (5.1+)"
+      context: "process"
+
+    - pattern: 'get_tree_single\s*\(\s*(?P<fc>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      description: "单实例获取树 (5.1+)"
+      context: "process"
+
   structure:
     name: "file_system_type"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "文件系统名称"
+      - name: "fs_flags"
+        type: "int"
+        description: "文件系统标志"
+      - name: "owner"
+        type: "struct module *"
+        description: "模块所有者"
+
     callbacks:
       init_fs_context:
         pattern: '\.init_fs_context\s*=\s*(?P<handler>\w+)'
-        description: "初始化挂载上下文（新 API）"
+        description: "初始化挂载上下文 (新 API, 5.1+)"
+        context: "process"
+        can_sleep: true
+        signature: "int (*)(struct fs_context *)"
+
       mount:
         pattern: '\.mount\s*=\s*(?P<handler>\w+)'
-        description: "挂载文件系统（旧 API）"
+        description: "挂载文件系统 (旧 API)"
+        context: "process"
+        can_sleep: true
+        signature: "struct dentry *(*)(struct file_system_type *, int, const char *, void *)"
+        deprecated: "使用 init_fs_context + get_tree"
+
       kill_sb:
         pattern: '\.kill_sb\s*=\s*(?P<handler>\w+)'
         description: "卸载文件系统"
+        context: "process"
+        can_sleep: true
+        signature: "void (*)(struct super_block *)"
+
+      parameters:
+        pattern: '\.parameters\s*=\s*(?P<handler>\w+)'
+        description: "挂载参数描述"
 
 # ============================================================
 # CALL CHAINS (调用链)

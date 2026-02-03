@@ -191,28 +191,115 @@ sched_class:
       chain:
         - function: "schedule"
           file: "kernel/sched/core.c"
-          description: "调度入口"
+          description: "调度入口，检查抢占/禁用状态"
           context: "process"
+          actions:
+            - "sched_submit_work() - 提交延迟工作"
+            - "检查 blk_needs_flush_plug()"
+            - "调用 __schedule(SM_NONE)"
         - function: "__schedule"
           file: "kernel/sched/core.c"
-          description: "调度核心逻辑"
+          description: "调度核心逻辑 - 禁用中断、选择下一个任务"
           context: "irq_disabled"
+          actions:
+            - "local_irq_disable() - 禁用本地中断"
+            - "rcu_note_context_switch() - RCU 通知"
+            - "prev->sched_class->deactivate_task (如果任务睡眠)"
         - function: "pick_next_task"
           file: "kernel/sched/core.c"
-          description: "选择下一个任务"
-        - function: "sched_class->pick_next_task"
-          file: "各调度器类"
-          description: "调度器类回调"
-          is_user_entry: true
+          description: "按优先级遍历调度类选择下一个任务"
+          priority_order:
+            - "stop_sched_class (最高)"
+            - "dl_sched_class"
+            - "rt_sched_class"
+            - "fair_sched_class"
+            - "idle_sched_class (最低)"
+        - function: "pick_next_task_fair"
+          file: "kernel/sched/fair.c"
+          description: "CFS: 选择 vruntime 最小的实体"
+          alternative: "pick_next_task_rt / pick_next_task_dl"
+          actions:
+            - "__pick_first_entity() - 红黑树最左节点"
+            - "set_next_entity() - 设置为当前实体"
         - function: "context_switch"
           file: "kernel/sched/core.c"
-          description: "上下文切换"
+          description: "执行上下文切换 - 切换地址空间和寄存器"
+          context: "irq_disabled"
+          actions:
+            - "prepare_task_switch()"
+            - "arch_start_context_switch()"
         - function: "switch_mm_irqs_off"
           file: "arch/*/mm/context.c"
-          description: "切换内存映射"
+          description: "切换内存映射 (地址空间)"
+          actions:
+            - "切换页表基地址 (TTBR/CR3)"
+            - "刷新 TLB (如需要)"
+            - "更新 ASID"
         - function: "switch_to"
           file: "arch/*/include/asm/switch_to.h"
-          description: "切换寄存器状态"
+          description: "切换 CPU 寄存器状态 (汇编实现)"
+          actions:
+            - "保存 prev 的寄存器到内核栈"
+            - "切换内核栈指针"
+            - "恢复 next 的寄存器"
+            - "返回后运行在 next 上下文"
+        - function: "finish_task_switch"
+          file: "kernel/sched/core.c"
+          description: "切换完成后的清理工作"
+          context: "next 进程"
+          actions:
+            - "mm_release() - 释放旧进程的内存映射引用"
+            - "put_task_struct() - 减少旧进程引用计数"
+            - "kfree_rcu() - 释放死亡进程的 task_struct"
+
+    schedule_detailed:
+      description: "schedule() 完整调用链 (ASCII 图)"
+      diagram: |
+        schedule()
+        │
+        └──▶ __schedule(SM_NONE)
+             │
+             ├──▶ local_irq_disable()
+             │
+             ├──▶ rq_lock(rq)
+             │
+             ├──▶ update_rq_clock(rq)
+             │
+             ├──▶ deactivate_task(rq, prev) ───▶ prev->sched_class->dequeue_task()
+             │    (如果 prev 状态非 TASK_RUNNING)
+             │
+             ├──▶ pick_next_task(rq, prev)
+             │    │
+             │    └──▶ 按优先级遍历 sched_class:
+             │         ├── stop_sched_class->pick_next_task()
+             │         ├── dl_sched_class->pick_next_task()     ◀── pick_next_task_dl()
+             │         ├── rt_sched_class->pick_next_task()     ◀── pick_next_task_rt()
+             │         ├── fair_sched_class->pick_next_task()   ◀── pick_next_task_fair()
+             │         │                                            └── __pick_first_entity()
+             │         └── idle_sched_class->pick_next_task()
+             │
+             ├──▶ context_switch(rq, prev, next)
+             │    │
+             │    ├──▶ prepare_task_switch(rq, prev, next)
+             │    │
+             │    ├──▶ switch_mm_irqs_off(prev->mm, next->mm)
+             │    │    │
+             │    │    └──▶ 架构相关:
+             │    │         ├── ARM: cpu_switch_mm()
+             │    │         ├── ARM64: __switch_mm()
+             │    │         └── x86: load_new_mm_cr3()
+             │    │
+             │    └──▶ switch_to(prev, next, prev)
+             │         │
+             │         └──▶ 汇编实现:
+             │              ├── 保存 prev 寄存器
+             │              ├── 切换栈指针
+             │              └── 恢复 next 寄存器
+             │
+             └──▶ finish_task_switch(prev)
+                  │
+                  ├──▶ mm_release()
+                  └──▶ put_task_struct_rcu_user(prev)
 
     wake_up:
       description: "唤醒任务路径"
@@ -777,6 +864,65 @@ wait_queue:
       can_sleep: true
       state: "TASK_INTERRUPTIBLE"
 
+    wait_event_exclusive:
+      pattern: 'wait_event_exclusive\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^)]+)\s*\)'
+      description: "等待条件满足 (独占等待，避免惊群)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_UNINTERRUPTIBLE"
+      use_case: "多个等待者只需唤醒一个的场景"
+
+    wait_event_interruptible_exclusive:
+      pattern: 'wait_event_interruptible_exclusive\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^)]+)\s*\)'
+      description: "等待条件满足 (可中断，独占等待)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_INTERRUPTIBLE"
+
+    wait_event_killable_timeout:
+      pattern: 'wait_event_killable_timeout\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^,]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      description: "等待条件满足或超时 (可被 fatal 信号中断)"
+      context: "process"
+      can_sleep: true
+      state: "TASK_KILLABLE"
+      return_value:
+        success: "剩余 jiffies (> 0)"
+        timeout: "0"
+        killed: "-ERESTARTSYS"
+
+    wait_event_lock_irq:
+      pattern: 'wait_event_lock_irq\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^,]+)\s*,\s*(?P<lock>[^)]+)\s*\)'
+      description: "持有自旋锁时等待 (禁中断)"
+      context: "process"
+      can_sleep: true
+      use_case: "条件检查需要自旋锁保护的场景"
+
+    wait_event_interruptible_lock_irq:
+      pattern: 'wait_event_interruptible_lock_irq\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^,]+)\s*,\s*(?P<lock>[^)]+)\s*\)'
+      description: "持有自旋锁时等待 (可中断，禁中断)"
+      context: "process"
+      can_sleep: true
+
+    wait_event_cmd:
+      pattern: 'wait_event_cmd\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^,]+)\s*,'
+      description: "等待带自定义命令 (睡眠前后执行)"
+      context: "process"
+      can_sleep: true
+      use_case: "需要在睡眠前释放锁/睡眠后获取锁的场景"
+
+    wait_event_interruptible_hrtimeout:
+      pattern: 'wait_event_interruptible_hrtimeout\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^,]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      description: "高精度定时等待 (可中断)"
+      context: "process"
+      can_sleep: true
+      use_case: "需要纳秒级精度超时的场景"
+
+    wait_event_hrtimeout:
+      pattern: 'wait_event_hrtimeout\s*\(\s*(?P<wq>[\w\.\->]+)\s*,\s*(?P<condition>[^,]+)\s*,\s*(?P<timeout>[^)]+)\s*\)'
+      description: "高精度定时等待 (不可中断)"
+      context: "process"
+      can_sleep: true
+
   wake_functions:
     wake_up:
       pattern: 'wake_up\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
@@ -813,6 +959,31 @@ wait_queue:
       pattern: 'wake_up_interruptible_sync\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
       description: "同步唤醒 (不触发重调度)"
       context: "any"
+      can_sleep: false
+
+    wake_up_interruptible_nr:
+      pattern: 'wake_up_interruptible_nr\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*,\s*(?P<nr>\w+)\s*\)'
+      description: "唤醒 n 个可中断等待者"
+      context: "any"
+      can_sleep: false
+
+    wake_up_interruptible_sync_poll:
+      pattern: 'wake_up_interruptible_sync_poll\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*,\s*(?P<key>[^)]+)\s*\)'
+      description: "同步唤醒带 poll key"
+      context: "any"
+      can_sleep: false
+      use_case: "用于 poll/epoll 唤醒"
+
+    wake_up_locked:
+      pattern: 'wake_up_locked\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*\)'
+      description: "唤醒一个等待者 (调用者已持有 wq 锁)"
+      context: "any (wq->lock held)"
+      can_sleep: false
+
+    wake_up_locked_poll:
+      pattern: 'wake_up_locked_poll\s*\(\s*&?(?P<wq>[\w\.\->]+)\s*,\s*(?P<key>[^)]+)\s*\)'
+      description: "唤醒一个等待者带 poll key (调用者已持有 wq 锁)"
+      context: "any (wq->lock held)"
       can_sleep: false
 
   callbacks:
@@ -1061,6 +1232,58 @@ sleep_wake:
       value: "TASK_INTERRUPTIBLE | TASK_UNINTERRUPTIBLE"
       description: "所有睡眠状态"
 
+    TASK_IDLE:
+      value: "TASK_UNINTERRUPTIBLE | TASK_NOLOAD"
+      description: "空闲睡眠 (不计入负载)"
+      kernel_version: "4.1+"
+      use_case: "kthread 等待工作时使用"
+
+    TASK_NOLOAD:
+      value: 0x0400
+      description: "不计入系统负载的睡眠"
+      kernel_version: "4.1+"
+
+    TASK_FREEZABLE:
+      value: "TASK_INTERRUPTIBLE | TASK_FREEZABLE_UNSAFE"
+      description: "可冻结的睡眠状态"
+      kernel_version: "5.10+"
+
+  state_quick_reference:
+    description: "常见任务状态速查"
+    table:
+      - state: "R (TASK_RUNNING)"
+        ps_flag: "R"
+        meaning: "运行中或在运行队列"
+        can_wake: false
+      - state: "S (TASK_INTERRUPTIBLE)"
+        ps_flag: "S"
+        meaning: "可中断睡眠 (等待事件)"
+        can_wake: "wake_up 或信号"
+      - state: "D (TASK_UNINTERRUPTIBLE)"
+        ps_flag: "D"
+        meaning: "不可中断睡眠 (通常是 I/O)"
+        can_wake: "只有 wake_up"
+      - state: "T (TASK_STOPPED)"
+        ps_flag: "T"
+        meaning: "被停止 (SIGSTOP)"
+        can_wake: "SIGCONT"
+      - state: "t (TASK_TRACED)"
+        ps_flag: "t"
+        meaning: "被跟踪 (ptrace)"
+        can_wake: "ptrace 操作"
+      - state: "Z (EXIT_ZOMBIE)"
+        ps_flag: "Z"
+        meaning: "僵尸 (已退出，等待父进程回收)"
+        can_wake: false
+      - state: "I (TASK_IDLE)"
+        ps_flag: "I"
+        meaning: "空闲内核线程 (不计入负载)"
+        can_wake: "wake_up"
+      - state: "K (TASK_KILLABLE)"
+        ps_flag: "D"
+        meaning: "可被 SIGKILL 中断的 D 状态"
+        can_wake: "wake_up 或 SIGKILL"
+
   state_functions:
     set_current_state:
       pattern: 'set_current_state\s*\(\s*(?P<state>\w+)\s*\)'
@@ -1134,6 +1357,55 @@ sleep_wake:
       context: "process (holding spinlock)"
       can_sleep: true
 
+    cond_resched_rwlock_read:
+      pattern: 'cond_resched_rwlock_read\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "持有读写锁读端时条件重调度"
+      context: "process (holding rwlock read)"
+      can_sleep: true
+
+    cond_resched_rwlock_write:
+      pattern: 'cond_resched_rwlock_write\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "持有读写锁写端时条件重调度"
+      context: "process (holding rwlock write)"
+      can_sleep: true
+
+  sleep_annotations:
+    might_sleep:
+      pattern: 'might_sleep\s*\(\s*\)'
+      description: "断言当前上下文允许睡眠 (调试用)"
+      context: "process"
+      file: "include/linux/kernel.h"
+      behavior: |
+        - DEBUG_ATOMIC_SLEEP 启用时: 在原子上下文中打印警告和栈回溯
+        - 生产环境: 编译为空操作
+      use_case: "在可能睡眠的函数开头调用，捕获错误调用"
+
+    might_sleep_if:
+      pattern: 'might_sleep_if\s*\(\s*(?P<cond>[^)]+)\s*\)'
+      description: "条件睡眠断言"
+      context: "process"
+      file: "include/linux/kernel.h"
+      behavior: "如果 cond 为真，则等同于 might_sleep()"
+
+    cant_sleep:
+      pattern: 'cant_sleep\s*\(\s*\)'
+      description: "断言当前上下文不允许睡眠 (调试用)"
+      context: "atomic"
+      file: "include/linux/kernel.h"
+      kernel_version: "5.3+"
+
+    non_block_start:
+      pattern: 'non_block_start\s*\(\s*\)'
+      description: "标记非阻塞区域开始"
+      context: "any"
+      file: "include/linux/sched.h"
+
+    non_block_end:
+      pattern: 'non_block_end\s*\(\s*\)'
+      description: "标记非阻塞区域结束"
+      context: "any"
+      file: "include/linux/sched.h"
+
   wake_functions:
     try_to_wake_up:
       pattern: 'try_to_wake_up\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<state>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
@@ -1197,6 +1469,77 @@ sleep_wake:
     - pattern: 'fatal_signal_pending\s*\(\s*(?P<task>[\w\.\->]+)\s*\)'
       description: "检查是否有 fatal 信号待处理"
       context: "any"
+
+    - pattern: 'freezing\s*\(\s*(?P<task>[\w\.\->]+)\s*\)'
+      description: "检查任务是否需要冻结"
+      context: "process"
+      return_value:
+        freezing: "非 0"
+        not_freezing: "0"
+
+    - pattern: 'try_to_freeze\s*\(\s*\)'
+      description: "尝试冻结当前任务"
+      context: "process"
+      can_sleep: true
+      use_case: "kthread 主循环中检查冻结请求"
+
+    - pattern: 'set_freezable\s*\(\s*\)'
+      description: "标记当前任务可冻结"
+      context: "process"
+      use_case: "kthread 初始化时调用"
+
+    - pattern: 'set_freezable_with_signal\s*\(\s*\)'
+      description: "标记任务可冻结 (使用信号方式)"
+      context: "process"
+
+  kthread_scheduling:
+    kthread_should_stop:
+      pattern: 'kthread_should_stop\s*\(\s*\)'
+      description: "检查 kthread 是否应该停止"
+      context: "process (kthread)"
+      return_value:
+        should_stop: "非 0"
+        continue: "0"
+      use_case: "kthread 主循环退出条件"
+
+    kthread_should_park:
+      pattern: 'kthread_should_park\s*\(\s*\)'
+      description: "检查 kthread 是否应该停泊"
+      context: "process (kthread)"
+      return_value:
+        should_park: "非 0"
+        continue: "0"
+
+    kthread_parkme:
+      pattern: 'kthread_parkme\s*\(\s*\)'
+      description: "使 kthread 进入停泊状态"
+      context: "process (kthread)"
+      can_sleep: true
+      use_case: "响应 kthread_park() 请求"
+
+    kthread_freezable_should_stop:
+      pattern: 'kthread_freezable_should_stop\s*\(\s*(?P<was_frozen>[^)]*)\s*\)'
+      description: "检查是否应该停止 (支持冻结)"
+      context: "process (kthread)"
+      can_sleep: true
+      use_case: "kthread 主循环中检查停止和冻结"
+
+    schedule_hrtimeout:
+      pattern: 'schedule_hrtimeout\s*\(\s*(?P<expires>[^,]+)\s*,\s*(?P<mode>[^)]+)\s*\)'
+      description: "高精度定时睡眠"
+      context: "process"
+      can_sleep: true
+      file: "kernel/time/hrtimer.c"
+      return_value:
+        success: "0 (正常唤醒)"
+        signal: "-EINTR (被信号中断)"
+
+    schedule_hrtimeout_range:
+      pattern: 'schedule_hrtimeout_range\s*\(\s*(?P<expires>[^,]+)\s*,\s*(?P<delta>[^,]+)\s*,\s*(?P<mode>[^)]+)\s*\)'
+      description: "高精度定时睡眠 (带范围)"
+      context: "process"
+      can_sleep: true
+      file: "kernel/time/hrtimer.c"
 
   call_chains:
     voluntary_sleep:
@@ -1915,6 +2258,33 @@ rt_scheduler:
       pattern: 'sched_setscheduler\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<policy>[^,]+)\s*,'
       description: "设置任务调度策略"
       context: "process"
+      file: "kernel/sched/core.c"
+      return_value:
+        success: "0"
+        failure: "-errno"
+
+    sched_set_fifo:
+      pattern: 'sched_set_fifo\s*\(\s*(?P<p>[\w\.\->]+)\s*\)'
+      description: "设置任务为 SCHED_FIFO (优先级 50)"
+      context: "process"
+      file: "kernel/sched/core.c"
+      kernel_version: "5.9+"
+      use_case: "快速设置为 RT 调度"
+
+    sched_set_fifo_low:
+      pattern: 'sched_set_fifo_low\s*\(\s*(?P<p>[\w\.\->]+)\s*\)'
+      description: "设置任务为 SCHED_FIFO (最低优先级 1)"
+      context: "process"
+      file: "kernel/sched/core.c"
+      kernel_version: "5.9+"
+
+    sched_set_normal:
+      pattern: 'sched_set_normal\s*\(\s*(?P<p>[\w\.\->]+)\s*,\s*(?P<nice>[^)]+)\s*\)'
+      description: "设置任务为 SCHED_NORMAL (CFS)"
+      context: "process"
+      file: "kernel/sched/core.c"
+      kernel_version: "5.9+"
+      use_case: "从 RT 调度恢复为普通调度"
 
   rt_bandwidth:
     description: "RT 带宽限制"
@@ -1936,6 +2306,182 @@ rt_scheduler:
         if (sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
             perror("sched_setscheduler");
             return -1;
+        }
+
+# ============================================================
+# RT MUTEX (Priority Inheritance)
+# ============================================================
+
+rt_mutex:
+  description: "RT Mutex - 带优先级继承的互斥锁"
+  header: "include/linux/rtmutex.h"
+  icon: "🔐"
+  kernel_version: "2.6.18+"
+  config: "CONFIG_RT_MUTEXES"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  description_long: |
+    RT Mutex 实现优先级继承协议，解决优先级反转问题:
+    - 当高优先级任务等待低优先级任务持有的锁时
+    - 低优先级任务的优先级被临时提升到高优先级
+    - 锁释放后恢复原优先级
+
+  data_structures:
+    rt_mutex:
+      pattern: 'struct rt_mutex\s*\{'
+      description: "RT 互斥锁结构"
+      file: "include/linux/rtmutex.h"
+      fields:
+        - name: "wait_lock"
+          type: "raw_spinlock_t"
+          description: "保护等待者列表的自旋锁"
+        - name: "waiters"
+          type: "struct rb_root_cached"
+          description: "等待者红黑树 (按优先级排序)"
+        - name: "owner"
+          type: "struct task_struct *"
+          description: "锁持有者"
+
+  initialization:
+    - pattern: 'DEFINE_RT_MUTEX\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态定义 RT 互斥锁"
+      context: "编译时"
+
+    - pattern: 'rt_mutex_init\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "动态初始化 RT 互斥锁"
+      context: "process"
+
+  lock_functions:
+    rt_mutex_lock:
+      pattern: 'rt_mutex_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "获取 RT 互斥锁 (可睡眠)"
+      context: "process"
+      can_sleep: true
+      file: "kernel/locking/rtmutex.c"
+      behavior: "持有锁直到获取成功"
+
+    rt_mutex_lock_interruptible:
+      pattern: 'rt_mutex_lock_interruptible\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "获取 RT 互斥锁 (可被信号中断)"
+      context: "process"
+      can_sleep: true
+      file: "kernel/locking/rtmutex.c"
+      return_value:
+        success: "0"
+        interrupted: "-EINTR"
+
+    rt_mutex_lock_killable:
+      pattern: 'rt_mutex_lock_killable\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "获取 RT 互斥锁 (可被 fatal 信号中断)"
+      context: "process"
+      can_sleep: true
+      file: "kernel/locking/rtmutex.c"
+
+    rt_mutex_trylock:
+      pattern: 'rt_mutex_trylock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "尝试获取 RT 互斥锁 (不睡眠)"
+      context: "any"
+      can_sleep: false
+      file: "kernel/locking/rtmutex.c"
+      return_value:
+        success: "1"
+        failure: "0"
+
+    rt_mutex_unlock:
+      pattern: 'rt_mutex_unlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "释放 RT 互斥锁"
+      context: "process"
+      can_sleep: false
+      file: "kernel/locking/rtmutex.c"
+
+  helper_functions:
+    - pattern: 'rt_mutex_is_locked\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "检查 RT 互斥锁是否被持有"
+      context: "any"
+      return_value:
+        locked: "1"
+        unlocked: "0"
+
+    - pattern: 'rt_mutex_owner\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "获取锁持有者"
+      context: "any"
+      return_value: "struct task_struct * 或 NULL"
+
+  call_chains:
+    rt_mutex_lock_path:
+      description: "RT 互斥锁获取路径"
+      trigger: "调用 rt_mutex_lock()"
+      chain:
+        - function: "rt_mutex_lock"
+          file: "kernel/locking/rtmutex.c"
+          description: "锁获取入口"
+        - function: "__rt_mutex_lock"
+          file: "kernel/locking/rtmutex.c"
+          description: "内部锁获取"
+        - function: "rt_mutex_slowlock"
+          file: "kernel/locking/rtmutex.c"
+          description: "慢路径 (需要等待)"
+        - function: "rt_mutex_adjust_prio_chain"
+          file: "kernel/locking/rtmutex.c"
+          description: "调整优先级链 (优先级继承)"
+        - function: "schedule"
+          description: "等待锁释放"
+
+    priority_inheritance_path:
+      description: "优先级继承路径"
+      trigger: "高优先级任务等待低优先级任务持有的锁"
+      chain:
+        - function: "task_blocks_on_rt_mutex"
+          file: "kernel/locking/rtmutex.c"
+          description: "任务阻塞在 RT 锁上"
+        - function: "rt_mutex_adjust_prio_chain"
+          file: "kernel/locking/rtmutex.c"
+          description: "遍历锁链调整优先级"
+        - function: "rt_mutex_setprio"
+          file: "kernel/sched/core.c"
+          description: "设置任务优先级"
+        - function: "check_preempt_curr"
+          description: "检查是否需要抢占"
+
+  examples:
+    - description: "RT 互斥锁基本使用"
+      kernel_version: "2.6.18+"
+      code: |
+        #include <linux/rtmutex.h>
+        
+        static DEFINE_RT_MUTEX(my_rt_lock);
+        
+        void my_function(void)
+        {
+            /* 获取锁 (支持优先级继承) */
+            rt_mutex_lock(&my_rt_lock);
+            
+            /* 临界区 */
+            do_critical_work();
+            
+            /* 释放锁 */
+            rt_mutex_unlock(&my_rt_lock);
+        }
+        
+        int my_interruptible_function(void)
+        {
+            int ret;
+            
+            /* 可中断地获取锁 */
+            ret = rt_mutex_lock_interruptible(&my_rt_lock);
+            if (ret)
+                return ret;
+            
+            /* 临界区 */
+            do_critical_work();
+            
+            rt_mutex_unlock(&my_rt_lock);
+            return 0;
         }
 
 # ============================================================
@@ -2291,6 +2837,30 @@ preemption:
     - pattern: 'might_sleep\s*\(\s*\)'
       description: "断言可以睡眠"
       effect: "在原子上下文中打印警告"
+      file: "include/linux/kernel.h"
+      debug_only: true
+
+    - pattern: '__might_sleep\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<line>[^)]+)\s*\)'
+      description: "might_sleep 内部实现"
+      effect: "检查 preempt_count 和中断状态"
+
+    - pattern: 'might_resched\s*\(\s*\)'
+      description: "断言可以重调度"
+      effect: "检查是否允许抢占"
+
+    - pattern: 'cant_migrate\s*\(\s*\)'
+      description: "断言不允许迁移"
+      effect: "检查抢占是否禁用"
+
+    - pattern: 'lockdep_assert_preemption_disabled\s*\(\s*\)'
+      description: "lockdep 断言抢占已禁用"
+      context: "any"
+      debug_only: true
+
+    - pattern: 'lockdep_assert_preemption_enabled\s*\(\s*\)'
+      description: "lockdep 断言抢占已启用"
+      context: "any"
+      debug_only: true
 
   preempt_count_bits:
     description: "抢占计数各位含义"
@@ -2324,23 +2894,113 @@ cpu_affinity:
       context: "process"
       can_sleep: true
       file: "kernel/sched/core.c"
+      return_value:
+        success: "0"
+        failure: "-EINVAL (没有可用 CPU)"
 
     sched_setaffinity:
       pattern: 'sched_setaffinity\s*\(\s*(?P<pid>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
       description: "系统调用设置亲和性"
       context: "process (syscall)"
       can_sleep: true
+      file: "kernel/sched/core.c"
 
     sched_getaffinity:
       pattern: 'sched_getaffinity\s*\(\s*(?P<pid>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
       description: "系统调用获取亲和性"
       context: "process (syscall)"
+      file: "kernel/sched/core.c"
 
     migrate_task_to:
       pattern: 'migrate_task_to\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<cpu>[^)]+)\s*\)'
       description: "迁移任务到指定 CPU"
       context: "process"
       file: "kernel/sched/core.c"
+
+  cpumask_operations:
+    cpumask_set_cpu:
+      pattern: 'cpumask_set_cpu\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "在 cpumask 中设置指定 CPU 位"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    cpumask_clear_cpu:
+      pattern: 'cpumask_clear_cpu\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "在 cpumask 中清除指定 CPU 位"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    cpumask_test_cpu:
+      pattern: 'cpumask_test_cpu\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "测试 cpumask 中是否设置了指定 CPU"
+      context: "any"
+      file: "include/linux/cpumask.h"
+      return_value:
+        set: "1"
+        clear: "0"
+
+    cpumask_setall:
+      pattern: 'cpumask_setall\s*\(\s*(?P<mask>[^)]+)\s*\)'
+      description: "设置 cpumask 中所有位"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    cpumask_clear:
+      pattern: 'cpumask_clear\s*\(\s*(?P<mask>[^)]+)\s*\)'
+      description: "清除 cpumask 中所有位"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    cpumask_copy:
+      pattern: 'cpumask_copy\s*\(\s*(?P<dst>[^,]+)\s*,\s*(?P<src>[^)]+)\s*\)'
+      description: "复制 cpumask"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    cpumask_and:
+      pattern: 'cpumask_and\s*\(\s*(?P<dst>[^,]+)\s*,\s*(?P<src1>[^,]+)\s*,\s*(?P<src2>[^)]+)\s*\)'
+      description: "cpumask 与操作"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    cpumask_or:
+      pattern: 'cpumask_or\s*\(\s*(?P<dst>[^,]+)\s*,\s*(?P<src1>[^,]+)\s*,\s*(?P<src2>[^)]+)\s*\)'
+      description: "cpumask 或操作"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    cpumask_first:
+      pattern: 'cpumask_first\s*\(\s*(?P<mask>[^)]+)\s*\)'
+      description: "获取 cpumask 中第一个设置的 CPU"
+      context: "any"
+      file: "include/linux/cpumask.h"
+      return_value:
+        found: "CPU 编号"
+        empty: "nr_cpu_ids"
+
+    cpumask_weight:
+      pattern: 'cpumask_weight\s*\(\s*(?P<mask>[^)]+)\s*\)'
+      description: "获取 cpumask 中设置的 CPU 数量"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    for_each_cpu:
+      pattern: 'for_each_cpu\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      description: "遍历 cpumask 中所有设置的 CPU"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    for_each_online_cpu:
+      pattern: 'for_each_online_cpu\s*\(\s*(?P<cpu>\w+)\s*\)'
+      description: "遍历所有在线 CPU"
+      context: "any"
+      file: "include/linux/cpumask.h"
+
+    for_each_possible_cpu:
+      pattern: 'for_each_possible_cpu\s*\(\s*(?P<cpu>\w+)\s*\)'
+      description: "遍历所有可能的 CPU"
+      context: "any"
+      file: "include/linux/cpumask.h"
 
   per_cpu_helpers:
     - pattern: 'get_cpu\s*\(\s*\)'

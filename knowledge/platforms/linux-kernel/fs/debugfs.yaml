@@ -94,10 +94,27 @@ kernel_functions:
     can_sleep: true
     return_type: "struct dentry *"
 
+  # 精确匹配带引号的 debugfs_create_dir
+  debugfs_create_dir_quoted:
+    pattern: 'debugfs_create_dir\s*\(\s*"(?P<name>[^"]+)"\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "创建 debugfs 目录 (带引号名称)"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct dentry *"
+
   # === 文件创建 (通用) ===
   debugfs_create_file:
     pattern: 'debugfs_create_file\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fops>[^)]+)\s*\)'
     description: "创建 debugfs 文件"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+
+  # 精确匹配带引号的 debugfs_create_file
+  debugfs_create_file_quoted:
+    pattern: 'debugfs_create_file\s*\(\s*"(?P<name>[^"]+)"\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fops>[^)]+)\s*\)'
+    description: "创建 debugfs 文件 (带引号名称)"
     file: "fs/debugfs/inode.c"
     context: "process"
     can_sleep: true
@@ -127,6 +144,14 @@ kernel_functions:
   debugfs_create_u32:
     pattern: 'debugfs_create_u32\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
     description: "创建 u32 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  # 精确匹配带引号的 debugfs_create_u32
+  debugfs_create_u32_quoted:
+    pattern: 'debugfs_create_u32\s*\(\s*"(?P<name>[^"]+)"\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建 u32 文件 (带引号名称)"
     file: "fs/debugfs/file.c"
     context: "process"
     can_sleep: true

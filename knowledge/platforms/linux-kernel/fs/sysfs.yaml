@@ -506,6 +506,48 @@ macros:
     pattern: 'DRIVER_ATTR_RW\s*\(\s*(?P<name>\w+)\s*\)'
     description: "定义读写驱动属性"
 
+  DRIVER_ATTR_WO:
+    pattern: 'DRIVER_ATTR_WO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义只写驱动属性"
+
+  # === 总线属性 ===
+  BUS_ATTR_RO:
+    pattern: 'BUS_ATTR_RO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义只读总线属性"
+
+  BUS_ATTR_RW:
+    pattern: 'BUS_ATTR_RW\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义读写总线属性"
+
+  BUS_ATTR_WO:
+    pattern: 'BUS_ATTR_WO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义只写总线属性"
+
+  # === 模块属性 ===
+  MODULE_ATTR_RO:
+    pattern: 'module_param\s*\(\s*(?P<name>\w+)\s*,'
+    description: "模块参数 (sysfs 可见)"
+
+  __ATTR:
+    pattern: '__ATTR\s*\(\s*(?P<name>\w+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<show>[^,]+)\s*,\s*(?P<store>[^)]+)\s*\)'
+    description: "通用属性定义宏"
+
+  __ATTR_RO:
+    pattern: '__ATTR_RO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "通用只读属性定义"
+
+  __ATTR_WO:
+    pattern: '__ATTR_WO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "通用只写属性定义"
+
+  __ATTR_RW:
+    pattern: '__ATTR_RW\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "通用读写属性定义"
+
+  __ATTR_NULL:
+    pattern: '__ATTR_NULL'
+    description: "属性数组结束标记"
+
   BIN_ATTR:
     pattern: 'BIN_ATTR\s*\(\s*(?P<name>\w+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<read>[^,]+)\s*,\s*(?P<write>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
     description: "定义二进制属性"

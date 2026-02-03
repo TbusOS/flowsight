@@ -661,32 +661,52 @@ softirq_processing:
     irq_exit_chain:
       description: "硬中断退出触发软中断"
       trigger: "硬中断处理完成"
+      ascii_diagram: |
+        irq_exit()
+          -> __irq_exit_rcu()
+            -> invoke_softirq()
+              -> __do_softirq()
+                -> softirq_action->action() [用户注册的处理函数]
       chain:
-        - function: "irq_exit_rcu"
-          file: "kernel/softirq.c"
-          description: "退出硬中断 (RCU 版本)"
-          context: "hardirq"
         - function: "irq_exit"
           file: "kernel/softirq.c"
-          description: "退出硬中断"
+          description: "硬中断退出入口"
+          context: "hardirq"
+        - function: "__irq_exit_rcu"
+          file: "kernel/softirq.c"
+          description: "RCU 保护的中断退出"
+          context: "hardirq"
         - function: "preempt_count_sub(HARDIRQ_OFFSET)"
           description: "减少硬中断计数"
         - function: "invoke_softirq"
           file: "kernel/softirq.c"
           description: "检查并调用软中断"
-          condition: "local_softirq_pending() 非零"
+          condition: "local_softirq_pending() 非零且不在中断嵌套中"
         - function: "__do_softirq"
           file: "kernel/softirq.c"
-          description: "执行软中断"
+          description: "软中断主处理循环"
           context: "softirq"
-        - function: "softirq_vec[nr].action()"
-          description: "调用各软中断处理函数"
+          notes: "最多循环 MAX_SOFTIRQ_RESTART (10) 次"
+        - function: "softirq_vec[nr].action(h)"
+          file: "kernel/softirq.c"
+          description: "调用用户注册的软中断处理函数"
           is_user_entry: true
+          context: "softirq"
 
     ksoftirqd_chain:
       description: "ksoftirqd 线程处理软中断"
       trigger: "__do_softirq 超时或被唤醒"
+      ascii_diagram: |
+        wakeup_softirqd()
+          -> ksoftirqd 线程被唤醒
+            -> run_ksoftirqd()
+              -> __do_softirq()
+                -> softirq_action->action()
       chain:
+        - function: "wakeup_softirqd"
+          file: "kernel/softirq.c"
+          description: "唤醒 ksoftirqd"
+          condition: "__do_softirq 超时或有新软中断"
         - function: "run_ksoftirqd"
           file: "kernel/softirq.c"
           description: "ksoftirqd 主函数"
@@ -698,7 +718,32 @@ softirq_processing:
         - function: "cond_resched"
           file: "kernel/softirq.c"
           description: "允许调度其他任务"
+
+    tasklet_execution_chain:
+      description: "Tasklet 执行调用链"
+      trigger: "TASKLET_SOFTIRQ 被触发"
+      ascii_diagram: |
+        irq_exit()
+          -> __irq_exit_rcu()
+            -> invoke_softirq()
+              -> __do_softirq()
+                -> tasklet_action() [TASKLET_SOFTIRQ]
+                  -> tasklet_action_common()
+                    -> t->callback(t) 或 t->func(t->data)
+      chain:
+        - function: "__do_softirq"
+          file: "kernel/softirq.c"
+          description: "软中断主处理"
+        - function: "tasklet_action"
+          file: "kernel/softirq.c"
+          description: "TASKLET_SOFTIRQ 处理函数"
+        - function: "tasklet_action_common"
+          file: "kernel/softirq.c"
+          description: "通用 tasklet 处理"
+        - function: "t->callback(t) / t->func(t->data)"
+          description: "用户 tasklet 回调函数"
           is_user_entry: true
+          context: "softirq"
 
   handler_registration:
     description: "软中断处理函数注册"
@@ -741,50 +786,116 @@ execution_context:
   source_file: "include/linux/preempt.h, include/linux/hardirq.h"
 
   context_check_macros:
-    in_softirq:
-      pattern: 'in_softirq\s*\(\s*\)'
-      description: "检查是否在软中断上下文"
-      definition: "(preempt_count() & SOFTIRQ_MASK)"
-      returns: "非零表示在软中断上下文"
-      includes: "BH 禁用也会返回非零"
+    description: "中断上下文判断宏 - 用于确定当前执行上下文"
+    header: "linux/preempt.h, linux/hardirq.h"
+    importance: "选择正确的同步原语和内存分配标志的关键"
 
-    in_serving_softirq:
-      pattern: 'in_serving_softirq\s*\(\s*\)'
-      description: "检查是否正在执行软中断处理"
-      definition: "(preempt_count() & SOFTIRQ_OFFSET)"
-      returns: "非零表示正在处理软中断"
-      notes: "比 in_softirq 更精确"
+    patterns:
+      - pattern: 'in_interrupt\s*\(\s*\)'
+        description: "检查是否在中断上下文 (软中断、硬中断或 NMI)"
+        definition: "(preempt_count() & (HARDIRQ_MASK | SOFTIRQ_MASK | NMI_MASK))"
+        returns: "非零表示在中断上下文，不可睡眠"
+        use_case: "决定是否可以使用 mutex 或可睡眠的 API"
+        notes: "最常用的上下文检查宏"
 
-    in_interrupt:
-      pattern: 'in_interrupt\s*\(\s*\)'
-      description: "检查是否在中断上下文 (软中断或硬中断)"
-      definition: "(preempt_count() & (HARDIRQ_MASK | SOFTIRQ_MASK | NMI_MASK))"
-      returns: "非零表示在中断上下文"
+      - pattern: 'in_irq\s*\(\s*\)'
+        description: "检查是否在硬中断上下文"
+        definition: "(preempt_count() & HARDIRQ_MASK)"
+        returns: "非零表示在硬中断上下文"
+        notes: "仅检查硬中断，不包括软中断"
 
-    in_irq:
-      pattern: 'in_irq\s*\(\s*\)'
-      description: "检查是否在硬中断上下文"
-      definition: "(preempt_count() & HARDIRQ_MASK)"
-      returns: "非零表示在硬中断上下文"
+      - pattern: 'in_softirq\s*\(\s*\)'
+        description: "检查是否在软中断上下文"
+        definition: "(preempt_count() & SOFTIRQ_MASK)"
+        returns: "非零表示在软中断上下文"
+        includes: "BH 禁用 (local_bh_disable) 也会返回非零"
+        notes: "包括软中断执行和 BH 禁用两种情况"
 
-    in_nmi:
-      pattern: 'in_nmi\s*\(\s*\)'
-      description: "检查是否在 NMI 上下文"
-      definition: "(preempt_count() & NMI_MASK)"
-      returns: "非零表示在 NMI 上下文"
+      - pattern: 'in_serving_softirq\s*\(\s*\)'
+        description: "检查是否正在执行软中断处理函数"
+        definition: "(preempt_count() & SOFTIRQ_OFFSET)"
+        returns: "非零表示正在处理软中断"
+        notes: "比 in_softirq 更精确，不包括 local_bh_disable 的情况"
+        use_case: "区分软中断执行和 BH 禁用"
 
-    in_task:
-      pattern: 'in_task\s*\(\s*\)'
-      description: "检查是否在任务 (进程) 上下文"
-      definition: "!(in_interrupt())"
-      returns: "非零表示在进程上下文"
+      - pattern: 'in_task\s*\(\s*\)'
+        description: "检查是否在任务 (进程) 上下文"
+        definition: "!(in_interrupt())"
+        returns: "非零表示在进程上下文，可以睡眠"
+        use_case: "确认可以使用可睡眠的 API"
+        notes: "进程上下文是唯一可以睡眠的上下文"
 
-    in_atomic:
-      pattern: 'in_atomic\s*\(\s*\)'
-      description: "检查是否在原子上下文"
-      definition: "(preempt_count() != 0)"
-      returns: "非零表示不可睡眠"
-      includes: "任何 preempt_count 非零情况"
+      - pattern: 'in_atomic\s*\(\s*\)'
+        description: "检查是否在原子上下文 (不可睡眠)"
+        definition: "(preempt_count() != 0)"
+        returns: "非零表示不可睡眠"
+        includes: "任何 preempt_count 非零情况 (中断、抢占禁用、软中断禁用)"
+        use_case: "确认是否可以睡眠"
+        notes: "最保守的检查，任何抢占禁用都返回非零"
+
+      - pattern: 'in_nmi\s*\(\s*\)'
+        description: "检查是否在 NMI 上下文"
+        definition: "(preempt_count() & NMI_MASK)"
+        returns: "非零表示在 NMI 上下文"
+        notes: "NMI 是最受限的上下文，几乎不能使用任何内核 API"
+
+      - pattern: 'irq_count\s*\(\s*\)'
+        description: "获取中断嵌套计数"
+        definition: "(preempt_count() & (HARDIRQ_MASK | SOFTIRQ_MASK | NMI_MASK))"
+        returns: "中断计数值"
+
+      - pattern: 'hardirq_count\s*\(\s*\)'
+        description: "获取硬中断嵌套计数"
+        definition: "(preempt_count() & HARDIRQ_MASK)"
+        returns: "硬中断计数值"
+
+      - pattern: 'softirq_count\s*\(\s*\)'
+        description: "获取软中断计数"
+        definition: "(preempt_count() & SOFTIRQ_MASK)"
+        returns: "软中断计数值"
+
+    context_decision_tree:
+      description: "上下文判断决策树"
+      diagram: |
+        当前上下文判断:
+        
+        in_nmi()? ─────── 是 ──> NMI 上下文 (最受限)
+           │
+           否
+           ↓
+        in_irq()? ─────── 是 ──> 硬中断上下文 (不可睡眠)
+           │
+           否
+           ↓
+        in_serving_softirq()? ─ 是 ──> 软中断上下文 (不可睡眠)
+           │
+           否
+           ↓
+        in_softirq()? ──── 是 ──> BH 禁用 (不可睡眠)
+           │
+           否
+           ↓
+        in_atomic()? ───── 是 ──> 抢占禁用 (不可睡眠)
+           │
+           否
+           ↓
+        进程上下文 (可以睡眠)
+
+    memory_allocation_guide:
+      description: "根据上下文选择内存分配标志"
+      rules:
+        - context: "进程上下文 (in_task())"
+          flag: "GFP_KERNEL"
+          can_sleep: true
+        - context: "软中断/tasklet"
+          flag: "GFP_ATOMIC"
+          can_sleep: false
+        - context: "硬中断"
+          flag: "GFP_ATOMIC"
+          can_sleep: false
+        - context: "NMI"
+          flag: "不应分配内存"
+          can_sleep: false
 
   preempt_count_bits:
     description: "preempt_count 位域"
@@ -796,21 +907,68 @@ execution_context:
       - "bits 25-31: 保留"
 
   bh_control:
-    local_bh_disable:
-      pattern: 'local_bh_disable\s*\(\s*\)'
-      description: "禁用本地软中断"
-      effect: "增加 SOFTIRQ_DISABLE_OFFSET"
-      nestable: true
+    description: "软中断 (Bottom Half) 控制"
+    notes:
+      - "禁用软中断后，软中断不会在当前 CPU 执行"
+      - "可嵌套调用，需配对使用"
+      - "local_bh_enable 可能触发挂起的软中断执行"
 
-    local_bh_enable:
-      pattern: 'local_bh_enable\s*\(\s*\)'
-      description: "启用本地软中断"
-      effect: "减少 SOFTIRQ_DISABLE_OFFSET, 可能执行软中断"
+    patterns:
+      - pattern: 'local_bh_disable\s*\(\s*\)'
+        description: "禁用本地软中断"
+        context: "any"
+        can_sleep: false
+        effect: "增加 SOFTIRQ_DISABLE_OFFSET"
+        nestable: true
+        notes: "禁用后 in_softirq() 返回非零"
 
-    local_bh_enable_ip:
-      pattern: 'local_bh_enable_ip\s*\('
-      description: "启用软中断 (带调用地址)"
-      effect: "用于 lockdep 调试"
+      - pattern: 'local_bh_enable\s*\(\s*\)'
+        description: "启用本地软中断"
+        context: "softirq 禁用状态"
+        can_sleep: false
+        effect: "减少 SOFTIRQ_DISABLE_OFFSET, 计数归零时可能执行软中断"
+        notes: "可能会在此处执行挂起的软中断"
+
+      - pattern: 'local_bh_enable_ip\s*\(\s*(?P<ip>[^)]+)\s*\)'
+        description: "启用软中断 (带调用地址)"
+        context: "softirq 禁用状态"
+        effect: "用于 lockdep 调试"
+
+      - pattern: '__local_bh_enable_ip\s*\(\s*(?P<ip>[^,]+)\s*,\s*(?P<cnt>[^)]+)\s*\)'
+        description: "启用软中断内部函数"
+        context: "softirq 禁用状态"
+        file: "kernel/softirq.c"
+
+    spin_lock_bh:
+      description: "与 spinlock 结合的软中断控制"
+      patterns:
+        - pattern: 'spin_lock_bh\s*\(\s*(?P<lock>[^)]+)\s*\)'
+          description: "禁用软中断并获取 spinlock"
+          equivalent: "local_bh_disable() + spin_lock()"
+          context: "进程上下文"
+
+        - pattern: 'spin_unlock_bh\s*\(\s*(?P<lock>[^)]+)\s*\)'
+          description: "释放 spinlock 并启用软中断"
+          equivalent: "spin_unlock() + local_bh_enable()"
+
+        - pattern: 'spin_trylock_bh\s*\(\s*(?P<lock>[^)]+)\s*\)'
+          description: "尝试获取 spinlock (禁用软中断)"
+          return: "int (非零成功)"
+
+    read_write_lock_bh:
+      description: "与读写锁结合的软中断控制"
+      patterns:
+        - pattern: 'read_lock_bh\s*\(\s*(?P<lock>[^)]+)\s*\)'
+          description: "禁用软中断并获取读锁"
+
+        - pattern: 'read_unlock_bh\s*\(\s*(?P<lock>[^)]+)\s*\)'
+          description: "释放读锁并启用软中断"
+
+        - pattern: 'write_lock_bh\s*\(\s*(?P<lock>[^)]+)\s*\)'
+          description: "禁用软中断并获取写锁"
+
+        - pattern: 'write_unlock_bh\s*\(\s*(?P<lock>[^)]+)\s*\)'
+          description: "释放写锁并启用软中断"
 
   context_rules:
     - rule: "软中断上下文不可睡眠"
@@ -831,29 +989,61 @@ execution_context:
       reason: "在 __do_softirq 期间 preempt_count 非零"
 
   bind_patterns:
-    - pattern: 'in_softirq\s*\(\s*\)'
-      description: "检查软中断上下文"
-
-    - pattern: 'in_serving_softirq\s*\(\s*\)'
-      description: "检查正在执行软中断"
-
+    # 中断上下文判断 (最常用)
     - pattern: 'in_interrupt\s*\(\s*\)'
-      description: "检查中断上下文"
+      description: "检查是否在中断上下文 (软中断/硬中断/NMI)"
+      return: "非零表示在中断上下文，不可睡眠"
 
     - pattern: 'in_irq\s*\(\s*\)'
-      description: "检查硬中断上下文"
+      description: "检查是否在硬中断上下文"
+      return: "非零表示在硬中断"
+
+    - pattern: 'in_softirq\s*\(\s*\)'
+      description: "检查是否在软中断上下文"
+      return: "非零表示在软中断上下文"
+
+    - pattern: 'in_serving_softirq\s*\(\s*\)'
+      description: "检查是否正在执行软中断处理"
+      return: "非零表示正在处理软中断"
 
     - pattern: 'in_task\s*\(\s*\)'
-      description: "检查进程上下文"
+      description: "检查是否在进程上下文 (可睡眠)"
+      return: "非零表示在进程上下文"
 
     - pattern: 'in_atomic\s*\(\s*\)'
-      description: "检查原子上下文"
+      description: "检查是否在原子上下文 (不可睡眠)"
+      return: "非零表示不可睡眠"
 
+    - pattern: 'in_nmi\s*\(\s*\)'
+      description: "检查是否在 NMI 上下文"
+      return: "非零表示在 NMI"
+
+    # 软中断控制
     - pattern: 'local_bh_disable\s*\(\s*\)'
-      description: "禁用软中断"
+      description: "禁用本地软中断"
+      context: "any"
 
     - pattern: 'local_bh_enable\s*\(\s*\)'
-      description: "启用软中断"
+      description: "启用本地软中断 (可能触发软中断执行)"
+      context: "softirq 禁用状态"
+
+    # 软中断触发
+    - pattern: 'raise_softirq\s*\(\s*(?P<nr>[^)]+)\s*\)'
+      description: "触发软中断 (安全版本，自动保存/恢复中断状态)"
+      context: "any"
+
+    - pattern: 'raise_softirq_irqoff\s*\(\s*(?P<nr>[^)]+)\s*\)'
+      description: "触发软中断 (中断已关闭版本)"
+      context: "中断已禁用"
+
+    - pattern: '__raise_softirq_irqoff\s*\(\s*(?P<nr>[^)]+)\s*\)'
+      description: "内部触发软中断"
+      context: "中断已禁用"
+
+    # 软中断注册
+    - pattern: 'open_softirq\s*\(\s*(?P<nr>[^,]+)\s*,\s*(?P<action>\w+)\s*\)'
+      description: "注册软中断处理程序"
+      context: "初始化时"
 
   notes:
     - "软中断在中断上下文中执行，不能睡眠"

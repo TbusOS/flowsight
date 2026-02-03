@@ -402,6 +402,31 @@ page_mapping:
       variable_capture: "addr"
       description: "映射 vmalloc 内存到用户空间"
 
+    # remap_vmalloc_range_partial - 部分映射 vmalloc
+    - pattern: 'remap_vmalloc_range_partial\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<uaddr>[^,]+)\s*,\s*(?P<kaddr>[^,]+)\s*,\s*(?P<pgoff>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "kaddr"
+      description: "部分映射 vmalloc 内存到用户空间"
+
+    # vm_iomap_memory - 映射 IO 内存
+    - pattern: 'vm_iomap_memory\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      variable_capture: "start"
+      description: "映射 IO 内存到用户空间 VMA"
+
+    # dma_mmap_coherent - DMA 一致性映射
+    - pattern: 'dma_mmap_coherent\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<vma>[^,]+)\s*,\s*(?P<cpu_addr>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "cpu_addr"
+      description: "将 DMA 一致性内存映射到用户空间"
+
+    # dma_mmap_wc - DMA WC 映射
+    - pattern: 'dma_mmap_wc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<vma>[^,]+)\s*,\s*(?P<cpu_addr>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "cpu_addr"
+      description: "将 DMA Write-Combining 内存映射到用户空间"
+
+    # dma_mmap_attrs - 带属性的 DMA 映射
+    - pattern: 'dma_mmap_attrs\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<vma>[^,]+)\s*,\s*(?P<cpu_addr>[^,]+)\s*,\s*(?P<dma_addr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<attrs>[^)]+)\s*\)'
+      variable_capture: "cpu_addr"
+      description: "将 DMA 内存映射到用户空间（带属性）"
+
 # ============================================================
 # CALLBACKS
 # ============================================================
@@ -524,6 +549,40 @@ call_chains:
       - function: "vma->vm_ops->fault"
         description: "用户 fault 回调"
         is_user_entry: true
+
+  remap_pfn_range_path:
+    description: "物理页映射路径"
+    trigger: "驱动调用 remap_pfn_range()"
+    chain:
+      - function: "remap_pfn_range"
+        file: "mm/memory.c"
+        description: "映射入口"
+      - function: "remap_pfn_range_notrack"
+        file: "mm/memory.c"
+        description: "不跟踪的映射"
+      - function: "remap_pte_range"
+        file: "mm/memory.c"
+        description: "映射 PTE 范围"
+      - function: "set_pte_at"
+        file: "arch/*/include/asm/pgtable.h"
+        description: "设置页表项"
+
+  vm_insert_page_path:
+    description: "插入页路径"
+    trigger: "驱动调用 vm_insert_page()"
+    chain:
+      - function: "vm_insert_page"
+        file: "mm/memory.c"
+        description: "插入入口"
+      - function: "insert_page"
+        file: "mm/memory.c"
+        description: "内部插入"
+      - function: "insert_page_into_pte_locked"
+        file: "mm/memory.c"
+        description: "锁定后插入"
+      - function: "set_pte_at"
+        file: "arch/*/include/asm/pgtable.h"
+        description: "设置页表项"
 
 # ============================================================
 # EXAMPLES
