@@ -1,0 +1,522 @@
+# Linux Kernel - ARM 通用架构知识库
+#
+# Reference: arch/arm/ (ARM32)
+# Reference: arch/arm64/ (ARM64)
+# Reference: ARM Architecture Reference Manual
+#
+# 本文件包含 ARM32/ARM64 共用的模式和特性
+
+kernel_version:
+  minimum: "4.14"
+  recommended: "5.10+"
+  tested_on: "6.1"
+
+# ============================================================
+# ARM COMMON OVERVIEW
+# ============================================================
+
+arm_common:
+  description: "ARM32/ARM64 通用架构特性"
+  icon: "💪"
+  
+  applicable_to:
+    - "arch/arm/"
+    - "arch/arm64/"
+    - "drivers/ (ARM 平台)"
+
+
+# ============================================================
+# CACHE OPERATIONS
+# ============================================================
+
+cache_patterns:
+  description: "ARM 缓存操作模式"
+  header: "arch/arm/include/asm/cacheflush.h"
+  icon: "🗄️"
+  
+  context:
+    type: "any"
+    notes: "部分缓存操作需要关闭中断或在特定上下文"
+
+  bind_patterns:
+    # 全缓存刷新
+    - pattern: 'flush_cache_all\s*\(\s*\)'
+      description: "刷新所有缓存 (D-cache + I-cache)"
+      context: "慎用，性能开销大"
+      
+    # D-cache 页刷新
+    - pattern: 'flush_dcache_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      description: "刷新页面的 D-cache"
+      context: "DMA 操作前后常用"
+      
+    # I-cache 范围刷新
+    - pattern: 'flush_icache_range\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      description: "刷新指定范围的 I-cache"
+      context: "动态代码生成后需要"
+      
+    # D-cache 范围无效化
+    - pattern: 'invalidate_dcache_range\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      description: "无效化指定范围的 D-cache"
+      context: "DMA 读取前"
+      
+    # D-cache 区域刷新 (ARM64)
+    - pattern: '__flush_dcache_area\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "刷新指定区域的 D-cache (ARM64)"
+      header: "arch/arm64/include/asm/cacheflush.h"
+      
+    # DMA 缓存维护
+    - pattern: 'dma_cache_maint\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<dir>[^)]+)\s*\)'
+      description: "DMA 缓存维护操作"
+      
+    # 清理缓存到 PoC
+    - pattern: '__clean_dcache_area_poc\s*\('
+      description: "清理 D-cache 到一致性点 (PoC)"
+      
+    # 清理缓存到 PoU
+    - pattern: '__clean_dcache_area_pou\s*\('
+      description: "清理 D-cache 到统一点 (PoU)"
+      
+    # 无效化 I-cache 到 PoU
+    - pattern: '__inval_icache_area_pou\s*\('
+      description: "无效化 I-cache 到统一点 (PoU)"
+
+  notes:
+    - "ARM 使用 Harvard 架构，I-cache 和 D-cache 分离"
+    - "PoC (Point of Coherency): 所有处理器和 DMA 可见"
+    - "PoU (Point of Unification): 单核 I-cache 和 D-cache 统一"
+    - "缓存操作需要配合内存屏障使用"
+
+
+# ============================================================
+# MEMORY BARRIERS
+# ============================================================
+
+barrier_patterns:
+  description: "ARM 内存屏障操作"
+  header: "arch/arm/include/asm/barrier.h"
+  icon: "🚧"
+
+  context:
+    type: "any"
+    notes: "屏障指令确保内存操作顺序"
+
+  bind_patterns:
+    # DMB - 数据内存屏障
+    - pattern: 'dmb\s*\(\s*(?P<option>\w+)\s*\)'
+      description: "数据内存屏障 (Data Memory Barrier)"
+      options:
+        - "sy: 完整系统屏障"
+        - "st: 仅存储"
+        - "ld: 仅加载"
+        - "ish: 内部共享域"
+        - "ishst: 内部共享域存储"
+        - "ishld: 内部共享域加载"
+        - "osh: 外部共享域"
+        - "nsh: 非共享"
+      
+    # DSB - 数据同步屏障
+    - pattern: 'dsb\s*\(\s*(?P<option>\w+)\s*\)'
+      description: "数据同步屏障 (Data Synchronization Barrier)"
+      context: "比 DMB 更强，确保所有前面的内存访问完成"
+      options:
+        - "sy: 完整系统同步"
+        - "ish: 内部共享域"
+        - "nsh: 非共享"
+        - "oshst: 外部共享域存储"
+      
+    # ISB - 指令同步屏障
+    - pattern: 'isb\s*\(\s*\)'
+      description: "指令同步屏障 (Instruction Synchronization Barrier)"
+      context: "刷新流水线，确保后续指令重新取指"
+      use_cases:
+        - "修改系统寄存器后"
+        - "修改页表后"
+        - "修改内存映射属性后"
+      
+    # SMP 内存屏障
+    - pattern: 'smp_mb\s*\(\s*\)'
+      description: "SMP 完整内存屏障"
+      context: "确保 SMP 系统中的内存顺序"
+      
+    - pattern: 'smp_rmb\s*\(\s*\)'
+      description: "SMP 读内存屏障"
+      context: "确保读操作顺序"
+      
+    - pattern: 'smp_wmb\s*\(\s*\)'
+      description: "SMP 写内存屏障"
+      context: "确保写操作顺序"
+      
+    # 获取/释放语义
+    - pattern: 'smp_load_acquire\s*\('
+      description: "SMP 获取语义加载"
+      context: "加载后的操作不会重排到加载之前"
+      
+    - pattern: 'smp_store_release\s*\('
+      description: "SMP 释放语义存储"
+      context: "存储前的操作不会重排到存储之后"
+      
+    # 编译器屏障
+    - pattern: 'barrier\s*\(\s*\)'
+      description: "编译器屏障"
+      context: "防止编译器重排，不影响 CPU"
+
+  kernel_call_chain:
+    trigger: "需要内存顺序保证时"
+    examples:
+      - scenario: "spinlock 实现"
+        chain:
+          - function: "arch_spin_lock"
+            barrier: "smp_mb() after acquire"
+          - function: "arch_spin_unlock"
+            barrier: "smp_mb() before release"
+      - scenario: "DMA 操作"
+        chain:
+          - function: "设置 DMA 缓冲区"
+            barrier: "wmb()"
+          - function: "启动 DMA"
+          - function: "等待 DMA 完成"
+          - function: "读取 DMA 结果"
+            barrier: "rmb()"
+
+  notes:
+    - "DMB 只影响内存访问，不阻塞指令执行"
+    - "DSB 阻塞直到所有内存访问完成"
+    - "ISB 刷新流水线，最重量级"
+    - "选择合适的共享域可以提高性能"
+
+
+# ============================================================
+# ATOMIC OPERATIONS
+# ============================================================
+
+atomic_patterns:
+  description: "ARM 原子操作模式"
+  header: "arch/arm/include/asm/atomic.h"
+  icon: "⚛️"
+
+  context:
+    type: "any"
+    notes: "ARM 使用 LL/SC (Load-Link/Store-Conditional) 或 LSE 原子指令"
+
+  bind_patterns:
+    # LDREX/STREX (ARM32)
+    - pattern: 'ldrex\s+(?P<rd>\w+)\s*,\s*\[(?P<rn>\w+)\]'
+      description: "独占加载 (Load Exclusive)"
+      arch: "ARM32"
+      context: "开始原子操作序列"
+      
+    - pattern: 'strex\s+(?P<rd>\w+)\s*,\s*(?P<rm>\w+)\s*,\s*\[(?P<rn>\w+)\]'
+      description: "独占存储 (Store Exclusive)"
+      arch: "ARM32"
+      context: "结束原子操作序列，rd=0 表示成功"
+      
+    - pattern: 'ldrexb\s*'
+      description: "独占字节加载"
+      
+    - pattern: 'strexb\s*'
+      description: "独占字节存储"
+      
+    - pattern: 'ldrexh\s*'
+      description: "独占半字加载"
+      
+    - pattern: 'strexh\s*'
+      description: "独占半字存储"
+      
+    - pattern: 'ldrexd\s*'
+      description: "独占双字加载"
+      
+    - pattern: 'strexd\s*'
+      description: "独占双字存储"
+      
+    # LDXR/STXR (ARM64)
+    - pattern: 'ldxr\s+(?P<rd>\w+)\s*,\s*\[(?P<rn>\w+)\]'
+      description: "独占加载 (ARM64)"
+      arch: "ARM64"
+      
+    - pattern: 'stxr\s+(?P<ws>\w+)\s*,\s*(?P<rd>\w+)\s*,\s*\[(?P<rn>\w+)\]'
+      description: "独占存储 (ARM64)"
+      arch: "ARM64"
+      
+    # 带获取/释放语义的原子操作 (ARM64 ARMv8.1)
+    - pattern: 'ldaxr\s*'
+      description: "独占加载-获取 (Load-Acquire Exclusive)"
+      arch: "ARM64"
+      context: "加载 + 获取语义"
+      
+    - pattern: 'stlxr\s*'
+      description: "独占存储-释放 (Store-Release Exclusive)"
+      arch: "ARM64"
+      context: "存储 + 释放语义"
+      
+    # 清除独占
+    - pattern: 'clrex\s*'
+      description: "清除独占标记 (Clear Exclusive)"
+      context: "放弃独占锁定而不存储"
+      
+    # LSE 原子指令 (ARM64 ARMv8.1+)
+    - pattern: 'ldadd\s*'
+      description: "原子加法 (LSE)"
+      arch: "ARM64 v8.1+"
+      
+    - pattern: 'stadd\s*'
+      description: "原子加法存储 (LSE)"
+      arch: "ARM64 v8.1+"
+      
+    - pattern: 'swp\s*'
+      description: "原子交换 (LSE)"
+      arch: "ARM64 v8.1+"
+      
+    - pattern: 'cas\s*'
+      description: "比较并交换 (LSE)"
+      arch: "ARM64 v8.1+"
+
+  examples:
+    - description: "ARM32 原子递增实现"
+      code: |
+        /* atomic_inc 实现 */
+        1:  ldrex   r0, [r1]       @ 独占加载
+            add     r0, r0, #1     @ 递增
+            strex   r2, r0, [r1]   @ 独占存储
+            teq     r2, #0         @ 检查是否成功
+            bne     1b             @ 失败则重试
+            
+    - description: "ARM64 原子递增实现"
+      code: |
+        /* atomic_inc 实现 (ARM64) */
+        1:  ldxr    w0, [x1]       // 独占加载
+            add     w0, w0, #1     // 递增
+            stxr    w2, w0, [x1]   // 独占存储
+            cbnz    w2, 1b         // 失败则重试
+
+  notes:
+    - "LL/SC 模式需要循环重试直到成功"
+    - "LSE 原子指令性能更好，但需要 ARMv8.1+"
+    - "Linux 内核会在运行时检测并选择最优实现"
+
+
+# ============================================================
+# TLB OPERATIONS
+# ============================================================
+
+tlb_patterns:
+  description: "ARM TLB 操作模式"
+  header: "arch/arm/include/asm/tlbflush.h"
+  icon: "📋"
+
+  context:
+    type: "any"
+    notes: "TLB 无效化通常需要配合 DSB 使用"
+
+  bind_patterns:
+    # 全 TLB 无效化
+    - pattern: 'local_flush_tlb_all\s*\(\s*\)'
+      description: "本地 CPU TLB 全部无效化"
+      
+    - pattern: 'flush_tlb_all\s*\(\s*\)'
+      description: "所有 CPU TLB 全部无效化"
+      context: "SMP 系统使用 IPI 广播"
+      
+    # 按 MM 无效化
+    - pattern: 'flush_tlb_mm\s*\(\s*(?P<mm>[^)]+)\s*\)'
+      description: "无效化指定进程的 TLB"
+      
+    # 按页无效化
+    - pattern: 'flush_tlb_page\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      description: "无效化指定页的 TLB 条目"
+      
+    # 按范围无效化
+    - pattern: 'flush_tlb_range\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      description: "无效化指定地址范围的 TLB"
+      
+    # 内核映射无效化
+    - pattern: 'flush_tlb_kernel_range\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      description: "无效化内核地址范围的 TLB"
+      
+    # ARM64 TLBI 指令
+    - pattern: 'tlbi\s+(?P<op>\w+)'
+      description: "ARM64 TLB 无效化指令"
+      arch: "ARM64"
+      ops:
+        - "vmalle1: 所有 EL1 条目"
+        - "vale1is: 地址 + ASID，内部共享"
+        - "vaae1is: 地址，所有 ASID，内部共享"
+        - "aside1is: ASID，内部共享"
+
+  examples:
+    - description: "ARM64 页表更新后 TLB 维护"
+      code: |
+        /* 修改页表条目 */
+        set_pte(ptep, new_pte);
+        
+        /* TLB 无效化 */
+        dsb(ishst);                    // 确保 PTE 写入完成
+        asm volatile("tlbi vale1is, %0" : : "r"(addr >> 12));
+        dsb(ish);                      // 确保 TLBI 完成
+        isb();                         // 刷新流水线
+
+  notes:
+    - "TLB 无效化前需要 DSB 确保页表写入完成"
+    - "TLB 无效化后需要 DSB + ISB 确保新映射生效"
+    - "使用 ASID 可以避免进程切换时刷新全部 TLB"
+
+
+# ============================================================
+# COPROCESSOR OPERATIONS (ARM32)
+# ============================================================
+
+coprocessor_patterns:
+  description: "ARM32 协处理器操作"
+  header: "arch/arm/include/asm/cp15.h"
+  icon: "🔧"
+  arch: "ARM32"
+
+  bind_patterns:
+    # CP15 读取
+    - pattern: 'read_cpuid\s*\(\s*\)'
+      description: "读取 CPU ID 寄存器"
+      
+    - pattern: 'read_cpuid_ext\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      description: "读取扩展 CPU ID 寄存器"
+      
+    - pattern: 'get_cr\s*\(\s*\)'
+      description: "读取控制寄存器 (SCTLR)"
+      
+    - pattern: 'set_cr\s*\(\s*(?P<val>[^)]+)\s*\)'
+      description: "写入控制寄存器 (SCTLR)"
+      
+    # MCR/MRC 指令
+    - pattern: 'asm\s+volatile\s*\(\s*"mcr\s+p(?P<cp>\d+)'
+      description: "协处理器写入 (MCR)"
+      
+    - pattern: 'asm\s+volatile\s*\(\s*"mrc\s+p(?P<cp>\d+)'
+      description: "协处理器读取 (MRC)"
+
+  notes:
+    - "CP15 是系统控制协处理器"
+    - "ARM64 使用系统寄存器 (MSR/MRS) 替代协处理器"
+
+
+# ============================================================
+# WFI/WFE INSTRUCTIONS
+# ============================================================
+
+power_patterns:
+  description: "ARM 功耗管理指令"
+  icon: "💤"
+
+  bind_patterns:
+    # WFI - 等待中断
+    - pattern: 'wfi\s*\(\s*\)'
+      description: "等待中断 (Wait For Interrupt)"
+      context: "CPU 进入低功耗状态直到中断到来"
+      use_cases:
+        - "idle 循环"
+        - "等待事件"
+      
+    # WFE - 等待事件
+    - pattern: 'wfe\s*\(\s*\)'
+      description: "等待事件 (Wait For Event)"
+      context: "CPU 等待事件标志或中断"
+      use_cases:
+        - "自旋锁等待"
+        - "多核同步"
+      
+    # SEV - 发送事件
+    - pattern: 'sev\s*\(\s*\)'
+      description: "发送事件 (Send Event)"
+      context: "向所有 CPU 发送事件信号"
+      use_cases:
+        - "唤醒等待 WFE 的 CPU"
+        - "自旋锁释放"
+      
+    # SEVL - 发送本地事件
+    - pattern: 'sevl\s*\(\s*\)'
+      description: "发送本地事件 (Send Event Local)"
+      arch: "ARM64"
+      context: "只设置本地事件标志"
+
+  examples:
+    - description: "ARM 自旋锁等待优化"
+      code: |
+        static inline void arch_spin_lock(arch_spinlock_t *lock)
+        {
+            while (atomic_read(&lock->locked)) {
+                wfe();  /* 低功耗等待 */
+            }
+            /* 获取锁 */
+        }
+        
+        static inline void arch_spin_unlock(arch_spinlock_t *lock)
+        {
+            /* 释放锁 */
+            atomic_set(&lock->locked, 0);
+            sev();  /* 唤醒等待的 CPU */
+        }
+
+
+# ============================================================
+# ENDIANNESS HANDLING
+# ============================================================
+
+endian_patterns:
+  description: "ARM 字节序处理"
+  icon: "🔄"
+
+  bind_patterns:
+    - pattern: 'cpu_to_le32\s*\('
+      description: "CPU 字节序转小端 32位"
+      
+    - pattern: 'le32_to_cpu\s*\('
+      description: "小端转 CPU 字节序 32位"
+      
+    - pattern: 'cpu_to_be32\s*\('
+      description: "CPU 字节序转大端 32位"
+      
+    - pattern: 'be32_to_cpu\s*\('
+      description: "大端转 CPU 字节序 32位"
+      
+    - pattern: 'swab32\s*\('
+      description: "32位字节序交换"
+      
+    - pattern: 'swab16\s*\('
+      description: "16位字节序交换"
+
+  notes:
+    - "ARM 默认小端模式"
+    - "ARM 支持 BE8 (大端字节不变) 模式"
+    - "网络数据通常使用大端"
+
+
+# ============================================================
+# COMMON DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  cpuinfo_arm:
+    description: "ARM CPU 信息结构"
+    header: "arch/arm/include/asm/cputype.h"
+    fields:
+      - name: "cpu_arch"
+        type: "unsigned int"
+        description: "CPU 架构版本"
+      - name: "cpu_variant"
+        type: "unsigned int"
+        description: "CPU 变体"
+      - name: "cpu_revision"
+        type: "unsigned int"
+        description: "CPU 修订版"
+      - name: "cpu_implementor"
+        type: "unsigned int"
+        description: "CPU 实现者 ID"
+
+
+# ============================================================
+# NOTES
+# ============================================================
+
+notes:
+  - "ARM32 使用协处理器访问系统寄存器，ARM64 使用 MSR/MRS"
+  - "ARM 的原子操作基于 LL/SC 或 LSE (ARMv8.1+)"
+  - "缓存和 TLB 操作需要配合正确的屏障"
+  - "WFI/WFE 是 ARM 特有的低功耗等待指令"
+  - "ARM 支持多种共享域，选择合适的域可提高性能"

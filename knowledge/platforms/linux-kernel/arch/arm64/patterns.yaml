@@ -1,0 +1,449 @@
+# ARM64 (AArch64) Architecture Pattern Definitions
+#
+# Reference: arch/arm64/
+# Reference: ARM Architecture Reference Manual ARMv8
+#
+# 本文件定义 ARM64 特定的代码模式用于静态分析
+
+kernel_version:
+  minimum: "4.14"
+  recommended: "5.10+"
+  tested_on: "6.1"
+
+# ============================================================
+# EXCEPTION HANDLING PATTERNS
+# ============================================================
+
+exception_patterns:
+  description: "ARM64 异常处理模式"
+  header: "arch/arm64/kernel/entry.S"
+  icon: "⚡"
+
+  bind_patterns:
+    # EL1 同步异常入口
+    - pattern: 'el1_sync\s*'
+      description: "EL1 同步异常入口 (从内核态)"
+      file: "arch/arm64/kernel/entry.S"
+      context: "处理内核态页错误、未定义指令等"
+      
+    # EL1 IRQ 入口
+    - pattern: 'el1_irq\s*'
+      description: "EL1 IRQ 入口"
+      file: "arch/arm64/kernel/entry.S"
+      context: "内核态中断处理入口"
+      
+    # EL1 FIQ 入口
+    - pattern: 'el1_fiq\s*'
+      description: "EL1 FIQ 入口"
+      file: "arch/arm64/kernel/entry.S"
+      context: "内核态快速中断 (安全世界使用)"
+      
+    # EL1 SError 入口
+    - pattern: 'el1_error\s*'
+      description: "EL1 SError 入口"
+      file: "arch/arm64/kernel/entry.S"
+      context: "处理异步系统错误"
+      
+    # EL0 同步异常入口
+    - pattern: 'el0_sync\s*'
+      description: "EL0 同步异常入口 (从用户态)"
+      file: "arch/arm64/kernel/entry.S"
+      context: "处理系统调用、页错误等"
+      
+    # EL0 IRQ 入口
+    - pattern: 'el0_irq\s*'
+      description: "EL0 IRQ 入口"
+      file: "arch/arm64/kernel/entry.S"
+      context: "用户态被中断打断"
+      
+    # EL0 SError 入口
+    - pattern: 'el0_error\s*'
+      description: "EL0 SError 入口"
+      file: "arch/arm64/kernel/entry.S"
+      
+    # 新版内核异常处理 (5.x+)
+    - pattern: 'el1h_64_sync_handler\s*\('
+      description: "EL1h 同步异常 C 处理函数"
+      file: "arch/arm64/kernel/entry-common.c"
+      
+    - pattern: 'el1h_64_irq_handler\s*\('
+      description: "EL1h IRQ C 处理函数"
+      file: "arch/arm64/kernel/entry-common.c"
+      
+    - pattern: 'el0t_64_sync_handler\s*\('
+      description: "EL0 64位同步异常 C 处理函数"
+      file: "arch/arm64/kernel/entry-common.c"
+      
+    - pattern: 'el0t_64_irq_handler\s*\('
+      description: "EL0 64位 IRQ C 处理函数"
+      file: "arch/arm64/kernel/entry-common.c"
+      
+    # AArch32 兼容模式
+    - pattern: 'el0t_32_sync_handler\s*\('
+      description: "EL0 32位 (AArch32) 同步异常处理"
+      file: "arch/arm64/kernel/entry-common.c"
+
+
+# ============================================================
+# SYSTEM REGISTER PATTERNS
+# ============================================================
+
+system_reg_patterns:
+  description: "ARM64 系统寄存器访问模式"
+  header: "arch/arm64/include/asm/sysreg.h"
+  icon: "📝"
+
+  bind_patterns:
+    # 读取系统寄存器
+    - pattern: 'read_sysreg\s*\(\s*(?P<reg>\w+)\s*\)'
+      description: "读取系统寄存器"
+      examples:
+        - "read_sysreg(sctlr_el1)"
+        - "read_sysreg(ttbr0_el1)"
+        - "read_sysreg(CurrentEL)"
+      
+    # 写入系统寄存器
+    - pattern: 'write_sysreg\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<reg>\w+)\s*\)'
+      description: "写入系统寄存器"
+      examples:
+        - "write_sysreg(val, sctlr_el1)"
+        - "write_sysreg(pgd, ttbr0_el1)"
+      
+    # 字符串形式读取 (用于特殊寄存器)
+    - pattern: 'read_sysreg_s\s*\(\s*(?P<reg>[^)]+)\s*\)'
+      description: "读取特殊系统寄存器 (字符串指定)"
+      examples:
+        - "read_sysreg_s(SYS_ICC_SGI1R_EL1)"
+        - "read_sysreg_s(SYS_ERRSELR_EL1)"
+      
+    # 字符串形式写入
+    - pattern: 'write_sysreg_s\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<reg>[^)]+)\s*\)'
+      description: "写入特殊系统寄存器 (字符串指定)"
+      
+    # MRS 指令
+    - pattern: 'asm\s+volatile\s*\(\s*"mrs\s+%[^,]+,\s*(?P<reg>\w+)"'
+      description: "直接 MRS 汇编读取"
+      
+    # MSR 指令
+    - pattern: 'asm\s+volatile\s*\(\s*"msr\s+(?P<reg>\w+),\s*%'
+      description: "直接 MSR 汇编写入"
+      
+    # 常用系统寄存器宏
+    - pattern: 'SYS_(?P<reg>[A-Z0-9_]+)'
+      description: "系统寄存器定义"
+      common_registers:
+        - "SYS_SCTLR_EL1: 系统控制寄存器"
+        - "SYS_TTBR0_EL1: 翻译表基址 0"
+        - "SYS_TTBR1_EL1: 翻译表基址 1"
+        - "SYS_TCR_EL1: 翻译控制寄存器"
+        - "SYS_ESR_EL1: 异常综合寄存器"
+        - "SYS_FAR_EL1: 故障地址寄存器"
+        - "SYS_VBAR_EL1: 向量基址寄存器"
+        - "SYS_MAIR_EL1: 内存属性间接寄存器"
+        - "SYS_TPIDR_EL0: 用户线程 ID 寄存器"
+        - "SYS_TPIDR_EL1: 内核线程 ID 寄存器"
+
+  notes:
+    - "写入系统寄存器后通常需要 isb() 确保生效"
+    - "EL2/EL3 寄存器只能在相应特权级访问"
+
+
+# ============================================================
+# TLB PATTERNS
+# ============================================================
+
+tlb_patterns:
+  description: "ARM64 TLB 操作模式"
+  header: "arch/arm64/include/asm/tlbflush.h"
+  icon: "📋"
+
+  bind_patterns:
+    # 本地 TLB 全部无效化
+    - pattern: 'local_flush_tlb_all\s*\(\s*\)'
+      description: "无效化本地 CPU 所有 TLB"
+      
+    # 全局 TLB 无效化
+    - pattern: 'flush_tlb_all\s*\(\s*\)'
+      description: "无效化所有 CPU 所有 TLB"
+      context: "广播到所有 CPU"
+      
+    # 按 MM 无效化
+    - pattern: 'flush_tlb_mm\s*\(\s*(?P<mm>[^)]+)\s*\)'
+      description: "无效化指定进程的 TLB"
+      
+    # 按页无效化
+    - pattern: 'flush_tlb_page\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      description: "无效化指定页的 TLB 条目"
+      
+    # 按范围无效化
+    - pattern: 'flush_tlb_range\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      description: "无效化地址范围的 TLB"
+      
+    # 内核范围无效化
+    - pattern: 'flush_tlb_kernel_range\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      description: "无效化内核地址范围 TLB"
+      
+    # TLBI 指令 (汇编)
+    - pattern: 'tlbi\s+vmalle1is'
+      description: "无效化所有 EL1 TLB (内部共享)"
+      
+    - pattern: 'tlbi\s+vale1is\s*,\s*(?P<addr>\w+)'
+      description: "无效化地址 TLB (内部共享)"
+      
+    - pattern: 'tlbi\s+vaae1is\s*,\s*(?P<addr>\w+)'
+      description: "无效化地址 TLB，所有 ASID (内部共享)"
+      
+    - pattern: 'tlbi\s+aside1is\s*,\s*(?P<asid>\w+)'
+      description: "无效化指定 ASID 的 TLB (内部共享)"
+      
+    # __tlbi 宏
+    - pattern: '__tlbi\s*\(\s*(?P<op>\w+)'
+      description: "TLB 无效化宏"
+
+
+# ============================================================
+# CACHE PATTERNS (ARM64 Specific)
+# ============================================================
+
+cache_patterns:
+  description: "ARM64 缓存操作模式"
+  header: "arch/arm64/include/asm/cacheflush.h"
+  icon: "🗄️"
+
+  bind_patterns:
+    # D-cache 区域刷新
+    - pattern: '__flush_dcache_area\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "刷新指定区域的 D-cache"
+      
+    # D-cache 清理到 PoC
+    - pattern: '__clean_dcache_area_poc\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "清理 D-cache 到一致性点 (PoC)"
+      
+    # D-cache 清理到 PoU
+    - pattern: '__clean_dcache_area_pou\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "清理 D-cache 到统一点 (PoU)"
+      
+    # I-cache 无效化
+    - pattern: '__inval_icache_area_pou\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      description: "无效化 I-cache 到 PoU"
+      
+    # DC 指令
+    - pattern: 'asm\s+volatile\s*\(\s*"dc\s+(?P<op>\w+)'
+      description: "D-cache 维护指令"
+      ops:
+        - "civac: 清理并无效化 PoC"
+        - "cvac: 清理 PoC"
+        - "cvau: 清理 PoU"
+        - "ivac: 无效化 PoC"
+        - "zva: 零填充"
+      
+    # IC 指令
+    - pattern: 'asm\s+volatile\s*\(\s*"ic\s+(?P<op>\w+)'
+      description: "I-cache 维护指令"
+      ops:
+        - "iallu: 无效化所有 I-cache"
+        - "ialluis: 无效化所有 I-cache (内部共享)"
+        - "ivau: 无效化地址 PoU"
+
+
+# ============================================================
+# CONTEXT SWITCH PATTERNS
+# ============================================================
+
+context_switch_patterns:
+  description: "ARM64 上下文切换模式"
+  header: "arch/arm64/kernel/process.c"
+  icon: "🔄"
+
+  bind_patterns:
+    # 进程切换
+    - pattern: '__switch_to\s*\(\s*(?P<prev>[^,]+)\s*,\s*(?P<next>[^)]+)\s*\)'
+      description: "进程上下文切换"
+      file: "arch/arm64/kernel/process.c"
+      
+    # CPU 级切换
+    - pattern: 'cpu_switch_to\s*\(\s*(?P<prev>[^,]+)\s*,\s*(?P<next>[^)]+)\s*\)'
+      description: "CPU 级上下文切换 (汇编)"
+      file: "arch/arm64/kernel/entry.S"
+      
+    # FP/SIMD 切换
+    - pattern: 'fpsimd_thread_switch\s*\(\s*(?P<next>[^)]+)\s*\)'
+      description: "FP/SIMD 上下文切换"
+      file: "arch/arm64/kernel/fpsimd.c"
+      
+    # TTBR 切换
+    - pattern: 'cpu_do_switch_mm\s*\('
+      description: "切换内存映射 (TTBR)"
+      
+    # ASID 分配
+    - pattern: 'check_and_switch_context\s*\('
+      description: "检查并切换 ASID 上下文"
+
+
+# ============================================================
+# SVE/SME PATTERNS (Scalable Vector Extension)
+# ============================================================
+
+sve_patterns:
+  description: "ARM64 SVE/SME 向量扩展模式"
+  header: "arch/arm64/include/asm/fpsimd.h"
+  icon: "📊"
+  arch: "ARM64 v8.2+"
+
+  bind_patterns:
+    # SVE 状态保存/恢复
+    - pattern: 'sve_save_state\s*\('
+      description: "保存 SVE 状态"
+      
+    - pattern: 'sve_load_state\s*\('
+      description: "恢复 SVE 状态"
+      
+    # SVE 向量长度
+    - pattern: 'sve_get_vl\s*\(\s*\)'
+      description: "获取 SVE 向量长度"
+      
+    - pattern: 'sve_set_vq\s*\('
+      description: "设置 SVE 向量长度"
+      
+    # SVE 功能检测
+    - pattern: 'system_supports_sve\s*\(\s*\)'
+      description: "检查系统是否支持 SVE"
+      
+    # SME (Scalable Matrix Extension)
+    - pattern: 'system_supports_sme\s*\(\s*\)'
+      description: "检查系统是否支持 SME"
+      arch: "ARM64 v9+"
+
+
+# ============================================================
+# POINTER AUTHENTICATION PATTERNS
+# ============================================================
+
+pac_patterns:
+  description: "ARM64 指针认证模式"
+  header: "arch/arm64/include/asm/pointer_auth.h"
+  icon: "🔐"
+  arch: "ARM64 v8.3+"
+
+  bind_patterns:
+    # PAC 指令
+    - pattern: 'pacia\s*'
+      description: "指针认证 (Instruction key A)"
+      
+    - pattern: 'pacib\s*'
+      description: "指针认证 (Instruction key B)"
+      
+    - pattern: 'pacda\s*'
+      description: "指针认证 (Data key A)"
+      
+    - pattern: 'pacdb\s*'
+      description: "指针认证 (Data key B)"
+      
+    # 认证检查
+    - pattern: 'autia\s*'
+      description: "认证检查 (Instruction key A)"
+      
+    - pattern: 'autib\s*'
+      description: "认证检查 (Instruction key B)"
+      
+    # 功能检测
+    - pattern: 'system_supports_address_auth\s*\(\s*\)'
+      description: "检查系统是否支持指针认证"
+
+
+# ============================================================
+# MTE (Memory Tagging Extension) PATTERNS
+# ============================================================
+
+mte_patterns:
+  description: "ARM64 内存标记扩展模式"
+  header: "arch/arm64/include/asm/mte.h"
+  icon: "🏷️"
+  arch: "ARM64 v8.5+"
+
+  bind_patterns:
+    # MTE 标记操作
+    - pattern: 'mte_set_mem_tag_range\s*\('
+      description: "设置内存范围的标记"
+      
+    - pattern: 'mte_get_mem_tag\s*\('
+      description: "获取内存地址的标记"
+      
+    # MTE 功能检测
+    - pattern: 'system_supports_mte\s*\(\s*\)'
+      description: "检查系统是否支持 MTE"
+      
+    # STG/LDG 指令
+    - pattern: 'stg\s*'
+      description: "存储分配标记"
+      
+    - pattern: 'ldg\s*'
+      description: "加载分配标记"
+
+
+# ============================================================
+# BTI (Branch Target Identification) PATTERNS
+# ============================================================
+
+bti_patterns:
+  description: "ARM64 分支目标识别模式"
+  header: "arch/arm64/include/asm/asm_pointer_auth.h"
+  icon: "🎯"
+  arch: "ARM64 v8.5+"
+
+  bind_patterns:
+    # BTI 指令
+    - pattern: 'bti\s+(?P<type>c|j|jc)'
+      description: "分支目标识别"
+      types:
+        - "c: 仅允许 BL/BLR 跳转"
+        - "j: 仅允许 BR/BRAAZ 等跳转"
+        - "jc: 允许所有类型跳转"
+      
+    # 功能检测
+    - pattern: 'system_supports_bti\s*\(\s*\)'
+      description: "检查系统是否支持 BTI"
+
+
+# ============================================================
+# GIC PATTERNS (ARM64 Specific)
+# ============================================================
+
+gic_arm64_patterns:
+  description: "ARM64 GICv3/v4 系统寄存器访问"
+  header: "include/linux/irqchip/arm-gic-v3.h"
+  icon: "🎯"
+
+  bind_patterns:
+    # ICC 系统寄存器
+    - pattern: 'gic_read_iar\s*\(\s*\)'
+      description: "读取中断应答寄存器 (ICC_IAR1_EL1)"
+      
+    - pattern: 'gic_write_eoir\s*\('
+      description: "写入中断结束寄存器 (ICC_EOIR1_EL1)"
+      
+    - pattern: 'gic_write_sgi1r\s*\('
+      description: "发送 SGI (ICC_SGI1R_EL1)"
+      
+    - pattern: 'gic_write_pmr\s*\('
+      description: "写入优先级屏蔽寄存器 (ICC_PMR_EL1)"
+      
+    # 直接寄存器访问
+    - pattern: 'read_sysreg_s\s*\(\s*SYS_ICC_(?P<reg>\w+)_EL1\s*\)'
+      description: "读取 GIC CPU 接口寄存器"
+      
+    - pattern: 'write_sysreg_s\s*\([^,]+,\s*SYS_ICC_(?P<reg>\w+)_EL1\s*\)'
+      description: "写入 GIC CPU 接口寄存器"
+
+
+# ============================================================
+# NOTES
+# ============================================================
+
+notes:
+  - "ARM64 异常入口在 entry.S 中定义，C 处理在 entry-common.c"
+  - "系统寄存器必须通过 MSR/MRS 访问"
+  - "TLB 操作需要配合 DSB/ISB 使用"
+  - "ARMv8.1+ 支持 LSE 原子指令"
+  - "ARMv8.3+ 支持指针认证 (PAC)"
+  - "ARMv8.5+ 支持内存标记 (MTE) 和分支目标识别 (BTI)"

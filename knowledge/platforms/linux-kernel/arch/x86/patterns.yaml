@@ -1,0 +1,584 @@
+# x86/x86_64 Architecture Pattern Definitions
+#
+# Reference: arch/x86/
+# Reference: Intel/AMD Software Developer Manuals
+#
+# 本文件定义 x86/x86_64 特定的代码模式用于静态分析
+
+kernel_version:
+  minimum: "4.14"
+  recommended: "5.10+"
+  tested_on: "6.1"
+
+# ============================================================
+# MSR (Model Specific Register) PATTERNS
+# ============================================================
+
+msr_patterns:
+  description: "x86 MSR 操作模式"
+  header: "arch/x86/include/asm/msr.h"
+  icon: "📝"
+
+  bind_patterns:
+    # rdmsr - 读取 MSR
+    - pattern: 'rdmsr\s*\(\s*(?P<msr>\w+)\s*,\s*(?P<low>\w+)\s*,\s*(?P<high>\w+)\s*\)'
+      description: "读取 MSR (32位分开)"
+      examples:
+        - "rdmsr(MSR_IA32_APICBASE, low, high)"
+      
+    # wrmsr - 写入 MSR
+    - pattern: 'wrmsr\s*\(\s*(?P<msr>\w+)\s*,\s*(?P<low>\w+)\s*,\s*(?P<high>\w+)\s*\)'
+      description: "写入 MSR (32位分开)"
+      
+    # rdmsrl - 读取 64位 MSR
+    - pattern: 'rdmsrl\s*\(\s*(?P<msr>\w+)\s*,\s*(?P<val>\w+)\s*\)'
+      description: "读取 MSR (64位)"
+      examples:
+        - "rdmsrl(MSR_LSTAR, val)"
+      
+    # wrmsrl - 写入 64位 MSR
+    - pattern: 'wrmsrl\s*\(\s*(?P<msr>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入 MSR (64位)"
+      
+    # rdmsrl_safe - 安全读取
+    - pattern: 'rdmsrl_safe\s*\(\s*(?P<msr>\w+)\s*,\s*(?P<val>\w+)\s*\)'
+      description: "安全读取 MSR (处理异常)"
+      
+    # wrmsrl_safe - 安全写入
+    - pattern: 'wrmsrl_safe\s*\(\s*(?P<msr>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "安全写入 MSR (处理异常)"
+      
+    # native_read_msr
+    - pattern: 'native_read_msr\s*\(\s*(?P<msr>\w+)\s*\)'
+      description: "原生 MSR 读取"
+      
+    # native_write_msr
+    - pattern: 'native_write_msr\s*\(\s*(?P<msr>\w+)\s*,'
+      description: "原生 MSR 写入"
+      
+    # MSR 定义
+    - pattern: 'MSR_(?P<name>[A-Z0-9_]+)'
+      description: "MSR 定义"
+      common_msrs:
+        - "MSR_EFER: 扩展功能使能"
+        - "MSR_STAR: SYSCALL 段选择子"
+        - "MSR_LSTAR: SYSCALL 目标地址 (64位)"
+        - "MSR_CSTAR: SYSCALL 目标地址 (兼容)"
+        - "MSR_SYSCALL_MASK: SYSCALL RFLAGS 掩码"
+        - "MSR_FS_BASE: FS 段基址"
+        - "MSR_GS_BASE: GS 段基址"
+        - "MSR_KERNEL_GS_BASE: SWAPGS 用"
+        - "MSR_IA32_TSC: 时间戳计数器"
+        - "MSR_IA32_APICBASE: APIC 基址"
+        - "MSR_IA32_CR_PAT: 页属性表"
+
+
+# ============================================================
+# CPUID PATTERNS
+# ============================================================
+
+cpuid_patterns:
+  description: "x86 CPUID 操作模式"
+  header: "arch/x86/include/asm/cpufeature.h"
+  icon: "🔍"
+
+  bind_patterns:
+    # cpuid 调用
+    - pattern: 'cpuid\s*\(\s*(?P<leaf>\w+)\s*,'
+      description: "执行 CPUID 指令"
+      
+    # cpuid_count - 带 subleaf
+    - pattern: 'cpuid_count\s*\(\s*(?P<leaf>\w+)\s*,\s*(?P<subleaf>\w+)\s*,'
+      description: "执行 CPUID 指令 (带子叶)"
+      
+    # 特性检测
+    - pattern: 'cpu_has\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<feature>\w+)\s*\)'
+      description: "检查 CPU 特性"
+      
+    - pattern: 'boot_cpu_has\s*\(\s*(?P<feature>\w+)\s*\)'
+      description: "检查引导 CPU 特性"
+      
+    - pattern: 'static_cpu_has\s*\(\s*(?P<feature>\w+)\s*\)'
+      description: "静态检查 CPU 特性 (编译时优化)"
+      
+    # 特性标志
+    - pattern: 'X86_FEATURE_(?P<name>\w+)'
+      description: "CPU 特性标志"
+      common_features:
+        - "X86_FEATURE_PAE: 物理地址扩展"
+        - "X86_FEATURE_PSE: 页大小扩展"
+        - "X86_FEATURE_TSC: 时间戳计数器"
+        - "X86_FEATURE_MSR: MSR 支持"
+        - "X86_FEATURE_APIC: APIC 支持"
+        - "X86_FEATURE_MTRR: MTRR 支持"
+        - "X86_FEATURE_PGE: 全局页"
+        - "X86_FEATURE_PCID: 进程上下文 ID"
+        - "X86_FEATURE_SSE/SSE2/AVX: SIMD 扩展"
+        - "X86_FEATURE_HYPERVISOR: 虚拟化环境"
+
+
+# ============================================================
+# I/O PORT PATTERNS
+# ============================================================
+
+io_patterns:
+  description: "x86 I/O 端口操作模式"
+  header: "arch/x86/include/asm/io.h"
+  icon: "🔌"
+
+  bind_patterns:
+    # 字节 I/O
+    - pattern: 'inb\s*\(\s*(?P<port>[^)]+)\s*\)'
+      description: "从端口读取字节"
+      
+    - pattern: 'outb\s*\(\s*(?P<value>[^,]+)\s*,\s*(?P<port>[^)]+)\s*\)'
+      description: "向端口写入字节"
+      
+    # 字 I/O
+    - pattern: 'inw\s*\(\s*(?P<port>[^)]+)\s*\)'
+      description: "从端口读取字 (16位)"
+      
+    - pattern: 'outw\s*\(\s*(?P<value>[^,]+)\s*,\s*(?P<port>[^)]+)\s*\)'
+      description: "向端口写入字 (16位)"
+      
+    # 双字 I/O
+    - pattern: 'inl\s*\(\s*(?P<port>[^)]+)\s*\)'
+      description: "从端口读取双字 (32位)"
+      
+    - pattern: 'outl\s*\(\s*(?P<value>[^,]+)\s*,\s*(?P<port>[^)]+)\s*\)'
+      description: "向端口写入双字 (32位)"
+      
+    # 字符串 I/O
+    - pattern: 'insb\s*\('
+      description: "字节串输入"
+      
+    - pattern: 'outsb\s*\('
+      description: "字节串输出"
+      
+    - pattern: 'insw\s*\('
+      description: "字串输入"
+      
+    - pattern: 'outsw\s*\('
+      description: "字串输出"
+      
+    - pattern: 'insl\s*\('
+      description: "双字串输入"
+      
+    - pattern: 'outsl\s*\('
+      description: "双字串输出"
+      
+    # 延迟 I/O
+    - pattern: 'inb_p\s*\('
+      description: "从端口读取字节 (带延迟)"
+      
+    - pattern: 'outb_p\s*\('
+      description: "向端口写入字节 (带延迟)"
+
+
+# ============================================================
+# CONTROL REGISTER PATTERNS
+# ============================================================
+
+cr_patterns:
+  description: "x86 控制寄存器操作模式"
+  header: "arch/x86/include/asm/paravirt.h"
+  icon: "⚙️"
+
+  bind_patterns:
+    # CR0
+    - pattern: 'read_cr0\s*\(\s*\)'
+      description: "读取 CR0"
+      fields: ["PE: 保护模式", "PG: 分页使能", "WP: 写保护"]
+      
+    - pattern: 'write_cr0\s*\(\s*(?P<val>[^)]+)\s*\)'
+      description: "写入 CR0"
+      
+    # CR2
+    - pattern: 'read_cr2\s*\(\s*\)'
+      description: "读取 CR2 (页故障地址)"
+      
+    # CR3
+    - pattern: 'read_cr3\s*\(\s*\)'
+      description: "读取 CR3 (页表基址)"
+      
+    - pattern: '__read_cr3\s*\(\s*\)'
+      description: "原生读取 CR3"
+      
+    - pattern: 'write_cr3\s*\(\s*(?P<val>[^)]+)\s*\)'
+      description: "写入 CR3"
+      context: "切换页表/刷新 TLB"
+      
+    - pattern: '__native_read_cr3\s*\(\s*\)'
+      description: "原生读取 CR3"
+      
+    # CR4
+    - pattern: 'read_cr4\s*\(\s*\)'
+      description: "读取 CR4"
+      fields: ["PAE", "PSE", "PCIDE", "SMEP", "SMAP"]
+      
+    - pattern: '__read_cr4\s*\(\s*\)'
+      description: "原生读取 CR4"
+      
+    - pattern: 'write_cr4\s*\(\s*(?P<val>[^)]+)\s*\)'
+      description: "写入 CR4"
+      
+    - pattern: 'cr4_set_bits\s*\(\s*(?P<bits>[^)]+)\s*\)'
+      description: "设置 CR4 位"
+      
+    - pattern: 'cr4_clear_bits\s*\(\s*(?P<bits>[^)]+)\s*\)'
+      description: "清除 CR4 位"
+      
+    # CR8 (仅 x86_64)
+    - pattern: 'read_cr8\s*\(\s*\)'
+      description: "读取 CR8 (任务优先级)"
+      arch: "x86_64"
+      
+    - pattern: 'write_cr8\s*\(\s*(?P<val>[^)]+)\s*\)'
+      description: "写入 CR8"
+      arch: "x86_64"
+
+
+# ============================================================
+# TLB PATTERNS
+# ============================================================
+
+tlb_patterns:
+  description: "x86 TLB 操作模式"
+  header: "arch/x86/include/asm/tlbflush.h"
+  icon: "📋"
+
+  bind_patterns:
+    # 单页无效化
+    - pattern: '__flush_tlb_one_user\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      description: "无效化用户页 TLB"
+      
+    - pattern: 'flush_tlb_one_kernel\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      description: "无效化内核页 TLB"
+      
+    # 全 TLB 无效化
+    - pattern: '__flush_tlb_all\s*\(\s*\)'
+      description: "无效化所有 TLB"
+      
+    - pattern: '__flush_tlb_global\s*\(\s*\)'
+      description: "无效化全局 TLB"
+      
+    # MM 无效化
+    - pattern: 'flush_tlb_mm_range\s*\('
+      description: "无效化地址范围 TLB"
+      
+    # INVLPG 指令
+    - pattern: 'asm\s+volatile\s*\(\s*"invlpg\s+\(%[^)]+\)"'
+      description: "INVLPG 指令无效化单页"
+      
+    # INVPCID 指令
+    - pattern: 'invpcid_flush_one\s*\('
+      description: "INVPCID 无效化单地址"
+      
+    - pattern: 'invpcid_flush_all\s*\(\s*\)'
+      description: "INVPCID 无效化所有"
+      
+    - pattern: 'invpcid_flush_all_nonglobals\s*\(\s*\)'
+      description: "INVPCID 无效化所有非全局"
+
+
+# ============================================================
+# BARRIER PATTERNS
+# ============================================================
+
+barrier_patterns:
+  description: "x86 内存屏障模式"
+  header: "arch/x86/include/asm/barrier.h"
+  icon: "🚧"
+
+  bind_patterns:
+    # MFENCE
+    - pattern: 'mfence\s*\(\s*\)'
+      description: "完整内存屏障 (MFENCE)"
+      
+    - pattern: 'asm\s+volatile\s*\(\s*"mfence"'
+      description: "内联 MFENCE"
+      
+    # LFENCE
+    - pattern: 'lfence\s*\(\s*\)'
+      description: "加载屏障 (LFENCE)"
+      
+    - pattern: 'asm\s+volatile\s*\(\s*"lfence"'
+      description: "内联 LFENCE"
+      
+    # SFENCE
+    - pattern: 'sfence\s*\(\s*\)'
+      description: "存储屏障 (SFENCE)"
+      
+    - pattern: 'asm\s+volatile\s*\(\s*"sfence"'
+      description: "内联 SFENCE"
+      
+    # SMP 屏障
+    - pattern: 'smp_mb\s*\(\s*\)'
+      description: "SMP 完整内存屏障"
+      note: "x86 上通常是 LOCK 或 MFENCE"
+      
+    - pattern: 'smp_rmb\s*\(\s*\)'
+      description: "SMP 读屏障"
+      note: "x86 TSO 模型下通常是编译器屏障"
+      
+    - pattern: 'smp_wmb\s*\(\s*\)'
+      description: "SMP 写屏障"
+      note: "x86 TSO 模型下通常是编译器屏障"
+      
+    # 序列化指令
+    - pattern: 'serialize\s*\(\s*\)'
+      description: "SERIALIZE 指令 (Alder Lake+)"
+      note: "强制序列化所有之前的指令"
+
+
+# ============================================================
+# APIC PATTERNS
+# ============================================================
+
+apic_patterns:
+  description: "x86 APIC 操作模式"
+  header: "arch/x86/include/asm/apic.h"
+  icon: "🎯"
+
+  bind_patterns:
+    # APIC 读写
+    - pattern: 'apic_read\s*\(\s*(?P<reg>\w+)\s*\)'
+      description: "读取 APIC 寄存器"
+      
+    - pattern: 'apic_write\s*\(\s*(?P<reg>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入 APIC 寄存器"
+      
+    # EOI
+    - pattern: 'apic_eoi\s*\(\s*\)'
+      description: "发送 EOI (中断结束)"
+      
+    - pattern: 'ack_APIC_irq\s*\(\s*\)'
+      description: "应答 APIC IRQ"
+      
+    # IPI 发送
+    - pattern: 'apic_icr_write\s*\('
+      description: "写入 ICR 发送 IPI"
+      
+    - pattern: '__default_send_IPI_dest_field\s*\('
+      description: "发送 IPI 到目标"
+      
+    - pattern: 'apic->send_IPI\s*\('
+      description: "通过 APIC 驱动发送 IPI"
+      
+    # x2APIC
+    - pattern: 'x2apic_enabled\s*\(\s*\)'
+      description: "检查 x2APIC 是否启用"
+      
+    - pattern: 'native_x2apic_icr_write\s*\('
+      description: "x2APIC ICR 写入"
+      
+    # APIC 定时器
+    - pattern: 'setup_APIC_timer\s*\(\s*\)'
+      description: "设置 APIC 定时器"
+      
+    - pattern: 'lapic_timer_broadcast\s*\('
+      description: "APIC 定时器广播"
+
+
+# ============================================================
+# SYSCALL/SYSENTER PATTERNS
+# ============================================================
+
+syscall_patterns:
+  description: "x86 系统调用入口模式"
+  header: "arch/x86/entry/entry_64.S"
+  icon: "📞"
+
+  bind_patterns:
+    # SYSCALL 入口
+    - pattern: 'entry_SYSCALL_64\s*'
+      description: "64位 SYSCALL 入口"
+      file: "arch/x86/entry/entry_64.S"
+      
+    - pattern: 'entry_SYSCALL_compat\s*'
+      description: "兼容模式 SYSCALL 入口"
+      
+    # SYSENTER 入口
+    - pattern: 'entry_SYSENTER_32\s*'
+      description: "32位 SYSENTER 入口"
+      
+    - pattern: 'entry_SYSENTER_compat\s*'
+      description: "兼容模式 SYSENTER 入口"
+      
+    # INT 0x80
+    - pattern: 'entry_INT80_32\s*'
+      description: "32位 INT 0x80 入口"
+      
+    - pattern: 'entry_INT80_compat\s*'
+      description: "兼容模式 INT 0x80 入口"
+      
+    # 系统调用处理
+    - pattern: 'do_syscall_64\s*\('
+      description: "64位系统调用分发"
+      file: "arch/x86/entry/common.c"
+      
+    - pattern: 'do_syscall_32_irqs_on\s*\('
+      description: "32位系统调用处理"
+      
+    # SWAPGS
+    - pattern: 'swapgs\s*'
+      description: "SWAPGS 指令 (切换 GS 基址)"
+      context: "用户/内核切换时交换 GS"
+
+
+# ============================================================
+# EXCEPTION PATTERNS
+# ============================================================
+
+exception_patterns:
+  description: "x86 异常处理模式"
+  header: "arch/x86/kernel/traps.c"
+  icon: "⚡"
+
+  bind_patterns:
+    # 异常处理函数
+    - pattern: 'exc_divide_error\s*\('
+      description: "除法错误处理 (#DE)"
+      
+    - pattern: 'exc_debug\s*\('
+      description: "调试异常处理 (#DB)"
+      
+    - pattern: 'exc_nmi\s*\('
+      description: "NMI 处理"
+      
+    - pattern: 'exc_int3\s*\('
+      description: "断点处理 (#BP)"
+      
+    - pattern: 'exc_overflow\s*\('
+      description: "溢出处理 (#OF)"
+      
+    - pattern: 'exc_bounds\s*\('
+      description: "边界检查 (#BR)"
+      
+    - pattern: 'exc_invalid_op\s*\('
+      description: "无效操作码 (#UD)"
+      
+    - pattern: 'exc_device_not_available\s*\('
+      description: "设备不可用 (#NM)"
+      
+    - pattern: 'exc_double_fault\s*\('
+      description: "双重故障 (#DF)"
+      
+    - pattern: 'exc_invalid_tss\s*\('
+      description: "无效 TSS (#TS)"
+      
+    - pattern: 'exc_segment_not_present\s*\('
+      description: "段不存在 (#NP)"
+      
+    - pattern: 'exc_stack_segment\s*\('
+      description: "栈段故障 (#SS)"
+      
+    - pattern: 'exc_general_protection\s*\('
+      description: "一般保护故障 (#GP)"
+      
+    - pattern: 'exc_page_fault\s*\('
+      description: "页故障 (#PF)"
+      file: "arch/x86/mm/fault.c"
+      
+    - pattern: 'exc_machine_check\s*\('
+      description: "机器检查 (#MC)"
+      
+    - pattern: 'exc_simd_coprocessor_error\s*\('
+      description: "SIMD 异常 (#XM)"
+
+
+# ============================================================
+# TSC PATTERNS
+# ============================================================
+
+tsc_patterns:
+  description: "x86 TSC 操作模式"
+  header: "arch/x86/include/asm/tsc.h"
+  icon: "⏱️"
+
+  bind_patterns:
+    # RDTSC
+    - pattern: 'rdtsc\s*\(\s*\)'
+      description: "读取 TSC"
+      
+    - pattern: 'rdtsc_ordered\s*\(\s*\)'
+      description: "有序读取 TSC"
+      
+    - pattern: 'rdtscp\s*\('
+      description: "RDTSCP (带处理器 ID)"
+      
+    - pattern: 'get_cycles\s*\(\s*\)'
+      description: "获取 CPU 周期数"
+      
+    # TSC 校准
+    - pattern: 'tsc_khz'
+      description: "TSC 频率 (KHz)"
+      
+    - pattern: 'calibrate_tsc\s*\(\s*\)'
+      description: "校准 TSC"
+
+
+# ============================================================
+# CONTEXT SWITCH PATTERNS
+# ============================================================
+
+context_switch_patterns:
+  description: "x86 上下文切换模式"
+  header: "arch/x86/kernel/process_64.c"
+  icon: "🔄"
+
+  bind_patterns:
+    # 进程切换
+    - pattern: '__switch_to\s*\(\s*(?P<prev>[^,]+)\s*,\s*(?P<next>[^)]+)\s*\)'
+      description: "进程上下文切换"
+      
+    - pattern: '__switch_to_asm\s*\('
+      description: "汇编级上下文切换"
+      file: "arch/x86/entry/entry_64.S"
+      
+    # FPU 切换
+    - pattern: 'switch_fpu_return\s*\(\s*\)'
+      description: "返回用户态时恢复 FPU"
+      
+    - pattern: 'fpu__restore_fpu\s*\('
+      description: "恢复 FPU 状态"
+      
+    - pattern: 'copy_fpstate_to_sigframe\s*\('
+      description: "复制 FPU 状态到信号帧"
+
+
+# ============================================================
+# VIRTUALIZATION PATTERNS
+# ============================================================
+
+virt_patterns:
+  description: "x86 虚拟化检测模式"
+  icon: "☁️"
+
+  bind_patterns:
+    # 虚拟化检测
+    - pattern: 'hypervisor_cpuid_base\s*\('
+      description: "获取 hypervisor CPUID 基址"
+      
+    - pattern: 'cpu_has_hypervisor'
+      description: "检查是否在虚拟化环境"
+      
+    # Paravirt
+    - pattern: 'pv_ops\.'
+      description: "半虚拟化操作"
+      
+    - pattern: 'paravirt_patch_call\s*\('
+      description: "半虚拟化补丁"
+
+
+# ============================================================
+# NOTES
+# ============================================================
+
+notes:
+  - "x86 使用 MSR 访问系统级配置寄存器"
+  - "I/O 端口操作是 x86 特有的遗留接口"
+  - "x86 TSO 内存模型下读写屏障通常是编译器屏障"
+  - "SYSCALL 比 INT 0x80 快很多"
+  - "CR3 写入会刷新 TLB (除非使用 PCID)"
+  - "x2APIC 通过 MSR 访问，比 MMIO 更快"

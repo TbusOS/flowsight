@@ -853,6 +853,395 @@ pci_sriov:
 
 
 # ============================================================
+# PCIE CAPABILITY ACCESS
+# ============================================================
+
+pcie_capability:
+  description: "PCIe Capability Access - PCIe 能力访问"
+  header: "linux/pci.h"
+  kernel_version: "3.10+"
+
+  patterns:
+    # PCIe 检测
+    - pattern: 'pci_is_pcie\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "检查是否为 PCIe 设备"
+      context: "any"
+
+    - pattern: 'pcie_get_speed_cap\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取 PCIe 最大速度"
+      context: "any"
+
+    - pattern: 'pcie_get_width_cap\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取 PCIe 最大宽度"
+      context: "any"
+
+    # PCIe 能力读写
+    - pattern: 'pcie_capability_read_word\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "读取 PCIe 能力字"
+      context: "any"
+
+    - pattern: 'pcie_capability_read_dword\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "读取 PCIe 能力双字"
+      context: "any"
+
+    - pattern: 'pcie_capability_write_word\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入 PCIe 能力字"
+      context: "any"
+
+    - pattern: 'pcie_capability_write_dword\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入 PCIe 能力双字"
+      context: "any"
+
+    - pattern: 'pcie_capability_set_word\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<set>[^)]+)\s*\)'
+      description: "设置 PCIe 能力位"
+      context: "any"
+
+    - pattern: 'pcie_capability_clear_word\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<clear>[^)]+)\s*\)'
+      description: "清除 PCIe 能力位"
+      context: "any"
+
+    - pattern: 'pcie_capability_clear_and_set_word\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<pos>\w+)\s*,\s*(?P<clear>\w+)\s*,\s*(?P<set>[^)]+)\s*\)'
+      description: "原子清除并设置 PCIe 能力位"
+      context: "any"
+
+  pcie_registers:
+    - name: "PCI_EXP_DEVCTL"
+      description: "Device Control 寄存器"
+    - name: "PCI_EXP_DEVCTL2"
+      description: "Device Control 2 寄存器"
+    - name: "PCI_EXP_LNKCTL"
+      description: "Link Control 寄存器"
+    - name: "PCI_EXP_LNKCTL2"
+      description: "Link Control 2 寄存器"
+    - name: "PCI_EXP_LNKSTA"
+      description: "Link Status 寄存器"
+    - name: "PCI_EXP_SLTCTL"
+      description: "Slot Control 寄存器"
+
+
+# ============================================================
+# PCI DEVICE RESET
+# ============================================================
+
+pci_reset:
+  description: "PCI Device Reset - PCI 设备重置"
+  header: "linux/pci.h"
+  kernel_version: "3.0+"
+
+  patterns:
+    # 函数级重置
+    - pattern: 'pci_reset_function\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "执行函数级重置 (FLR)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_try_reset_function\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "尝试函数级重置 (非阻塞)"
+      context: "process"
+
+    - pattern: '__pci_reset_function_locked\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "底层函数重置 (需持锁)"
+      context: "process"
+
+    # 总线/桥重置
+    - pattern: 'pci_reset_bus\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "重置 PCI 总线"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_reset_slot\s*\(\s*(?P<slot>[^)]+)\s*\)'
+      description: "重置 PCI 插槽"
+      context: "process"
+
+    - pattern: 'pci_reset_bridge_secondary_bus\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "重置桥下游总线"
+      context: "process"
+
+    # 重置探测
+    - pattern: 'pci_probe_reset_function\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "检查设备是否支持 FLR"
+      context: "process"
+
+    - pattern: 'pci_probe_reset_bus\s*\(\s*(?P<bus>[^)]+)\s*\)'
+      description: "检查总线是否支持重置"
+      context: "process"
+
+  notes:
+    - "FLR (Function Level Reset) 是 PCIe 功能"
+    - "重置会丢失设备配置，需重新初始化"
+    - "某些设备不支持 FLR，会回退到二级总线重置"
+
+
+# ============================================================
+# PCI ADVANCED POWER MANAGEMENT
+# ============================================================
+
+pci_advanced_pm:
+  description: "PCI Advanced Power Management - 高级电源管理"
+  header: "linux/pci.h"
+  kernel_version: "3.0+"
+
+  patterns:
+    # 状态保存高级 API
+    - pattern: 'pci_store_saved_state\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "保存 PCI 状态到分配的缓冲区"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_load_saved_state\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<state>[^)]+)\s*\)'
+      description: "从缓冲区加载 PCI 状态"
+      context: "process"
+
+    - pattern: 'pci_load_and_free_saved_state\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<state>[^)]+)\s*\)'
+      description: "加载并释放保存的状态"
+      context: "process"
+
+    # 睡眠准备
+    - pattern: 'pci_prepare_to_sleep\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "准备进入睡眠状态"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_back_from_sleep\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "从睡眠恢复"
+      context: "process"
+
+    - pattern: 'pci_dev_run_wake\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "检查设备是否可运行时唤醒"
+      context: "any"
+
+    # PME 控制
+    - pattern: 'pci_pme_capable\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<state>\w+)\s*\)'
+      description: "检查 PME 能力"
+      context: "any"
+
+    - pattern: 'pci_pme_active\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<enable>\w+)\s*\)'
+      description: "启用/禁用 PME"
+      context: "process"
+
+    # D3 状态
+    - pattern: 'pci_d3cold_enable\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "启用 D3cold 支持"
+      context: "process"
+
+    - pattern: 'pci_d3cold_disable\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "禁用 D3cold 支持"
+      context: "process"
+
+
+# ============================================================
+# PCI BAR ADVANCED MAPPING
+# ============================================================
+
+pci_bar_advanced:
+  description: "PCI BAR Advanced Mapping - 高级 BAR 映射"
+  header: "linux/pci.h"
+
+  patterns:
+    # Write-Combining 映射
+    - pattern: 'pci_iomap_wc\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*,\s*(?P<maxlen>\w+)\s*\)'
+      description: "映射 BAR (Write-Combining)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_ioremap_wc_bar\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*\)'
+      description: "映射整个 BAR (Write-Combining)"
+      context: "process"
+
+    # 范围映射
+    - pattern: 'pci_iomap_range\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*,\s*(?P<offset>\w+)\s*,\s*(?P<maxlen>\w+)\s*\)'
+      description: "映射 BAR 的部分范围"
+      context: "process"
+
+    - pattern: 'pci_iomap_wc_range\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<bar>\d+)\s*,\s*(?P<offset>\w+)\s*,\s*(?P<maxlen>\w+)\s*\)'
+      description: "映射 BAR 范围 (Write-Combining)"
+      context: "process"
+
+    # 请求特定类型的 BAR
+    - pattern: 'pci_request_mem_regions\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "仅请求内存 BAR"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'pci_request_io_regions\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "仅请求 IO BAR"
+      context: "process"
+
+    - pattern: 'pci_release_mem_regions\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "释放内存 BAR"
+      context: "process"
+
+    - pattern: 'pci_release_io_regions\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "释放 IO BAR"
+      context: "process"
+
+  notes:
+    - "Write-Combining 适合帧缓冲等连续写入场景"
+    - "范围映射可减少虚拟地址空间使用"
+
+
+# ============================================================
+# PCI BUS CONFIG ACCESS
+# ============================================================
+
+pci_bus_config:
+  description: "PCI Bus Configuration Access - 总线级配置访问"
+  header: "linux/pci.h"
+
+  patterns:
+    # 总线级读取
+    - pattern: 'pci_bus_read_config_byte\s*\(\s*(?P<bus>[^,]+)\s*,\s*(?P<devfn>\w+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "从总线读取配置字节"
+      context: "any"
+
+    - pattern: 'pci_bus_read_config_word\s*\(\s*(?P<bus>[^,]+)\s*,\s*(?P<devfn>\w+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "从总线读取配置字"
+      context: "any"
+
+    - pattern: 'pci_bus_read_config_dword\s*\(\s*(?P<bus>[^,]+)\s*,\s*(?P<devfn>\w+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "从总线读取配置双字"
+      context: "any"
+
+    # 总线级写入
+    - pattern: 'pci_bus_write_config_byte\s*\(\s*(?P<bus>[^,]+)\s*,\s*(?P<devfn>\w+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "向总线写入配置字节"
+      context: "any"
+
+    - pattern: 'pci_bus_write_config_word\s*\(\s*(?P<bus>[^,]+)\s*,\s*(?P<devfn>\w+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "向总线写入配置字"
+      context: "any"
+
+    - pattern: 'pci_bus_write_config_dword\s*\(\s*(?P<bus>[^,]+)\s*,\s*(?P<devfn>\w+)\s*,\s*(?P<where>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "向总线写入配置双字"
+      context: "any"
+
+  notes:
+    - "用于访问尚未创建 pci_dev 的设备"
+    - "常用于热插拔和总线枚举代码"
+
+
+# ============================================================
+# PCI DEVICE QUERY
+# ============================================================
+
+pci_device_query:
+  description: "PCI Device Query - 设备信息查询"
+  header: "linux/pci.h"
+
+  patterns:
+    # 设备标识
+    - pattern: 'pci_dev_id\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取设备 ID (总线:槽位.功能)"
+      context: "any"
+
+    - pattern: 'pci_pcie_type\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取 PCIe 设备类型"
+      context: "any"
+
+    - pattern: 'pci_pcie_cap\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取 PCIe capability 偏移"
+      context: "any"
+
+    # 层级关系
+    - pattern: 'pci_upstream_bridge\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取上游桥设备"
+      context: "any"
+
+    - pattern: 'pci_is_root_bus\s*\(\s*(?P<bus>[^)]+)\s*\)'
+      description: "检查是否为根总线"
+      context: "any"
+
+    - pattern: 'pci_is_bridge\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "检查是否为 PCI 桥"
+      context: "any"
+
+    # 物理位置
+    - pattern: 'pci_dev_present\s*\(\s*(?P<ids>[^)]+)\s*\)'
+      description: "检查设备是否存在"
+      context: "process"
+
+    - pattern: 'pci_get_slot\s*\(\s*(?P<bus>[^,]+)\s*,\s*(?P<devfn>\w+)\s*\)'
+      description: "按位置获取设备"
+      context: "process"
+
+  pcie_types:
+    - name: "PCI_EXP_TYPE_ENDPOINT"
+      description: "PCIe 端点"
+    - name: "PCI_EXP_TYPE_LEG_END"
+      description: "旧式端点"
+    - name: "PCI_EXP_TYPE_ROOT_PORT"
+      description: "根端口"
+    - name: "PCI_EXP_TYPE_UPSTREAM"
+      description: "上游端口"
+    - name: "PCI_EXP_TYPE_DOWNSTREAM"
+      description: "下游端口"
+    - name: "PCI_EXP_TYPE_PCI_BRIDGE"
+      description: "PCIe-PCI 桥"
+    - name: "PCI_EXP_TYPE_PCIE_BRIDGE"
+      description: "PCI-PCIe 桥"
+    - name: "PCI_EXP_TYPE_RC_END"
+      description: "根复合体端点"
+    - name: "PCI_EXP_TYPE_RC_EC"
+      description: "根复合体事件收集器"
+
+
+# ============================================================
+# PCI ATS/PASID/PRI (IOMMU Related)
+# ============================================================
+
+pci_iommu:
+  description: "PCI IOMMU Features - PCI IOMMU 相关功能"
+  header: "linux/pci.h"
+  kernel_version: "3.0+"
+
+  patterns:
+    # ATS (Address Translation Services)
+    - pattern: 'pci_enable_ats\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<ps>\w+)\s*\)'
+      description: "启用 ATS"
+      context: "process"
+
+    - pattern: 'pci_disable_ats\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "禁用 ATS"
+      context: "process"
+
+    - pattern: 'pci_ats_queue_depth\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取 ATS 队列深度"
+      context: "any"
+
+    # PASID (Process Address Space ID)
+    - pattern: 'pci_enable_pasid\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<features>\w+)\s*\)'
+      description: "启用 PASID"
+      context: "process"
+
+    - pattern: 'pci_disable_pasid\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "禁用 PASID"
+      context: "process"
+
+    - pattern: 'pci_max_pasids\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "获取最大 PASID 数量"
+      context: "any"
+
+    # PRI (Page Request Interface)
+    - pattern: 'pci_enable_pri\s*\(\s*(?P<pdev>[^,]+)\s*,\s*(?P<reqs>\w+)\s*\)'
+      description: "启用 PRI"
+      context: "process"
+
+    - pattern: 'pci_disable_pri\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "禁用 PRI"
+      context: "process"
+
+    - pattern: 'pci_reset_pri\s*\(\s*(?P<pdev>[^)]+)\s*\)'
+      description: "重置 PRI"
+      context: "process"
+
+  notes:
+    - "ATS 允许设备缓存地址转换"
+    - "PASID 支持设备使用进程地址空间"
+    - "PRI 支持设备发起页面请求"
+    - "这些功能需要 IOMMU 支持"
+
+
+# ============================================================
 # EXAMPLES
 # ============================================================
 

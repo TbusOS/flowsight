@@ -521,31 +521,64 @@ napi:
 
   registration:
     # netif_napi_add - 添加 NAPI
-    - pattern: 'netif_napi_add\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<napi>[^,]+)\s*,\s*(?P<poll>\w+)\s*\)'
+    netif_napi_add:
+      pattern: 'netif_napi_add\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<napi>[^,]+)\s*,\s*(?P<poll>\w+)\s*\)'
       description: "添加 NAPI (5.19+ 不需要 weight 参数)"
       context: "process"
       can_sleep: true
+      signature: "void netif_napi_add(struct net_device *dev, struct napi_struct *napi, int (*poll)(struct napi_struct *, int))"
       typical_usage: "在 probe 中调用"
       notes:
         - "5.19+ 版本自动使用 NAPI_POLL_WEIGHT (64)"
+        - "必须在 register_netdev 之前调用"
+        - "初始化 napi_struct 并关联到设备"
 
-    - pattern: 'netif_napi_add_weight\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<napi>[^,]+)\s*,\s*(?P<poll>\w+)\s*,\s*(?P<weight>\d+)\s*\)'
+    netif_napi_add_weight:
+      pattern: 'netif_napi_add_weight\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<napi>[^,]+)\s*,\s*(?P<poll>\w+)\s*,\s*(?P<weight>\d+)\s*\)'
       description: "添加 NAPI 带自定义权重"
+      context: "process"
+      can_sleep: true
+      signature: "void netif_napi_add_weight(struct net_device *dev, struct napi_struct *napi, int (*poll)(struct napi_struct *, int), int weight)"
+      notes:
+        - "weight 通常为 64 (NAPI_POLL_WEIGHT)"
+        - "特殊设备可能需要不同的权重"
+
+    netif_napi_add_tx:
+      pattern: 'netif_napi_add_tx\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<napi>[^,]+)\s*,\s*(?P<poll>\w+)\s*\)'
+      description: "添加发送专用 NAPI"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "用于 TX 完成处理的 NAPI"
+        - "权重为 NAPI_POLL_WEIGHT / 2"
+
+    netif_napi_add_tx_weight:
+      pattern: 'netif_napi_add_tx_weight\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<napi>[^,]+)\s*,\s*(?P<poll>\w+)\s*,\s*(?P<weight>\d+)\s*\)'
+      description: "添加发送专用 NAPI 带权重"
       context: "process"
       can_sleep: true
 
     # 旧版本 API (已废弃但仍常见)
-    - pattern: 'netif_napi_add\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<napi>[^,]+)\s*,\s*(?P<poll>\w+)\s*,\s*(?P<weight>\d+)\s*\)'
+    netif_napi_add_legacy:
+      pattern: 'netif_napi_add\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<napi>[^,]+)\s*,\s*(?P<poll>\w+)\s*,\s*(?P<weight>\d+)\s*\)'
       description: "添加 NAPI (旧版本，带 weight)"
       context: "process"
       can_sleep: true
+      notes:
+        - "5.19 之前的 API"
+        - "新代码应使用无 weight 版本"
 
     # netif_napi_del - 删除 NAPI
-    - pattern: 'netif_napi_del\s*\(\s*(?P<napi>[^)]+)\s*\)'
+    netif_napi_del:
+      pattern: 'netif_napi_del\s*\(\s*(?P<napi>[^)]+)\s*\)'
       description: "删除 NAPI 实例"
       context: "process"
       can_sleep: true
+      signature: "void netif_napi_del(struct napi_struct *napi)"
       typical_usage: "在 remove 中调用"
+      notes:
+        - "必须在 unregister_netdev 之后调用"
+        - "或在 ndo_stop 中 napi_disable 后调用"
 
   enable_disable:
     napi_enable:
@@ -598,7 +631,34 @@ napi:
       description: "内部调度函数 (配合 napi_schedule_prep)"
       context: "hardirq/softirq"
       can_sleep: false
-      notes: "仅在 napi_schedule_prep 返回 true 时调用"
+      signature: "void __napi_schedule(struct napi_struct *napi)"
+      notes:
+        - "仅在 napi_schedule_prep 返回 true 时调用"
+        - "触发 NET_RX_SOFTIRQ"
+      typical_usage: |
+        if (napi_schedule_prep(&priv->napi)) {
+            my_disable_irq(priv);  /* 禁用中断 */
+            __napi_schedule(&priv->napi);
+        }
+
+    __napi_schedule_irqoff:
+      pattern: '__napi_schedule_irqoff\s*\(\s*(?P<napi>[^)]+)\s*\)'
+      description: "内部调度函数 (中断已禁用)"
+      context: "hardirq"
+      can_sleep: false
+      notes:
+        - "调用者必须保证中断已禁用"
+        - "比 __napi_schedule 更高效"
+
+    napi_reschedule:
+      pattern: 'napi_reschedule\s*\(\s*(?P<napi>[^)]+)\s*\)'
+      description: "重新调度 NAPI"
+      context: "softirq"
+      can_sleep: false
+      return_type: "bool"
+      notes:
+        - "在 poll 函数中使用"
+        - "用于继续处理更多数据"
 
   completion:
     napi_complete:
@@ -829,6 +889,25 @@ tx_path:
         - "最后使用哈希选择"
 
   queue_management:
+    # ========== 内部调度函数 ==========
+    __netif_schedule:
+      pattern: '__netif_schedule\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "内部函数：调度发送队列处理"
+      context: "any"
+      can_sleep: false
+      signature: "void __netif_schedule(struct Qdisc *q)"
+      notes:
+        - "底层实现，通常不直接调用"
+        - "触发 NET_TX_SOFTIRQ"
+        - "由 qdisc 调度使用"
+
+    netif_schedule_queue:
+      pattern: 'netif_schedule_queue\s*\(\s*(?P<txq>[^)]+)\s*\)'
+      description: "调度特定发送队列"
+      context: "any"
+      can_sleep: false
+      signature: "void netif_schedule_queue(struct netdev_queue *txq)"
+
     netif_start_queue:
       pattern: 'netif_start_queue\s*\(\s*(?P<dev>[^)]+)\s*\)'
       description: "启动发送队列"
@@ -1489,17 +1568,36 @@ netdev_helpers:
 
     netif_carrier_on:
       pattern: 'netif_carrier_on\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      description: "设置载波正常"
+      description: "设置载波正常 (链路建立)"
       context: "any"
       can_sleep: false
+      signature: "void netif_carrier_on(struct net_device *dev)"
       typical_usage: "链路建立时调用"
+      notes:
+        - "触发 netdev 事件通知"
+        - "允许发送队列开始工作"
+        - "通常在 PHY 链路状态变化回调中调用"
 
     netif_carrier_off:
       pattern: 'netif_carrier_off\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      description: "设置载波丢失"
+      description: "设置载波丢失 (链路断开)"
       context: "any"
       can_sleep: false
+      signature: "void netif_carrier_off(struct net_device *dev)"
       typical_usage: "链路断开时调用"
+      notes:
+        - "触发 netdev 事件通知"
+        - "停止发送队列"
+        - "通常在 PHY 链路状态变化回调中调用"
+
+    netif_carrier_event:
+      pattern: 'netif_carrier_event\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "触发载波状态事件"
+      context: "any"
+      can_sleep: false
+      notes:
+        - "5.0+ 新增"
+        - "用于通知用户空间载波状态变化"
 
     netif_dormant:
       pattern: 'netif_dormant\s*\(\s*(?P<dev>[^)]+)\s*\)'
@@ -1561,8 +1659,28 @@ netdev_helpers:
       description: "获取设备私有数据"
       context: "any"
       can_sleep: false
+      signature: "void *netdev_priv(const struct net_device *dev)"
       return_type: "void *"
-      notes: "返回 alloc_etherdev(size) 中分配的私有区域"
+      notes:
+        - "返回 alloc_etherdev(size) 或 alloc_netdev() 中分配的私有区域"
+        - "私有区域紧跟在 net_device 结构体之后"
+        - "大小由分配函数的 sizeof_priv 参数指定"
+      typical_usage: |
+        struct my_priv *priv = netdev_priv(dev);
+        priv->some_field = value;
+      memory_layout: |
+        [net_device 结构体][私有数据区域]
+        ^                  ^
+        dev                netdev_priv(dev) 返回值
+
+    netdev_set_priv_destructor:
+      pattern: 'netdev_set_priv_destructor\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<destructor>\w+)\s*\)'
+      description: "设置私有数据析构函数"
+      context: "process"
+      can_sleep: false
+      notes:
+        - "设备释放时自动调用"
+        - "用于清理私有数据中的资源"
 
     SET_NETDEV_DEV:
       pattern: 'SET_NETDEV_DEV\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'

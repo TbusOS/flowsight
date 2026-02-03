@@ -1,0 +1,1082 @@
+# Linux Kernel - sk_buff (Socket Buffer) API
+#
+# Reference: https://www.kernel.org/doc/html/latest/networking/skbuff.html
+# Kernel Version: 5.0+
+
+# ============================================================
+# SK_BUFF STRUCTURE - 网络数据包核心结构
+# ============================================================
+
+skb_structure:
+  description: "sk_buff - Socket Buffer 核心数据结构"
+  header: "linux/skbuff.h"
+  icon: "📦"
+  kernel_version: "2.6+"
+
+  structure:
+    name: "sk_buff"
+    description: "网络数据包的核心表示，包含数据指针、长度、协议信息等"
+    key_fields:
+      - name: "head"
+        type: "unsigned char *"
+        description: "数据缓冲区开始位置"
+      - name: "data"
+        type: "unsigned char *"
+        description: "数据开始位置 (可变)"
+      - name: "tail"
+        type: "sk_buff_data_t"
+        description: "数据结束位置 (可变)"
+      - name: "end"
+        type: "sk_buff_data_t"
+        description: "数据缓冲区结束位置"
+      - name: "len"
+        type: "unsigned int"
+        description: "数据长度 (包括分片)"
+      - name: "data_len"
+        type: "unsigned int"
+        description: "分片数据长度"
+      - name: "mac_len"
+        type: "__u16"
+        description: "MAC 头长度"
+      - name: "hdr_len"
+        type: "__u16"
+        description: "可写头长度"
+      - name: "protocol"
+        type: "__be16"
+        description: "协议类型 (如 ETH_P_IP)"
+      - name: "pkt_type"
+        type: "__u8"
+        description: "包类型 (PACKET_HOST 等)"
+      - name: "dev"
+        type: "struct net_device *"
+        description: "关联的网络设备"
+      - name: "sk"
+        type: "struct sock *"
+        description: "关联的 socket"
+      - name: "cb"
+        type: "char[48]"
+        description: "控制块 (协议私有数据)"
+      - name: "truesize"
+        type: "unsigned int"
+        description: "SKB 占用的真实内存"
+
+  layout: |
+    内存布局:
+    
+    head ──────────────┬──────────────────────────────────┬───── end
+                       │                                  │
+          headroom     │        linear data               │ tailroom
+                       │                                  │
+    ──────────────── data ────────────────────────────── tail ────────
+    
+    关系:
+    - headroom = data - head  (预留空间，用于添加协议头)
+    - linear len = tail - data (线性数据长度)
+    - tailroom = end - tail   (尾部预留空间)
+    - len = linear len + data_len (总长度)
+
+
+# ============================================================
+# SKB ALLOCATION - 分配
+# ============================================================
+
+skb_alloc:
+  description: "sk_buff 分配函数"
+  header: "linux/skbuff.h"
+  icon: "🔧"
+
+  patterns:
+    # 基本分配
+    alloc_skb:
+      pattern: 'alloc_skb\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配 sk_buff"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP (GFP_KERNEL 可睡眠, GFP_ATOMIC 不可)"
+      signature: "struct sk_buff *alloc_skb(unsigned int size, gfp_t priority)"
+      return_value:
+        success: "指向新 sk_buff 的指针"
+        failure: "NULL"
+      notes:
+        - "size 为数据区大小"
+        - "自动对齐到 SKB_DATA_ALIGN"
+
+    __alloc_skb:
+      pattern: '__alloc_skb\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<gfp>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
+      description: "底层 sk_buff 分配"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask, int flags, int node)"
+
+    alloc_skb_with_frags:
+      pattern: 'alloc_skb_with_frags\s*\(\s*(?P<header_len>[^,]+)\s*,\s*(?P<data_len>[^,]+)\s*,'
+      description: "分配带分片的 sk_buff"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+
+    # 网络设备分配
+    netdev_alloc_skb:
+      pattern: 'netdev_alloc_skb\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "为网络设备分配 skb"
+      context: "any"
+      can_sleep: false
+      signature: "struct sk_buff *netdev_alloc_skb(struct net_device *dev, unsigned int length)"
+      notes:
+        - "使用 GFP_ATOMIC"
+        - "自动设置 skb->dev"
+        - "预留 NET_SKB_PAD (64 字节) headroom"
+
+    __netdev_alloc_skb:
+      pattern: '__netdev_alloc_skb\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "指定 GFP 的网络设备 skb 分配"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "struct sk_buff *__netdev_alloc_skb(struct net_device *dev, unsigned int length, gfp_t gfp_mask)"
+
+    netdev_alloc_skb_ip_align:
+      pattern: 'netdev_alloc_skb_ip_align\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "分配 IP 对齐的 skb"
+      context: "any"
+      can_sleep: false
+      notes:
+        - "额外预留 NET_IP_ALIGN (2 字节) 使 IP 头对齐"
+        - "适用于 DMA 不能访问非对齐地址的硬件"
+
+    dev_alloc_skb:
+      pattern: 'dev_alloc_skb\s*\(\s*(?P<len>[^)]+)\s*\)'
+      description: "分配设备 skb (无设备参数)"
+      context: "any"
+      can_sleep: false
+      signature: "struct sk_buff *dev_alloc_skb(unsigned int length)"
+      notes:
+        - "等价于 netdev_alloc_skb(NULL, length)"
+        - "已废弃，推荐使用 netdev_alloc_skb"
+
+    # NAPI 分配
+    napi_alloc_skb:
+      pattern: 'napi_alloc_skb\s*\(\s*(?P<napi>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "NAPI 上下文分配 skb (缓存优化)"
+      context: "softirq (NAPI poll)"
+      can_sleep: false
+      signature: "struct sk_buff *napi_alloc_skb(struct napi_struct *napi, unsigned int length)"
+      notes:
+        - "使用 per-CPU 缓存，更高效"
+        - "只能在 NAPI poll 中使用"
+
+    # 克隆和复制
+    skb_clone:
+      pattern: 'skb_clone\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "克隆 skb (共享数据区)"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)"
+      return_value:
+        success: "新 sk_buff 指针"
+        failure: "NULL"
+      notes:
+        - "新 skb 与原 skb 共享数据区"
+        - "数据区引用计数增加"
+        - "适用于需要多次处理同一数据的场景"
+
+    skb_copy:
+      pattern: 'skb_copy\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "完整复制 skb (独立数据区)"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "struct sk_buff *skb_copy(const struct sk_buff *skb, gfp_t gfp_mask)"
+      notes:
+        - "新 skb 有独立的数据区副本"
+        - "修改不会影响原 skb"
+
+    pskb_copy:
+      pattern: 'pskb_copy\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "部分复制 skb (只复制线性数据)"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "struct sk_buff *pskb_copy(struct sk_buff *skb, gfp_t gfp_mask)"
+      notes:
+        - "复制线性数据，分片数据共享"
+        - "比 skb_copy 更高效"
+
+    skb_copy_expand:
+      pattern: 'skb_copy_expand\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<newheadroom>\w+)\s*,\s*(?P<newtailroom>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "复制并扩展 skb 空间"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "struct sk_buff *skb_copy_expand(const struct sk_buff *skb, int newheadroom, int newtailroom, gfp_t gfp_mask)"
+
+
+# ============================================================
+# SKB FREE - 释放
+# ============================================================
+
+skb_free:
+  description: "sk_buff 释放函数"
+  header: "linux/skbuff.h"
+  icon: "🗑️"
+
+  patterns:
+    kfree_skb:
+      pattern: 'kfree_skb\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "释放 skb (错误/丢弃路径)"
+      context: "any"
+      can_sleep: false
+      signature: "void kfree_skb(struct sk_buff *skb)"
+      notes:
+        - "用于错误路径或主动丢弃"
+        - "会触发 drop 跟踪点"
+        - "可能触发析构函数"
+
+    kfree_skb_reason:
+      pattern: 'kfree_skb_reason\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<reason>\w+)\s*\)'
+      description: "释放 skb 并记录丢弃原因"
+      context: "any"
+      can_sleep: false
+      signature: "void kfree_skb_reason(struct sk_buff *skb, enum skb_drop_reason reason)"
+      notes:
+        - "5.17+ 新增"
+        - "便于调试和统计丢包原因"
+
+    consume_skb:
+      pattern: 'consume_skb\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "消费 skb (正常完成路径)"
+      context: "any"
+      can_sleep: false
+      signature: "void consume_skb(struct sk_buff *skb)"
+      notes:
+        - "用于正常处理完成后"
+        - "不触发 drop 跟踪点"
+        - "语义：数据已被成功消费"
+
+    dev_kfree_skb:
+      pattern: 'dev_kfree_skb\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "网络设备释放 skb (进程上下文)"
+      context: "process"
+      can_sleep: false
+      signature: "void dev_kfree_skb(struct sk_buff *skb)"
+      notes:
+        - "已废弃，使用 dev_consume_skb_any 或 dev_kfree_skb_any"
+
+    dev_kfree_skb_any:
+      pattern: 'dev_kfree_skb_any\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "网络设备释放 skb (任意上下文，错误路径)"
+      context: "any"
+      can_sleep: false
+      signature: "void dev_kfree_skb_any(struct sk_buff *skb)"
+      typical_usage: "发送失败时释放 skb"
+
+    dev_kfree_skb_irq:
+      pattern: 'dev_kfree_skb_irq\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "网络设备释放 skb (硬中断上下文)"
+      context: "hardirq"
+      can_sleep: false
+      signature: "void dev_kfree_skb_irq(struct sk_buff *skb)"
+      notes:
+        - "在中断上下文中安全调用"
+        - "使用 softirq 延迟释放"
+
+    dev_consume_skb_any:
+      pattern: 'dev_consume_skb_any\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "网络设备消费 skb (任意上下文，正常路径)"
+      context: "any"
+      can_sleep: false
+      signature: "void dev_consume_skb_any(struct sk_buff *skb)"
+      typical_usage: "发送成功后释放 skb"
+
+    dev_consume_skb_irq:
+      pattern: 'dev_consume_skb_irq\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "网络设备消费 skb (硬中断上下文)"
+      context: "hardirq"
+      can_sleep: false
+
+    skb_free_head:
+      pattern: 'skb_free_head\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "释放 skb 头部"
+      context: "any"
+      can_sleep: false
+
+
+# ============================================================
+# SKB DATA MANIPULATION - 数据操作
+# ============================================================
+
+skb_data_ops:
+  description: "sk_buff 数据操作函数"
+  header: "linux/skbuff.h"
+  icon: "📝"
+
+  head_tail_ops:
+    skb_put:
+      pattern: 'skb_put\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "在 tail 添加数据空间"
+      context: "any"
+      can_sleep: false
+      signature: "void *skb_put(struct sk_buff *skb, unsigned int len)"
+      return_value: "指向新增空间起始位置"
+      notes:
+        - "扩展 skb->len 和 skb->tail"
+        - "不检查 tailroom，调用者需确保空间足够"
+        - "用于添加数据到 skb 尾部"
+      diagram: |
+        调用前: [head...data=========tail.....end]
+        调用后: [head...data=========tail+len..end]
+                                    ^^^^^^^
+                                    返回值
+
+    skb_put_zero:
+      pattern: 'skb_put_zero\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "在 tail 添加并清零数据空间"
+      context: "any"
+      can_sleep: false
+      signature: "void *skb_put_zero(struct sk_buff *skb, unsigned int len)"
+
+    skb_put_data:
+      pattern: 'skb_put_data\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "在 tail 添加数据"
+      context: "any"
+      can_sleep: false
+      signature: "void *skb_put_data(struct sk_buff *skb, const void *data, unsigned int len)"
+
+    __skb_put:
+      pattern: '__skb_put\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "在 tail 添加数据空间 (无检查)"
+      context: "any"
+      can_sleep: false
+
+    skb_push:
+      pattern: 'skb_push\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "在 head 添加数据空间 (添加协议头)"
+      context: "any"
+      can_sleep: false
+      signature: "void *skb_push(struct sk_buff *skb, unsigned int len)"
+      return_value: "指向新的 data 位置"
+      notes:
+        - "减小 skb->data，增加 skb->len"
+        - "用于添加协议头 (如 IP 头、MAC 头)"
+        - "不检查 headroom，调用者需确保空间足够"
+      diagram: |
+        调用前: [head.....data=========tail...end]
+        调用后: [head..data-len=======tail...end]
+                      ^^^^^^^
+                      返回值
+
+    __skb_push:
+      pattern: '__skb_push\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "在 head 添加数据空间 (无检查)"
+      context: "any"
+      can_sleep: false
+
+    skb_pull:
+      pattern: 'skb_pull\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "从 head 移除数据 (剥离协议头)"
+      context: "any"
+      can_sleep: false
+      signature: "void *skb_pull(struct sk_buff *skb, unsigned int len)"
+      return_value: "指向新的 data 位置"
+      notes:
+        - "增加 skb->data，减少 skb->len"
+        - "用于剥离协议头"
+        - "如果 len > skb->len，返回 NULL"
+      diagram: |
+        调用前: [head...data=========tail...end]
+        调用后: [head...data+len=====tail...end]
+                       ^^^^^^^
+                       返回值
+
+    __skb_pull:
+      pattern: '__skb_pull\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "从 head 移除数据 (无检查)"
+      context: "any"
+      can_sleep: false
+
+    skb_pull_inline:
+      pattern: 'skb_pull_inline\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "从 head 移除数据 (内联版本)"
+      context: "any"
+      can_sleep: false
+
+    skb_reserve:
+      pattern: 'skb_reserve\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "预留 headroom"
+      context: "any"
+      can_sleep: false
+      signature: "void skb_reserve(struct sk_buff *skb, int len)"
+      notes:
+        - "增加 skb->data 和 skb->tail"
+        - "只能在空 skb 上调用 (skb->len == 0)"
+        - "为后续添加协议头预留空间"
+      diagram: |
+        调用前: [head data,tail.................end]
+        调用后: [head......data,tail.............end]
+                      ^^^^^^
+                      预留空间
+
+    skb_trim:
+      pattern: 'skb_trim\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "修剪 skb 到指定长度"
+      context: "any"
+      can_sleep: false
+      signature: "void skb_trim(struct sk_buff *skb, unsigned int len)"
+      notes:
+        - "设置 skb->len = len"
+        - "相应调整 skb->tail"
+        - "只能缩小，不能扩大"
+
+    __skb_trim:
+      pattern: '__skb_trim\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "修剪 skb (无检查)"
+      context: "any"
+      can_sleep: false
+
+    pskb_trim:
+      pattern: 'pskb_trim\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "修剪 skb (支持分片)"
+      context: "any"
+      can_sleep: false
+
+  space_query:
+    skb_headroom:
+      pattern: 'skb_headroom\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取 headroom 大小"
+      context: "any"
+      can_sleep: false
+      signature: "unsigned int skb_headroom(const struct sk_buff *skb)"
+      return_value: "data - head"
+
+    skb_tailroom:
+      pattern: 'skb_tailroom\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取 tailroom 大小"
+      context: "any"
+      can_sleep: false
+      signature: "int skb_tailroom(const struct sk_buff *skb)"
+      return_value: "end - tail"
+
+    skb_headlen:
+      pattern: 'skb_headlen\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取线性数据长度"
+      context: "any"
+      can_sleep: false
+      signature: "unsigned int skb_headlen(const struct sk_buff *skb)"
+      return_value: "skb->len - skb->data_len"
+
+    skb_is_nonlinear:
+      pattern: 'skb_is_nonlinear\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "检查是否有分片数据"
+      context: "any"
+      can_sleep: false
+      signature: "bool skb_is_nonlinear(const struct sk_buff *skb)"
+      return_value: "skb->data_len != 0"
+
+    skb_availroom:
+      pattern: 'skb_availroom\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取可用空间 (考虑写时复制)"
+      context: "any"
+      can_sleep: false
+
+  space_expand:
+    skb_cow:
+      pattern: 'skb_cow\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<headroom>\w+)\s*\)'
+      description: "写时复制并确保 headroom"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "int skb_cow(struct sk_buff *skb, unsigned int headroom)"
+      return_value:
+        success: "0"
+        failure: "-ENOMEM"
+      notes:
+        - "如果 skb 被共享或 headroom 不足，则复制"
+        - "必须在修改数据前调用"
+
+    skb_cow_head:
+      pattern: 'skb_cow_head\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<headroom>\w+)\s*\)'
+      description: "写时复制头部"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+
+    pskb_expand_head:
+      pattern: 'pskb_expand_head\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<nhead>\w+)\s*,\s*(?P<ntail>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "扩展 skb 头部/尾部空间"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail, gfp_t gfp_mask)"
+
+    skb_realloc_headroom:
+      pattern: 'skb_realloc_headroom\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<headroom>\w+)\s*\)'
+      description: "重新分配更大的 headroom"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+
+
+# ============================================================
+# SKB DATA ACCESS - 数据访问
+# ============================================================
+
+skb_data_access:
+  description: "sk_buff 数据访问函数"
+  header: "linux/skbuff.h"
+  icon: "🔍"
+
+  patterns:
+    skb_header_pointer:
+      pattern: 'skb_header_pointer\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<buffer>[^)]+)\s*\)'
+      description: "获取协议头指针 (安全访问分片数据)"
+      context: "any"
+      can_sleep: false
+      signature: "void *skb_header_pointer(const struct sk_buff *skb, int offset, int len, void *buffer)"
+      return_value:
+        success: "指向数据的指针"
+        failure: "NULL"
+      notes:
+        - "如果数据在线性区域，直接返回指针"
+        - "如果数据跨越分片，复制到 buffer 并返回 buffer"
+        - "buffer 必须足够大"
+        - "安全访问可能跨越分片边界的数据"
+
+    skb_copy_bits:
+      pattern: 'skb_copy_bits\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<to>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "从 skb 复制数据到缓冲区"
+      context: "any"
+      can_sleep: false
+      signature: "int skb_copy_bits(const struct sk_buff *skb, int offset, void *to, int len)"
+      return_value:
+        success: "0"
+        failure: "-EFAULT (偏移/长度无效)"
+      notes:
+        - "支持从分片数据复制"
+        - "处理 skb 的线性和非线性部分"
+
+    skb_store_bits:
+      pattern: 'skb_store_bits\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<from>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "向 skb 存储数据"
+      context: "any"
+      can_sleep: false
+      signature: "int skb_store_bits(struct sk_buff *skb, int offset, const void *from, int len)"
+      return_value:
+        success: "0"
+        failure: "-EFAULT"
+
+    skb_linearize:
+      pattern: 'skb_linearize\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "线性化 skb (合并所有分片)"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "int skb_linearize(struct sk_buff *skb)"
+      return_value:
+        success: "0"
+        failure: "-ENOMEM"
+      notes:
+        - "将所有分片数据合并到线性区域"
+        - "操作后可直接通过 skb->data 访问所有数据"
+        - "可能需要分配新内存"
+
+    __pskb_pull_tail:
+      pattern: '__pskb_pull_tail\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<delta>\w+)\s*\)'
+      description: "拉取分片数据到线性区域"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+
+    skb_checksum:
+      pattern: 'skb_checksum\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<csum>\w+)\s*\)'
+      description: "计算 skb 校验和"
+      context: "any"
+      can_sleep: false
+      signature: "__wsum skb_checksum(const struct sk_buff *skb, int offset, int len, __wsum csum)"
+
+    skb_copy_from_linear_data:
+      pattern: 'skb_copy_from_linear_data\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<to>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "从线性数据区复制"
+      context: "any"
+      can_sleep: false
+
+    skb_copy_to_linear_data:
+      pattern: 'skb_copy_to_linear_data\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<from>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "复制到线性数据区"
+      context: "any"
+      can_sleep: false
+
+
+# ============================================================
+# SKB PROTOCOL HEADERS - 协议头操作
+# ============================================================
+
+skb_headers:
+  description: "sk_buff 协议头操作"
+  header: "linux/skbuff.h"
+  icon: "📋"
+
+  patterns:
+    eth_type_trans:
+      pattern: 'eth_type_trans\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<dev>[^)]+)\s*\)'
+      description: "解析以太网类型并设置 skb 字段"
+      context: "softirq"
+      can_sleep: false
+      signature: "__be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev)"
+      return_value: "协议类型 (如 ETH_P_IP)"
+      notes:
+        - "设置 skb->protocol"
+        - "设置 skb->pkt_type"
+        - "调整 skb->data 跳过以太网头"
+        - "在 NAPI poll 中接收数据后调用"
+
+    skb_set_network_header:
+      pattern: 'skb_set_network_header\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<offset>\w+)\s*\)'
+      description: "设置网络层头偏移"
+      context: "any"
+      can_sleep: false
+
+    skb_reset_network_header:
+      pattern: 'skb_reset_network_header\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "重置网络层头到 data"
+      context: "any"
+      can_sleep: false
+
+    skb_network_header:
+      pattern: 'skb_network_header\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取网络层头指针"
+      context: "any"
+      can_sleep: false
+      return_type: "unsigned char *"
+
+    skb_network_header_len:
+      pattern: 'skb_network_header_len\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取网络层头长度"
+      context: "any"
+      can_sleep: false
+
+    skb_set_transport_header:
+      pattern: 'skb_set_transport_header\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<offset>\w+)\s*\)'
+      description: "设置传输层头偏移"
+      context: "any"
+      can_sleep: false
+
+    skb_reset_transport_header:
+      pattern: 'skb_reset_transport_header\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "重置传输层头到 data"
+      context: "any"
+      can_sleep: false
+
+    skb_transport_header:
+      pattern: 'skb_transport_header\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取传输层头指针"
+      context: "any"
+      can_sleep: false
+      return_type: "unsigned char *"
+
+    skb_set_mac_header:
+      pattern: 'skb_set_mac_header\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<offset>\w+)\s*\)'
+      description: "设置 MAC 层头偏移"
+      context: "any"
+      can_sleep: false
+
+    skb_reset_mac_header:
+      pattern: 'skb_reset_mac_header\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "重置 MAC 层头到 data"
+      context: "any"
+      can_sleep: false
+
+    skb_mac_header:
+      pattern: 'skb_mac_header\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取 MAC 层头指针"
+      context: "any"
+      can_sleep: false
+      return_type: "unsigned char *"
+
+    skb_mac_header_was_set:
+      pattern: 'skb_mac_header_was_set\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "检查 MAC 头是否已设置"
+      context: "any"
+      can_sleep: false
+      return_type: "bool"
+
+    ip_hdr:
+      pattern: 'ip_hdr\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取 IPv4 头指针"
+      context: "any"
+      can_sleep: false
+      return_type: "struct iphdr *"
+
+    ipv6_hdr:
+      pattern: 'ipv6_hdr\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取 IPv6 头指针"
+      context: "any"
+      can_sleep: false
+      return_type: "struct ipv6hdr *"
+
+    tcp_hdr:
+      pattern: 'tcp_hdr\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取 TCP 头指针"
+      context: "any"
+      can_sleep: false
+      return_type: "struct tcphdr *"
+
+    udp_hdr:
+      pattern: 'udp_hdr\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取 UDP 头指针"
+      context: "any"
+      can_sleep: false
+      return_type: "struct udphdr *"
+
+    eth_hdr:
+      pattern: 'eth_hdr\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取以太网头指针"
+      context: "any"
+      can_sleep: false
+      return_type: "struct ethhdr *"
+
+
+# ============================================================
+# SKB QUEUE OPERATIONS - 队列操作
+# ============================================================
+
+skb_queue:
+  description: "sk_buff 队列操作"
+  header: "linux/skbuff.h"
+  icon: "📚"
+
+  patterns:
+    skb_queue_head_init:
+      pattern: 'skb_queue_head_init\s*\(\s*(?P<list>[^)]+)\s*\)'
+      description: "初始化 skb 队列"
+      context: "any"
+      can_sleep: false
+
+    skb_queue_head:
+      pattern: 'skb_queue_head\s*\(\s*(?P<list>[^,]+)\s*,\s*(?P<skb>[^)]+)\s*\)'
+      description: "添加 skb 到队列头"
+      context: "any"
+      can_sleep: false
+
+    skb_queue_tail:
+      pattern: 'skb_queue_tail\s*\(\s*(?P<list>[^,]+)\s*,\s*(?P<skb>[^)]+)\s*\)'
+      description: "添加 skb 到队列尾"
+      context: "any"
+      can_sleep: false
+
+    skb_dequeue:
+      pattern: 'skb_dequeue\s*\(\s*(?P<list>[^)]+)\s*\)'
+      description: "从队列头取出 skb"
+      context: "any"
+      can_sleep: false
+      return_type: "struct sk_buff *"
+
+    skb_dequeue_tail:
+      pattern: 'skb_dequeue_tail\s*\(\s*(?P<list>[^)]+)\s*\)'
+      description: "从队列尾取出 skb"
+      context: "any"
+      can_sleep: false
+      return_type: "struct sk_buff *"
+
+    skb_queue_purge:
+      pattern: 'skb_queue_purge\s*\(\s*(?P<list>[^)]+)\s*\)'
+      description: "清空并释放队列中所有 skb"
+      context: "any"
+      can_sleep: false
+
+    skb_queue_len:
+      pattern: 'skb_queue_len\s*\(\s*(?P<list>[^)]+)\s*\)'
+      description: "获取队列长度"
+      context: "any"
+      can_sleep: false
+      return_type: "unsigned int"
+
+    skb_queue_empty:
+      pattern: 'skb_queue_empty\s*\(\s*(?P<list>[^)]+)\s*\)'
+      description: "检查队列是否为空"
+      context: "any"
+      can_sleep: false
+      return_type: "bool"
+
+    skb_peek:
+      pattern: 'skb_peek\s*\(\s*(?P<list>[^)]+)\s*\)'
+      description: "查看队列头 (不取出)"
+      context: "any"
+      can_sleep: false
+      return_type: "struct sk_buff *"
+
+    skb_peek_tail:
+      pattern: 'skb_peek_tail\s*\(\s*(?P<list>[^)]+)\s*\)'
+      description: "查看队列尾 (不取出)"
+      context: "any"
+      can_sleep: false
+      return_type: "struct sk_buff *"
+
+    skb_unlink:
+      pattern: 'skb_unlink\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<list>[^)]+)\s*\)'
+      description: "从队列中移除指定 skb"
+      context: "any"
+      can_sleep: false
+
+    skb_queue_splice:
+      pattern: 'skb_queue_splice\s*\(\s*(?P<list>[^,]+)\s*,\s*(?P<head>[^)]+)\s*\)'
+      description: "合并两个队列"
+      context: "any"
+      can_sleep: false
+
+    skb_queue_splice_tail:
+      pattern: 'skb_queue_splice_tail\s*\(\s*(?P<list>[^,]+)\s*,\s*(?P<head>[^)]+)\s*\)'
+      description: "合并队列到尾部"
+      context: "any"
+      can_sleep: false
+
+    skb_queue_walk:
+      pattern: 'skb_queue_walk\s*\(\s*(?P<queue>[^,]+)\s*,\s*(?P<skb>\w+)\s*\)'
+      description: "遍历 skb 队列 (for 循环宏)"
+      context: "any"
+      can_sleep: false
+
+    skb_queue_walk_safe:
+      pattern: 'skb_queue_walk_safe\s*\(\s*(?P<queue>[^,]+)\s*,\s*(?P<skb>\w+)\s*,\s*(?P<tmp>\w+)\s*\)'
+      description: "安全遍历 skb 队列 (可删除)"
+      context: "any"
+      can_sleep: false
+
+
+# ============================================================
+# SKB SHARING - 共享和引用
+# ============================================================
+
+skb_sharing:
+  description: "sk_buff 共享和引用操作"
+  header: "linux/skbuff.h"
+  icon: "🔗"
+
+  patterns:
+    skb_shared:
+      pattern: 'skb_shared\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "检查 skb 是否被共享"
+      context: "any"
+      can_sleep: false
+      return_type: "bool"
+      notes:
+        - "检查引用计数 > 1"
+        - "共享的 skb 不能直接修改"
+
+    skb_share_check:
+      pattern: 'skb_share_check\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<pri>\w+)\s*\)'
+      description: "检查并可能克隆共享 skb"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+      signature: "struct sk_buff *skb_share_check(struct sk_buff *skb, gfp_t pri)"
+      return_value:
+        shared: "克隆的新 skb (原 skb 被释放)"
+        not_shared: "原 skb"
+        failure: "NULL"
+
+    skb_unshare:
+      pattern: 'skb_unshare\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<pri>\w+)\s*\)'
+      description: "确保 skb 不被共享 (如需则复制)"
+      context: "depends on GFP"
+      can_sleep: "depends on GFP"
+
+    skb_cloned:
+      pattern: 'skb_cloned\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "检查 skb 是否是克隆"
+      context: "any"
+      can_sleep: false
+      return_type: "bool"
+
+    skb_get:
+      pattern: 'skb_get\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "增加 skb 引用计数"
+      context: "any"
+      can_sleep: false
+      return_type: "struct sk_buff *"
+
+
+# ============================================================
+# SKB TIMESTAMP - 时间戳
+# ============================================================
+
+skb_timestamp:
+  description: "sk_buff 时间戳操作"
+  header: "linux/skbuff.h"
+  icon: "⏰"
+
+  patterns:
+    skb_tstamp:
+      pattern: 'skb_tstamp\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "获取 skb 时间戳"
+      context: "any"
+      can_sleep: false
+
+    skb_set_tstamp:
+      pattern: 'skb_set_tstamp\s*\(\s*(?P<skb>[^,]+)\s*,\s*(?P<tstamp>[^,]+)\s*,\s*(?P<is_hw>\w+)\s*\)'
+      description: "设置 skb 时间戳"
+      context: "any"
+      can_sleep: false
+
+    __net_timestamp:
+      pattern: '__net_timestamp\s*\(\s*(?P<skb>[^)]+)\s*\)'
+      description: "设置当前时间为时间戳"
+      context: "any"
+      can_sleep: false
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "典型 NAPI 接收处理"
+    code: |
+      static int my_poll(struct napi_struct *napi, int budget)
+      {
+          struct my_priv *priv = container_of(napi, struct my_priv, napi);
+          int work_done = 0;
+          
+          while (work_done < budget) {
+              struct my_rx_desc *desc;
+              struct sk_buff *skb;
+              unsigned int len;
+              
+              desc = &priv->rx_ring[priv->rx_head];
+              if (!(desc->status & DESC_DONE))
+                  break;
+              
+              len = desc->len;
+              skb = priv->rx_skb[priv->rx_head];
+              
+              /* 取消 DMA 映射 */
+              dma_unmap_single(&priv->pdev->dev, desc->buf_addr,
+                              RX_BUF_SIZE, DMA_FROM_DEVICE);
+              
+              /* 设置 skb 长度 */
+              skb_put(skb, len);
+              
+              /* 解析以太网类型 */
+              skb->protocol = eth_type_trans(skb, priv->netdev);
+              
+              /* 传递给协议栈 (GRO 优化) */
+              napi_gro_receive(napi, skb);
+              
+              /* 分配新 buffer */
+              priv->rx_skb[priv->rx_head] = netdev_alloc_skb(priv->netdev, RX_BUF_SIZE);
+              
+              priv->rx_head = (priv->rx_head + 1) % RX_RING_SIZE;
+              work_done++;
+          }
+          
+          if (work_done < budget) {
+              napi_complete_done(napi, work_done);
+              my_enable_rx_irq(priv);
+          }
+          
+          return work_done;
+      }
+
+  - description: "发送路径 skb 处理"
+    code: |
+      static netdev_tx_t my_start_xmit(struct sk_buff *skb, struct net_device *dev)
+      {
+          struct my_priv *priv = netdev_priv(dev);
+          struct my_tx_desc *desc;
+          dma_addr_t dma_addr;
+          
+          /* 检查线性化需求 */
+          if (skb_is_nonlinear(skb)) {
+              if (skb_linearize(skb)) {
+                  dev->stats.tx_dropped++;
+                  dev_kfree_skb_any(skb);
+                  return NETDEV_TX_OK;
+              }
+          }
+          
+          /* 确保有足够 headroom 添加硬件头 */
+          if (skb_headroom(skb) < MY_HDR_LEN) {
+              struct sk_buff *skb2;
+              skb2 = skb_realloc_headroom(skb, MY_HDR_LEN);
+              dev_consume_skb_any(skb);
+              if (!skb2) {
+                  dev->stats.tx_dropped++;
+                  return NETDEV_TX_OK;
+              }
+              skb = skb2;
+          }
+          
+          /* 添加硬件头 */
+          skb_push(skb, MY_HDR_LEN);
+          my_build_header(skb->data, skb->len);
+          
+          /* DMA 映射 */
+          dma_addr = dma_map_single(&priv->pdev->dev, skb->data,
+                                    skb->len, DMA_TO_DEVICE);
+          if (dma_mapping_error(&priv->pdev->dev, dma_addr)) {
+              dev->stats.tx_dropped++;
+              dev_kfree_skb_any(skb);
+              return NETDEV_TX_OK;
+          }
+          
+          /* 设置描述符并发送 */
+          desc = &priv->tx_ring[priv->tx_head];
+          desc->buf_addr = dma_addr;
+          desc->len = skb->len;
+          wmb();
+          desc->status = DESC_OWN_HW;
+          
+          priv->tx_skb[priv->tx_head] = skb;
+          priv->tx_head = (priv->tx_head + 1) % TX_RING_SIZE;
+          
+          /* 触发发送 */
+          my_trigger_tx(priv);
+          
+          return NETDEV_TX_OK;
+      }
+
+  - description: "协议头访问示例"
+    code: |
+      /* 安全访问可能跨越分片的协议头 */
+      static int my_parse_headers(struct sk_buff *skb)
+      {
+          struct iphdr _iph;
+          struct iphdr *iph;
+          struct tcphdr _tcph;
+          struct tcphdr *tcph;
+          int offset;
+          
+          /* 获取 IP 头 (可能在分片中) */
+          iph = skb_header_pointer(skb, 0, sizeof(_iph), &_iph);
+          if (!iph)
+              return -EINVAL;
+          
+          /* 检查协议 */
+          if (iph->protocol != IPPROTO_TCP)
+              return -EPROTONOSUPPORT;
+          
+          /* 计算 TCP 头偏移 */
+          offset = iph->ihl * 4;
+          
+          /* 获取 TCP 头 */
+          tcph = skb_header_pointer(skb, offset, sizeof(_tcph), &_tcph);
+          if (!tcph)
+              return -EINVAL;
+          
+          pr_info("TCP src=%u dst=%u\n",
+                  ntohs(tcph->source), ntohs(tcph->dest));
+          
+          return 0;
+      }
+      
+      /* 直接访问线性数据中的头 */
+      static void my_fast_path(struct sk_buff *skb)
+      {
+          struct iphdr *iph = ip_hdr(skb);
+          struct tcphdr *tcph = tcp_hdr(skb);
+          
+          /* 只有确定数据在线性区域才能这样用 */
+          pr_info("IP src=%pI4 dst=%pI4\n",
+                  &iph->saddr, &iph->daddr);
+      }
+
+
+# ============================================================
+# NOTES
+# ============================================================
+
+notes:
+  - "sk_buff 是 Linux 网络子系统最核心的数据结构"
+  - "理解 head/data/tail/end 指针关系是关键"
+  - "skb_push 用于添加协议头，skb_pull 用于剥离协议头"
+  - "分片数据 (data_len > 0) 需要特殊处理"
+  - "共享的 skb 修改前必须复制 (skb_share_check/skb_cow)"
+  - "使用 napi_gro_receive 而非 netif_receive_skb 可获得 GRO 优化"
+  - "释放 skb 时区分错误路径 (kfree_skb) 和正常路径 (consume_skb)"
+  - "NAPI 上下文使用 napi_alloc_skb 效率更高"
