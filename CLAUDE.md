@@ -28,40 +28,99 @@
 
 ---
 
-## 📚 知识库开发团队
+## 📚 Linux Kernel 知识库团队 (自治系统)
 
-专门用于完善 Linux 内核知识库的 Agent 团队。
+专门用于完善 Linux 内核知识库的 Agent 团队，具备**自动审计和改进**能力。
 
-**启动命令**:
+### 团队角色
+
+| 角色 | Agent | 职责 | 触发条件 |
+|------|-------|------|----------|
+| 🔍 **审计员** | KB-Auditor | 主动发现问题，派发任务 | 定期/手动 |
+| 📝 **内存** | KB-Memory | mm/ 子系统开发 | 收到审计任务 |
+| ⏱️ **调度** | KB-Sched | sched/ 子系统开发 | 收到审计任务 |
+| ⚡ **中断** | KB-IRQ | irq/softirq 开发 | 收到审计任务 |
+| 📁 **文件系统** | KB-FS | fs/vfs 开发 | 收到审计任务 |
+| 🌐 **网络** | KB-Net | net/ 子系统开发 | 收到审计任务 |
+| 🔧 **驱动** | KB-Drivers | drivers/ 框架开发 | 收到审计任务 |
+| 🔒 **同步** | KB-Sync | 同步原语开发 | 收到审计任务 |
+| ✅ **审核员** | KB-Reviewer | 审核完成的工作 | 开发完成时 |
+
+### 自动化工作流
+
 ```
-用户: 完善 memory.yaml 知识库
-系统: 自动分配 KB-Memory → 开发 → KB-Reviewer 审核 → 完成
+KB-Auditor (主动审计)
+    │ 对照内核源码
+    │ 统计覆盖率
+    │ 发现缺失 API
+    ▼
+派发任务 ──▶ KB-Memory / KB-Sched / KB-IRQ / KB-FS / KB-Drivers
+                │
+                ▼ 开发完成
+           KB-Reviewer (审核)
+                │
+        ┌───────┴───────┐
+        ▼               ▼
+   ✅ 通过          ❌ 需修改
+        │               │
+        ▼               └─▶ 返回对应 KB-* 修改
+   Git Commit
+   & Push
+        │
+        ▼
+   KB-Auditor (验证改进)
 ```
 
-**知识库团队角色：**
-- 📝 **KB-Memory** - 内存管理知识库 (mm/, 页表, 回收, OOM)
-- ⏱️ **KB-Sched** - 调度器知识库 (sched/, CFS, 负载均衡)
-- ⚡ **KB-IRQ** - 中断知识库 (irq/, softirq, tasklet)
-- 📁 **KB-FS** - 文件系统知识库 (fs/, VFS, 页缓存)
-- 🌐 **KB-Net** - 网络知识库 (net/, socket, netfilter)
-- 🔧 **KB-Drivers** - 驱动框架知识库 (drivers/ 各子系统)
-- 🔒 **KB-Sync** - 同步原语知识库 (locking, RCU, 屏障)
-- ✅ **KB-Reviewer** - 知识库审核专家
+### 触发关键词
 
-**知识库计划**: `docs/plans/knowledge-base-completion-plan.md`
-**知识库 Skill**: `.claude/skills/knowledge-base-dev.md`
+| 关键词 | 触发动作 |
+|--------|----------|
+| "审计知识库" / "audit" | KB-Auditor 完整审计 |
+| "检查覆盖率" / "coverage" | KB-Auditor 覆盖率统计 |
+| "知识库缺失" / "missing" | KB-Auditor 缺失分析 |
+| "完善 XX 知识库" | 直接分配给对应 KB-* |
+| "审核 XX 文件" | KB-Reviewer 审核 |
 
-**任务分配：**
-| 优先级 | 文件 | Agent |
-|--------|------|-------|
-| P0 | memory.yaml | KB-Memory |
-| P0 | sched.yaml | KB-Sched |
-| P0 | irq.yaml | KB-IRQ |
-| P0 | vfs.yaml | KB-FS |
-| P1 | 9 个 core 文件 | KB-* |
-| P2 | 42 个驱动文件 | KB-Drivers |
-| P3 | 3 个网络文件 | KB-Net |
-| P4 | 4 个同步文件 | KB-Sync |
+### 使用示例
+
+```
+用户: 审计知识库，找出不足并改进
+系统: 
+1. KB-Auditor 运行审计 → 发现 regmap/clk 等缺失
+2. 派发任务给 KB-Drivers
+3. KB-Drivers 开发 → KB-Reviewer 审核
+4. 通过后自动提交
+5. KB-Auditor 验证改进
+```
+
+### 配置文件
+
+- **团队工作流**: `.claude/agents/kb-team-workflow.md`
+- **审计员配置**: `.claude/agents/kb-auditor.md`
+- **审计脚本**: `.claude/scripts/kb-audit.sh`
+- **知识库 Skill**: `.claude/skills/knowledge-base-dev.md`
+
+### 报告位置
+
+```
+.claude/reports/
+├── kb-audits/          # 审计报告
+│   └── audit-YYYY-MM-DD.md
+└── kb-reviews/         # 审核报告
+    └── {file}-review.md
+```
+
+### 质量目标
+
+| 子系统 | 目标覆盖率 | 负责 Agent |
+|--------|-----------|------------|
+| core/memory | 95% | KB-Memory |
+| core/sched | 95% | KB-Sched |
+| core/irq | 95% | KB-IRQ |
+| core/vfs | 95% | KB-FS |
+| drivers/ | 95% | KB-Drivers |
+| net/ | 90% | KB-Net |
+| sync/ | 95% | KB-Sync |
 
 ---
 
