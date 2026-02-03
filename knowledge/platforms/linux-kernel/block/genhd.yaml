@@ -1,0 +1,929 @@
+# Linux Kernel Generic Hard Disk (genhd) Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/block/index.html
+# Source: block/genhd.c, include/linux/blkdev.h
+
+# ============================================================
+# GENHD OVERVIEW
+# ============================================================
+
+genhd_overview:
+  description: "Generic Hard Disk - 通用磁盘管理框架"
+  header: "linux/blkdev.h"
+  icon: "💾"
+  kernel_version: "2.4+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  purpose: |
+    genhd (Generic Hard Disk) 是 Linux 内核块设备子系统的核心框架，
+    管理块设备的注册、分区、设备节点和 sysfs 接口。
+    
+    关键组件：
+    - struct gendisk - 表示一个磁盘设备
+    - struct block_device - 表示磁盘或分区
+    - 分区管理 - 自动分区表解析
+    - 设备号管理 - major/minor 分配
+
+
+# ============================================================
+# GENDISK DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  gendisk:
+    description: "通用磁盘结构 - 表示一个块设备"
+    header: "include/linux/blkdev.h"
+    pattern: 'struct gendisk\s*\{'
+    fields:
+      - name: "major"
+        type: "int"
+        description: "主设备号"
+      - name: "first_minor"
+        type: "int"
+        description: "第一个次设备号"
+      - name: "minors"
+        type: "int"
+        description: "次设备号数量 (分区数 + 1)"
+      - name: "disk_name"
+        type: "char[DISK_NAME_LEN]"
+        description: "磁盘名称 (如 sda, nvme0n1)"
+      - name: "fops"
+        type: "const struct block_device_operations *"
+        description: "块设备操作"
+      - name: "queue"
+        type: "struct request_queue *"
+        description: "请求队列"
+      - name: "part0"
+        type: "struct block_device *"
+        description: "整个磁盘的 block_device"
+      - name: "private_data"
+        type: "void *"
+        description: "驱动私有数据"
+      - name: "flags"
+        type: "unsigned long"
+        description: "磁盘标志 (GENHD_FL_*)"
+      - name: "state"
+        type: "unsigned long"
+        description: "磁盘状态"
+      - name: "open_mutex"
+        type: "struct mutex"
+        description: "打开操作互斥锁"
+      - name: "open_partitions"
+        type: "unsigned int"
+        description: "打开的分区计数"
+      - name: "part_tbl"
+        type: "struct disk_part_tbl __rcu *"
+        description: "分区表"
+      - name: "events"
+        type: "unsigned int"
+        description: "支持的事件类型"
+      - name: "async_events"
+        type: "unsigned int"
+        description: "异步轮询事件"
+      - name: "ev"
+        type: "struct disk_events *"
+        description: "事件处理结构"
+      - name: "node_id"
+        type: "int"
+        description: "NUMA 节点 ID"
+
+  block_device:
+    description: "块设备结构 - 表示磁盘或分区"
+    header: "include/linux/blk_types.h"
+    pattern: 'struct block_device\s*\{'
+    fields:
+      - name: "bd_dev"
+        type: "dev_t"
+        description: "设备号"
+      - name: "bd_openers"
+        type: "int"
+        description: "打开计数"
+      - name: "bd_inode"
+        type: "struct inode *"
+        description: "bdev 伪文件系统 inode"
+      - name: "bd_super"
+        type: "struct super_block *"
+        description: "挂载的超级块"
+      - name: "bd_claiming"
+        type: "void *"
+        description: "正在声明的持有者"
+      - name: "bd_holder"
+        type: "void *"
+        description: "当前持有者"
+      - name: "bd_holders"
+        type: "int"
+        description: "持有者计数"
+      - name: "bd_write_holder"
+        type: "bool"
+        description: "是否为写持有者"
+      - name: "bd_partno"
+        type: "u8"
+        description: "分区号 (0 = 整个磁盘)"
+      - name: "bd_start_sect"
+        type: "sector_t"
+        description: "分区起始扇区"
+      - name: "bd_nr_sectors"
+        type: "sector_t"
+        description: "分区扇区数"
+      - name: "bd_disk"
+        type: "struct gendisk *"
+        description: "所属磁盘"
+      - name: "bd_queue"
+        type: "struct request_queue *"
+        description: "请求队列"
+      - name: "bd_fsfreeze_count"
+        type: "int"
+        description: "文件系统冻结计数"
+      - name: "bd_fsfreeze_mutex"
+        type: "struct mutex"
+        description: "冻结互斥锁"
+
+  block_device_operations:
+    description: "块设备操作结构 - 驱动回调"
+    header: "include/linux/blkdev.h"
+    pattern: 'struct block_device_operations\s*\{'
+    fields:
+      - name: "owner"
+        type: "struct module *"
+        description: "模块所有者"
+      - name: "open"
+        type: "int (*)(struct gendisk *, blk_mode_t)"
+        description: "打开设备回调"
+      - name: "release"
+        type: "void (*)(struct gendisk *)"
+        description: "释放设备回调"
+      - name: "ioctl"
+        type: "int (*)(struct block_device *, blk_mode_t, unsigned, unsigned long)"
+        description: "ioctl 回调"
+      - name: "compat_ioctl"
+        type: "int (*)(struct block_device *, blk_mode_t, unsigned, unsigned long)"
+        description: "32位兼容 ioctl"
+      - name: "check_events"
+        type: "unsigned int (*)(struct gendisk *, unsigned int)"
+        description: "检查介质事件"
+      - name: "unlock_native_capacity"
+        type: "void (*)(struct gendisk *)"
+        description: "解锁原生容量"
+      - name: "getgeo"
+        type: "int (*)(struct block_device *, struct hd_geometry *)"
+        description: "获取磁盘几何"
+      - name: "set_read_only"
+        type: "int (*)(struct block_device *, bool)"
+        description: "设置只读状态"
+      - name: "swap_slot_free_notify"
+        type: "void (*)(struct block_device *, unsigned long)"
+        description: "交换槽释放通知"
+      - name: "submit_bio"
+        type: "void (*)(struct bio *)"
+        description: "提交 bio (堆叠设备)"
+      - name: "poll_bio"
+        type: "int (*)(struct bio *, struct io_comp_batch *, unsigned int)"
+        description: "轮询 bio"
+      - name: "pr_ops"
+        type: "const struct pr_ops *"
+        description: "持久预留操作"
+      - name: "free_disk"
+        type: "void (*)(struct gendisk *)"
+        description: "释放磁盘回调"
+
+
+# ============================================================
+# GENDISK ALLOCATION
+# ============================================================
+
+gendisk_allocation:
+  description: "磁盘分配函数"
+  header: "linux/blkdev.h"
+  icon: "📦"
+
+  kernel_functions:
+    blk_alloc_disk:
+      pattern: 'blk_alloc_disk\s*\(\s*(?P<lim>[^,]*)\s*,\s*(?P<node>\w+)\s*\)'
+      description: "分配 gendisk 和请求队列 (6.0+)"
+      signature: "struct gendisk *blk_alloc_disk(struct queue_limits *lim, int node)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "gendisk 指针"
+        failure: "ERR_PTR(-ENOMEM)"
+
+    blk_mq_alloc_disk:
+      pattern: 'blk_mq_alloc_disk\s*\(\s*(?P<set>[^,]+)\s*,\s*(?P<lim>[^,]*)\s*,\s*(?P<queuedata>[^)]*)\s*\)'
+      description: "为 blk-mq 分配 gendisk"
+      signature: "struct gendisk *blk_mq_alloc_disk(struct blk_mq_tag_set *set, struct queue_limits *lim, void *queuedata)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "gendisk 指针"
+        failure: "ERR_PTR()"
+
+    __alloc_disk_node:
+      pattern: '__alloc_disk_node\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<node>\w+)\s*\)'
+      description: "内部磁盘分配 (给定队列)"
+      signature: "struct gendisk *__alloc_disk_node(struct request_queue *q, int node)"
+      context: "process"
+      can_sleep: true
+
+    put_disk:
+      pattern: 'put_disk\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "减少磁盘引用计数"
+      signature: "void put_disk(struct gendisk *disk)"
+      context: "process"
+      can_sleep: true
+
+    get_disk_and_module:
+      pattern: 'get_disk_and_module\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "增加磁盘和模块引用"
+      signature: "int get_disk_and_module(struct gendisk *disk)"
+      context: "any"
+      can_sleep: false
+
+
+# ============================================================
+# GENDISK REGISTRATION
+# ============================================================
+
+gendisk_registration:
+  description: "磁盘注册函数"
+  header: "linux/blkdev.h"
+  icon: "📝"
+
+  kernel_functions:
+    add_disk:
+      pattern: 'add_disk\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "将磁盘添加到系统"
+      signature: "int add_disk(struct gendisk *disk)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "注册到块设备子系统"
+        - "创建 /dev 节点"
+        - "扫描分区表"
+        - "发送 uevent"
+      preconditions:
+        - "disk->disk_name 已设置"
+        - "disk->fops 已设置"
+        - "disk->queue 已设置"
+        - "容量已通过 set_capacity() 设置"
+
+    device_add_disk:
+      pattern: 'device_add_disk\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<disk>[^,]+)\s*,\s*(?P<groups>[^)]*)\s*\)'
+      description: "添加磁盘并指定父设备"
+      signature: "int device_add_disk(struct device *parent, struct gendisk *disk, const struct attribute_group **groups)"
+      context: "process"
+      can_sleep: true
+
+    del_gendisk:
+      pattern: 'del_gendisk\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "从系统删除磁盘"
+      signature: "void del_gendisk(struct gendisk *disk)"
+      context: "process"
+      can_sleep: true
+      typical_actions:
+        - "移除分区"
+        - "删除 /dev 节点"
+        - "发送移除 uevent"
+        - "等待引用释放"
+
+
+# ============================================================
+# GENDISK HELPERS
+# ============================================================
+
+gendisk_helpers:
+  description: "磁盘辅助函数"
+  header: "linux/blkdev.h"
+  icon: "🛠️"
+
+  kernel_functions:
+    set_capacity:
+      pattern: 'set_capacity\s*\(\s*(?P<disk>[^,]+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "设置磁盘容量 (扇区数)"
+      signature: "void set_capacity(struct gendisk *disk, sector_t size)"
+      context: "process"
+      can_sleep: false
+
+    set_capacity_and_notify:
+      pattern: 'set_capacity_and_notify\s*\(\s*(?P<disk>[^,]+)\s*,\s*(?P<size>\w+)\s*\)'
+      description: "设置容量并通知用户空间"
+      signature: "bool set_capacity_and_notify(struct gendisk *disk, sector_t size)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        true: "容量已改变"
+        false: "容量未改变"
+
+    get_capacity:
+      pattern: 'get_capacity\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "获取磁盘容量"
+      signature: "sector_t get_capacity(struct gendisk *disk)"
+      context: "any"
+      can_sleep: false
+
+    set_disk_ro:
+      pattern: 'set_disk_ro\s*\(\s*(?P<disk>[^,]+)\s*,\s*(?P<flag>\w+)\s*\)'
+      description: "设置磁盘只读状态"
+      signature: "void set_disk_ro(struct gendisk *disk, bool read_only)"
+      context: "process"
+      can_sleep: false
+
+    get_disk_ro:
+      pattern: 'get_disk_ro\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "获取磁盘只读状态"
+      signature: "bool get_disk_ro(struct gendisk *disk)"
+      context: "any"
+      can_sleep: false
+
+    disk_set_zoned:
+      pattern: 'disk_set_zoned\s*\(\s*(?P<disk>[^,]+)\s*,\s*(?P<type>\w+)\s*\)'
+      description: "设置磁盘分区类型 (常规/SMR)"
+      signature: "void disk_set_zoned(struct gendisk *disk, enum blk_zoned_model model)"
+      context: "process"
+      can_sleep: false
+
+
+# ============================================================
+# BLOCK DEVICE OPERATIONS
+# ============================================================
+
+block_device_ops_callbacks:
+  description: "块设备操作回调"
+  header: "linux/blkdev.h"
+  icon: "⚙️"
+
+  callbacks:
+    open:
+      pattern: '\.open\s*=\s*(?P<handler>\w+)'
+      description: "打开块设备"
+      trigger: "用户打开设备节点 (open /dev/sdX)"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct gendisk *disk, blk_mode_t mode)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      typical_actions:
+        - "增加使用计数"
+        - "检查设备状态"
+        - "初始化设备 (如首次打开)"
+
+    release:
+      pattern: '\.release\s*=\s*(?P<handler>\w+)'
+      description: "释放块设备"
+      trigger: "用户关闭设备 (最后一个引用)"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct gendisk *disk)"
+      typical_actions:
+        - "减少使用计数"
+        - "同步缓存"
+        - "释放资源"
+
+    ioctl:
+      pattern: '\.ioctl\s*=\s*(?P<handler>\w+)'
+      description: "处理设备 ioctl"
+      trigger: "用户调用 ioctl()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct block_device *bdev, blk_mode_t mode, unsigned cmd, unsigned long arg)"
+      return_value:
+        success: "0 或正值"
+        failure: "-ERRNO (-ENOTTY 不支持)"
+
+    compat_ioctl:
+      pattern: '\.compat_ioctl\s*=\s*(?P<handler>\w+)'
+      description: "32位兼容 ioctl"
+      trigger: "32位用户空间调用 ioctl()"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct block_device *bdev, blk_mode_t mode, unsigned cmd, unsigned long arg)"
+
+    getgeo:
+      pattern: '\.getgeo\s*=\s*(?P<handler>\w+)'
+      description: "获取磁盘几何信息 (CHS)"
+      trigger: "HDIO_GETGEO ioctl"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct block_device *bdev, struct hd_geometry *geo)"
+      typical_actions:
+        - "填充 cylinders"
+        - "填充 heads"
+        - "填充 sectors"
+        - "填充 start"
+
+    check_events:
+      pattern: '\.check_events\s*=\s*(?P<handler>\w+)'
+      description: "检查介质事件"
+      trigger: "轮询或介质变化检测"
+      context: "process"
+      can_sleep: true
+      signature: "unsigned int (*)(struct gendisk *disk, unsigned int clearing)"
+      return_value:
+        success: "DISK_EVENT_* 位掩码"
+
+    unlock_native_capacity:
+      pattern: '\.unlock_native_capacity\s*=\s*(?P<handler>\w+)'
+      description: "解锁设备原始容量"
+      trigger: "检测到 HPA (Host Protected Area)"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct gendisk *disk)"
+
+    submit_bio:
+      pattern: '\.submit_bio\s*=\s*(?P<handler>\w+)'
+      description: "提交 bio (用于堆叠设备)"
+      trigger: "bio 提交"
+      context: "process/softirq"
+      can_sleep: false
+      signature: "void (*)(struct bio *bio)"
+
+    free_disk:
+      pattern: '\.free_disk\s*=\s*(?P<handler>\w+)'
+      description: "释放磁盘时的清理"
+      trigger: "磁盘引用计数归零"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct gendisk *disk)"
+
+
+# ============================================================
+# BLOCK DEVICE MANAGEMENT
+# ============================================================
+
+block_device_management:
+  description: "块设备管理函数"
+  header: "linux/blkdev.h"
+  icon: "📂"
+
+  kernel_functions:
+    blkdev_get_by_path:
+      pattern: 'blkdev_get_by_path\s*\(\s*(?P<path>[^,]+)\s*,\s*(?P<mode>\w+)\s*,\s*(?P<holder>[^)]+)\s*\)'
+      description: "通过路径打开块设备"
+      signature: "struct block_device *blkdev_get_by_path(const char *path, blk_mode_t mode, void *holder)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "block_device 指针"
+        failure: "ERR_PTR()"
+
+    blkdev_get_by_dev:
+      pattern: 'blkdev_get_by_dev\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<mode>\w+)\s*,\s*(?P<holder>[^)]+)\s*\)'
+      description: "通过设备号打开块设备"
+      signature: "struct block_device *blkdev_get_by_dev(dev_t dev, blk_mode_t mode, void *holder)"
+      context: "process"
+      can_sleep: true
+
+    blkdev_put:
+      pattern: 'blkdev_put\s*\(\s*(?P<bdev>[^,]+)\s*,\s*(?P<holder>[^)]+)\s*\)'
+      description: "释放块设备引用"
+      signature: "void blkdev_put(struct block_device *bdev, void *holder)"
+      context: "process"
+      can_sleep: true
+
+    bdev_open_by_path:
+      pattern: 'bdev_open_by_path\s*\(\s*(?P<path>[^,]+)\s*,\s*(?P<mode>\w+)\s*,\s*(?P<holder>[^,]+)\s*,\s*(?P<hops>[^)]*)\s*\)'
+      description: "通过路径打开块设备 (6.5+ API)"
+      signature: "struct bdev_handle *bdev_open_by_path(const char *path, blk_mode_t mode, void *holder, const struct blk_holder_ops *hops)"
+      context: "process"
+      can_sleep: true
+
+    bdev_release:
+      pattern: 'bdev_release\s*\(\s*(?P<handle>[^)]+)\s*\)'
+      description: "释放块设备句柄"
+      signature: "void bdev_release(struct bdev_handle *handle)"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# PARTITION MANAGEMENT
+# ============================================================
+
+partition_management:
+  description: "分区管理函数"
+  header: "linux/blkdev.h"
+  icon: "📊"
+
+  kernel_functions:
+    bdev_add_partition:
+      pattern: 'bdev_add_partition\s*\(\s*(?P<bdev>[^,]+)\s*,\s*(?P<partno>\w+)\s*,\s*(?P<start>\w+)\s*,\s*(?P<length>\w+)\s*\)'
+      description: "手动添加分区"
+      signature: "int bdev_add_partition(struct block_device *bdev, int partno, sector_t start, sector_t length)"
+      context: "process"
+      can_sleep: true
+
+    bdev_del_partition:
+      pattern: 'bdev_del_partition\s*\(\s*(?P<bdev>[^,]+)\s*,\s*(?P<partno>\w+)\s*\)'
+      description: "删除分区"
+      signature: "int bdev_del_partition(struct block_device *bdev, int partno)"
+      context: "process"
+      can_sleep: true
+
+    bdev_resize_partition:
+      pattern: 'bdev_resize_partition\s*\(\s*(?P<bdev>[^,]+)\s*,\s*(?P<partno>\w+)\s*,\s*(?P<start>\w+)\s*,\s*(?P<length>\w+)\s*\)'
+      description: "调整分区大小"
+      signature: "int bdev_resize_partition(struct block_device *bdev, int partno, sector_t start, sector_t length)"
+      context: "process"
+      can_sleep: true
+
+    bdev_disk_changed:
+      pattern: 'bdev_disk_changed\s*\(\s*(?P<disk>[^,]+)\s*,\s*(?P<invalidate>\w+)\s*\)'
+      description: "重新扫描磁盘分区"
+      signature: "int bdev_disk_changed(struct gendisk *disk, bool invalidate)"
+      context: "process"
+      can_sleep: true
+
+    invalidate_disk:
+      pattern: 'invalidate_disk\s*\(\s*(?P<disk>[^)]+)\s*\)'
+      description: "使磁盘无效 (清除分区表)"
+      signature: "void invalidate_disk(struct gendisk *disk)"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# GENDISK FLAGS
+# ============================================================
+
+gendisk_flags:
+  description: "gendisk 标志"
+  header: "linux/blkdev.h"
+  icon: "🚩"
+
+  disk_flags:
+    - name: "GENHD_FL_REMOVABLE"
+      description: "可移动介质"
+    - name: "GENHD_FL_HIDDEN"
+      description: "隐藏设备 (不创建 /dev 节点)"
+    - name: "GENHD_FL_NO_PART"
+      description: "不扫描分区"
+
+  disk_events:
+    - name: "DISK_EVENT_MEDIA_CHANGE"
+      description: "介质已更换"
+    - name: "DISK_EVENT_EJECT_REQUEST"
+      description: "请求弹出"
+
+  blk_mode:
+    - name: "BLK_OPEN_READ"
+      description: "只读打开"
+    - name: "BLK_OPEN_WRITE"
+      description: "可写打开"
+    - name: "BLK_OPEN_EXCL"
+      description: "独占打开"
+    - name: "BLK_OPEN_NDELAY"
+      description: "非阻塞打开"
+    - name: "BLK_OPEN_RESTRICT_WRITES"
+      description: "限制其他写者"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  disk_add_chain:
+    description: "磁盘添加调用链"
+    trigger: "驱动调用 add_disk()"
+    chain:
+      - function: "add_disk"
+        file: "block/genhd.c"
+        description: "添加磁盘入口"
+        context: "process"
+      - function: "device_add_disk"
+        file: "block/genhd.c"
+        description: "带父设备添加"
+      - function: "__device_add_disk"
+        file: "block/genhd.c"
+        description: "内部添加实现"
+      - function: "device_add"
+        file: "drivers/base/core.c"
+        description: "添加设备到驱动模型"
+      - function: "disk_scan_partitions"
+        file: "block/genhd.c"
+        description: "扫描分区表"
+      - function: "bdev_disk_changed"
+        file: "block/partitions/core.c"
+        description: "检测分区变化"
+      - function: "blk_read_partitions"
+        file: "block/partitions/core.c"
+        description: "读取分区表"
+
+  disk_open_chain:
+    description: "块设备打开调用链"
+    trigger: "用户打开 /dev/sdX"
+    chain:
+      - function: "blkdev_open"
+        file: "block/fops.c"
+        description: "块设备打开入口"
+        context: "process"
+      - function: "blkdev_get_by_dev"
+        file: "block/bdev.c"
+        description: "通过设备号获取"
+      - function: "blkdev_get_whole"
+        file: "block/bdev.c"
+        description: "获取整个设备"
+      - function: "__blkdev_get"
+        file: "block/bdev.c"
+        description: "内部获取实现"
+      - function: "disk->fops->open"
+        file: "驱动代码"
+        description: "驱动 open 回调"
+        is_user_entry: true
+
+  disk_release_chain:
+    description: "块设备释放调用链"
+    trigger: "用户关闭设备"
+    chain:
+      - function: "blkdev_close"
+        file: "block/fops.c"
+        description: "块设备关闭"
+        context: "process"
+      - function: "blkdev_put"
+        file: "block/bdev.c"
+        description: "释放块设备"
+      - function: "__blkdev_put"
+        file: "block/bdev.c"
+        description: "内部释放实现"
+      - function: "disk->fops->release"
+        file: "驱动代码"
+        description: "驱动 release 回调"
+        is_user_entry: true
+
+  partition_scan_chain:
+    description: "分区扫描调用链"
+    trigger: "磁盘添加或介质变化"
+    chain:
+      - function: "bdev_disk_changed"
+        file: "block/partitions/core.c"
+        description: "磁盘变化入口"
+        context: "process"
+      - function: "blk_drop_partitions"
+        file: "block/partitions/core.c"
+        description: "删除现有分区"
+      - function: "blk_read_partitions"
+        file: "block/partitions/core.c"
+        description: "读取分区表"
+      - function: "check_partition"
+        file: "block/partitions/check.c"
+        description: "检测分区类型"
+      - function: "msdos_partition"
+        file: "block/partitions/msdos.c"
+        description: "解析 MBR 分区"
+      - function: "efi_partition"
+        file: "block/partitions/efi.c"
+        description: "解析 GPT 分区"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "完整的 gendisk 注册示例"
+    kernel_version: "6.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/blkdev.h>
+      
+      #define MY_SECTOR_SIZE 512
+      #define MY_SECTORS     (1024 * 2048)  /* 1GB */
+      
+      struct my_device {
+          struct gendisk *disk;
+          struct request_queue *queue;
+          void *data;
+          spinlock_t lock;
+      };
+      
+      static struct my_device my_dev;
+      
+      static int my_open(struct gendisk *disk, blk_mode_t mode)
+      {
+          struct my_device *dev = disk->private_data;
+          
+          pr_info("my_dev: opened\n");
+          return 0;
+      }
+      
+      static void my_release(struct gendisk *disk)
+      {
+          struct my_device *dev = disk->private_data;
+          
+          pr_info("my_dev: released\n");
+      }
+      
+      static int my_getgeo(struct block_device *bdev,
+                          struct hd_geometry *geo)
+      {
+          geo->heads = 16;
+          geo->sectors = 63;
+          geo->cylinders = MY_SECTORS / (16 * 63);
+          geo->start = 0;
+          return 0;
+      }
+      
+      static const struct block_device_operations my_fops = {
+          .owner   = THIS_MODULE,
+          .open    = my_open,
+          .release = my_release,
+          .getgeo  = my_getgeo,
+      };
+      
+      static void my_submit_bio(struct bio *bio)
+      {
+          struct my_device *dev = bio->bi_bdev->bd_disk->private_data;
+          struct bio_vec bvec;
+          struct bvec_iter iter;
+          sector_t sector = bio->bi_iter.bi_sector;
+          void *buf;
+          
+          bio_for_each_segment(bvec, bio, iter) {
+              buf = kmap_local_page(bvec.bv_page);
+              buf += bvec.bv_offset;
+              
+              if (bio_data_dir(bio) == READ) {
+                  memcpy(buf, dev->data + sector * MY_SECTOR_SIZE,
+                         bvec.bv_len);
+              } else {
+                  memcpy(dev->data + sector * MY_SECTOR_SIZE,
+                         buf, bvec.bv_len);
+              }
+              
+              kunmap_local(buf);
+              sector += bvec.bv_len / MY_SECTOR_SIZE;
+          }
+          
+          bio_endio(bio);
+      }
+      
+      static int __init my_init(void)
+      {
+          int ret;
+          
+          my_dev.data = vzalloc(MY_SECTORS * MY_SECTOR_SIZE);
+          if (!my_dev.data)
+              return -ENOMEM;
+          
+          spin_lock_init(&my_dev.lock);
+          
+          /* 分配磁盘 */
+          my_dev.disk = blk_alloc_disk(NULL, NUMA_NO_NODE);
+          if (IS_ERR(my_dev.disk)) {
+              ret = PTR_ERR(my_dev.disk);
+              goto err_data;
+          }
+          
+          my_dev.queue = my_dev.disk->queue;
+          
+          /* 配置磁盘 */
+          my_dev.disk->major = 0;  /* 动态分配 */
+          my_dev.disk->first_minor = 0;
+          my_dev.disk->minors = 16;  /* 最多 15 个分区 */
+          my_dev.disk->fops = &my_fops;
+          my_dev.disk->private_data = &my_dev;
+          snprintf(my_dev.disk->disk_name, DISK_NAME_LEN, "mydev");
+          
+          /* 设置提交函数 (简单驱动) */
+          my_dev.disk->fops->submit_bio = my_submit_bio;
+          
+          /* 配置队列限制 */
+          blk_queue_logical_block_size(my_dev.queue, MY_SECTOR_SIZE);
+          blk_queue_physical_block_size(my_dev.queue, MY_SECTOR_SIZE);
+          blk_queue_max_hw_sectors(my_dev.queue, 1024);
+          
+          /* 设置容量 */
+          set_capacity(my_dev.disk, MY_SECTORS);
+          
+          /* 添加到系统 */
+          ret = add_disk(my_dev.disk);
+          if (ret)
+              goto err_disk;
+          
+          pr_info("my_dev: registered as /dev/%s\n",
+                  my_dev.disk->disk_name);
+          return 0;
+          
+      err_disk:
+          put_disk(my_dev.disk);
+      err_data:
+          vfree(my_dev.data);
+          return ret;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          del_gendisk(my_dev.disk);
+          put_disk(my_dev.disk);
+          vfree(my_dev.data);
+          pr_info("my_dev: unregistered\n");
+      }
+      
+      module_init(my_init);
+      module_exit(my_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "可移动介质设备"
+    kernel_version: "5.0+"
+    code: |
+      /* 可移动介质设备 (如 USB 存储) */
+      static unsigned int my_check_events(struct gendisk *disk,
+                                          unsigned int clearing)
+      {
+          struct my_device *dev = disk->private_data;
+          unsigned int events = 0;
+          
+          if (dev->media_changed) {
+              events |= DISK_EVENT_MEDIA_CHANGE;
+              if (clearing & DISK_EVENT_MEDIA_CHANGE)
+                  dev->media_changed = false;
+          }
+          
+          return events;
+      }
+      
+      static void my_unlock_native_capacity(struct gendisk *disk)
+      {
+          struct my_device *dev = disk->private_data;
+          sector_t native_capacity;
+          
+          /* 获取设备原始容量 */
+          native_capacity = my_get_native_capacity(dev);
+          
+          if (native_capacity > get_capacity(disk)) {
+              set_capacity_and_notify(disk, native_capacity);
+          }
+      }
+      
+      static const struct block_device_operations my_removable_fops = {
+          .owner              = THIS_MODULE,
+          .open               = my_open,
+          .release            = my_release,
+          .getgeo             = my_getgeo,
+          .check_events       = my_check_events,
+          .unlock_native_capacity = my_unlock_native_capacity,
+      };
+      
+      /* 配置为可移动设备 */
+      static int setup_removable(struct my_device *dev)
+      {
+          dev->disk->flags |= GENHD_FL_REMOVABLE;
+          dev->disk->events = DISK_EVENT_MEDIA_CHANGE |
+                              DISK_EVENT_EJECT_REQUEST;
+          dev->disk->async_events = DISK_EVENT_MEDIA_CHANGE;
+          return 0;
+      }
+
+  - description: "打开块设备进行 I/O"
+    kernel_version: "6.5+"
+    code: |
+      /* 内核模块中打开块设备 */
+      static struct bdev_handle *open_block_device(const char *path)
+      {
+          struct bdev_handle *handle;
+          
+          handle = bdev_open_by_path(path, BLK_OPEN_READ | BLK_OPEN_WRITE,
+                                     THIS_MODULE, NULL);
+          if (IS_ERR(handle)) {
+              pr_err("Failed to open %s: %ld\n", path, PTR_ERR(handle));
+              return handle;
+          }
+          
+          pr_info("Opened %s: %llu sectors\n", path,
+                  bdev_nr_sectors(handle->bdev));
+          
+          return handle;
+      }
+      
+      static void close_block_device(struct bdev_handle *handle)
+      {
+          bdev_release(handle);
+      }
+      
+      /* 执行直接 I/O */
+      static int do_sync_io(struct bdev_handle *handle,
+                            sector_t sector, struct page *page,
+                            bool write)
+      {
+          struct bio *bio;
+          int ret;
+          
+          bio = bio_alloc(handle->bdev, 1,
+                          write ? REQ_OP_WRITE : REQ_OP_READ,
+                          GFP_KERNEL);
+          bio->bi_iter.bi_sector = sector;
+          bio_add_page(bio, page, PAGE_SIZE, 0);
+          
+          ret = submit_bio_wait(bio);
+          bio_put(bio);
+          
+          return ret;
+      }

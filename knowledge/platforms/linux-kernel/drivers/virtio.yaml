@@ -454,3 +454,538 @@ examples:
           .remove = my_virtio_remove,
       };
       module_virtio_driver(my_virtio_driver);
+
+  - description: "Virtio-Net 驱动分析示例"
+    kernel_version: "5.0+"
+    reference: "drivers/net/virtio_net.c"
+    code: |
+      /* Virtio-Net 关键数据结构 */
+      struct virtnet_info {
+          struct virtio_device *vdev;
+          struct virtqueue *cvq;              /* 控制队列 */
+          struct net_device *dev;
+          struct send_queue *sq;              /* 发送队列数组 */
+          struct receive_queue *rq;           /* 接收队列数组 */
+          unsigned int status;
+          u16 max_queue_pairs;
+          u16 curr_queue_pairs;
+          bool big_packets;
+          bool mergeable_rx_bufs;
+          bool any_header_sg;
+      };
+      
+      struct send_queue {
+          struct virtqueue *vq;
+          struct scatterlist sg[MAX_SKB_FRAGS + 2];
+          char name[40];
+          struct napi_struct napi;
+      };
+      
+      struct receive_queue {
+          struct virtqueue *vq;
+          struct napi_struct napi;
+          struct bpf_prog __rcu *xdp_prog;
+          struct virtnet_rq_stats stats;
+          char name[40];
+          struct xdp_rxq_info xdp_rxq;
+      };
+      
+      /* 发送流程 */
+      static netdev_tx_t start_xmit(struct sk_buff *skb,
+                                     struct net_device *dev)
+      {
+          struct virtnet_info *vi = netdev_priv(dev);
+          int qnum = skb_get_queue_mapping(skb);
+          struct send_queue *sq = &vi->sq[qnum];
+          int err;
+          
+          /* 准备 virtio 头 */
+          struct virtio_net_hdr_mrg_rxbuf *hdr;
+          hdr = skb_vnet_hdr(skb);
+          
+          /* 设置 GSO 信息 */
+          if (skb_is_gso(skb)) {
+              hdr->hdr.gso_type = virtio_net_hdr_gso_type(skb);
+              hdr->hdr.gso_size = skb_shinfo(skb)->gso_size;
+          }
+          
+          /* 添加到 virtqueue */
+          err = xmit_skb(sq, skb);
+          if (err) {
+              if (err == -ENOSPC)
+                  netif_stop_subqueue(dev, qnum);
+              return NETDEV_TX_BUSY;
+          }
+          
+          /* 通知后端 */
+          if (likely(virtqueue_kick_prepare(sq->vq)))
+              virtqueue_notify(sq->vq);
+          
+          return NETDEV_TX_OK;
+      }
+      
+      /* 接收流程 - NAPI poll */
+      static int virtnet_poll(struct napi_struct *napi, int budget)
+      {
+          struct receive_queue *rq =
+              container_of(napi, struct receive_queue, napi);
+          struct virtnet_info *vi = rq->vq->vdev->priv;
+          int received = 0;
+          void *buf;
+          unsigned int len;
+          
+          while (received < budget) {
+              buf = virtqueue_get_buf(rq->vq, &len);
+              if (!buf)
+                  break;
+              
+              /* 处理接收的数据 */
+              receive_buf(vi, rq, buf, len, NULL, 0);
+              received++;
+          }
+          
+          /* 重新填充接收缓冲区 */
+          if (rq->vq->num_free > virtqueue_get_vring_size(rq->vq) / 2)
+              try_fill_recv(vi, rq, GFP_ATOMIC);
+          
+          if (received < budget) {
+              napi_complete_done(napi, received);
+              virtqueue_enable_cb(rq->vq);
+          }
+          
+          return received;
+      }
+
+  - description: "Virtio-Blk 驱动分析示例"
+    kernel_version: "5.0+"
+    reference: "drivers/block/virtio_blk.c"
+    code: |
+      /* Virtio-Blk 关键数据结构 */
+      struct virtio_blk {
+          struct virtio_device *vdev;
+          struct gendisk *disk;
+          struct blk_mq_tag_set tag_set;
+          struct work_struct config_work;
+          struct mutex vdev_mutex;
+          refcount_t refs;
+          struct virtio_blk_vq *vqs;
+          unsigned int num_vqs;
+          unsigned int io_queues[HCTX_MAX_TYPES];
+          bool pooled_virtqueues;
+      };
+      
+      struct virtio_blk_vq {
+          struct virtqueue *vq;
+          spinlock_t lock;
+          char name[16];
+      };
+      
+      /* 请求结构 */
+      struct virtblk_req {
+          struct virtio_blk_outhdr out_hdr;
+          u8 status;
+          struct sg_table sg_table;
+          struct scatterlist *sg;
+      };
+      
+      /* 请求处理 */
+      static blk_status_t virtblk_prep_rq(struct blk_mq_hw_ctx *hctx,
+                                           struct virtio_blk *vblk,
+                                           struct request *req,
+                                           struct virtblk_req *vbr)
+      {
+          /* 设置请求头 */
+          switch (req_op(req)) {
+          case REQ_OP_READ:
+              vbr->out_hdr.type = VIRTIO_BLK_T_IN;
+              break;
+          case REQ_OP_WRITE:
+              vbr->out_hdr.type = VIRTIO_BLK_T_OUT;
+              break;
+          case REQ_OP_FLUSH:
+              vbr->out_hdr.type = VIRTIO_BLK_T_FLUSH;
+              break;
+          case REQ_OP_DISCARD:
+              vbr->out_hdr.type = VIRTIO_BLK_T_DISCARD;
+              break;
+          default:
+              return BLK_STS_IOERR;
+          }
+          
+          vbr->out_hdr.sector = blk_rq_pos(req);
+          vbr->out_hdr.ioprio = req_get_ioprio(req);
+          
+          return BLK_STS_OK;
+      }
+      
+      /* 提交请求到 virtqueue */
+      static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
+                                           const struct blk_mq_queue_data *bd)
+      {
+          struct virtio_blk *vblk = hctx->queue->queuedata;
+          struct request *req = bd->rq;
+          struct virtblk_req *vbr = blk_mq_rq_to_pdu(req);
+          struct virtio_blk_vq *vq = &vblk->vqs[hctx->queue_num];
+          unsigned long flags;
+          int err;
+          
+          err = virtblk_prep_rq(hctx, vblk, req, vbr);
+          if (err)
+              return err;
+          
+          spin_lock_irqsave(&vq->lock, flags);
+          
+          err = virtblk_add_req(vq->vq, vbr);
+          if (err) {
+              spin_unlock_irqrestore(&vq->lock, flags);
+              return BLK_STS_RESOURCE;
+          }
+          
+          if (bd->last)
+              virtqueue_kick(vq->vq);
+          
+          spin_unlock_irqrestore(&vq->lock, flags);
+          return BLK_STS_OK;
+      }
+
+
+# ============================================================
+# VRING DATA STRUCTURES
+# ============================================================
+
+vring_structures:
+  vring:
+    description: "Virtio Ring 结构"
+    file: "include/uapi/linux/virtio_ring.h"
+    components:
+      descriptor_table:
+        description: "描述符表"
+        structure: |
+          struct vring_desc {
+              __le64 addr;   /* 缓冲区物理地址 */
+              __le32 len;    /* 缓冲区长度 */
+              __le16 flags;  /* 标志位 */
+              __le16 next;   /* 链表中下一个描述符 */
+          };
+        flags:
+          - "VRING_DESC_F_NEXT (0x1) - 链接到下一个描述符"
+          - "VRING_DESC_F_WRITE (0x2) - 设备写入此缓冲区"
+          - "VRING_DESC_F_INDIRECT (0x4) - 间接描述符"
+
+      available_ring:
+        description: "可用环"
+        structure: |
+          struct vring_avail {
+              __le16 flags;    /* 中断抑制标志 */
+              __le16 idx;      /* 下一个可用条目索引 */
+              __le16 ring[];   /* 描述符表索引数组 */
+          };
+
+      used_ring:
+        description: "已用环"
+        structure: |
+          struct vring_used_elem {
+              __le32 id;   /* 描述符链头索引 */
+              __le32 len;  /* 写入的字节数 */
+          };
+          
+          struct vring_used {
+              __le16 flags;              /* 中断抑制标志 */
+              __le16 idx;                /* 下一个已用条目索引 */
+              struct vring_used_elem ring[];
+          };
+
+  vring_layout:
+    description: "Vring 内存布局"
+    diagram: |
+      +-------------------+
+      | Descriptor Table  |  num * sizeof(vring_desc)
+      | (描述符表)         |
+      +-------------------+
+      | Available Ring    |  sizeof(vring_avail) + num * 2
+      | (可用环)           |
+      +-------------------+
+      | Padding           |  对齐到 page
+      +-------------------+
+      | Used Ring         |  sizeof(vring_used) + num * 8
+      | (已用环)           |
+      +-------------------+
+
+  packed_vring:
+    description: "Packed Virtqueue (v1.1)"
+    kernel_version: "5.4+"
+    advantages:
+      - "更好的缓存效率"
+      - "减少同步开销"
+      - "支持顺序发布"
+    structure: |
+      struct vring_packed_desc {
+          __le64 addr;
+          __le32 len;
+          __le16 id;
+          __le16 flags;
+      };
+
+
+# ============================================================
+# VIRTQUEUE OPERATIONS DETAIL
+# ============================================================
+
+virtqueue_ops_detail:
+  virtqueue_add_sgs:
+    description: "添加 scatter-gather 列表到队列"
+    signature: |
+      int virtqueue_add_sgs(struct virtqueue *vq,
+                            struct scatterlist *sgs[],
+                            unsigned int out_sgs,
+                            unsigned int in_sgs,
+                            void *data,
+                            gfp_t gfp);
+    parameters:
+      vq: "目标 virtqueue"
+      sgs: "scatter-gather 列表数组"
+      out_sgs: "输出（设备读）sg 数量"
+      in_sgs: "输入（设备写）sg 数量"
+      data: "关联的私有数据"
+      gfp: "内存分配标志"
+    returns: "0 成功，-ENOSPC 队列满"
+
+  virtqueue_add_outbuf:
+    description: "添加输出缓冲区"
+    signature: |
+      int virtqueue_add_outbuf(struct virtqueue *vq,
+                                struct scatterlist *sg,
+                                unsigned int num,
+                                void *data,
+                                gfp_t gfp);
+
+  virtqueue_add_inbuf:
+    description: "添加输入缓冲区"
+    signature: |
+      int virtqueue_add_inbuf(struct virtqueue *vq,
+                               struct scatterlist *sg,
+                               unsigned int num,
+                               void *data,
+                               gfp_t gfp);
+
+  virtqueue_kick:
+    description: "通知后端有新数据"
+    signature: "bool virtqueue_kick(struct virtqueue *vq);"
+    notes:
+      - "内部先检查是否需要通知"
+      - "使用 virtqueue_kick_prepare() + virtqueue_notify() 可优化"
+
+  virtqueue_get_buf:
+    description: "获取已完成的缓冲区"
+    signature: |
+      void *virtqueue_get_buf(struct virtqueue *vq,
+                              unsigned int *len);
+    returns: "之前传入的 data 指针，len 填充写入字节数"
+
+  virtqueue_enable_cb:
+    description: "启用回调通知"
+    signature: "bool virtqueue_enable_cb(struct virtqueue *vq);"
+    returns: "true 如果可能有待处理的缓冲区"
+    usage: |
+      /* NAPI 模式使用 */
+      if (received < budget) {
+          napi_complete_done(napi, received);
+          if (unlikely(virtqueue_enable_cb(vq) && 
+                       virtqueue_poll(vq, start)))
+              napi_schedule(napi);
+      }
+
+
+# ============================================================
+# ADVANCED CALL CHAINS
+# ============================================================
+
+advanced_call_chains:
+  virtio_net_xmit:
+    description: "Virtio-Net 发送完整流程"
+    chain:
+      - caller: "网络栈"
+        callee: "dev_queue_xmit"
+        description: "发送 skb"
+      - caller: "dev_queue_xmit"
+        callee: "start_xmit"
+        description: "驱动发送入口"
+      - caller: "start_xmit"
+        callee: "xmit_skb"
+        description: "准备 virtio 头和 sg"
+      - caller: "xmit_skb"
+        callee: "virtqueue_add_outbuf"
+        description: "添加到队列"
+      - caller: "start_xmit"
+        callee: "virtqueue_kick"
+        description: "通知后端"
+      - caller: "后端(QEMU)"
+        callee: "处理发送"
+        description: "virtio-net backend"
+      - caller: "后端"
+        callee: "填充 used ring"
+        description: "标记完成"
+      - caller: "中断"
+        callee: "free_old_xmit_skbs"
+        context: "softirq"
+        description: "释放已发送的 skb"
+
+  virtio_blk_request:
+    description: "Virtio-Blk 请求完整流程"
+    chain:
+      - caller: "块层"
+        callee: "blk_mq_make_request"
+        description: "创建请求"
+      - caller: "blk_mq"
+        callee: "virtio_queue_rq"
+        description: "驱动处理入口"
+      - caller: "virtio_queue_rq"
+        callee: "virtblk_add_req"
+        description: "添加请求到队列"
+      - caller: "virtblk_add_req"
+        callee: "virtqueue_add_sgs"
+        description: "添加 sg 列表"
+      - caller: "virtio_queue_rq"
+        callee: "virtqueue_kick"
+        description: "通知后端"
+      - caller: "后端(QEMU)"
+        callee: "处理 I/O"
+        description: "virtio-blk backend"
+      - caller: "中断"
+        callee: "virtblk_done"
+        context: "softirq"
+        description: "完成回调"
+      - caller: "virtblk_done"
+        callee: "blk_mq_complete_request"
+        description: "通知块层完成"
+
+
+# ============================================================
+# FEATURE NEGOTIATION
+# ============================================================
+
+feature_negotiation:
+  description: "Virtio 特性协商机制"
+  
+  process:
+    - step: 1
+      action: "设备提供支持的特性位"
+      api: "vdev->config->get_features()"
+    - step: 2
+      action: "驱动选择需要的特性"
+      api: "virtio_driver.feature_table"
+    - step: 3
+      action: "协商最终特性集"
+      api: "virtio_finalize_features()"
+    - step: 4
+      action: "驱动检查协商结果"
+      api: "virtio_has_feature()"
+
+  common_features:
+    VIRTIO_F_RING_PACKED:
+      bit: 34
+      description: "支持 packed virtqueue"
+    VIRTIO_F_ORDER_PLATFORM:
+      bit: 36
+      description: "需要内存屏障"
+    VIRTIO_F_NOTIFICATION_DATA:
+      bit: 38
+      description: "通知携带额外数据"
+    VIRTIO_F_RING_RESET:
+      bit: 40
+      description: "支持队列重置"
+
+  checking_features: |
+    /* 检查特性是否协商成功 */
+    if (virtio_has_feature(vdev, VIRTIO_NET_F_MRG_RXBUF)) {
+        /* 使用 mergeable rx buffer */
+    }
+    
+    /* 驱动特性表 */
+    static unsigned int my_features[] = {
+        VIRTIO_NET_F_CSUM,
+        VIRTIO_NET_F_GUEST_CSUM,
+        VIRTIO_NET_F_MAC,
+    };
+
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+
+kernel_version_notes:
+  v2_6_25:
+    description: "Virtio 框架首次引入"
+    changes:
+      - "基本的 virtio 总线和驱动模型"
+      - "virtio-net, virtio-blk"
+
+  v3_0:
+    description: "多队列支持"
+    changes:
+      - "virtio_find_vqs() 替代 find_vq()"
+      - "多队列 virtio-net"
+
+  v4_0:
+    description: "VIRTIO 1.0 规范支持"
+    changes:
+      - "标准化 virtio over PCI"
+      - "改进的特性协商"
+
+  v4_10:
+    description: "virtio-net XDP 支持"
+    changes:
+      - "XDP hook"
+      - "零拷贝优化"
+
+  v5_4:
+    description: "Packed Virtqueue"
+    changes:
+      - "VIRTIO 1.1 packed ring"
+      - "更好的性能"
+
+  v5_10:
+    description: "中断合并改进"
+    changes:
+      - "自适应中断"
+      - "性能优化"
+
+  v6_0:
+    description: "现代化更新"
+    changes:
+      - "队列重置支持"
+      - "更好的错误处理"
+
+
+# ============================================================
+# DEBUGGING
+# ============================================================
+
+debugging:
+  debugfs:
+    path: "/sys/kernel/debug/virtio-vqs"
+    info:
+      - "队列状态"
+      - "描述符使用"
+      - "中断统计"
+
+  tracepoints:
+    - name: "virtio:virtqueue_add_buf"
+      fields: "vq, out, in"
+    - name: "virtio:virtqueue_get_buf"
+      fields: "vq, len"
+    - name: "virtio:virtqueue_kick"
+      fields: "vq"
+
+  common_issues:
+    queue_full:
+      symptom: "virtqueue_add_* 返回 -ENOSPC"
+      causes:
+        - "后端处理太慢"
+        - "队列大小太小"
+        - "未及时调用 get_buf"
+      fix: "增加队列大小或优化处理"
+
+    notification_storm:
+      symptom: "过多中断导致性能下降"
+      fix: "使用 NAPI 或中断合并"

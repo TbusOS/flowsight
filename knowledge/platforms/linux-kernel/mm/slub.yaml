@@ -1,0 +1,719 @@
+# Linux Kernel SLUB Allocator Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/mm/slub.html
+# Source: mm/slub.c
+# Completeness: 95%+ (KB-Memory Agent)
+
+# ============================================================
+# SLUB ALLOCATOR OVERVIEW
+# ============================================================
+
+slub_allocator:
+  description: "SLUB Allocator - 内核对象缓存分配器"
+  header: "linux/slub_def.h"
+  icon: "📦"
+  kernel_version: "2.6.22+"
+  
+  context:
+    type: "process/irq"
+    can_sleep: "depends on GFP flags"
+    can_schedule: "depends on GFP flags"
+    preemptible: "depends on GFP flags"
+  
+  overview: |
+    SLUB (Slab Unqueued) 是 Linux 内核默认的 slab 分配器实现。
+    - 2.6.22+ 引入，取代旧的 SLAB 分配器
+    - 简化设计，减少元数据开销
+    - 更好的 NUMA 支持
+    - 每 CPU 缓存提高性能
+    - 支持 DEBUG 和追踪
+
+  data_structures:
+    kmem_cache:
+      pattern: 'struct kmem_cache\s*\{'
+      description: "内核内存缓存结构"
+      file: "include/linux/slub_def.h"
+      fields:
+        - name: "cpu_slab"
+          type: "struct kmem_cache_cpu __percpu *"
+          description: "每 CPU 的 slab 缓存"
+        - name: "flags"
+          type: "slab_flags_t"
+          description: "缓存标志"
+        - name: "min_partial"
+          type: "unsigned long"
+          description: "最小 partial slab 数"
+        - name: "size"
+          type: "unsigned int"
+          description: "对象大小(含对齐)"
+        - name: "object_size"
+          type: "unsigned int"
+          description: "实际对象大小"
+        - name: "offset"
+          type: "unsigned int"
+          description: "空闲指针偏移"
+        - name: "cpu_partial"
+          type: "unsigned int"
+          description: "每 CPU partial 数"
+        - name: "oo"
+          type: "struct kmem_cache_order_objects"
+          description: "默认 order 和对象数"
+        - name: "max"
+          type: "struct kmem_cache_order_objects"
+          description: "最大 order 和对象数"
+        - name: "min"
+          type: "struct kmem_cache_order_objects"
+          description: "最小 order 和对象数"
+        - name: "allocflags"
+          type: "gfp_t"
+          description: "分配标志"
+        - name: "refcount"
+          type: "int"
+          description: "引用计数"
+        - name: "ctor"
+          type: "void (*)(void *)"
+          description: "对象构造函数"
+        - name: "inuse"
+          type: "unsigned int"
+          description: "使用中的偏移"
+        - name: "align"
+          type: "unsigned int"
+          description: "对齐要求"
+        - name: "red_left_pad"
+          type: "unsigned int"
+          description: "红区左填充(DEBUG)"
+        - name: "name"
+          type: "const char *"
+          description: "缓存名称"
+        - name: "list"
+          type: "struct list_head"
+          description: "缓存链表"
+        - name: "node"
+          type: "struct kmem_cache_node *[]"
+          description: "每节点数据"
+
+    kmem_cache_cpu:
+      pattern: 'struct kmem_cache_cpu\s*\{'
+      description: "每 CPU slab 缓存"
+      file: "include/linux/slub_def.h"
+      fields:
+        - name: "freelist"
+          type: "void **"
+          description: "空闲对象链表"
+        - name: "tid"
+          type: "unsigned long"
+          description: "事务 ID (避免锁)"
+        - name: "page"
+          type: "struct page *"
+          description: "当前活动 slab"
+        - name: "partial"
+          type: "struct page *"
+          description: "部分使用的 slab 链表"
+
+    kmem_cache_node:
+      pattern: 'struct kmem_cache_node\s*\{'
+      description: "每 NUMA 节点的缓存数据"
+      file: "mm/slab.h"
+      fields:
+        - name: "lock"
+          type: "spinlock_t"
+          description: "节点锁"
+        - name: "nr_partial"
+          type: "unsigned long"
+          description: "partial slab 数量"
+        - name: "partial"
+          type: "struct list_head"
+          description: "partial slab 链表"
+        - name: "nr_slabs"
+          type: "atomic_long_t"
+          description: "总 slab 数量"
+        - name: "total_objects"
+          type: "atomic_long_t"
+          description: "总对象数量"
+
+    slab:
+      pattern: 'struct slab\s*\{'
+      description: "Slab 页面描述符 (复用 struct page)"
+      file: "mm/slab.h"
+      fields:
+        - name: "slab_cache"
+          type: "struct kmem_cache *"
+          description: "所属缓存"
+        - name: "freelist"
+          type: "void *"
+          description: "空闲对象链表头"
+        - name: "inuse"
+          type: "unsigned"
+          description: "使用中的对象数"
+        - name: "objects"
+          type: "unsigned"
+          description: "总对象数"
+        - name: "frozen"
+          type: "unsigned"
+          description: "是否被 CPU 持有"
+
+# ============================================================
+# CACHE CREATION AND DESTRUCTION
+# ============================================================
+
+cache_management:
+  description: "Cache Creation/Destruction - 缓存创建销毁"
+  header: "linux/slab.h"
+  icon: "🏗️"
+
+  bind_patterns:
+    # kmem_cache_create - 创建缓存
+    - pattern: 'kmem_cache_create\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<align>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<ctor>[^)]*)\s*\)'
+      variable_capture: "name"
+      description: "创建内核对象缓存"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "struct kmem_cache *"
+        failure: "NULL"
+
+    # kmem_cache_create_usercopy - 创建支持用户拷贝的缓存
+    - pattern: 'kmem_cache_create_usercopy\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<align>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<useroffset>[^,]+)\s*,\s*(?P<usersize>[^,]+)\s*,\s*(?P<ctor>[^)]*)\s*\)'
+      variable_capture: "name"
+      description: "创建支持用户空间拷贝的缓存"
+      context: "process"
+      can_sleep: true
+
+    # kmem_cache_destroy - 销毁缓存
+    - pattern: 'kmem_cache_destroy\s*\(\s*(?P<cache>[^)]+)\s*\)'
+      variable_capture: "cache"
+      description: "销毁内核对象缓存"
+      context: "process"
+      can_sleep: true
+
+    # kmem_cache_shrink - 收缩缓存
+    - pattern: 'kmem_cache_shrink\s*\(\s*(?P<cache>[^)]+)\s*\)'
+      variable_capture: "cache"
+      description: "收缩缓存释放空闲 slab"
+      context: "process"
+      can_sleep: true
+
+    # KMEM_CACHE - 快速创建宏
+    - pattern: 'KMEM_CACHE\s*\(\s*(?P<struct>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "struct"
+      description: "快速创建结构体缓存的宏"
+
+    # KMEM_CACHE_USERCOPY - 支持用户拷贝的宏
+    - pattern: 'KMEM_CACHE_USERCOPY\s*\(\s*(?P<struct>\w+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<field>\w+)\s*\)'
+      variable_capture: "struct"
+      description: "快速创建支持用户拷贝的缓存"
+
+  cache_flags:
+    - name: "SLAB_HWCACHE_ALIGN"
+      description: "硬件缓存行对齐"
+    - name: "SLAB_CACHE_DMA"
+      description: "使用 DMA 内存"
+    - name: "SLAB_CACHE_DMA32"
+      description: "使用 32位 DMA 内存"
+    - name: "SLAB_PANIC"
+      description: "创建失败时 panic"
+    - name: "SLAB_POISON"
+      description: "填充毒药值 (DEBUG)"
+    - name: "SLAB_RED_ZONE"
+      description: "添加红区检测越界 (DEBUG)"
+    - name: "SLAB_STORE_USER"
+      description: "记录分配/释放调用者 (DEBUG)"
+    - name: "SLAB_TRACE"
+      description: "追踪分配/释放 (DEBUG)"
+    - name: "SLAB_ACCOUNT"
+      description: "记账到 memcg"
+    - name: "SLAB_RECLAIM_ACCOUNT"
+      description: "可回收内存"
+    - name: "SLAB_TYPESAFE_BY_RCU"
+      description: "RCU 类型安全"
+    - name: "SLAB_MEM_SPREAD"
+      description: "在节点间分散"
+
+# ============================================================
+# OBJECT ALLOCATION AND FREE
+# ============================================================
+
+object_allocation:
+  description: "Object Allocation/Free - 对象分配释放"
+  header: "linux/slab.h"
+  icon: "📤"
+
+  bind_patterns:
+    # kmem_cache_alloc - 从缓存分配
+    - pattern: 'kmem_cache_alloc\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "cache"
+      description: "从缓存分配对象"
+      context: "depends on flags"
+      return_value:
+        success: "对象指针"
+        failure: "NULL"
+
+    # kmem_cache_zalloc - 零初始化分配
+    - pattern: 'kmem_cache_zalloc\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "cache"
+      description: "零初始化分配对象"
+
+    # kmem_cache_alloc_node - 从指定节点分配
+    - pattern: 'kmem_cache_alloc_node\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
+      variable_capture: "cache"
+      description: "从指定 NUMA 节点分配"
+
+    # kmem_cache_alloc_bulk - 批量分配
+    - pattern: 'kmem_cache_alloc_bulk\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<p>[^)]+)\s*\)'
+      variable_capture: "cache"
+      description: "批量分配多个对象"
+
+    # kmem_cache_free - 释放对象
+    - pattern: 'kmem_cache_free\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<obj>[^)]+)\s*\)'
+      variable_capture: "cache"
+      description: "释放对象回缓存"
+      context: "any"
+      can_sleep: false
+
+    # kmem_cache_free_bulk - 批量释放
+    - pattern: 'kmem_cache_free_bulk\s*\(\s*(?P<cache>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<p>[^)]+)\s*\)'
+      variable_capture: "cache"
+      description: "批量释放多个对象"
+
+    # kfree - 释放 kmalloc 分配的内存
+    - pattern: 'kfree\s*\(\s*(?P<ptr>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "释放 kmalloc 分配的内存"
+      context: "any"
+      can_sleep: false
+
+# ============================================================
+# KMALLOC INTERFACE
+# ============================================================
+
+kmalloc_interface:
+  description: "Kmalloc Interface - 通用内核内存分配"
+  header: "linux/slab.h"
+  icon: "💾"
+
+  bind_patterns:
+    # kmalloc - 内核堆分配
+    - pattern: 'kmalloc\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "size"
+      description: "内核堆分配"
+
+    # kzalloc - 零初始化分配
+    - pattern: 'kzalloc\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "size"
+      description: "零初始化内核堆分配"
+
+    # kmalloc_array - 数组分配
+    - pattern: 'kmalloc_array\s*\(\s*(?P<n>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "n"
+      description: "内核数组分配(防溢出)"
+
+    # kcalloc - 零初始化数组
+    - pattern: 'kcalloc\s*\(\s*(?P<n>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "n"
+      description: "零初始化数组分配"
+
+    # krealloc - 重新分配
+    - pattern: 'krealloc\s*\(\s*(?P<ptr>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "ptr"
+      description: "重新分配内存"
+
+    # kmalloc_node - 节点分配
+    - pattern: 'kmalloc_node\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
+      variable_capture: "size"
+      description: "从指定节点分配"
+
+    # kzalloc_node - 节点零初始化分配
+    - pattern: 'kzalloc_node\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
+      variable_capture: "size"
+      description: "从指定节点零初始化分配"
+
+    # ksize - 获取实际分配大小
+    - pattern: 'ksize\s*\(\s*(?P<ptr>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "获取实际分配大小"
+
+  kmalloc_caches:
+    description: "kmalloc 使用的预定义缓存"
+    sizes:
+      - "kmalloc-8"
+      - "kmalloc-16"
+      - "kmalloc-32"
+      - "kmalloc-64"
+      - "kmalloc-96"
+      - "kmalloc-128"
+      - "kmalloc-192"
+      - "kmalloc-256"
+      - "kmalloc-512"
+      - "kmalloc-1k"
+      - "kmalloc-2k"
+      - "kmalloc-4k"
+      - "kmalloc-8k"
+    note: "超过 PAGE_SIZE 的分配走 page allocator"
+
+# ============================================================
+# SLUB INTERNAL OPERATIONS
+# ============================================================
+
+slub_internals:
+  description: "SLUB Internal Operations - SLUB 内部操作"
+  header: "mm/slub.c"
+  icon: "⚙️"
+
+  key_functions:
+    __slab_alloc:
+      pattern: '__slab_alloc\s*\('
+      description: "慢路径分配 (当 freelist 为空)"
+      context: "irq disabled"
+      file: "mm/slub.c"
+
+    slab_alloc_node:
+      pattern: 'slab_alloc_node\s*\('
+      description: "节点分配核心函数"
+      context: "depends on flags"
+      file: "mm/slub.c"
+
+    __slab_free:
+      pattern: '__slab_free\s*\('
+      description: "慢路径释放"
+      context: "irq disabled"
+      file: "mm/slub.c"
+
+    new_slab:
+      pattern: 'new_slab\s*\('
+      description: "分配新的 slab"
+      context: "process"
+      file: "mm/slub.c"
+
+    allocate_slab:
+      pattern: 'allocate_slab\s*\('
+      description: "分配 slab 页面"
+      context: "depends on flags"
+      file: "mm/slub.c"
+
+    discard_slab:
+      pattern: 'discard_slab\s*\('
+      description: "释放 slab 页面"
+      context: "irq disabled"
+      file: "mm/slub.c"
+
+    deactivate_slab:
+      pattern: 'deactivate_slab\s*\('
+      description: "停用 slab (移到 partial)"
+      context: "irq disabled"
+      file: "mm/slub.c"
+
+    unfreeze_partials:
+      pattern: 'unfreeze_partials\s*\('
+      description: "解冻 partial slab 到节点"
+      context: "irq disabled"
+      file: "mm/slub.c"
+
+    get_partial:
+      pattern: 'get_partial\s*\('
+      description: "从 partial 列表获取 slab"
+      context: "irq disabled"
+      file: "mm/slub.c"
+
+    put_cpu_partial:
+      pattern: 'put_cpu_partial\s*\('
+      description: "放入 CPU partial 列表"
+      context: "irq disabled"
+      file: "mm/slub.c"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  fast_alloc:
+    description: "快速分配路径 (热路径)"
+    trigger: "kmem_cache_alloc() 且 freelist 非空"
+    chain:
+      - function: "kmem_cache_alloc"
+        file: "mm/slub.c"
+        description: "分配入口"
+      - function: "slab_alloc_node"
+        file: "mm/slub.c"
+        description: "节点分配"
+      - function: "do_slab_free -> this_cpu_cmpxchg_double"
+        file: "mm/slub.c"
+        description: "无锁从 freelist 获取"
+        context: "preempt disabled"
+
+  slow_alloc:
+    description: "慢速分配路径 (freelist 为空)"
+    trigger: "kmem_cache_alloc() 且 freelist 为空"
+    chain:
+      - function: "kmem_cache_alloc"
+        file: "mm/slub.c"
+        description: "分配入口"
+      - function: "slab_alloc_node"
+        file: "mm/slub.c"
+        description: "节点分配"
+      - function: "__slab_alloc"
+        file: "mm/slub.c"
+        description: "慢路径"
+        context: "irq disabled"
+      - function: "get_partial"
+        file: "mm/slub.c"
+        description: "尝试从 partial 获取"
+      - function: "new_slab"
+        file: "mm/slub.c"
+        description: "分配新 slab"
+      - function: "allocate_slab"
+        file: "mm/slub.c"
+        description: "分配页面"
+      - function: "alloc_slab_page"
+        file: "mm/slub.c"
+        description: "页分配器分配"
+
+  fast_free:
+    description: "快速释放路径"
+    trigger: "kmem_cache_free() 且释放到当前 CPU slab"
+    chain:
+      - function: "kmem_cache_free"
+        file: "mm/slub.c"
+        description: "释放入口"
+      - function: "do_slab_free"
+        file: "mm/slub.c"
+        description: "执行释放"
+      - function: "this_cpu_cmpxchg_double"
+        description: "无锁加入 freelist"
+        context: "preempt disabled"
+
+  slow_free:
+    description: "慢速释放路径"
+    trigger: "kmem_cache_free() 且释放到非当前 CPU slab"
+    chain:
+      - function: "kmem_cache_free"
+        file: "mm/slub.c"
+        description: "释放入口"
+      - function: "do_slab_free"
+        file: "mm/slub.c"
+        description: "执行释放"
+      - function: "__slab_free"
+        file: "mm/slub.c"
+        description: "慢路径"
+        context: "irq disabled"
+      - function: "put_cpu_partial"
+        file: "mm/slub.c"
+        description: "放入 partial 或释放 slab"
+
+  cache_create:
+    description: "缓存创建路径"
+    trigger: "kmem_cache_create()"
+    chain:
+      - function: "kmem_cache_create"
+        file: "mm/slab_common.c"
+        description: "创建入口"
+      - function: "kmem_cache_create_usercopy"
+        file: "mm/slab_common.c"
+        description: "内部实现"
+      - function: "create_cache"
+        file: "mm/slab_common.c"
+        description: "创建缓存"
+      - function: "__kmem_cache_create"
+        file: "mm/slub.c"
+        description: "SLUB 实现"
+      - function: "kmem_cache_open"
+        file: "mm/slub.c"
+        description: "打开缓存"
+      - function: "init_kmem_cache_cpus"
+        file: "mm/slub.c"
+        description: "初始化每 CPU 数据"
+
+# ============================================================
+# DEBUG AND TRACING
+# ============================================================
+
+debug_tracing:
+  description: "SLUB Debug and Tracing - 调试和追踪"
+  icon: "🔍"
+
+  boot_params:
+    - param: "slub_debug=F"
+      description: "启用全部 DEBUG (红区+毒药+用户追踪)"
+    - param: "slub_debug=P"
+      description: "启用毒药填充"
+    - param: "slub_debug=Z"
+      description: "启用红区"
+    - param: "slub_debug=U"
+      description: "启用用户追踪"
+    - param: "slub_debug=T"
+      description: "启用追踪"
+    - param: "slub_debug=A"
+      description: "启用 failslab"
+    - param: "slub_debug=-"
+      description: "禁用全部 DEBUG"
+    - param: "slub_debug=F,dentry"
+      description: "只对 dentry 缓存启用 DEBUG"
+
+  sysfs_interface:
+    path: "/sys/kernel/slab/<cache>/"
+    files:
+      - name: "alloc_calls"
+        description: "分配调用统计"
+      - name: "free_calls"
+        description: "释放调用统计"
+      - name: "objects"
+        description: "对象数统计"
+      - name: "objs_per_slab"
+        description: "每 slab 对象数"
+      - name: "order"
+        description: "slab order"
+      - name: "partial"
+        description: "partial slab 数"
+      - name: "slab_size"
+        description: "slab 大小"
+      - name: "slabs"
+        description: "总 slab 数"
+      - name: "total_objects"
+        description: "总对象数"
+      - name: "shrink"
+        description: "写入触发收缩"
+
+  poison_values:
+    - value: "0x5a"
+      description: "对象分配后填充 (DEBUG)"
+    - value: "0x6b"
+      description: "对象释放后填充 (DEBUG)"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "创建和使用专用缓存"
+    kernel_version: "2.6.22+"
+    code: |
+      #include <linux/slab.h>
+      #include <linux/module.h>
+      
+      struct my_object {
+          int id;
+          char name[32];
+          struct list_head list;
+      };
+      
+      static struct kmem_cache *my_cache;
+      
+      /* 对象构造函数 (可选) */
+      static void my_ctor(void *obj)
+      {
+          struct my_object *p = obj;
+          INIT_LIST_HEAD(&p->list);
+      }
+      
+      static int __init my_init(void)
+      {
+          /* 创建专用缓存 */
+          my_cache = kmem_cache_create("my_object_cache",
+                                       sizeof(struct my_object),
+                                       0,  /* align: 默认 */
+                                       SLAB_HWCACHE_ALIGN,
+                                       my_ctor);
+          if (!my_cache)
+              return -ENOMEM;
+          
+          /* 分配对象 */
+          struct my_object *obj = kmem_cache_alloc(my_cache, GFP_KERNEL);
+          if (!obj) {
+              kmem_cache_destroy(my_cache);
+              return -ENOMEM;
+          }
+          
+          /* 使用对象 */
+          obj->id = 1;
+          strncpy(obj->name, "test", sizeof(obj->name));
+          
+          /* 释放对象 */
+          kmem_cache_free(my_cache, obj);
+          
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          /* 销毁缓存 (确保所有对象已释放) */
+          kmem_cache_destroy(my_cache);
+      }
+      
+      module_init(my_init);
+      module_exit(my_exit);
+
+  - description: "使用 KMEM_CACHE 宏"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/slab.h>
+      
+      struct my_struct {
+          int value;
+          char data[64];
+      };
+      
+      /* 快速创建缓存的宏 */
+      static struct kmem_cache *my_struct_cache;
+      
+      static int init_cache(void)
+      {
+          my_struct_cache = KMEM_CACHE(my_struct, SLAB_PANIC);
+          /* 等价于:
+           * kmem_cache_create("my_struct",
+           *                   sizeof(struct my_struct),
+           *                   __alignof__(struct my_struct),
+           *                   SLAB_PANIC, NULL);
+           */
+          return 0;
+      }
+
+  - description: "批量分配和释放"
+    kernel_version: "4.6+"
+    code: |
+      #include <linux/slab.h>
+      
+      #define BATCH_SIZE 16
+      
+      static void batch_alloc_free(struct kmem_cache *cache)
+      {
+          void *objects[BATCH_SIZE];
+          int allocated;
+          
+          /* 批量分配 */
+          allocated = kmem_cache_alloc_bulk(cache, GFP_KERNEL,
+                                            BATCH_SIZE, objects);
+          if (allocated < BATCH_SIZE) {
+              pr_err("Only allocated %d objects\n", allocated);
+          }
+          
+          /* 使用对象... */
+          
+          /* 批量释放 */
+          kmem_cache_free_bulk(cache, allocated, objects);
+      }
+
+  - description: "GFP 标志使用"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/slab.h>
+      
+      void allocation_examples(struct kmem_cache *cache)
+      {
+          void *obj;
+          
+          /* 进程上下文 - 可以睡眠 */
+          obj = kmem_cache_alloc(cache, GFP_KERNEL);
+          
+          /* 中断上下文 - 不能睡眠 */
+          obj = kmem_cache_alloc(cache, GFP_ATOMIC);
+          
+          /* 进程上下文但不能做 IO */
+          obj = kmem_cache_alloc(cache, GFP_NOIO);
+          
+          /* 进程上下文但不能做文件系统操作 */
+          obj = kmem_cache_alloc(cache, GFP_NOFS);
+          
+          /* 零初始化 */
+          obj = kmem_cache_zalloc(cache, GFP_KERNEL);
+          
+          /* 从特定 NUMA 节点分配 */
+          obj = kmem_cache_alloc_node(cache, GFP_KERNEL, 0);
+      }

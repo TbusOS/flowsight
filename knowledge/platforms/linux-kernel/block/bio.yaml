@@ -1,0 +1,843 @@
+# Linux Kernel Block I/O (BIO) Layer Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/block/index.html
+# Source: block/bio.c, include/linux/bio.h
+
+# ============================================================
+# BIO OVERVIEW
+# ============================================================
+
+bio_overview:
+  description: "Block I/O - 块层 I/O 请求的核心数据结构"
+  header: "linux/bio.h"
+  icon: "🧬"
+  kernel_version: "2.5+"
+
+  context:
+    type: "varies"
+    can_sleep: "depends on allocation flags"
+
+  purpose: |
+    BIO (Block I/O) 是 Linux 内核块层的核心数据结构，表示一个 I/O 请求。
+    它连接了文件系统/页缓存与块设备驱动之间的数据传输。
+    
+    关键特性：
+    - 零拷贝设计 - 直接引用页面，不复制数据
+    - scatter-gather I/O - 支持多个不连续的内存段
+    - 链式处理 - 支持设备映射器和堆叠设备
+    - 内存池分配 - 高效的 bioset 分配机制
+
+
+# ============================================================
+# BIO DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  bio:
+    description: "Block I/O 请求结构"
+    header: "include/linux/bio.h"
+    pattern: 'struct bio\s*\{'
+    fields:
+      - name: "bi_next"
+        type: "struct bio *"
+        description: "请求队列中的下一个 bio"
+      - name: "bi_bdev"
+        type: "struct block_device *"
+        description: "目标块设备 (6.0+)"
+      - name: "bi_opf"
+        type: "blk_opf_t"
+        description: "操作类型和标志位组合"
+      - name: "bi_flags"
+        type: "unsigned short"
+        description: "BIO 状态标志 (BIO_*)"
+      - name: "bi_ioprio"
+        type: "unsigned short"
+        description: "I/O 优先级"
+      - name: "bi_status"
+        type: "blk_status_t"
+        description: "I/O 完成状态"
+      - name: "bi_vcnt"
+        type: "unsigned short"
+        description: "bio_vec 数组中的有效条目数"
+      - name: "bi_max_vecs"
+        type: "unsigned short"
+        description: "bio_vec 数组的最大容量"
+      - name: "bi_iter"
+        type: "struct bvec_iter"
+        description: "I/O 位置和长度迭代器"
+      - name: "bi_private"
+        type: "void *"
+        description: "提交者的私有数据"
+      - name: "bi_end_io"
+        type: "bio_end_io_t *"
+        description: "I/O 完成回调函数"
+      - name: "bi_io_vec"
+        type: "struct bio_vec *"
+        description: "scatter-gather 向量数组"
+      - name: "bi_pool"
+        type: "struct bio_set *"
+        description: "分配此 bio 的内存池"
+      - name: "bi_inline_vecs"
+        type: "struct bio_vec[]"
+        description: "内联的 bio_vec (避免额外分配)"
+
+  bio_vec:
+    description: "BIO 向量 - 描述一个内存段"
+    header: "include/linux/bvec.h"
+    pattern: 'struct bio_vec\s*\{'
+    fields:
+      - name: "bv_page"
+        type: "struct page *"
+        description: "内存页指针"
+      - name: "bv_len"
+        type: "unsigned int"
+        description: "数据长度 (字节)"
+      - name: "bv_offset"
+        type: "unsigned int"
+        description: "页内偏移"
+
+  bvec_iter:
+    description: "BIO 迭代器 - 跟踪 I/O 进度"
+    header: "include/linux/bvec.h"
+    pattern: 'struct bvec_iter\s*\{'
+    fields:
+      - name: "bi_sector"
+        type: "sector_t"
+        description: "起始扇区号"
+      - name: "bi_size"
+        type: "unsigned int"
+        description: "剩余数据大小 (字节)"
+      - name: "bi_idx"
+        type: "unsigned int"
+        description: "当前 bio_vec 索引"
+      - name: "bi_bvec_done"
+        type: "unsigned int"
+        description: "当前 bio_vec 已处理字节"
+
+  bio_set:
+    description: "BIO 内存池 - 高效分配 bio 结构"
+    header: "include/linux/bio.h"
+    pattern: 'struct bio_set\s*\{'
+    fields:
+      - name: "bio_slab"
+        type: "struct kmem_cache *"
+        description: "bio 结构的 slab 缓存"
+      - name: "front_pad"
+        type: "unsigned int"
+        description: "前置填充大小"
+      - name: "back_pad"
+        type: "unsigned int"
+        description: "后置填充大小 (驱动私有数据)"
+      - name: "bio_pool"
+        type: "mempool_t"
+        description: "bio 内存池"
+      - name: "bvec_pool"
+        type: "mempool_t"
+        description: "bio_vec 内存池"
+
+
+# ============================================================
+# BIO ALLOCATION
+# ============================================================
+
+bio_allocation:
+  description: "BIO 分配与释放函数"
+  header: "linux/bio.h"
+  icon: "📦"
+
+  kernel_functions:
+    bio_alloc:
+      pattern: 'bio_alloc\s*\(\s*(?P<bdev>[^,]+)\s*,\s*(?P<nr_vecs>\w+)\s*,\s*(?P<opf>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配 BIO 结构 (6.0+ API)"
+      signature: "struct bio *bio_alloc(struct block_device *bdev, unsigned short nr_vecs, blk_opf_t opf, gfp_t gfp)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "bio 指针"
+        failure: "NULL (GFP_NOWAIT) 或阻塞直到成功"
+      parameters:
+        - name: "bdev"
+          description: "目标块设备 (可为 NULL)"
+        - name: "nr_vecs"
+          description: "需要的 bio_vec 数量"
+        - name: "opf"
+          description: "操作类型 (REQ_OP_* | REQ_*)"
+        - name: "gfp"
+          description: "内存分配标志"
+
+    bio_alloc_bioset:
+      pattern: 'bio_alloc_bioset\s*\(\s*(?P<bdev>[^,]+)\s*,\s*(?P<nr_vecs>\w+)\s*,\s*(?P<opf>\w+)\s*,\s*(?P<gfp>\w+)\s*,\s*(?P<bs>[^)]+)\s*\)'
+      description: "从指定 bioset 分配 BIO"
+      signature: "struct bio *bio_alloc_bioset(struct block_device *bdev, unsigned short nr_vecs, blk_opf_t opf, gfp_t gfp, struct bio_set *bs)"
+      context: "process"
+      can_sleep: true
+
+    bio_kmalloc:
+      pattern: 'bio_kmalloc\s*\(\s*(?P<nr_vecs>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "使用 kmalloc 分配 BIO (用于简单场景)"
+      signature: "struct bio *bio_kmalloc(unsigned short nr_vecs, gfp_t gfp)"
+      context: "process"
+      can_sleep: true
+
+    bio_init:
+      pattern: 'bio_init\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<bdev>[^,]+)\s*,\s*(?P<table>[^,]+)\s*,\s*(?P<max_vecs>\w+)\s*,\s*(?P<opf>\w+)\s*\)'
+      description: "初始化预分配的 BIO 结构"
+      signature: "void bio_init(struct bio *bio, struct block_device *bdev, struct bio_vec *table, unsigned short max_vecs, blk_opf_t opf)"
+      context: "any"
+      can_sleep: false
+
+    bio_reset:
+      pattern: 'bio_reset\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<bdev>[^,]+)\s*,\s*(?P<opf>\w+)\s*\)'
+      description: "重置 BIO 用于重用"
+      signature: "void bio_reset(struct bio *bio, struct block_device *bdev, blk_opf_t opf)"
+      context: "any"
+      can_sleep: false
+
+    bio_put:
+      pattern: 'bio_put\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "释放 BIO 引用 (引用计数减一)"
+      signature: "void bio_put(struct bio *bio)"
+      context: "any"
+      can_sleep: false
+
+    bio_get:
+      pattern: 'bio_get\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "增加 BIO 引用计数"
+      signature: "void bio_get(struct bio *bio)"
+      context: "any"
+      can_sleep: false
+
+
+# ============================================================
+# BIO DATA OPERATIONS
+# ============================================================
+
+bio_data_operations:
+  description: "BIO 数据管理函数"
+  header: "linux/bio.h"
+  icon: "📝"
+
+  kernel_functions:
+    bio_add_page:
+      pattern: 'bio_add_page\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<page>[^,]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<offset>\w+)\s*\)'
+      description: "添加页面数据到 BIO"
+      signature: "int bio_add_page(struct bio *bio, struct page *page, unsigned int len, unsigned int offset)"
+      context: "process"
+      can_sleep: false
+      return_value:
+        success: "添加的字节数"
+        failure: "0 (bio 已满或超出限制)"
+
+    bio_add_folio:
+      pattern: 'bio_add_folio\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<folio>[^,]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<offset>\w+)\s*\)'
+      description: "添加 folio 数据到 BIO (5.18+)"
+      signature: "bool bio_add_folio(struct bio *bio, struct folio *folio, size_t len, size_t offset)"
+      context: "process"
+      can_sleep: false
+
+    __bio_add_page:
+      pattern: '__bio_add_page\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<page>[^,]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<offset>\w+)\s*\)'
+      description: "无检查添加页面 (调用者保证合法)"
+      signature: "void __bio_add_page(struct bio *bio, struct page *page, unsigned int len, unsigned int offset)"
+      context: "process"
+      can_sleep: false
+
+    bio_iov_iter_get_pages:
+      pattern: 'bio_iov_iter_get_pages\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<iter>[^)]+)\s*\)'
+      description: "从用户空间 iov_iter 获取页面并添加到 bio"
+      signature: "int bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)"
+      context: "process"
+      can_sleep: true
+
+    bio_add_pc_page:
+      pattern: 'bio_add_pc_page\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<bio>[^,]+)\s*,\s*(?P<page>[^,]+)\s*,\s*(?P<len>\w+)\s*,\s*(?P<offset>\w+)\s*\)'
+      description: "为直通命令添加页面"
+      signature: "int bio_add_pc_page(struct request_queue *q, struct bio *bio, struct page *page, unsigned int len, unsigned int offset)"
+      context: "process"
+      can_sleep: false
+
+
+# ============================================================
+# BIO SUBMISSION
+# ============================================================
+
+bio_submission:
+  description: "BIO 提交函数"
+  header: "linux/bio.h"
+  icon: "🚀"
+
+  kernel_functions:
+    submit_bio:
+      pattern: 'submit_bio\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "异步提交 BIO 到块层"
+      signature: "void submit_bio(struct bio *bio)"
+      context: "process/softirq"
+      can_sleep: false
+      typical_actions:
+        - "更新统计计数"
+        - "检查设备状态"
+        - "调用 blk_mq_submit_bio"
+        - "触发调度器"
+
+    submit_bio_wait:
+      pattern: 'submit_bio_wait\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "同步提交 BIO 并等待完成"
+      signature: "int submit_bio_wait(struct bio *bio)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "blk_status_to_errno() 转换的错误码"
+
+    submit_bio_noacct:
+      pattern: 'submit_bio_noacct\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "提交 BIO (不更新统计)"
+      signature: "void submit_bio_noacct(struct bio *bio)"
+      context: "process/softirq"
+      can_sleep: false
+
+    submit_bio_noacct_nocheck:
+      pattern: 'submit_bio_noacct_nocheck\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "提交 BIO (无检查，用于递归)"
+      signature: "void submit_bio_noacct_nocheck(struct bio *bio)"
+      context: "process/softirq"
+      can_sleep: false
+
+
+# ============================================================
+# BIO COMPLETION
+# ============================================================
+
+bio_completion:
+  description: "BIO 完成处理"
+  header: "linux/bio.h"
+  icon: "✅"
+
+  kernel_functions:
+    bio_endio:
+      pattern: 'bio_endio\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "完成 BIO 处理并调用回调"
+      signature: "void bio_endio(struct bio *bio)"
+      context: "softirq/hardirq"
+      can_sleep: false
+      typical_actions:
+        - "检查 bi_status"
+        - "调用 bi_end_io 回调"
+        - "递归处理链式 bio"
+
+    bio_set_dev:
+      pattern: 'bio_set_dev\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<bdev>[^)]+)\s*\)'
+      description: "设置 BIO 的目标块设备"
+      signature: "void bio_set_dev(struct bio *bio, struct block_device *bdev)"
+      context: "any"
+      can_sleep: false
+
+    bio_associate_blkg:
+      pattern: 'bio_associate_blkg\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "关联 BIO 与 blkcg 组"
+      signature: "void bio_associate_blkg(struct bio *bio)"
+      context: "process"
+      can_sleep: false
+
+
+# ============================================================
+# BIO ITERATION MACROS
+# ============================================================
+
+bio_iteration:
+  description: "BIO 遍历宏"
+  header: "linux/bio.h"
+  icon: "🔄"
+
+  macros:
+    bio_for_each_segment:
+      pattern: 'bio_for_each_segment\s*\(\s*(?P<bvl>\w+)\s*,\s*(?P<bio>[^,]+)\s*,\s*(?P<iter>\w+)\s*\)'
+      description: "遍历 BIO 的每个数据段 (推荐)"
+      usage: |
+        struct bio_vec bvl;
+        struct bvec_iter iter;
+        
+        bio_for_each_segment(bvl, bio, iter) {
+            /* bvl.bv_page, bvl.bv_len, bvl.bv_offset */
+        }
+
+    bio_for_each_bvec:
+      pattern: 'bio_for_each_bvec\s*\(\s*(?P<bvl>\w+)\s*,\s*(?P<bio>[^,]+)\s*,\s*(?P<iter>\w+)\s*\)'
+      description: "遍历 BIO 的每个 bvec (可能合并相邻段)"
+      usage: |
+        struct bio_vec bvl;
+        struct bvec_iter iter;
+        
+        bio_for_each_bvec(bvl, bio, iter) {
+            /* 合并后的段 */
+        }
+
+    bio_for_each_segment_all:
+      pattern: 'bio_for_each_segment_all\s*\(\s*(?P<bvl>\w+)\s*,\s*(?P<bio>[^,]+)\s*,\s*(?P<iter>\w+)\s*\)'
+      description: "遍历所有 bio_vec (包括已处理的)"
+      usage: |
+        struct bio_vec *bvl;
+        struct bvec_iter_all iter;
+        
+        bio_for_each_segment_all(bvl, bio, iter) {
+            /* 完成后清理 */
+        }
+
+    bvec_iter_advance:
+      pattern: 'bvec_iter_advance\s*\(\s*(?P<bv>[^,]+)\s*,\s*(?P<iter>[^,]+)\s*,\s*(?P<bytes>\w+)\s*\)'
+      description: "推进迭代器指定字节数"
+      signature: "bool bvec_iter_advance(const struct bio_vec *bv, struct bvec_iter *iter, unsigned int bytes)"
+
+
+# ============================================================
+# BIO HELPER FUNCTIONS
+# ============================================================
+
+bio_helpers:
+  description: "BIO 辅助函数"
+  header: "linux/bio.h"
+  icon: "🛠️"
+
+  kernel_functions:
+    bio_sectors:
+      pattern: 'bio_sectors\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "获取 BIO 包含的扇区数"
+      signature: "static inline sector_t bio_sectors(struct bio *bio)"
+      return: "bi_iter.bi_size >> 9"
+
+    bio_cur_bytes:
+      pattern: 'bio_cur_bytes\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "获取当前段的字节数"
+      signature: "static inline unsigned int bio_cur_bytes(struct bio *bio)"
+
+    bio_data:
+      pattern: 'bio_data\s*\(\s*(?P<bio>[^)]+)\s*\)'
+      description: "获取当前数据指针 (仅单段 bio)"
+      signature: "static inline void *bio_data(struct bio *bio)"
+
+    bio_full:
+      pattern: 'bio_full\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<len>\w+)\s*\)'
+      description: "检查 BIO 是否已满"
+      signature: "static inline bool bio_full(struct bio *bio, unsigned len)"
+
+    bio_chain:
+      pattern: 'bio_chain\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+      description: "链接子 BIO 到父 BIO"
+      signature: "void bio_chain(struct bio *bio, struct bio *parent)"
+      typical_use: "用于拆分大 bio 后保持完成顺序"
+
+    bio_split:
+      pattern: 'bio_split\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<sectors>\w+)\s*,\s*(?P<gfp>\w+)\s*,\s*(?P<bs>[^)]+)\s*\)'
+      description: "拆分 BIO 为两个"
+      signature: "struct bio *bio_split(struct bio *bio, int sectors, gfp_t gfp, struct bio_set *bs)"
+      return_value:
+        success: "前半部分的新 bio"
+        note: "原 bio 变为后半部分"
+
+    bio_clone_fast:
+      pattern: 'bio_clone_fast\s*\(\s*(?P<bio>[^,]+)\s*,\s*(?P<gfp>\w+)\s*,\s*(?P<bs>[^)]+)\s*\)'
+      description: "快速克隆 BIO (共享 bio_vec)"
+      signature: "struct bio *bio_clone_fast(struct bio *bio, gfp_t gfp, struct bio_set *bs)"
+
+
+# ============================================================
+# BIO FLAGS AND OPERATIONS
+# ============================================================
+
+bio_flags:
+  description: "BIO 标志和操作类型"
+  header: "linux/bio.h"
+  icon: "🚩"
+
+  request_operations:
+    - name: "REQ_OP_READ"
+      value: "0"
+      description: "读操作"
+    - name: "REQ_OP_WRITE"
+      value: "1"
+      description: "写操作"
+    - name: "REQ_OP_FLUSH"
+      value: "2"
+      description: "刷新缓存"
+    - name: "REQ_OP_DISCARD"
+      value: "3"
+      description: "丢弃数据 (TRIM)"
+    - name: "REQ_OP_SECURE_ERASE"
+      value: "5"
+      description: "安全擦除"
+    - name: "REQ_OP_WRITE_ZEROES"
+      value: "9"
+      description: "写零"
+    - name: "REQ_OP_ZONE_OPEN"
+      value: "10"
+      description: "打开分区 (Zoned)"
+    - name: "REQ_OP_ZONE_CLOSE"
+      value: "11"
+      description: "关闭分区 (Zoned)"
+    - name: "REQ_OP_ZONE_FINISH"
+      value: "12"
+      description: "完成分区 (Zoned)"
+    - name: "REQ_OP_ZONE_RESET"
+      value: "15"
+      description: "重置分区 (Zoned)"
+
+  request_flags:
+    - name: "REQ_FAILFAST_DEV"
+      description: "设备错误时快速失败"
+    - name: "REQ_FAILFAST_TRANSPORT"
+      description: "传输错误时快速失败"
+    - name: "REQ_FAILFAST_DRIVER"
+      description: "驱动错误时快速失败"
+    - name: "REQ_SYNC"
+      description: "同步请求"
+    - name: "REQ_META"
+      description: "元数据 I/O"
+    - name: "REQ_PRIO"
+      description: "高优先级"
+    - name: "REQ_NOMERGE"
+      description: "禁止合并"
+    - name: "REQ_IDLE"
+      description: "空闲时执行"
+    - name: "REQ_FUA"
+      description: "强制写入存储介质"
+    - name: "REQ_PREFLUSH"
+      description: "先刷新缓存再写"
+    - name: "REQ_RAHEAD"
+      description: "预读请求"
+    - name: "REQ_BACKGROUND"
+      description: "后台 I/O"
+    - name: "REQ_NOWAIT"
+      description: "不等待资源"
+    - name: "REQ_POLLED"
+      description: "使用轮询完成"
+
+  bio_flags:
+    - name: "BIO_SEG_VALID"
+      description: "段数有效"
+    - name: "BIO_CLONED"
+      description: "bio 是克隆的"
+    - name: "BIO_BOUNCED"
+      description: "使用了 bounce buffer"
+    - name: "BIO_THROTTLED"
+      description: "已限流"
+    - name: "BIO_TRACE_COMPLETION"
+      description: "跟踪完成"
+    - name: "BIO_CGROUP_ACCT"
+      description: "cgroup 已计费"
+    - name: "BIO_QOS_THROTTLED"
+      description: "QoS 已限流"
+    - name: "BIO_QOS_MERGED"
+      description: "QoS 已合并"
+    - name: "BIO_REMAPPED"
+      description: "已重映射"
+    - name: "BIO_ZONE_WRITE_LOCKED"
+      description: "分区写锁定"
+
+
+# ============================================================
+# BIOSET MANAGEMENT
+# ============================================================
+
+bioset_management:
+  description: "BIO 内存池管理"
+  header: "linux/bio.h"
+  icon: "🏊"
+
+  kernel_functions:
+    bioset_init:
+      pattern: 'bioset_init\s*\(\s*(?P<bs>[^,]+)\s*,\s*(?P<pool_size>\w+)\s*,\s*(?P<front_pad>\w+)\s*,\s*(?P<flags>\w+)\s*\)'
+      description: "初始化 BIO 内存池"
+      signature: "int bioset_init(struct bio_set *bs, unsigned int pool_size, unsigned int front_pad, int flags)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ENOMEM"
+
+    bioset_exit:
+      pattern: 'bioset_exit\s*\(\s*(?P<bs>[^)]+)\s*\)'
+      description: "销毁 BIO 内存池"
+      signature: "void bioset_exit(struct bio_set *bs)"
+      context: "process"
+      can_sleep: true
+
+    bioset_init_from_src:
+      pattern: 'bioset_init_from_src\s*\(\s*(?P<bs>[^,]+)\s*,\s*(?P<src>[^)]+)\s*\)'
+      description: "从源 bioset 复制设置初始化"
+      signature: "int bioset_init_from_src(struct bio_set *bs, struct bio_set *src)"
+      context: "process"
+      can_sleep: true
+
+  bioset_flags:
+    - name: "BIOSET_NEED_BVECS"
+      description: "需要分配 bio_vec"
+    - name: "BIOSET_NEED_RESCUER"
+      description: "需要救援线程 (避免死锁)"
+    - name: "BIOSET_PERCPU_CACHE"
+      description: "使用 per-CPU 缓存"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  bio_submit_chain:
+    description: "BIO 提交调用链"
+    trigger: "文件系统或直接 I/O 提交 bio"
+    chain:
+      - function: "submit_bio"
+        file: "block/blk-core.c"
+        description: "BIO 提交入口"
+        context: "process"
+      - function: "submit_bio_noacct"
+        file: "block/blk-core.c"
+        description: "实际提交 (无统计)"
+      - function: "__submit_bio"
+        file: "block/blk-core.c"
+        description: "内部提交处理"
+      - function: "__submit_bio_noacct"
+        file: "block/blk-core.c"
+        description: "递归提交支持"
+      - function: "blk_mq_submit_bio"
+        file: "block/blk-mq.c"
+        description: "多队列提交"
+      - function: "blk_mq_get_new_requests"
+        file: "block/blk-mq.c"
+        description: "获取请求结构"
+      - function: "blk_mq_try_issue_directly"
+        file: "block/blk-mq.c"
+        description: "尝试直接发送"
+      - function: "queue_rq"
+        file: "驱动代码"
+        description: "驱动队列请求回调"
+        is_user_entry: true
+
+  bio_completion_chain:
+    description: "BIO 完成调用链"
+    trigger: "I/O 完成中断"
+    chain:
+      - function: "blk_mq_complete_request"
+        file: "block/blk-mq.c"
+        description: "请求完成入口"
+        context: "softirq"
+      - function: "__blk_mq_complete_request"
+        file: "block/blk-mq.c"
+        description: "完成请求处理"
+      - function: "blk_mq_end_request"
+        file: "block/blk-mq.c"
+        description: "结束请求"
+      - function: "blk_update_request"
+        file: "block/blk-core.c"
+        description: "更新请求状态"
+      - function: "bio_endio"
+        file: "block/bio.c"
+        description: "调用 bio 完成回调"
+      - function: "bio->bi_end_io"
+        file: "调用者代码"
+        description: "用户完成回调"
+        is_user_entry: true
+
+  bio_split_chain:
+    description: "BIO 拆分调用链"
+    trigger: "bio 超过设备限制"
+    chain:
+      - function: "__blk_queue_split"
+        file: "block/blk-merge.c"
+        description: "检查并拆分 bio"
+      - function: "bio_split"
+        file: "block/bio.c"
+        description: "执行拆分"
+      - function: "bio_chain"
+        file: "block/bio.c"
+        description: "链接拆分后的 bio"
+      - function: "submit_bio_noacct"
+        file: "block/blk-core.c"
+        description: "提交前半部分"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 BIO 分配和提交"
+    kernel_version: "6.0+"
+    code: |
+      /* 同步读取一个页面 */
+      static int read_page_sync(struct block_device *bdev,
+                                sector_t sector, struct page *page)
+      {
+          struct bio *bio;
+          int ret;
+          
+          /* 分配 bio，1 个 bio_vec */
+          bio = bio_alloc(bdev, 1, REQ_OP_READ, GFP_KERNEL);
+          if (!bio)
+              return -ENOMEM;
+          
+          /* 设置起始扇区 */
+          bio->bi_iter.bi_sector = sector;
+          
+          /* 添加页面 */
+          if (bio_add_page(bio, page, PAGE_SIZE, 0) != PAGE_SIZE) {
+              bio_put(bio);
+              return -EIO;
+          }
+          
+          /* 同步提交并等待 */
+          ret = submit_bio_wait(bio);
+          
+          bio_put(bio);
+          return ret;
+      }
+
+  - description: "异步 BIO 提交与完成回调"
+    kernel_version: "6.0+"
+    code: |
+      struct my_io_context {
+          struct completion done;
+          blk_status_t status;
+      };
+      
+      /* 完成回调 */
+      static void my_bio_endio(struct bio *bio)
+      {
+          struct my_io_context *ctx = bio->bi_private;
+          
+          ctx->status = bio->bi_status;
+          complete(&ctx->done);
+          
+          bio_put(bio);
+      }
+      
+      /* 异步提交 */
+      static int submit_async_read(struct block_device *bdev,
+                                   sector_t sector, struct page *page)
+      {
+          struct my_io_context ctx;
+          struct bio *bio;
+          
+          init_completion(&ctx.done);
+          
+          bio = bio_alloc(bdev, 1, REQ_OP_READ, GFP_KERNEL);
+          bio->bi_iter.bi_sector = sector;
+          bio_add_page(bio, page, PAGE_SIZE, 0);
+          
+          /* 设置完成回调 */
+          bio->bi_end_io = my_bio_endio;
+          bio->bi_private = &ctx;
+          
+          /* 异步提交 */
+          submit_bio(bio);
+          
+          /* 等待完成 */
+          wait_for_completion(&ctx.done);
+          
+          return blk_status_to_errno(ctx.status);
+      }
+
+  - description: "遍历 BIO 数据段"
+    kernel_version: "5.0+"
+    code: |
+      /* 遍历并处理每个数据段 */
+      static void process_bio_data(struct bio *bio)
+      {
+          struct bio_vec bvl;
+          struct bvec_iter iter;
+          void *data;
+          
+          bio_for_each_segment(bvl, bio, iter) {
+              /* 映射页面获取数据指针 */
+              data = kmap_local_page(bvl.bv_page);
+              data += bvl.bv_offset;
+              
+              /* 处理数据 */
+              pr_info("Segment: %p, len=%u, offset=%u\n",
+                      data, bvl.bv_len, bvl.bv_offset);
+              
+              /* 如果是写操作，可以检查数据 */
+              if (bio_data_dir(bio) == WRITE) {
+                  /* 检查写入数据 */
+              }
+              
+              kunmap_local(data);
+          }
+      }
+
+  - description: "使用 bioset 创建带私有数据的 bio"
+    kernel_version: "5.0+"
+    code: |
+      struct my_bio_private {
+          struct work_struct work;
+          void *driver_data;
+          unsigned long flags;
+      };
+      
+      static struct bio_set my_bioset;
+      
+      static int __init my_init(void)
+      {
+          /* 初始化 bioset，front_pad 用于私有数据 */
+          return bioset_init(&my_bioset, 64,
+                             offsetof(struct my_bio_private, work),
+                             BIOSET_NEED_BVECS);
+      }
+      
+      static struct bio *my_alloc_bio(struct block_device *bdev,
+                                      int nr_vecs, blk_opf_t opf)
+      {
+          struct bio *bio;
+          struct my_bio_private *priv;
+          
+          bio = bio_alloc_bioset(bdev, nr_vecs, opf,
+                                 GFP_KERNEL, &my_bioset);
+          if (!bio)
+              return NULL;
+          
+          /* 获取私有数据指针 */
+          priv = container_of(bio, struct my_bio_private, work);
+          /* 注意：实际偏移取决于 front_pad 设置 */
+          
+          return bio;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          bioset_exit(&my_bioset);
+      }
+
+  - description: "BIO 拆分处理"
+    kernel_version: "5.0+"
+    code: |
+      /* 堆叠设备驱动中的 bio 拆分 */
+      static void my_make_request(struct bio *bio)
+      {
+          struct block_device *lower_bdev = get_lower_device(bio);
+          unsigned int max_sectors = 256; /* 设备限制 */
+          
+          /* 如果 bio 太大，需要拆分 */
+          while (bio_sectors(bio) > max_sectors) {
+              struct bio *split;
+              
+              /* 拆分前半部分 */
+              split = bio_split(bio, max_sectors,
+                                GFP_NOIO, &my_bioset);
+              if (!split) {
+                  bio->bi_status = BLK_STS_RESOURCE;
+                  bio_endio(bio);
+                  return;
+              }
+              
+              /* 链接以保持完成顺序 */
+              bio_chain(split, bio);
+              
+              /* 提交前半部分 */
+              bio_set_dev(split, lower_bdev);
+              submit_bio_noacct(split);
+          }
+          
+          /* 提交剩余部分 */
+          bio_set_dev(bio, lower_bdev);
+          submit_bio_noacct(bio);
+      }

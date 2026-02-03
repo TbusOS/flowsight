@@ -341,3 +341,580 @@ examples:
           platform_set_drvdata(pdev, priv);
           return 0;
       }
+
+  - description: "轮询模式邮箱控制器示例"
+    kernel_version: "5.4+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/mailbox_controller.h>
+      #include <linux/platform_device.h>
+      
+      #define POLL_MBOX_NUM_CHANS  2
+      #define POLL_PERIOD_US       100
+      
+      struct poll_mbox {
+          struct mbox_controller mbox;
+          struct mbox_chan chans[POLL_MBOX_NUM_CHANS];
+          void __iomem *regs;
+          struct timer_list poll_timer;
+      };
+      
+      static int poll_mbox_send_data(struct mbox_chan *chan, void *data)
+      {
+          struct poll_mbox *mbox = container_of(chan->mbox,
+                                                 struct poll_mbox, mbox);
+          u32 *msg = data;
+          int idx = (int)(uintptr_t)chan->con_priv;
+          
+          /* 检查发送缓冲区是否可用 */
+          if (readl(mbox->regs + MBOX_TX_STATUS(idx)) & TX_BUSY)
+              return -EBUSY;
+          
+          /* 写入数据并触发发送 */
+          writel(*msg, mbox->regs + MBOX_TX_DATA(idx));
+          writel(TX_TRIGGER, mbox->regs + MBOX_TX_CTRL(idx));
+          
+          return 0;
+      }
+      
+      static bool poll_mbox_last_tx_done(struct mbox_chan *chan)
+      {
+          struct poll_mbox *mbox = container_of(chan->mbox,
+                                                 struct poll_mbox, mbox);
+          int idx = (int)(uintptr_t)chan->con_priv;
+          
+          return !(readl(mbox->regs + MBOX_TX_STATUS(idx)) & TX_BUSY);
+      }
+      
+      static bool poll_mbox_peek_data(struct mbox_chan *chan)
+      {
+          struct poll_mbox *mbox = container_of(chan->mbox,
+                                                 struct poll_mbox, mbox);
+          int idx = (int)(uintptr_t)chan->con_priv;
+          
+          return readl(mbox->regs + MBOX_RX_STATUS(idx)) & RX_DATA_AVAIL;
+      }
+      
+      static const struct mbox_chan_ops poll_mbox_ops = {
+          .send_data    = poll_mbox_send_data,
+          .last_tx_done = poll_mbox_last_tx_done,
+          .peek_data    = poll_mbox_peek_data,
+      };
+      
+      static int poll_mbox_probe(struct platform_device *pdev)
+      {
+          struct poll_mbox *mbox;
+          int i, ret;
+          
+          mbox = devm_kzalloc(&pdev->dev, sizeof(*mbox), GFP_KERNEL);
+          if (!mbox)
+              return -ENOMEM;
+          
+          mbox->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(mbox->regs))
+              return PTR_ERR(mbox->regs);
+          
+          for (i = 0; i < POLL_MBOX_NUM_CHANS; i++)
+              mbox->chans[i].con_priv = (void *)(uintptr_t)i;
+          
+          mbox->mbox.dev = &pdev->dev;
+          mbox->mbox.ops = &poll_mbox_ops;
+          mbox->mbox.chans = mbox->chans;
+          mbox->mbox.num_chans = POLL_MBOX_NUM_CHANS;
+          mbox->mbox.txdone_poll = true;          /* 启用轮询模式 */
+          mbox->mbox.txpoll_period = POLL_PERIOD_US;
+          
+          ret = devm_mbox_controller_register(&pdev->dev, &mbox->mbox);
+          if (ret)
+              return ret;
+          
+          platform_set_drvdata(pdev, mbox);
+          return 0;
+      }
+
+  - description: "Doorbell 邮箱控制器示例"
+    kernel_version: "5.10+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/mailbox_controller.h>
+      #include <linux/platform_device.h>
+      #include <linux/interrupt.h>
+      
+      #define DOORBELL_NUM_CHANS  8
+      
+      struct doorbell_mbox {
+          struct mbox_controller mbox;
+          struct mbox_chan chans[DOORBELL_NUM_CHANS];
+          void __iomem *regs;
+          spinlock_t lock;
+      };
+      
+      /* Doorbell 模式：只发送信号，不传输数据 */
+      static int doorbell_send_signal(struct mbox_chan *chan, void *data)
+      {
+          struct doorbell_mbox *mbox = container_of(chan->mbox,
+                                                     struct doorbell_mbox, mbox);
+          int idx = (int)(uintptr_t)chan->con_priv;
+          unsigned long flags;
+          
+          spin_lock_irqsave(&mbox->lock, flags);
+          
+          /* 触发 doorbell 中断到远端 */
+          writel(BIT(idx), mbox->regs + DOORBELL_SET);
+          
+          spin_unlock_irqrestore(&mbox->lock, flags);
+          
+          return 0;
+      }
+      
+      static int doorbell_startup(struct mbox_chan *chan)
+      {
+          struct doorbell_mbox *mbox = container_of(chan->mbox,
+                                                     struct doorbell_mbox, mbox);
+          int idx = (int)(uintptr_t)chan->con_priv;
+          
+          /* 使能该通道的中断 */
+          writel(BIT(idx), mbox->regs + DOORBELL_INT_EN);
+          
+          return 0;
+      }
+      
+      static void doorbell_shutdown(struct mbox_chan *chan)
+      {
+          struct doorbell_mbox *mbox = container_of(chan->mbox,
+                                                     struct doorbell_mbox, mbox);
+          int idx = (int)(uintptr_t)chan->con_priv;
+          
+          /* 禁用该通道的中断 */
+          writel(BIT(idx), mbox->regs + DOORBELL_INT_DIS);
+      }
+      
+      static const struct mbox_chan_ops doorbell_mbox_ops = {
+          .send_data = doorbell_send_signal,
+          .startup   = doorbell_startup,
+          .shutdown  = doorbell_shutdown,
+      };
+      
+      static irqreturn_t doorbell_irq_handler(int irq, void *data)
+      {
+          struct doorbell_mbox *mbox = data;
+          u32 status = readl(mbox->regs + DOORBELL_INT_STATUS);
+          int i;
+          
+          for (i = 0; i < DOORBELL_NUM_CHANS; i++) {
+              if (status & BIT(i)) {
+                  /* 清除中断 */
+                  writel(BIT(i), mbox->regs + DOORBELL_INT_CLR);
+                  /* 通知客户端收到信号 */
+                  mbox_chan_received_data(&mbox->chans[i], NULL);
+              }
+          }
+          
+          return IRQ_HANDLED;
+      }
+      
+      static int doorbell_mbox_probe(struct platform_device *pdev)
+      {
+          struct doorbell_mbox *mbox;
+          int i, ret, irq;
+          
+          mbox = devm_kzalloc(&pdev->dev, sizeof(*mbox), GFP_KERNEL);
+          if (!mbox)
+              return -ENOMEM;
+          
+          spin_lock_init(&mbox->lock);
+          
+          mbox->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(mbox->regs))
+              return PTR_ERR(mbox->regs);
+          
+          irq = platform_get_irq(pdev, 0);
+          if (irq < 0)
+              return irq;
+          
+          for (i = 0; i < DOORBELL_NUM_CHANS; i++)
+              mbox->chans[i].con_priv = (void *)(uintptr_t)i;
+          
+          mbox->mbox.dev = &pdev->dev;
+          mbox->mbox.ops = &doorbell_mbox_ops;
+          mbox->mbox.chans = mbox->chans;
+          mbox->mbox.num_chans = DOORBELL_NUM_CHANS;
+          mbox->mbox.txdone_irq = false;  /* Doorbell 不需要 txdone */
+          
+          ret = devm_mbox_controller_register(&pdev->dev, &mbox->mbox);
+          if (ret)
+              return ret;
+          
+          ret = devm_request_irq(&pdev->dev, irq, doorbell_irq_handler,
+                                  0, "doorbell-mbox", mbox);
+          if (ret)
+              return ret;
+          
+          platform_set_drvdata(pdev, mbox);
+          return 0;
+      }
+
+
+# ============================================================
+# ADVANCED DATA STRUCTURES
+# ============================================================
+
+advanced_data_structures:
+  mbox_client:
+    pattern: 'struct mbox_client\s*\{'
+    description: "邮箱客户端结构"
+    file: "include/linux/mailbox_client.h"
+    fields:
+      - name: "dev"
+        type: "struct device *"
+        description: "关联设备"
+      - name: "tx_block"
+        type: "bool"
+        description: "发送是否阻塞"
+      - name: "tx_tout"
+        type: "unsigned long"
+        description: "发送超时(毫秒)"
+      - name: "knows_txdone"
+        type: "bool"
+        description: "客户端是否知道发送完成"
+      - name: "rx_callback"
+        type: "void (*)(struct mbox_client *, void *)"
+        description: "接收回调"
+      - name: "tx_done"
+        type: "void (*)(struct mbox_client *, void *, int)"
+        description: "发送完成回调"
+      - name: "tx_prepare"
+        type: "void (*)(struct mbox_client *, void *)"
+        description: "发送准备回调"
+
+  mbox_chan_ops:
+    pattern: 'struct mbox_chan_ops\s*\{'
+    description: "邮箱通道操作结构"
+    file: "include/linux/mailbox_controller.h"
+    fields:
+      - name: "send_data"
+        type: "int (*)(struct mbox_chan *, void *)"
+        description: "发送数据"
+      - name: "startup"
+        type: "int (*)(struct mbox_chan *)"
+        description: "启动通道"
+      - name: "shutdown"
+        type: "void (*)(struct mbox_chan *)"
+        description: "关闭通道"
+      - name: "last_tx_done"
+        type: "bool (*)(struct mbox_chan *)"
+        description: "检查上次发送完成"
+      - name: "peek_data"
+        type: "bool (*)(struct mbox_chan *)"
+        description: "检查是否有数据"
+
+  mbox_message:
+    description: "邮箱消息格式（硬件相关）"
+    typical_fields:
+      - name: "command"
+        description: "命令/消息类型"
+      - name: "data"
+        description: "消息数据"
+      - name: "response"
+        description: "响应数据"
+      - name: "status"
+        description: "状态码"
+
+
+# ============================================================
+# TXDONE NOTIFICATION MODES
+# ============================================================
+
+txdone_modes:
+  description: "发送完成通知模式"
+  modes:
+    irq_mode:
+      description: "中断通知模式"
+      config: "mbox->txdone_irq = true"
+      trigger: "mbox_chan_txdone()"
+      context: "hardirq"
+      usage: |
+        适用于：
+        - 硬件支持发送完成中断
+        - 需要精确的发送完成通知
+        - 低延迟要求
+
+    poll_mode:
+      description: "轮询模式"
+      config: "mbox->txdone_poll = true"
+      period: "mbox->txpoll_period"
+      callback: "ops->last_tx_done()"
+      context: "timer softirq"
+      usage: |
+        适用于：
+        - 硬件不支持发送完成中断
+        - 简单的邮箱实现
+        - 发送完成状态可查询
+
+    ack_mode:
+      description: "客户端确认模式"
+      config: "client->knows_txdone = true"
+      trigger: "mbox_client_txdone()"
+      context: "客户端决定"
+      usage: |
+        适用于：
+        - 客户端知道何时发送完成
+        - 协议层面的确认机制
+        - 响应消息触发完成
+
+
+# ============================================================
+# ADVANCED CALL CHAINS
+# ============================================================
+
+advanced_call_chains:
+  poll_txdone:
+    description: "轮询模式发送完成流程"
+    chain:
+      - caller: "client driver"
+        callee: "mbox_send_message"
+        description: "发送消息"
+      - caller: "mbox_send_message"
+        callee: "chan->mbox->ops->send_data"
+        description: "调用控制器发送"
+      - caller: "定时器到期"
+        callee: "txdone_hrtimer"
+        context: "hrtimer softirq"
+        description: "轮询定时器"
+      - caller: "txdone_hrtimer"
+        callee: "ops->last_tx_done"
+        description: "检查发送是否完成"
+      - caller: "txdone_hrtimer"
+        callee: "tx_tick"
+        description: "处理完成的发送"
+      - caller: "tx_tick"
+        callee: "client->tx_done"
+        description: "通知客户端"
+
+  doorbell_signal:
+    description: "Doorbell 信号流程"
+    chain:
+      - caller: "client driver"
+        callee: "mbox_send_message(chan, NULL)"
+        description: "发送 doorbell 信号"
+      - caller: "mbox_send_message"
+        callee: "ops->send_data"
+        description: "触发 doorbell"
+      - caller: "send_data"
+        callee: "writel(DOORBELL_SET)"
+        description: "写寄存器触发中断"
+      - caller: "远端处理完成"
+        callee: "doorbell_irq_handler"
+        context: "hardirq"
+        description: "收到响应"
+      - caller: "doorbell_irq_handler"
+        callee: "mbox_chan_received_data(chan, NULL)"
+        description: "通知客户端"
+
+  bidirectional_comm:
+    description: "双向通信流程"
+    chain:
+      - caller: "client A"
+        callee: "mbox_send_message"
+        description: "A 发送请求"
+      - caller: "controller"
+        callee: "write to TX register"
+        description: "写发送寄存器"
+      - caller: "remote CPU (B)"
+        callee: "process request"
+        description: "B 处理请求"
+      - caller: "remote CPU (B)"
+        callee: "write response to B's TX"
+        description: "B 发送响应"
+      - caller: "A's IRQ handler"
+        callee: "mbox_chan_received_data"
+        context: "hardirq"
+        description: "A 收到响应"
+
+
+# ============================================================
+# PLATFORM SPECIFIC IMPLEMENTATIONS
+# ============================================================
+
+platform_implementations:
+  arm_mhu:
+    description: "ARM Message Handling Unit"
+    file: "drivers/mailbox/arm_mhu.c"
+    features:
+      - "双通道（低优先级/高优先级）"
+      - "Doorbell 模式"
+      - "可选安全通道"
+    registers:
+      - "MHU_LP_STAT - 低优先级状态"
+      - "MHU_LP_SET - 低优先级设置"
+      - "MHU_LP_CLEAR - 低优先级清除"
+      - "MHU_HP_STAT - 高优先级状态"
+
+  arm_mhu_db:
+    description: "ARM MHU Doorbell"
+    file: "drivers/mailbox/arm_mhu_db.c"
+    features:
+      - "多 doorbell 通道"
+      - "每个通道独立中断"
+      - "支持 SCMI 协议"
+
+  imx_mu:
+    description: "i.MX Message Unit"
+    file: "drivers/mailbox/imx-mailbox.c"
+    features:
+      - "4 个发送/接收通道"
+      - "通用中断"
+      - "支持多核通信"
+    registers:
+      - "TR[0-3] - 发送寄存器"
+      - "RR[0-3] - 接收寄存器"
+      - "SR - 状态寄存器"
+      - "CR - 控制寄存器"
+
+  omap_mbox:
+    description: "TI OMAP Mailbox"
+    file: "drivers/mailbox/omap-mailbox.c"
+    features:
+      - "FIFO 队列"
+      - "多处理器支持"
+      - "用于 DSP/IPU 通信"
+
+  stm32_ipcc:
+    description: "STM32 IPCC"
+    file: "drivers/mailbox/stm32-ipcc.c"
+    features:
+      - "双向通道"
+      - "用于 Cortex-M4 通信"
+      - "支持唤醒"
+
+
+# ============================================================
+# SCMI INTEGRATION
+# ============================================================
+
+scmi_mailbox:
+  description: "SCMI (System Control and Management Interface) 与 Mailbox 集成"
+  header: "include/linux/scmi_protocol.h"
+  
+  architecture:
+    description: |
+      SCMI 使用 Mailbox 作为传输层与固件通信：
+      
+      ┌─────────────────┐
+      │  SCMI Protocol  │  (电源/时钟/传感器等协议)
+      ├─────────────────┤
+      │ SCMI Transport  │  (消息封装/解析)
+      ├─────────────────┤
+      │ Mailbox Client  │  (通道请求/消息发送)
+      ├─────────────────┤
+      │ Mailbox Core    │  (通道管理)
+      ├─────────────────┤
+      │ Mailbox Ctrl    │  (硬件操作)
+      └─────────────────┘
+
+  typical_flow:
+    - step: "SCMI 驱动请求邮箱通道"
+      code: "chan = mbox_request_channel_byname(cl, \"tx\");"
+    - step: "发送 SCMI 消息"
+      code: "mbox_send_message(chan, scmi_msg);"
+    - step: "等待响应或超时"
+      code: "wait_for_completion_timeout(&done, timeout);"
+    - step: "处理响应"
+      code: "scmi_rx_callback() 被调用"
+
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+
+kernel_version_notes:
+  v3_18:
+    description: "Mailbox 框架首次引入"
+    changes:
+      - "基本的控制器/客户端 API"
+      - "中断和轮询模式支持"
+
+  v4_0:
+    description: "API 稳定化"
+    changes:
+      - "devm_mbox_controller_register() 添加"
+      - "改进的错误处理"
+
+  v4_19:
+    description: "SCMI 支持"
+    changes:
+      - "与 SCMI 协议集成"
+      - "ARM MHU doorbell 驱动"
+
+  v5_4:
+    description: "hrtimer 轮询"
+    changes:
+      - "使用 hrtimer 替代 timer_list"
+      - "更精确的轮询周期"
+
+  v5_10:
+    description: "多通道改进"
+    changes:
+      - "改进的通道查找"
+      - "of_xlate 增强"
+      - "更好的设备树支持"
+
+  v5_15:
+    description: "错误处理增强"
+    changes:
+      - "更详细的错误码"
+      - "调试信息改进"
+
+  v6_0:
+    description: "现代化更新"
+    changes:
+      - "移除废弃 API"
+      - "性能优化"
+      - "文档更新"
+
+
+# ============================================================
+# DEBUGGING AND TRACING
+# ============================================================
+
+debugging:
+  debugfs:
+    description: "DebugFS 接口"
+    path: "/sys/kernel/debug/mailbox/"
+    files:
+      - name: "message_count"
+        description: "消息计数"
+      - name: "state"
+        description: "通道状态"
+
+  tracepoints:
+    description: "Mailbox 跟踪点"
+    events:
+      - name: "mbox:mbox_send"
+        description: "发送消息"
+        fields: "chan, msg"
+      - name: "mbox:mbox_recv"
+        description: "接收消息"
+        fields: "chan, msg"
+
+  common_issues:
+    timeout:
+      symptom: "mbox_send_message 返回 -ETIME"
+      causes:
+        - "远端未响应"
+        - "中断未正确配置"
+        - "硬件问题"
+      debug: |
+        1. 检查远端是否正常运行
+        2. 验证中断配置
+        3. 查看硬件状态寄存器
+
+    busy:
+      symptom: "mbox_send_message 返回 -EBUSY"
+      causes:
+        - "上一次发送未完成"
+        - "消息队列满"
+      debug: |
+        1. 检查 txdone 通知是否正常
+        2. 确认 last_tx_done 实现正确
+        3. 增加重试机制

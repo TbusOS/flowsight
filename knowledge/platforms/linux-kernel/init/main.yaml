@@ -1,0 +1,886 @@
+# Linux Kernel Initialization Knowledge Base
+#
+# Reference: init/main.c
+# Reference: https://www.kernel.org/doc/html/latest/core-api/boot-time-mm.html
+# Kernel Version: 4.0+
+
+# ============================================================
+# KERNEL BOOT PROCESS - 内核启动流程
+# ============================================================
+
+kernel_boot:
+  description: "Kernel Boot Process - 内核启动流程"
+  icon: "🚀"
+  kernel_version: "2.6+"
+
+  boot_stages:
+    - stage: "Architecture-specific startup"
+      description: "架构相关的早期启动代码"
+      files:
+        - "arch/arm/kernel/head.S"
+        - "arch/arm64/kernel/head.S"
+        - "arch/x86/kernel/head_64.S"
+      notes:
+        - "设置 MMU、页表"
+        - "初始化最小硬件"
+        - "跳转到 start_kernel"
+
+    - stage: "start_kernel"
+      description: "内核主初始化函数"
+      file: "init/main.c"
+      notes:
+        - "C 语言入口点"
+        - "初始化所有内核子系统"
+
+    - stage: "rest_init"
+      description: "创建初始进程"
+      file: "init/main.c"
+      notes:
+        - "创建 init 进程 (PID 1)"
+        - "创建 kthreadd (PID 2)"
+
+    - stage: "kernel_init"
+      description: "内核初始化线程"
+      file: "init/main.c"
+      notes:
+        - "执行 initcalls"
+        - "挂载根文件系统"
+        - "启动 /sbin/init"
+
+  call_chains:
+    boot_sequence:
+      description: "完整启动调用链"
+      chain:
+        - function: "arch-specific entry"
+          description: "架构相关入口 (head.S)"
+        - function: "start_kernel"
+          file: "init/main.c"
+          description: "内核主初始化"
+        - function: "rest_init"
+          file: "init/main.c"
+          description: "创建初始进程"
+        - function: "kernel_init"
+          file: "init/main.c"
+          description: "内核初始化线程"
+        - function: "do_initcalls"
+          file: "init/main.c"
+          description: "执行所有 initcalls"
+        - function: "run_init_process"
+          file: "init/main.c"
+          description: "启动用户空间 init"
+
+
+# ============================================================
+# START_KERNEL - 内核主初始化
+# ============================================================
+
+start_kernel:
+  description: "start_kernel - 内核 C 语言入口点"
+  file: "init/main.c"
+  icon: "🎯"
+  kernel_version: "2.6+"
+
+  context:
+    type: "boot"
+    interrupts: "disabled"
+    scheduler: "not running"
+    memory: "early boot allocator"
+
+  initialization_sequence:
+    - function: "set_task_stack_end_magic"
+      description: "设置栈溢出检测魔数"
+
+    - function: "smp_setup_processor_id"
+      description: "设置当前 CPU ID"
+
+    - function: "debug_objects_early_init"
+      description: "调试对象早期初始化"
+
+    - function: "cgroup_init_early"
+      description: "cgroup 早期初始化"
+
+    - function: "local_irq_disable"
+      description: "禁用本地中断"
+
+    - function: "boot_cpu_init"
+      description: "初始化引导 CPU"
+
+    - function: "page_address_init"
+      description: "页地址映射初始化"
+
+    - function: "setup_arch"
+      description: "架构相关初始化"
+      notes:
+        - "解析 DTB/ACPI"
+        - "设置内存布局"
+        - "初始化 early console"
+
+    - function: "setup_command_line"
+      description: "解析命令行参数"
+
+    - function: "setup_nr_cpu_ids"
+      description: "设置 CPU 数量"
+
+    - function: "setup_per_cpu_areas"
+      description: "设置 per-CPU 区域"
+
+    - function: "smp_prepare_boot_cpu"
+      description: "准备引导 CPU"
+
+    - function: "build_all_zonelists"
+      description: "构建所有内存区域列表"
+
+    - function: "page_alloc_init"
+      description: "页分配器初始化"
+
+    - function: "trap_init"
+      description: "陷阱/异常初始化"
+
+    - function: "mm_init"
+      description: "内存管理初始化"
+      notes:
+        - "mem_init: 释放 bootmem"
+        - "kmem_cache_init: slab 初始化"
+        - "vmalloc_init: vmalloc 初始化"
+
+    - function: "sched_init"
+      description: "调度器初始化"
+
+    - function: "preempt_disable"
+      description: "禁用抢占"
+
+    - function: "idr_init_cache"
+      description: "IDR 缓存初始化"
+
+    - function: "rcu_init"
+      description: "RCU 初始化"
+
+    - function: "trace_init"
+      description: "跟踪系统初始化"
+
+    - function: "radix_tree_init"
+      description: "基数树初始化"
+
+    - function: "early_irq_init"
+      description: "早期中断初始化"
+
+    - function: "init_IRQ"
+      description: "中断控制器初始化"
+
+    - function: "tick_init"
+      description: "时钟 tick 初始化"
+
+    - function: "rcu_init_nohz"
+      description: "RCU nohz 初始化"
+
+    - function: "init_timers"
+      description: "定时器子系统初始化"
+
+    - function: "hrtimers_init"
+      description: "高精度定时器初始化"
+
+    - function: "softirq_init"
+      description: "软中断初始化"
+
+    - function: "timekeeping_init"
+      description: "时间管理初始化"
+
+    - function: "time_init"
+      description: "架构相关时间初始化"
+
+    - function: "perf_event_init"
+      description: "性能事件初始化"
+
+    - function: "profile_init"
+      description: "内核 profiling 初始化"
+
+    - function: "call_function_init"
+      description: "跨 CPU 调用初始化"
+
+    - function: "local_irq_enable"
+      description: "启用本地中断"
+
+    - function: "console_init"
+      description: "控制台初始化"
+
+    - function: "fork_init"
+      description: "fork 子系统初始化"
+
+    - function: "proc_caches_init"
+      description: "进程缓存初始化"
+
+    - function: "buffer_init"
+      description: "缓冲区初始化"
+
+    - function: "signals_init"
+      description: "信号子系统初始化"
+
+    - function: "vfs_caches_init"
+      description: "VFS 缓存初始化"
+
+    - function: "arch_call_rest_init"
+      description: "调用 rest_init"
+
+  patterns:
+    - pattern: 'asmlinkage\s+__visible\s+void\s+__init\s+start_kernel\s*\(\s*void\s*\)'
+      description: "start_kernel 函数定义"
+
+
+# ============================================================
+# REST_INIT - 创建初始进程
+# ============================================================
+
+rest_init:
+  description: "rest_init - 创建 init 和 kthreadd"
+  file: "init/main.c"
+  icon: "🌱"
+  kernel_version: "2.6+"
+
+  context:
+    type: "boot"
+    scheduler: "about to start"
+
+  operations:
+    - function: "rcu_scheduler_starting"
+      description: "通知 RCU 调度器即将启动"
+
+    - function: "user_mode_thread(kernel_init, NULL, CLONE_FS)"
+      description: "创建 init 进程 (PID 1)"
+      notes:
+        - "以 kernel_init 为入口"
+        - "最终执行用户空间 init"
+
+    - function: "numa_default_policy"
+      description: "设置默认 NUMA 策略"
+
+    - function: "pid = kernel_thread(kthreadd, NULL, NULL, CLONE_FS | CLONE_FILES)"
+      description: "创建 kthreadd (PID 2)"
+      notes:
+        - "所有内核线程的父进程"
+        - "负责创建新的内核线程"
+
+    - function: "complete(&kthreadd_done)"
+      description: "通知 kthreadd 创建完成"
+
+    - function: "schedule_preempt_disabled"
+      description: "启动调度器"
+
+    - function: "cpu_startup_entry(CPUHP_ONLINE)"
+      description: "进入 idle 循环"
+
+  call_chains:
+    rest_init_sequence:
+      description: "rest_init 调用链"
+      trigger: "start_kernel 完成基本初始化后"
+      chain:
+        - function: "rest_init"
+          file: "init/main.c"
+          description: "入口"
+        - function: "user_mode_thread(kernel_init)"
+          file: "kernel/fork.c"
+          description: "创建 PID 1"
+        - function: "kernel_thread(kthreadd)"
+          file: "kernel/fork.c"
+          description: "创建 PID 2"
+        - function: "schedule_preempt_disabled"
+          file: "kernel/sched/core.c"
+          description: "第一次调度"
+        - function: "cpu_startup_entry"
+          file: "kernel/sched/idle.c"
+          description: "进入 idle"
+
+
+# ============================================================
+# KERNEL_INIT - 内核初始化线程
+# ============================================================
+
+kernel_init:
+  description: "kernel_init - PID 1 初始化线程"
+  file: "init/main.c"
+  icon: "🔧"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    pid: 1
+
+  operations:
+    - function: "kernel_init_freeable"
+      description: "可释放内存的初始化"
+      sub_operations:
+        - "wait_for_completion(&kthreadd_done): 等待 kthreadd 就绪"
+        - "do_early_param: 处理早期参数"
+        - "do_initcalls: 执行所有 initcall"
+        - "prepare_namespace: 准备根文件系统"
+
+    - function: "async_synchronize_full"
+      description: "等待所有异步初始化完成"
+
+    - function: "kprobe_free_init_mem"
+      description: "释放 init 段内存"
+
+    - function: "free_initmem"
+      description: "释放 __init 内存"
+
+    - function: "mark_readonly"
+      description: "标记只读内存"
+
+    - function: "run_init_process"
+      description: "执行用户空间 init"
+      notes:
+        - "尝试 /sbin/init"
+        - "尝试 /etc/init"
+        - "尝试 /bin/init"
+        - "尝试 /bin/sh"
+
+  patterns:
+    - pattern: 'static\s+int\s+__ref\s+kernel_init\s*\(\s*void\s*\*unused\s*\)'
+      description: "kernel_init 函数定义"
+
+  call_chains:
+    kernel_init_sequence:
+      description: "kernel_init 完整调用链"
+      trigger: "作为 PID 1 启动"
+      chain:
+        - function: "kernel_init"
+          file: "init/main.c"
+          description: "入口"
+        - function: "kernel_init_freeable"
+          file: "init/main.c"
+          description: "主要初始化"
+        - function: "do_initcalls"
+          file: "init/main.c"
+          description: "执行 initcall"
+        - function: "prepare_namespace"
+          file: "init/do_mounts.c"
+          description: "挂载根文件系统"
+        - function: "run_init_process"
+          file: "init/main.c"
+          description: "启动 /sbin/init"
+
+
+# ============================================================
+# INITCALL MECHANISM - initcall 机制
+# ============================================================
+
+initcall:
+  description: "Initcall Mechanism - 模块化初始化机制"
+  header: "linux/init.h"
+  icon: "📋"
+  kernel_version: "2.6+"
+
+  levels:
+    - level: 0
+      name: "early"
+      macro: "early_initcall"
+      description: "最早执行，CPU 可能还未完全初始化"
+      use_cases:
+        - "早期控制台"
+        - "早期调试"
+        - "早期内存初始化"
+
+    - level: 1
+      name: "pure"
+      macro: "pure_initcall"
+      description: "纯初始化，无副作用"
+      use_cases:
+        - "全局数据初始化"
+
+    - level: 2
+      name: "core"
+      macro: "core_initcall"
+      description: "核心子系统初始化"
+      use_cases:
+        - "内存管理"
+        - "调度器"
+        - "中断子系统"
+
+    - level: 3
+      name: "postcore"
+      macro: "postcore_initcall"
+      description: "核心后初始化"
+      use_cases:
+        - "依赖核心子系统的模块"
+
+    - level: 4
+      name: "arch"
+      macro: "arch_initcall"
+      description: "架构相关初始化"
+      use_cases:
+        - "架构特定硬件"
+        - "平台初始化"
+
+    - level: 5
+      name: "subsys"
+      macro: "subsys_initcall"
+      description: "子系统初始化"
+      use_cases:
+        - "总线子系统"
+        - "文件系统框架"
+        - "网络协议栈"
+
+    - level: 6
+      name: "fs"
+      macro: "fs_initcall"
+      description: "文件系统初始化"
+      use_cases:
+        - "具体文件系统"
+        - "proc, sysfs"
+
+    - level: 7
+      name: "rootfs"
+      macro: "rootfs_initcall"
+      description: "根文件系统初始化"
+      use_cases:
+        - "initramfs 解压"
+
+    - level: 8
+      name: "device"
+      macro: "device_initcall"
+      description: "设备驱动初始化"
+      use_cases:
+        - "大多数设备驱动"
+        - "module_init 的默认级别"
+
+    - level: 9
+      name: "late"
+      macro: "late_initcall"
+      description: "最后执行的初始化"
+      use_cases:
+        - "依赖其他驱动的模块"
+        - "清理工作"
+
+  patterns:
+    - pattern: 'early_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 0
+      description: "早期 initcall 注册"
+
+    - pattern: 'pure_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 1
+      description: "纯 initcall 注册"
+
+    - pattern: 'core_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 2
+      description: "核心 initcall 注册"
+
+    - pattern: 'core_initcall_sync\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: "2s"
+      description: "核心同步 initcall"
+
+    - pattern: 'postcore_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 3
+      description: "核心后 initcall 注册"
+
+    - pattern: 'arch_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 4
+      description: "架构 initcall 注册"
+
+    - pattern: 'subsys_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 5
+      description: "子系统 initcall 注册"
+
+    - pattern: 'fs_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 6
+      description: "文件系统 initcall 注册"
+
+    - pattern: 'rootfs_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 7
+      description: "根文件系统 initcall 注册"
+
+    - pattern: 'device_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 8
+      description: "设备 initcall 注册"
+
+    - pattern: 'late_initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 9
+      description: "晚期 initcall 注册"
+
+    - pattern: 'module_init\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 8
+      description: "模块初始化 (等同于 device_initcall)"
+
+    - pattern: '__initcall\s*\(\s*(?P<func>\w+)\s*\)'
+      handler_capture: "func"
+      level: 8
+      description: "旧式 initcall (已废弃)"
+
+  async_patterns:
+    - pattern: 'async_schedule\s*\(\s*(?P<func>\w+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      handler_capture: "func"
+      description: "调度异步初始化"
+
+  handler_signature:
+    return_type: "int"
+    parameters: []
+    return_values:
+      - value: "0"
+        description: "初始化成功"
+      - value: "negative"
+        description: "初始化失败（错误码）"
+
+  call_chains:
+    do_initcalls:
+      description: "initcall 执行调用链"
+      trigger: "kernel_init_freeable() 中调用"
+      chain:
+        - function: "do_initcalls"
+          file: "init/main.c"
+          description: "遍历所有 initcall 级别"
+        - function: "do_initcall_level"
+          file: "init/main.c"
+          description: "执行某一级别的所有 initcall"
+        - function: "do_one_initcall"
+          file: "init/main.c"
+          description: "执行单个 initcall"
+        - function: "initcall_fn()"
+          file: "用户代码"
+          description: "用户定义的初始化函数"
+          is_user_entry: true
+
+  linker_sections:
+    - section: ".initcall0.init"
+      level: "early"
+    - section: ".initcall1.init"
+      level: "pure"
+    - section: ".initcall2.init"
+      level: "core"
+    - section: ".initcall3.init"
+      level: "postcore"
+    - section: ".initcall4.init"
+      level: "arch"
+    - section: ".initcall5.init"
+      level: "subsys"
+    - section: ".initcall6.init"
+      level: "fs"
+    - section: ".initcall7.init"
+      level: "rootfs"
+    - section: ".initcall8.init"
+      level: "device"
+    - section: ".initcall9.init"
+      level: "late"
+
+
+# ============================================================
+# __INIT SECTION - init 段
+# ============================================================
+
+init_section:
+  description: "__init Section - 初始化代码段"
+  header: "linux/init.h"
+  icon: "📦"
+
+  sections:
+    __init:
+      pattern: '__init\s+(?P<type>\w+)\s+(?P<name>\w+)'
+      description: "初始化函数，启动后释放"
+      section: ".init.text"
+      notes:
+        - "只在启动时调用"
+        - "启动完成后内存被释放"
+
+    __initdata:
+      pattern: '__initdata\s+(?P<type>[\w\s\*]+)\s+(?P<name>\w+)'
+      description: "初始化数据，启动后释放"
+      section: ".init.data"
+
+    __initconst:
+      pattern: '__initconst\s+(?P<type>[\w\s\*]+)\s+(?P<name>\w+)'
+      description: "初始化只读数据"
+      section: ".init.rodata"
+
+    __exit:
+      pattern: '__exit\s+(?P<type>\w+)\s+(?P<name>\w+)'
+      description: "退出函数，内置模块时丢弃"
+      section: ".exit.text"
+      notes:
+        - "模块卸载时调用"
+        - "内置时不编译"
+
+    __exitdata:
+      pattern: '__exitdata\s+(?P<type>[\w\s\*]+)\s+(?P<name>\w+)'
+      description: "退出数据"
+      section: ".exit.data"
+
+    __ref:
+      pattern: '__ref\s+(?P<type>\w+)\s+(?P<name>\w+)'
+      description: "可以引用 __init 代码的函数"
+      notes:
+        - "用于 CPU/内存热插拔"
+
+    __refdata:
+      pattern: '__refdata\s+(?P<type>[\w\s\*]+)\s+(?P<name>\w+)'
+      description: "可以引用 __initdata 的数据"
+
+  patterns:
+    - pattern: '__init\s+(\w+)\s+(\w+)\s*\('
+      description: "__init 函数定义"
+
+    - pattern: 'static\s+__init\s+(\w+)\s+(\w+)\s*\('
+      description: "static __init 函数定义"
+
+    - pattern: '__initdata\s+'
+      description: "__initdata 变量"
+
+  notes:
+    - "__init 函数只能被其他 __init 函数调用"
+    - "__init 函数不能被 __exit 函数调用"
+    - "违反规则会产生 Section mismatch 警告"
+    - "free_initmem() 释放这些内存"
+
+
+# ============================================================
+# BOOT COMMAND LINE - 启动命令行
+# ============================================================
+
+command_line:
+  description: "Boot Command Line - 内核命令行参数"
+  header: "linux/init.h"
+  icon: "⌨️"
+
+  patterns:
+    - pattern: '__setup\s*\(\s*"(?P<param>[^"]+)"\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      extra_captures:
+        - name: "param"
+          description: "参数名"
+      description: "注册命令行参数处理函数"
+
+    - pattern: 'early_param\s*\(\s*"(?P<param>[^"]+)"\s*,\s*(?P<handler>\w+)\s*\)'
+      handler_capture: "handler"
+      description: "注册早期参数处理函数"
+      notes:
+        - "在 setup_arch() 之前处理"
+
+    - pattern: '__setup_param\s*\(\s*"(?P<param>[^"]+)"\s*,\s*(?P<unique_id>\w+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<early>\w+)\s*\)'
+      handler_capture: "handler"
+      description: "底层参数注册宏"
+
+    - pattern: 'module_param\s*\(\s*(?P<name>\w+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<perm>\w+)\s*\)'
+      description: "模块参数定义"
+
+    - pattern: 'module_param_named\s*\(\s*(?P<param_name>\w+)\s*,\s*(?P<var>\w+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<perm>\w+)\s*\)'
+      description: "命名模块参数"
+
+    - pattern: 'core_param\s*\(\s*(?P<name>\w+)\s*,\s*(?P<var>\w+)\s*,\s*(?P<type>\w+)\s*\)'
+      description: "核心参数定义"
+
+  handler_signature:
+    return_type: "int"
+    parameters:
+      - name: "str"
+        type: "char *"
+        description: "参数值字符串"
+    return_values:
+      - value: "0"
+        description: "参数已处理，从命令行移除"
+      - value: "1"
+        description: "参数已处理，保留在命令行"
+      - value: "negative"
+        description: "处理失败"
+
+  common_parameters:
+    - name: "init="
+      description: "指定 init 程序路径"
+      example: "init=/bin/bash"
+
+    - name: "root="
+      description: "指定根文件系统"
+      example: "root=/dev/sda1"
+
+    - name: "console="
+      description: "指定控制台设备"
+      example: "console=ttyS0,115200"
+
+    - name: "debug"
+      description: "启用调试输出"
+
+    - name: "quiet"
+      description: "减少启动输出"
+
+    - name: "loglevel="
+      description: "设置日志级别"
+      example: "loglevel=7"
+
+    - name: "mem="
+      description: "限制内存使用"
+      example: "mem=512M"
+
+    - name: "nosmp"
+      description: "禁用 SMP"
+
+    - name: "maxcpus="
+      description: "限制 CPU 数量"
+
+
+# ============================================================
+# EXAMPLES - 示例代码
+# ============================================================
+
+examples:
+  - description: "简单 initcall 示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/init.h>
+      #include <linux/module.h>
+      
+      static int __init my_init(void)
+      {
+          pr_info("My module initialized\n");
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          pr_info("My module exited\n");
+      }
+      
+      module_init(my_init);
+      module_exit(my_exit);
+      
+      MODULE_LICENSE("GPL");
+
+  - description: "子系统 initcall 示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/init.h>
+      
+      static int __init my_subsys_init(void)
+      {
+          /* 在子系统级别初始化 */
+          pr_info("Subsystem initialized\n");
+          
+          /* 注册总线类型 */
+          return bus_register(&my_bus_type);
+      }
+      subsys_initcall(my_subsys_init);
+
+  - description: "设备 initcall 依赖子系统"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/init.h>
+      #include <linux/platform_device.h>
+      
+      /* 依赖 platform_bus，所以用 device_initcall */
+      static int __init my_device_init(void)
+      {
+          return platform_driver_register(&my_driver);
+      }
+      device_initcall(my_device_init);
+
+  - description: "早期参数处理"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/init.h>
+      
+      static int debug_level = 0;
+      
+      static int __init set_debug_level(char *str)
+      {
+          if (!str)
+              return -EINVAL;
+          
+          debug_level = simple_strtoul(str, NULL, 0);
+          pr_info("Debug level set to %d\n", debug_level);
+          
+          return 0;
+      }
+      early_param("debug_level", set_debug_level);
+
+  - description: "命令行参数处理"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/init.h>
+      #include <linux/moduleparam.h>
+      
+      static char *my_option = "default";
+      static int my_value = 42;
+      
+      /* 模块参数 - 可通过命令行或 /sys/module 设置 */
+      module_param(my_value, int, 0644);
+      MODULE_PARM_DESC(my_value, "An integer value");
+      
+      module_param(my_option, charp, 0444);
+      MODULE_PARM_DESC(my_option, "A string option");
+      
+      /* 启动时参数: mydrv.my_value=100 mydrv.my_option=test */
+
+  - description: "异步初始化"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/init.h>
+      #include <linux/async.h>
+      
+      static void __init async_init_work(void *data, async_cookie_t cookie)
+      {
+          /* 可以并行执行的初始化工作 */
+          do_slow_initialization();
+      }
+      
+      static int __init my_async_init(void)
+      {
+          async_cookie_t cookie;
+          
+          /* 调度异步工作 */
+          cookie = async_schedule(async_init_work, NULL);
+          
+          /* 可以继续做其他初始化 */
+          do_quick_setup();
+          
+          /* 等待异步工作完成 */
+          async_synchronize_cookie(cookie);
+          
+          return 0;
+      }
+      device_initcall(my_async_init);
+
+  - description: "平台相关初始化"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/init.h>
+      
+      /* 架构相关初始化 - 在 arch_initcall 级别 */
+      static int __init arm_platform_init(void)
+      {
+          /* 初始化平台特定硬件 */
+          setup_platform_clocks();
+          setup_platform_gpio();
+          
+          return 0;
+      }
+      arch_initcall(arm_platform_init);
+      
+      /* 设备驱动 - 在 device_initcall 级别 */
+      static int __init my_driver_init(void)
+      {
+          /* 此时平台已经初始化完成 */
+          return platform_driver_register(&my_driver);
+      }
+      device_initcall(my_driver_init);
+
+
+# ============================================================
+# NOTES - 注意事项
+# ============================================================
+
+notes:
+  - "initcall 级别决定了初始化顺序"
+  - "同一级别内的 initcall 顺序由链接器决定"
+  - "__init 函数只能调用其他 __init 或常驻函数"
+  - "模块化驱动使用 module_init/module_exit"
+  - "内置驱动可以使用更精确的 initcall 级别"
+  - "早期参数在 setup_arch() 之前处理"
+  - "命令行参数可以覆盖编译时默认值"
+  - "initcall 返回错误不会停止启动，只打印警告"

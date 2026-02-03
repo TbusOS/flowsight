@@ -433,3 +433,626 @@ examples:
           kfree(mac);
           return 0;
       }
+
+  - description: "OTP (One-Time Programmable) 驱动示例"
+    kernel_version: "5.10+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/nvmem-provider.h>
+      #include <linux/platform_device.h>
+      #include <linux/io.h>
+      
+      #define OTP_SIZE        256
+      #define OTP_WORD_SIZE   4
+      #define OTP_LOCK_BIT    BIT(31)
+      
+      struct my_otp {
+          void __iomem *base;
+          struct nvmem_device *nvmem;
+          struct mutex lock;
+          u32 shadow[OTP_SIZE / OTP_WORD_SIZE];
+          bool programmed;
+      };
+      
+      /* OTP 只能读取，不能写入（已烧录） */
+      static int my_otp_read(void *priv, unsigned int offset,
+                              void *val, size_t bytes)
+      {
+          struct my_otp *otp = priv;
+          u32 *buf = val;
+          int i, word_offset;
+          
+          if (offset % OTP_WORD_SIZE || bytes % OTP_WORD_SIZE)
+              return -EINVAL;
+          
+          mutex_lock(&otp->lock);
+          
+          word_offset = offset / OTP_WORD_SIZE;
+          for (i = 0; i < bytes / OTP_WORD_SIZE; i++) {
+              /* 从影子寄存器读取（OTP 内容在启动时加载） */
+              buf[i] = otp->shadow[word_offset + i];
+          }
+          
+          mutex_unlock(&otp->lock);
+          return 0;
+      }
+      
+      /* OTP 烧录（不可逆操作） */
+      static int my_otp_write(void *priv, unsigned int offset,
+                               void *val, size_t bytes)
+      {
+          struct my_otp *otp = priv;
+          u32 *buf = val;
+          int i, word_offset;
+          u32 status;
+          
+          if (offset % OTP_WORD_SIZE || bytes % OTP_WORD_SIZE)
+              return -EINVAL;
+          
+          mutex_lock(&otp->lock);
+          
+          word_offset = offset / OTP_WORD_SIZE;
+          for (i = 0; i < bytes / OTP_WORD_SIZE; i++) {
+              /* 检查是否已锁定 */
+              if (otp->shadow[word_offset + i] & OTP_LOCK_BIT) {
+                  mutex_unlock(&otp->lock);
+                  return -EPERM;
+              }
+              
+              /* 启动烧录序列 */
+              writel(OTP_PROG_ENABLE, otp->base + OTP_CTRL);
+              writel(word_offset + i, otp->base + OTP_ADDR);
+              writel(buf[i], otp->base + OTP_DATA);
+              writel(OTP_PROG_START, otp->base + OTP_CTRL);
+              
+              /* 等待烧录完成 */
+              do {
+                  status = readl(otp->base + OTP_STATUS);
+              } while (status & OTP_BUSY);
+              
+              if (status & OTP_ERROR) {
+                  mutex_unlock(&otp->lock);
+                  return -EIO;
+              }
+              
+              /* 更新影子寄存器 */
+              otp->shadow[word_offset + i] = buf[i];
+          }
+          
+          mutex_unlock(&otp->lock);
+          return 0;
+      }
+      
+      /* OTP 单元定义 */
+      static const struct nvmem_cell_info my_otp_cells[] = {
+          { .name = "chip-id",      .offset = 0x00, .bytes = 8 },
+          { .name = "security-key", .offset = 0x08, .bytes = 32 },
+          { .name = "boot-config",  .offset = 0x28, .bytes = 4 },
+          { .name = "mac-address0", .offset = 0x2C, .bytes = 6 },
+          { .name = "mac-address1", .offset = 0x32, .bytes = 6 },
+          { .name = "calibration",  .offset = 0x40, .bytes = 64 },
+      };
+      
+      static int my_otp_probe(struct platform_device *pdev)
+      {
+          struct my_otp *otp;
+          struct nvmem_config config = {};
+          int i;
+          
+          otp = devm_kzalloc(&pdev->dev, sizeof(*otp), GFP_KERNEL);
+          if (!otp)
+              return -ENOMEM;
+          
+          otp->base = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(otp->base))
+              return PTR_ERR(otp->base);
+          
+          mutex_init(&otp->lock);
+          
+          /* 启动时加载 OTP 内容到影子寄存器 */
+          for (i = 0; i < OTP_SIZE / OTP_WORD_SIZE; i++)
+              otp->shadow[i] = readl(otp->base + OTP_SHADOW(i));
+          
+          config.dev = &pdev->dev;
+          config.name = "my-otp";
+          config.id = NVMEM_DEVID_NONE;
+          config.owner = THIS_MODULE;
+          config.type = NVMEM_TYPE_OTP;
+          config.read_only = false;  /* 允许烧录 */
+          config.root_only = true;   /* 只有 root 可访问 */
+          config.size = OTP_SIZE;
+          config.stride = OTP_WORD_SIZE;
+          config.word_size = OTP_WORD_SIZE;
+          config.reg_read = my_otp_read;
+          config.reg_write = my_otp_write;
+          config.cells = my_otp_cells;
+          config.ncells = ARRAY_SIZE(my_otp_cells);
+          config.priv = otp;
+          
+          otp->nvmem = devm_nvmem_register(&pdev->dev, &config);
+          if (IS_ERR(otp->nvmem))
+              return PTR_ERR(otp->nvmem);
+          
+          platform_set_drvdata(pdev, otp);
+          return 0;
+      }
+
+  - description: "NVMEM Layout 驱动示例"
+    kernel_version: "5.15+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/nvmem-provider.h>
+      #include <linux/of.h>
+      
+      /* 自定义布局：从二进制数据中解析结构化信息 */
+      struct my_layout_header {
+          u32 magic;
+          u32 version;
+          u32 data_offset;
+          u32 data_size;
+          u32 checksum;
+      };
+      
+      #define MY_LAYOUT_MAGIC  0x4D594C54  /* "MYLT" */
+      
+      static int my_layout_add_cells(struct nvmem_device *nvmem,
+                                      const struct nvmem_layout *layout)
+      {
+          struct device *dev = &nvmem->dev;
+          struct my_layout_header header;
+          struct nvmem_cell_info cell;
+          u8 *data;
+          size_t data_len;
+          int ret;
+          
+          /* 读取头部 */
+          ret = nvmem_device_read(nvmem, 0, sizeof(header), &header);
+          if (ret < 0)
+              return ret;
+          
+          /* 验证 magic */
+          if (header.magic != MY_LAYOUT_MAGIC) {
+              dev_err(dev, "Invalid layout magic: 0x%08x\n", header.magic);
+              return -EINVAL;
+          }
+          
+          /* 根据版本解析不同的布局 */
+          switch (header.version) {
+          case 1:
+              /* V1 布局：固定偏移 */
+              cell.name = "serial";
+              cell.offset = 0x10;
+              cell.bytes = 16;
+              nvmem_add_one_cell(nvmem, &cell);
+              
+              cell.name = "mac-address";
+              cell.offset = 0x20;
+              cell.bytes = 6;
+              nvmem_add_one_cell(nvmem, &cell);
+              break;
+              
+          case 2:
+              /* V2 布局：动态偏移 */
+              cell.name = "serial";
+              cell.offset = header.data_offset;
+              cell.bytes = 16;
+              nvmem_add_one_cell(nvmem, &cell);
+              
+              cell.name = "mac-address";
+              cell.offset = header.data_offset + 16;
+              cell.bytes = 6;
+              nvmem_add_one_cell(nvmem, &cell);
+              
+              cell.name = "calibration";
+              cell.offset = header.data_offset + 24;
+              cell.bytes = header.data_size - 24;
+              nvmem_add_one_cell(nvmem, &cell);
+              break;
+              
+          default:
+              dev_warn(dev, "Unknown layout version: %u\n", header.version);
+              break;
+          }
+          
+          return 0;
+      }
+      
+      static int my_layout_probe(struct nvmem_layout *layout)
+      {
+          return my_layout_add_cells(layout->nvmem, layout);
+      }
+      
+      static void my_layout_remove(struct nvmem_layout *layout)
+      {
+          /* 清理资源（如果有） */
+      }
+      
+      static const struct of_device_id my_layout_of_match[] = {
+          { .compatible = "my,nvmem-layout" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, my_layout_of_match);
+      
+      static struct nvmem_layout_driver my_layout_driver = {
+          .driver = {
+              .name = "my-nvmem-layout",
+              .of_match_table = my_layout_of_match,
+          },
+          .probe = my_layout_probe,
+          .remove = my_layout_remove,
+      };
+      module_nvmem_layout_driver(my_layout_driver);
+
+
+# ============================================================
+# ADVANCED DATA STRUCTURES
+# ============================================================
+
+advanced_data_structures:
+  nvmem_cell:
+    pattern: 'struct nvmem_cell\s*\{'
+    description: "NVMEM 单元结构（内部）"
+    file: "drivers/nvmem/core.c"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "单元名称"
+      - name: "offset"
+        type: "unsigned int"
+        description: "字节偏移"
+      - name: "bytes"
+        type: "unsigned int"
+        description: "字节大小"
+      - name: "bit_offset"
+        type: "unsigned int"
+        description: "位偏移"
+      - name: "nbits"
+        type: "unsigned int"
+        description: "位数"
+      - name: "np"
+        type: "struct device_node *"
+        description: "设备树节点"
+      - name: "nvmem"
+        type: "struct nvmem_device *"
+        description: "所属 NVMEM 设备"
+      - name: "node"
+        type: "struct list_head"
+        description: "链表节点"
+
+  nvmem_cell_info:
+    pattern: 'struct nvmem_cell_info\s*\{'
+    description: "NVMEM 单元信息结构"
+    file: "include/linux/nvmem-provider.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "单元名称"
+      - name: "offset"
+        type: "unsigned int"
+        description: "字节偏移"
+      - name: "bytes"
+        type: "unsigned int"
+        description: "字节大小"
+      - name: "bit_offset"
+        type: "unsigned int"
+        description: "位偏移（用于位域）"
+      - name: "nbits"
+        type: "unsigned int"
+        description: "位数（0 表示整字节）"
+
+  nvmem_layout:
+    pattern: 'struct nvmem_layout\s*\{'
+    description: "NVMEM 布局结构"
+    file: "include/linux/nvmem-provider.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "布局名称"
+      - name: "of_match_table"
+        type: "const struct of_device_id *"
+        description: "设备树匹配表"
+      - name: "add_cells"
+        type: "int (*)(struct nvmem_device *, const struct nvmem_layout *)"
+        description: "添加单元回调"
+      - name: "nvmem"
+        type: "struct nvmem_device *"
+        description: "关联的 NVMEM 设备"
+
+  nvmem_type:
+    description: "NVMEM 类型枚举"
+    file: "include/linux/nvmem-provider.h"
+    values:
+      - name: "NVMEM_TYPE_UNKNOWN"
+        value: 0
+        description: "未知类型"
+      - name: "NVMEM_TYPE_EEPROM"
+        value: 1
+        description: "EEPROM"
+      - name: "NVMEM_TYPE_OTP"
+        value: 2
+        description: "一次性可编程"
+      - name: "NVMEM_TYPE_BATTERY_BACKED"
+        value: 3
+        description: "电池备份 RAM"
+      - name: "NVMEM_TYPE_FRAM"
+        value: 4
+        description: "铁电 RAM"
+
+
+# ============================================================
+# ADVANCED CALL CHAINS
+# ============================================================
+
+advanced_call_chains:
+  nvmem_layout_register:
+    description: "NVMEM 布局注册流程"
+    chain:
+      - caller: "布局驱动"
+        callee: "nvmem_layout_register"
+        description: "注册布局驱动"
+      - caller: "nvmem_register"
+        callee: "nvmem_layout_get_match"
+        description: "查找匹配的布局"
+      - caller: "nvmem_layout_get_match"
+        callee: "layout->add_cells"
+        description: "调用布局添加单元"
+      - caller: "add_cells"
+        callee: "nvmem_add_one_cell"
+        description: "添加单个单元"
+
+  nvmem_cell_read_bits:
+    description: "位域读取流程"
+    chain:
+      - caller: "consumer driver"
+        callee: "nvmem_cell_get"
+        description: "获取单元"
+      - caller: "consumer driver"
+        callee: "nvmem_cell_read"
+        description: "读取单元"
+      - caller: "nvmem_cell_read"
+        callee: "__nvmem_cell_read"
+        description: "内部读取"
+      - caller: "__nvmem_cell_read"
+        callee: "nvmem->reg_read"
+        description: "读取原始数据"
+      - caller: "__nvmem_cell_read"
+        callee: "nvmem_shift_read_buffer_in_place"
+        description: "位偏移处理"
+
+  devm_nvmem_cell_get:
+    description: "资源管理获取单元流程"
+    chain:
+      - caller: "consumer driver"
+        callee: "devm_nvmem_cell_get"
+        description: "资源管理获取"
+      - caller: "devm_nvmem_cell_get"
+        callee: "nvmem_cell_get"
+        description: "获取单元"
+      - caller: "devm_nvmem_cell_get"
+        callee: "devm_add_action"
+        description: "注册释放动作"
+      - caller: "驱动卸载"
+        callee: "devm_nvmem_cell_put"
+        description: "自动释放"
+
+
+# ============================================================
+# SYSFS INTERFACE
+# ============================================================
+
+sysfs_interface:
+  description: "NVMEM Sysfs 接口"
+  
+  device_attributes:
+    - name: "/sys/bus/nvmem/devices/<name>/nvmem"
+      description: "二进制访问接口"
+      permissions: "根据 root_only 设置"
+      operations: "read/write"
+      
+    - name: "/sys/bus/nvmem/devices/<name>/type"
+      description: "NVMEM 类型"
+      values: "EEPROM, OTP, Battery-backed, FRAM"
+      
+    - name: "/sys/bus/nvmem/devices/<name>/of_node"
+      description: "设备树节点链接"
+      
+  usage_example: |
+    # 读取 NVMEM 内容
+    hexdump /sys/bus/nvmem/devices/my-eeprom/nvmem
+    
+    # 写入 NVMEM（如果允许）
+    echo -n "data" | dd of=/sys/bus/nvmem/devices/my-eeprom/nvmem bs=1 seek=0
+    
+    # 查看类型
+    cat /sys/bus/nvmem/devices/my-otp/type
+
+
+# ============================================================
+# DEVICE TREE BINDINGS
+# ============================================================
+
+device_tree_bindings:
+  provider_example: |
+    /* NVMEM Provider 设备树绑定 */
+    eeprom@50 {
+        compatible = "atmel,24c256";
+        reg = <0x50>;
+        
+        /* NVMEM 属性 */
+        #address-cells = <1>;
+        #size-cells = <1>;
+        
+        /* 静态定义的单元 */
+        mac_address: mac-address@0 {
+            reg = <0x0 0x6>;
+        };
+        
+        serial_number: serial@6 {
+            reg = <0x6 0x10>;
+        };
+        
+        calibration: calibration@20 {
+            reg = <0x20 0x40>;
+        };
+    };
+
+  consumer_example: |
+    /* NVMEM Consumer 设备树绑定 */
+    ethernet@12340000 {
+        compatible = "vendor,ethernet";
+        reg = <0x12340000 0x1000>;
+        
+        /* 引用 NVMEM 单元 */
+        nvmem-cells = <&mac_address>;
+        nvmem-cell-names = "mac-address";
+    };
+
+  layout_example: |
+    /* NVMEM Layout 设备树绑定 */
+    otp@1c3f0000 {
+        compatible = "vendor,otp";
+        reg = <0x1c3f0000 0x1000>;
+        
+        /* 使用自定义布局 */
+        nvmem-layout {
+            compatible = "my,nvmem-layout";
+        };
+    };
+
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+
+kernel_version_notes:
+  v4_2:
+    description: "NVMEM 子系统首次引入"
+    changes:
+      - "基本的 provider/consumer API"
+      - "设备树支持"
+      - "sysfs 接口"
+
+  v4_7:
+    description: "cell 支持增强"
+    changes:
+      - "位域 cell 支持（bit_offset, nbits）"
+      - "nvmem_cell_read_u32() 帮助函数"
+
+  v4_14:
+    description: "类型系统"
+    changes:
+      - "nvmem_type 枚举引入"
+      - "EEPROM, OTP, Battery-backed 类型"
+
+  v4_17:
+    description: "consumer API 增强"
+    changes:
+      - "nvmem_cell_read_u8/u16/u32/u64()"
+      - "更好的错误处理"
+
+  v5_0:
+    description: "资源管理 API"
+    changes:
+      - "devm_nvmem_cell_get()"
+      - "devm_nvmem_device_get()"
+
+  v5_11:
+    description: "布局驱动支持"
+    changes:
+      - "nvmem_layout 结构"
+      - "nvmem_layout_driver"
+      - "动态单元添加"
+
+  v5_15:
+    description: "布局驱动增强"
+    changes:
+      - "nvmem_add_one_cell()"
+      - "布局与设备解耦"
+
+  v6_0:
+    description: "现代化更新"
+    changes:
+      - "NVMEM_TYPE_FRAM 添加"
+      - "改进的错误消息"
+      - "文档更新"
+
+
+# ============================================================
+# COMMON NVMEM TYPES
+# ============================================================
+
+common_nvmem_types:
+  eeprom:
+    description: "电可擦可编程只读存储器"
+    characteristics:
+      - "可擦写（有限次数，通常 10^6）"
+      - "断电保持数据"
+      - "字节/页面可写"
+    common_chips:
+      - "24Cxx 系列 (I2C)"
+      - "93Cxx 系列 (SPI)"
+      - "AT25xxx (SPI)"
+    driver_files:
+      - "drivers/misc/eeprom/at24.c"
+      - "drivers/misc/eeprom/at25.c"
+
+  otp:
+    description: "一次性可编程存储器"
+    characteristics:
+      - "只能写入一次"
+      - "常用于安全密钥、芯片 ID"
+      - "熔丝或反熔丝技术"
+    common_implementations:
+      - "SoC 内置 eFuse"
+      - "安全芯片 OTP"
+    driver_files:
+      - "drivers/nvmem/imx-ocotp.c"
+      - "drivers/nvmem/rockchip-efuse.c"
+
+  fram:
+    description: "铁电随机存取存储器"
+    characteristics:
+      - "快速写入（无擦除延迟）"
+      - "高耐久性（10^12+ 次）"
+      - "断电保持"
+    common_chips:
+      - "FM24xxx (I2C)"
+      - "FM25xxx (SPI)"
+
+
+# ============================================================
+# ERROR HANDLING
+# ============================================================
+
+error_handling:
+  common_errors:
+    ENOENT:
+      description: "单元不存在"
+      cause: "nvmem_cell_get() 找不到指定单元"
+      fix: "检查设备树或静态单元定义"
+      
+    EPROBE_DEFER:
+      description: "provider 尚未就绪"
+      cause: "NVMEM provider 驱动未加载"
+      fix: "检查驱动加载顺序"
+      
+    EINVAL:
+      description: "无效参数"
+      cause: "偏移/大小不满足 stride/word_size 要求"
+      fix: "确保对齐要求"
+      
+    EPERM:
+      description: "权限不足"
+      cause: "尝试写入 read_only 设备或非 root 访问 root_only"
+      fix: "检查权限配置"
+      
+    EIO:
+      description: "I/O 错误"
+      cause: "底层设备通信失败"
+      fix: "检查硬件连接和设备状态"
+
+  debugging_tips:
+    - "检查 /sys/bus/nvmem/devices/ 确认设备注册"
+    - "使用 dmesg | grep nvmem 查看内核消息"
+    - "验证设备树节点正确性"
+    - "确认 I2C/SPI 总线正常工作"

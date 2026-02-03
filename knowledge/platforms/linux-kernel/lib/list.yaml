@@ -1,0 +1,640 @@
+# Linux Kernel Linked List Knowledge Base
+#
+# Reference: include/linux/list.h
+# Reference: include/linux/types.h
+# Kernel Version: 2.6+
+
+# ============================================================
+# LIST_HEAD - 双向循环链表
+# ============================================================
+
+list_head:
+  description: "Doubly Linked Circular List - 双向循环链表"
+  header: "linux/list.h"
+  icon: "🔗"
+  kernel_version: "2.6+"
+
+  structure:
+    name: "struct list_head"
+    fields:
+      - name: "next"
+        type: "struct list_head *"
+        description: "指向下一个节点"
+      - name: "prev"
+        type: "struct list_head *"
+        description: "指向上一个节点"
+    notes:
+      - "空链表: head->next == head && head->prev == head"
+      - "链表头本身不包含数据，只作为锚点"
+
+  definition_patterns:
+    LIST_HEAD:
+      pattern: 'LIST_HEAD\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态定义并初始化链表头"
+      expansion: "struct list_head name = LIST_HEAD_INIT(name)"
+
+    LIST_HEAD_INIT:
+      pattern: 'LIST_HEAD_INIT\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态初始化宏"
+      expansion: "{ &(name), &(name) }"
+
+    INIT_LIST_HEAD:
+      pattern: 'INIT_LIST_HEAD\s*\(\s*&?(?P<list>[\w\.\->]+)\s*\)'
+      description: "动态初始化链表头"
+      notes:
+        - "设置 next = prev = head"
+
+
+# ============================================================
+# LIST OPERATIONS - 链表操作
+# ============================================================
+
+list_operations:
+  description: "List Operations - 链表基本操作"
+  header: "linux/list.h"
+  icon: "⚙️"
+
+  add_operations:
+    list_add:
+      pattern: 'list_add\s*\(\s*&?(?P<new>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "在头部添加节点（栈行为）"
+      prototype: "void list_add(struct list_head *new, struct list_head *head)"
+      notes:
+        - "插入到 head 之后"
+        - "用于实现栈 (LIFO)"
+
+    list_add_tail:
+      pattern: 'list_add_tail\s*\(\s*&?(?P<new>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "在尾部添加节点（队列行为）"
+      prototype: "void list_add_tail(struct list_head *new, struct list_head *head)"
+      notes:
+        - "插入到 head 之前（即链表尾部）"
+        - "用于实现队列 (FIFO)"
+
+  delete_operations:
+    list_del:
+      pattern: 'list_del\s*\(\s*&?(?P<entry>[\w\.\->]+)\s*\)'
+      description: "从链表删除节点"
+      prototype: "void list_del(struct list_head *entry)"
+      notes:
+        - "不释放内存"
+        - "将 prev/next 设为 LIST_POISON"
+        - "⚠️ 删除后不能再使用 entry"
+
+    list_del_init:
+      pattern: 'list_del_init\s*\(\s*&?(?P<entry>[\w\.\->]+)\s*\)'
+      description: "删除并重新初始化节点"
+      prototype: "void list_del_init(struct list_head *entry)"
+      notes:
+        - "删除后节点可以安全地再次添加"
+        - "✅ 推荐使用"
+
+    list_del_init_careful:
+      pattern: 'list_del_init_careful\s*\(\s*&?(?P<entry>[\w\.\->]+)\s*\)'
+      description: "原子检查后删除并初始化"
+      prototype: "bool list_del_init_careful(struct list_head *entry)"
+      return_type: "bool (true 表示成功删除)"
+
+  replace_operations:
+    list_replace:
+      pattern: 'list_replace\s*\(\s*&?(?P<old>[\w\.\->]+)\s*,\s*&?(?P<new>[\w\.\->]+)\s*\)'
+      description: "用新节点替换旧节点"
+      prototype: "void list_replace(struct list_head *old, struct list_head *new)"
+
+    list_replace_init:
+      pattern: 'list_replace_init\s*\(\s*&?(?P<old>[\w\.\->]+)\s*,\s*&?(?P<new>[\w\.\->]+)\s*\)'
+      description: "替换并重新初始化旧节点"
+      prototype: "void list_replace_init(struct list_head *old, struct list_head *new)"
+
+  move_operations:
+    list_move:
+      pattern: 'list_move\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "移动到链表头部"
+      prototype: "void list_move(struct list_head *list, struct list_head *head)"
+
+    list_move_tail:
+      pattern: 'list_move_tail\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "移动到链表尾部"
+      prototype: "void list_move_tail(struct list_head *list, struct list_head *head)"
+
+    list_bulk_move_tail:
+      pattern: 'list_bulk_move_tail\s*\(\s*&?(?P<head>[\w\.\->]+)\s*,\s*&?(?P<first>[\w\.\->]+)\s*,\s*&?(?P<last>[\w\.\->]+)\s*\)'
+      description: "批量移动节点到尾部"
+      prototype: "void list_bulk_move_tail(struct list_head *head, struct list_head *first, struct list_head *last)"
+
+  rotate_operations:
+    list_rotate_left:
+      pattern: 'list_rotate_left\s*\(\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "链表左旋（第一个变最后）"
+      prototype: "void list_rotate_left(struct list_head *head)"
+
+    list_rotate_to_front:
+      pattern: 'list_rotate_to_front\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "将指定节点旋转到最前"
+      prototype: "void list_rotate_to_front(struct list_head *list, struct list_head *head)"
+
+
+# ============================================================
+# LIST TEST OPERATIONS - 链表测试
+# ============================================================
+
+list_test:
+  description: "List Test Operations - 链表测试操作"
+  header: "linux/list.h"
+  icon: "✅"
+
+  functions:
+    list_empty:
+      pattern: 'list_empty\s*\(\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "测试链表是否为空"
+      prototype: "int list_empty(const struct list_head *head)"
+      return_type: "int (非零表示空)"
+
+    list_empty_careful:
+      pattern: 'list_empty_careful\s*\(\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "原子测试链表是否为空"
+      prototype: "int list_empty_careful(const struct list_head *head)"
+      notes:
+        - "用于无锁情况下的安全检查"
+
+    list_is_first:
+      pattern: 'list_is_first\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "测试是否是第一个节点"
+      prototype: "int list_is_first(const struct list_head *list, const struct list_head *head)"
+
+    list_is_last:
+      pattern: 'list_is_last\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "测试是否是最后一个节点"
+      prototype: "int list_is_last(const struct list_head *list, const struct list_head *head)"
+
+    list_is_singular:
+      pattern: 'list_is_singular\s*\(\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "测试链表是否只有一个元素"
+      prototype: "int list_is_singular(const struct list_head *head)"
+
+    list_is_head:
+      pattern: 'list_is_head\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "测试节点是否是链表头"
+      prototype: "int list_is_head(const struct list_head *list, const struct list_head *head)"
+
+
+# ============================================================
+# LIST ENTRY ACCESS - 获取包含结构体
+# ============================================================
+
+list_entry:
+  description: "List Entry Access - 获取包含链表节点的结构体"
+  header: "linux/list.h"
+  icon: "📦"
+
+  macros:
+    list_entry:
+      pattern: 'list_entry\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "从链表节点获取包含它的结构体"
+      expansion: "container_of(ptr, type, member)"
+      notes:
+        - "ptr: 指向 list_head 的指针"
+        - "type: 包含结构体的类型"
+        - "member: list_head 在结构体中的成员名"
+
+    list_first_entry:
+      pattern: 'list_first_entry\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "获取链表第一个元素"
+      notes:
+        - "⚠️ 链表不能为空"
+
+    list_last_entry:
+      pattern: 'list_last_entry\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "获取链表最后一个元素"
+      notes:
+        - "⚠️ 链表不能为空"
+
+    list_first_entry_or_null:
+      pattern: 'list_first_entry_or_null\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "获取第一个元素或 NULL"
+      notes:
+        - "✅ 安全，链表为空时返回 NULL"
+
+    list_next_entry:
+      pattern: 'list_next_entry\s*\(\s*(?P<pos>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "获取下一个元素"
+
+    list_prev_entry:
+      pattern: 'list_prev_entry\s*\(\s*(?P<pos>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "获取上一个元素"
+
+
+# ============================================================
+# LIST ITERATION - 链表遍历
+# ============================================================
+
+list_iteration:
+  description: "List Iteration - 链表遍历宏"
+  header: "linux/list.h"
+  icon: "🔄"
+
+  basic_iteration:
+    list_for_each:
+      pattern: 'list_for_each\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "遍历链表节点"
+      notes:
+        - "pos 是 struct list_head * 类型"
+        - "⚠️ 遍历时不能删除节点"
+
+    list_for_each_reverse:
+      pattern: 'list_for_each_reverse\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "反向遍历链表节点"
+
+    list_for_each_safe:
+      pattern: 'list_for_each_safe\s*\(\s*(?P<pos>\w+)\s*,\s*(?P<n>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "安全遍历（可删除）"
+      notes:
+        - "n 是临时变量，保存下一个节点"
+        - "✅ 遍历时可以删除当前节点"
+
+  entry_iteration:
+    list_for_each_entry:
+      pattern: 'list_for_each_entry\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "遍历包含结构体"
+      notes:
+        - "pos 是包含结构体类型的指针"
+        - "✅ 最常用的遍历方式"
+      recommended: true
+
+    list_for_each_entry_reverse:
+      pattern: 'list_for_each_entry_reverse\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "反向遍历包含结构体"
+
+    list_for_each_entry_safe:
+      pattern: 'list_for_each_entry_safe\s*\(\s*(?P<pos>\w+)\s*,\s*(?P<n>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "安全遍历包含结构体"
+      notes:
+        - "✅ 遍历时可以删除当前元素"
+      recommended: true
+
+    list_for_each_entry_safe_reverse:
+      pattern: 'list_for_each_entry_safe_reverse\s*\(\s*(?P<pos>\w+)\s*,\s*(?P<n>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "反向安全遍历包含结构体"
+
+  continue_iteration:
+    list_for_each_entry_continue:
+      pattern: 'list_for_each_entry_continue\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "从当前位置继续遍历"
+
+    list_for_each_entry_from:
+      pattern: 'list_for_each_entry_from\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "从当前位置开始遍历（包含当前）"
+
+
+# ============================================================
+# LIST SPLICE - 链表拼接
+# ============================================================
+
+list_splice:
+  description: "List Splice - 链表拼接操作"
+  header: "linux/list.h"
+  icon: "🔀"
+
+  functions:
+    list_splice:
+      pattern: 'list_splice\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "将一个链表拼接到另一个链表头部"
+      prototype: "void list_splice(const struct list_head *list, struct list_head *head)"
+      notes:
+        - "list 的内容移动到 head 之后"
+        - "list 变为未定义状态"
+
+    list_splice_tail:
+      pattern: 'list_splice_tail\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "拼接到尾部"
+      prototype: "void list_splice_tail(struct list_head *list, struct list_head *head)"
+
+    list_splice_init:
+      pattern: 'list_splice_init\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "拼接并重新初始化源链表"
+      prototype: "void list_splice_init(struct list_head *list, struct list_head *head)"
+      notes:
+        - "✅ 推荐使用，list 被正确初始化"
+
+    list_splice_tail_init:
+      pattern: 'list_splice_tail_init\s*\(\s*&?(?P<list>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "拼接到尾部并初始化源链表"
+      prototype: "void list_splice_tail_init(struct list_head *list, struct list_head *head)"
+
+
+# ============================================================
+# HLIST - 哈希链表
+# ============================================================
+
+hlist:
+  description: "Hash List - 哈希链表（单向）"
+  header: "linux/list.h"
+  icon: "#️⃣"
+  kernel_version: "2.6+"
+
+  overview:
+    description: "hlist 用于哈希表，节省一半指针空间"
+    notes:
+      - "头节点只有一个指针（first）"
+      - "节点有 next 和 pprev（指向前一个节点的 next 指针）"
+      - "适合大量短链表的场景（如哈希表）"
+
+  structures:
+    hlist_head:
+      fields:
+        - name: "first"
+          type: "struct hlist_node *"
+          description: "指向第一个节点"
+
+    hlist_node:
+      fields:
+        - name: "next"
+          type: "struct hlist_node *"
+          description: "指向下一个节点"
+        - name: "pprev"
+          type: "struct hlist_node **"
+          description: "指向前一个节点的 next 指针"
+
+  definition_patterns:
+    HLIST_HEAD:
+      pattern: 'HLIST_HEAD\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态定义哈希链表头"
+
+    HLIST_HEAD_INIT:
+      pattern: 'HLIST_HEAD_INIT'
+      description: "静态初始化为 { .first = NULL }"
+
+    INIT_HLIST_HEAD:
+      pattern: 'INIT_HLIST_HEAD\s*\(\s*&?(?P<ptr>[\w\.\->]+)\s*\)'
+      description: "动态初始化哈希链表头"
+
+    INIT_HLIST_NODE:
+      pattern: 'INIT_HLIST_NODE\s*\(\s*&?(?P<h>[\w\.\->]+)\s*\)'
+      description: "初始化哈希链表节点"
+
+  operations:
+    hlist_add_head:
+      pattern: 'hlist_add_head\s*\(\s*&?(?P<n>[\w\.\->]+)\s*,\s*&?(?P<h>[\w\.\->]+)\s*\)'
+      description: "在头部添加节点"
+      prototype: "void hlist_add_head(struct hlist_node *n, struct hlist_head *h)"
+
+    hlist_add_before:
+      pattern: 'hlist_add_before\s*\(\s*&?(?P<n>[\w\.\->]+)\s*,\s*&?(?P<next>[\w\.\->]+)\s*\)'
+      description: "在指定节点前添加"
+      prototype: "void hlist_add_before(struct hlist_node *n, struct hlist_node *next)"
+
+    hlist_add_behind:
+      pattern: 'hlist_add_behind\s*\(\s*&?(?P<n>[\w\.\->]+)\s*,\s*&?(?P<prev>[\w\.\->]+)\s*\)'
+      description: "在指定节点后添加"
+      prototype: "void hlist_add_behind(struct hlist_node *n, struct hlist_node *prev)"
+
+    hlist_del:
+      pattern: 'hlist_del\s*\(\s*&?(?P<n>[\w\.\->]+)\s*\)'
+      description: "删除节点"
+      prototype: "void hlist_del(struct hlist_node *n)"
+
+    hlist_del_init:
+      pattern: 'hlist_del_init\s*\(\s*&?(?P<n>[\w\.\->]+)\s*\)'
+      description: "删除并初始化节点"
+      prototype: "void hlist_del_init(struct hlist_node *n)"
+
+    hlist_empty:
+      pattern: 'hlist_empty\s*\(\s*&?(?P<h>[\w\.\->]+)\s*\)'
+      description: "测试是否为空"
+      prototype: "int hlist_empty(const struct hlist_head *h)"
+
+    hlist_unhashed:
+      pattern: 'hlist_unhashed\s*\(\s*&?(?P<h>[\w\.\->]+)\s*\)'
+      description: "测试节点是否未被链接"
+      prototype: "int hlist_unhashed(const struct hlist_node *h)"
+
+  entry_macros:
+    hlist_entry:
+      pattern: 'hlist_entry\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "从节点获取包含结构体"
+
+    hlist_entry_safe:
+      pattern: 'hlist_entry_safe\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "安全版本（ptr 可以为 NULL）"
+
+  iteration:
+    hlist_for_each:
+      pattern: 'hlist_for_each\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "遍历哈希链表节点"
+
+    hlist_for_each_safe:
+      pattern: 'hlist_for_each_safe\s*\(\s*(?P<pos>\w+)\s*,\s*(?P<n>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "安全遍历（可删除）"
+
+    hlist_for_each_entry:
+      pattern: 'hlist_for_each_entry\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "遍历包含结构体"
+      recommended: true
+
+    hlist_for_each_entry_safe:
+      pattern: 'hlist_for_each_entry_safe\s*\(\s*(?P<pos>\w+)\s*,\s*(?P<n>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "安全遍历包含结构体"
+      recommended: true
+
+
+# ============================================================
+# EXAMPLES - 示例代码
+# ============================================================
+
+examples:
+  - description: "基本链表操作"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/list.h>
+      #include <linux/slab.h>
+      
+      struct my_data {
+          int value;
+          struct list_head list;
+      };
+      
+      static LIST_HEAD(my_list);
+      
+      void list_basic_example(void)
+      {
+          struct my_data *item, *tmp;
+          int i;
+          
+          /* 添加元素 */
+          for (i = 0; i < 5; i++) {
+              item = kmalloc(sizeof(*item), GFP_KERNEL);
+              if (!item)
+                  continue;
+              item->value = i;
+              list_add_tail(&item->list, &my_list);
+          }
+          
+          /* 遍历（只读） */
+          list_for_each_entry(item, &my_list, list) {
+              pr_info("Value: %d\n", item->value);
+          }
+          
+          /* 安全遍历并删除 */
+          list_for_each_entry_safe(item, tmp, &my_list, list) {
+              if (item->value % 2 == 0) {
+                  list_del(&item->list);
+                  kfree(item);
+              }
+          }
+          
+          /* 检查是否为空 */
+          if (list_empty(&my_list))
+              pr_info("List is empty\n");
+      }
+
+  - description: "链表作为队列"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/list.h>
+      
+      struct work_item {
+          int id;
+          struct list_head node;
+      };
+      
+      static LIST_HEAD(work_queue);
+      static DEFINE_SPINLOCK(queue_lock);
+      
+      /* 入队（生产者） */
+      void enqueue_work(struct work_item *work)
+      {
+          spin_lock(&queue_lock);
+          list_add_tail(&work->node, &work_queue);
+          spin_unlock(&queue_lock);
+      }
+      
+      /* 出队（消费者） */
+      struct work_item *dequeue_work(void)
+      {
+          struct work_item *work = NULL;
+          
+          spin_lock(&queue_lock);
+          if (!list_empty(&work_queue)) {
+              work = list_first_entry(&work_queue,
+                                      struct work_item, node);
+              list_del_init(&work->node);
+          }
+          spin_unlock(&queue_lock);
+          
+          return work;
+      }
+
+  - description: "链表作为栈"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/list.h>
+      
+      struct stack_item {
+          void *data;
+          struct list_head node;
+      };
+      
+      static LIST_HEAD(stack);
+      
+      /* 压栈 */
+      void push(struct stack_item *item)
+      {
+          list_add(&item->node, &stack);
+      }
+      
+      /* 弹栈 */
+      struct stack_item *pop(void)
+      {
+          struct stack_item *item;
+          
+          if (list_empty(&stack))
+              return NULL;
+          
+          item = list_first_entry(&stack, struct stack_item, node);
+          list_del_init(&item->node);
+          return item;
+      }
+
+  - description: "哈希表使用 hlist"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/list.h>
+      #include <linux/hash.h>
+      
+      #define HASH_BITS 8
+      #define HASH_SIZE (1 << HASH_BITS)
+      
+      struct cache_entry {
+          unsigned long key;
+          void *value;
+          struct hlist_node node;
+      };
+      
+      static DEFINE_HASHTABLE(cache, HASH_BITS);
+      
+      /* 或者手动定义 */
+      /* static struct hlist_head cache[HASH_SIZE]; */
+      
+      void cache_add(struct cache_entry *entry)
+      {
+          unsigned long hash = hash_long(entry->key, HASH_BITS);
+          hlist_add_head(&entry->node, &cache[hash]);
+      }
+      
+      struct cache_entry *cache_find(unsigned long key)
+      {
+          struct cache_entry *entry;
+          unsigned long hash = hash_long(key, HASH_BITS);
+          
+          hlist_for_each_entry(entry, &cache[hash], node) {
+              if (entry->key == key)
+                  return entry;
+          }
+          return NULL;
+      }
+      
+      void cache_remove(struct cache_entry *entry)
+      {
+          hlist_del_init(&entry->node);
+      }
+
+  - description: "链表拼接"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/list.h>
+      
+      struct task {
+          int id;
+          struct list_head node;
+      };
+      
+      static LIST_HEAD(pending_tasks);
+      static LIST_HEAD(completed_tasks);
+      
+      /* 将所有待处理任务移到已完成列表 */
+      void complete_all_tasks(void)
+      {
+          /* 将 pending_tasks 的所有元素移到 completed_tasks */
+          list_splice_init(&pending_tasks, &completed_tasks);
+          /* pending_tasks 现在为空 */
+      }
+      
+      /* 批量添加任务 */
+      void add_batch_tasks(struct list_head *batch)
+      {
+          list_splice_tail_init(batch, &pending_tasks);
+      }
+
+
+# ============================================================
+# NOTES - 注意事项
+# ============================================================
+
+notes:
+  - "list_head 不包含数据，嵌入到包含数据的结构体中"
+  - "使用 list_entry/container_of 获取包含结构体"
+  - "遍历时删除元素必须使用 _safe 版本"
+  - "list_del 后节点不可用，使用 list_del_init 更安全"
+  - "hlist 用于哈希表，节省内存"
+  - "链表操作不是原子的，需要外部同步"
+  - "空链表: head->next == head"

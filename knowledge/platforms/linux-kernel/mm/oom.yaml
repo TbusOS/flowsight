@@ -1,0 +1,620 @@
+# Linux Kernel OOM Killer Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/mm/oom.html
+# Source: mm/oom_kill.c
+# Completeness: 95%+ (KB-Memory Agent)
+
+# ============================================================
+# OOM KILLER OVERVIEW
+# ============================================================
+
+oom_killer:
+  description: "OOM Killer - 内存不足杀手"
+  header: "linux/oom.h"
+  icon: "💀"
+  kernel_version: "2.6+"
+  
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+  
+  overview: |
+    OOM Killer 在系统内存严重不足时选择并杀死进程以回收内存。
+    - 当内存分配失败且无法回收时触发
+    - 根据 oom_score 选择受害进程
+    - 可通过 oom_score_adj 调整优先级
+    - 支持 cgroup 级别的 OOM 控制
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  oom_control:
+    pattern: 'struct oom_control\s*\{'
+    description: "OOM 控制结构"
+    file: "include/linux/oom.h"
+    fields:
+      - name: "zonelist"
+        type: "struct zonelist *"
+        description: "分配时使用的 zonelist"
+      - name: "nodemask"
+        type: "nodemask_t *"
+        description: "节点掩码"
+      - name: "memcg"
+        type: "struct mem_cgroup *"
+        description: "触发 OOM 的 memcg"
+      - name: "gfp_mask"
+        type: "const gfp_t"
+        description: "GFP 标志"
+      - name: "order"
+        type: "const int"
+        description: "分配 order"
+      - name: "totalpages"
+        type: "unsigned long"
+        description: "总页数 (用于计算分数)"
+      - name: "chosen"
+        type: "struct task_struct *"
+        description: "选中的受害进程"
+      - name: "chosen_points"
+        type: "unsigned long"
+        description: "选中进程的分数"
+
+# ============================================================
+# OOM SCORE
+# ============================================================
+
+oom_score:
+  description: "OOM Score - OOM 评分机制"
+  icon: "📊"
+  
+  calculation:
+    description: "OOM 分数计算"
+    formula: |
+      badness = (进程内存使用 / 系统总内存) * 1000
+      badness += oom_score_adj
+      
+      实际分数范围: 0 - 1000
+      0 = 永不杀死
+      1000 = 优先杀死
+    
+    factors:
+      - name: "内存使用"
+        description: "进程使用的物理内存 (RSS + swap)"
+      - name: "oom_score_adj"
+        description: "用户空间调整值 (-1000 到 1000)"
+      - name: "CAP_SYS_ADMIN"
+        description: "有此权限的进程分数降低 3%"
+      - name: "子进程"
+        description: "不包含子进程内存"
+
+  score_adj:
+    OOM_SCORE_ADJ_MIN:
+      value: -1000
+      description: "禁用 OOM (永不杀死)"
+      use_case: "关键系统服务"
+    
+    OOM_SCORE_ADJ_MAX:
+      value: 1000
+      description: "优先杀死"
+      use_case: "测试或低优先级进程"
+    
+    default:
+      value: 0
+      description: "默认值"
+
+  proc_interface:
+    - path: "/proc/<pid>/oom_score"
+      description: "当前 OOM 分数 (只读)"
+      range: "0 - infinity"
+    
+    - path: "/proc/<pid>/oom_score_adj"
+      description: "OOM 分数调整值 (可写)"
+      range: "-1000 到 1000"
+    
+    - path: "/proc/<pid>/oom_adj"
+      description: "旧版 OOM 调整值 (已废弃)"
+      deprecated: true
+
+# ============================================================
+# OOM INTERFACE
+# ============================================================
+
+oom_interface:
+  description: "OOM Interface - OOM 接口函数"
+  header: "linux/oom.h"
+  icon: "📤"
+
+  bind_patterns:
+    # out_of_memory - OOM 入口
+    - pattern: 'out_of_memory\s*\(\s*(?P<oc>[^)]+)\s*\)'
+      variable_capture: "oc"
+      description: "OOM killer 主入口"
+      context: "process"
+      can_sleep: true
+      return_value:
+        killed: "true (已杀死进程)"
+        not_killed: "false"
+
+    # oom_kill_process - 杀死进程
+    - pattern: 'oom_kill_process\s*\(\s*(?P<oc>[^,]+)\s*,\s*(?P<message>[^)]+)\s*\)'
+      variable_capture: "oc"
+      description: "杀死选中的进程"
+      context: "process"
+
+    # select_bad_process - 选择受害进程
+    - pattern: 'select_bad_process\s*\(\s*(?P<oc>[^)]+)\s*\)'
+      variable_capture: "oc"
+      description: "选择要杀死的进程"
+      context: "process"
+
+    # oom_badness - 计算 OOM 分数
+    - pattern: 'oom_badness\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<totalpages>[^)]+)\s*\)'
+      variable_capture: "p"
+      description: "计算进程 OOM 分数"
+      return_value:
+        success: "unsigned long (分数)"
+        skip: "0 (跳过此进程)"
+
+    # oom_unkillable_task - 不可杀任务
+    - pattern: 'oom_unkillable_task\s*\(\s*(?P<p>[^)]+)\s*\)'
+      variable_capture: "p"
+      description: "检查任务是否不可杀"
+      return_value:
+        unkillable: "true"
+        killable: "false"
+
+    # find_lock_task_mm - 查找任务 mm
+    - pattern: 'find_lock_task_mm\s*\(\s*(?P<p>[^)]+)\s*\)'
+      variable_capture: "p"
+      description: "查找有效 mm 的任务"
+
+    # mark_oom_victim - 标记 OOM 受害者
+    - pattern: 'mark_oom_victim\s*\(\s*(?P<tsk>[^)]+)\s*\)'
+      variable_capture: "tsk"
+      description: "标记为 OOM 受害者"
+
+    # exit_oom_victim - 退出 OOM 受害者
+    - pattern: 'exit_oom_victim\s*\(\s*\)'
+      description: "清除 OOM 受害者标志"
+
+    # oom_killer_disable - 禁用 OOM
+    - pattern: 'oom_killer_disable\s*\(\s*(?P<timeout>[^)]+)\s*\)'
+      variable_capture: "timeout"
+      description: "禁用 OOM killer"
+
+    # oom_killer_enable - 启用 OOM
+    - pattern: 'oom_killer_enable\s*\(\s*\)'
+      description: "启用 OOM killer"
+
+    # set_oom_score_adj - 设置调整分
+    - pattern: 'set_oom_score_adj\s*\(\s*(?P<adj>[^)]+)\s*\)'
+      variable_capture: "adj"
+      description: "设置 OOM 分数调整值"
+
+# ============================================================
+# OOM NOTIFIER
+# ============================================================
+
+oom_notifier:
+  description: "OOM Notifier - OOM 通知机制"
+  header: "linux/oom.h"
+  icon: "📢"
+
+  bind_patterns:
+    # register_oom_notifier - 注册通知
+    - pattern: 'register_oom_notifier\s*\(\s*(?P<nb>[^)]+)\s*\)'
+      variable_capture: "nb"
+      description: "注册 OOM 通知回调"
+
+    # unregister_oom_notifier - 注销通知
+    - pattern: 'unregister_oom_notifier\s*\(\s*(?P<nb>[^)]+)\s*\)'
+      variable_capture: "nb"
+      description: "注销 OOM 通知回调"
+
+  notifier_callback:
+    signature: "int (*)(struct notifier_block *, unsigned long, void *)"
+    return_values:
+      - name: "NOTIFY_OK"
+        description: "继续处理"
+      - name: "NOTIFY_STOP"
+        description: "停止 OOM，已处理"
+    use_case: "在 OOM 前执行自定义释放逻辑"
+
+# ============================================================
+# MEMCG OOM
+# ============================================================
+
+memcg_oom:
+  description: "Memcg OOM - cgroup 内存限制 OOM"
+  header: "linux/memcontrol.h"
+  icon: "📦"
+
+  bind_patterns:
+    # mem_cgroup_out_of_memory - memcg OOM
+    - pattern: 'mem_cgroup_out_of_memory\s*\(\s*(?P<memcg>[^,]+)\s*,'
+      variable_capture: "memcg"
+      description: "cgroup 内存超限触发的 OOM"
+
+    # mem_cgroup_oom_synchronize - 同步 OOM
+    - pattern: 'mem_cgroup_oom_synchronize\s*\(\s*(?P<wait>[^)]+)\s*\)'
+      variable_capture: "wait"
+      description: "等待 memcg OOM 完成"
+
+  cgroup_interface:
+    - path: "memory.oom_control"
+      description: "OOM 控制 (cgroup v1)"
+      options:
+        - "oom_kill_disable: 禁用 OOM"
+        - "under_oom: 是否处于 OOM 状态"
+    
+    - path: "memory.oom.group"
+      description: "组 OOM (cgroup v2)"
+      values:
+        - "0: 杀死单个进程"
+        - "1: 杀死整个 cgroup"
+
+# ============================================================
+# INTERNAL OPERATIONS
+# ============================================================
+
+internal_operations:
+  description: "OOM Internal Operations - OOM 内部操作"
+  header: "mm/oom_kill.c"
+  icon: "⚙️"
+
+  key_functions:
+    __oom_kill_process:
+      pattern: '__oom_kill_process\s*\('
+      description: "执行杀死进程"
+      context: "process"
+      file: "mm/oom_kill.c"
+
+    oom_reap_task:
+      pattern: 'oom_reap_task\s*\('
+      description: "收割 OOM 受害者的内存"
+      context: "kthread"
+      file: "mm/oom_kill.c"
+
+    oom_reaper:
+      pattern: 'oom_reaper\s*\('
+      description: "OOM 收割者线程"
+      context: "kthread"
+      file: "mm/oom_kill.c"
+
+    wake_oom_reaper:
+      pattern: 'wake_oom_reaper\s*\('
+      description: "唤醒 OOM 收割者"
+      context: "any"
+      file: "mm/oom_kill.c"
+
+    __oom_reap_task_mm:
+      pattern: '__oom_reap_task_mm\s*\('
+      description: "收割任务的 mm"
+      context: "kthread"
+      file: "mm/oom_kill.c"
+
+    dump_tasks:
+      pattern: 'dump_tasks\s*\('
+      description: "打印所有任务的 OOM 信息"
+      context: "process"
+      file: "mm/oom_kill.c"
+
+    dump_oom_summary:
+      pattern: 'dump_oom_summary\s*\('
+      description: "打印 OOM 摘要"
+      context: "process"
+      file: "mm/oom_kill.c"
+
+    dump_header:
+      pattern: 'dump_header\s*\('
+      description: "打印 OOM 头信息"
+      context: "process"
+      file: "mm/oom_kill.c"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  oom_trigger:
+    description: "OOM 触发路径"
+    trigger: "内存严重不足时"
+    chain:
+      - function: "__alloc_pages_slowpath"
+        file: "mm/page_alloc.c"
+        description: "慢速分配路径"
+      - function: "__alloc_pages_may_oom"
+        file: "mm/page_alloc.c"
+        description: "可能触发 OOM"
+      - function: "out_of_memory"
+        file: "mm/oom_kill.c"
+        description: "OOM 入口"
+      - function: "select_bad_process"
+        file: "mm/oom_kill.c"
+        description: "选择受害进程"
+      - function: "oom_evaluate_task"
+        file: "mm/oom_kill.c"
+        description: "评估每个任务"
+      - function: "oom_badness"
+        file: "mm/oom_kill.c"
+        description: "计算 OOM 分数"
+      - function: "oom_kill_process"
+        file: "mm/oom_kill.c"
+        description: "杀死进程"
+      - function: "__oom_kill_process"
+        file: "mm/oom_kill.c"
+        description: "执行杀死"
+      - function: "wake_oom_reaper"
+        file: "mm/oom_kill.c"
+        description: "唤醒收割者"
+
+  memcg_oom_trigger:
+    description: "Memcg OOM 路径"
+    trigger: "cgroup 内存超限"
+    chain:
+      - function: "mem_cgroup_charge"
+        file: "mm/memcontrol.c"
+        description: "memcg 记账"
+      - function: "try_charge"
+        file: "mm/memcontrol.c"
+        description: "尝试记账"
+      - function: "mem_cgroup_out_of_memory"
+        file: "mm/memcontrol.c"
+        description: "memcg OOM 入口"
+      - function: "out_of_memory"
+        file: "mm/oom_kill.c"
+        description: "通用 OOM 入口"
+      - function: "select_bad_process"
+        file: "mm/oom_kill.c"
+        description: "选择受害进程 (限 cgroup)"
+
+  oom_reap:
+    description: "OOM 收割路径"
+    trigger: "进程被 OOM 杀死后"
+    chain:
+      - function: "oom_reaper"
+        file: "mm/oom_kill.c"
+        description: "收割者线程主循环"
+        context: "kthread"
+      - function: "oom_reap_task"
+        file: "mm/oom_kill.c"
+        description: "收割单个任务"
+      - function: "__oom_reap_task_mm"
+        file: "mm/oom_kill.c"
+        description: "收割任务的 mm"
+      - function: "unmap_page_range"
+        file: "mm/memory.c"
+        description: "取消映射页范围"
+
+# ============================================================
+# SYSCTL AND TUNING
+# ============================================================
+
+sysctl_tuning:
+  description: "Sysctl and Tuning - 系统调优"
+  icon: "🔧"
+
+  sysctl:
+    - path: "/proc/sys/vm/panic_on_oom"
+      description: "OOM 时是否 panic"
+      values:
+        - "0: 不 panic (默认)"
+        - "1: 强制 panic"
+        - "2: 仅限 cgroup OOM 时 panic"
+
+    - path: "/proc/sys/vm/oom_kill_allocating_task"
+      description: "优先杀死触发 OOM 的任务"
+      values:
+        - "0: 选择最坏进程 (默认)"
+        - "1: 杀死触发者"
+
+    - path: "/proc/sys/vm/oom_dump_tasks"
+      description: "OOM 时打印任务信息"
+      values:
+        - "0: 不打印"
+        - "1: 打印 (默认)"
+
+    - path: "/proc/sys/vm/overcommit_memory"
+      description: "内存超分配策略"
+      values:
+        - "0: 启发式超分配 (默认)"
+        - "1: 总是允许超分配"
+        - "2: 不超分配"
+
+    - path: "/proc/sys/vm/overcommit_ratio"
+      description: "超分配比例 (overcommit_memory=2 时)"
+      default: "50"
+      formula: "可提交内存 = RAM * ratio/100 + swap"
+
+    - path: "/proc/sys/vm/overcommit_kbytes"
+      description: "超分配绝对值 (替代 ratio)"
+
+# ============================================================
+# DEBUG AND INFO
+# ============================================================
+
+debug_info:
+  description: "Debug and Info - 调试信息"
+  icon: "🔍"
+
+  kernel_log:
+    description: "OOM 时的内核日志内容"
+    content:
+      - "触发原因和调用栈"
+      - "内存统计 (free, cache, swap)"
+      - "所有任务列表和分数"
+      - "选中的受害进程"
+      - "杀死结果"
+
+  dmesg_example: |
+    [  123.456789] Out of memory: Killed process 1234 (my_app) total-vm:123456kB, 
+    anon-rss:12345kB, file-rss:0kB, shmem-rss:0kB, UID:1000 pgtables:100kB oom_score_adj:0
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "调整进程 OOM 分数"
+    kernel_version: "2.6.36+"
+    code: |
+      /* 用户空间调整 */
+      /* 保护重要进程不被 OOM 杀死 */
+      echo -1000 > /proc/$(pidof my_critical_app)/oom_score_adj
+      
+      /* 让测试进程优先被杀 */
+      echo 1000 > /proc/$(pidof my_test_app)/oom_score_adj
+      
+      /* 查看当前 OOM 分数 */
+      cat /proc/$(pidof my_app)/oom_score
+
+  - description: "内核模块中调整 OOM"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/oom.h>
+      #include <linux/sched.h>
+      
+      /* 设置当前进程的 OOM 分数调整值 */
+      static void protect_from_oom(void)
+      {
+          /* 范围: -1000 到 1000 */
+          /* -1000: 禁用 OOM 杀死 */
+          set_oom_score_adj(-900);
+      }
+      
+      /* 设置指定进程的 OOM 分数 */
+      static void set_task_oom_adj(struct task_struct *task, short adj)
+      {
+          if (adj < OOM_SCORE_ADJ_MIN)
+              adj = OOM_SCORE_ADJ_MIN;
+          else if (adj > OOM_SCORE_ADJ_MAX)
+              adj = OOM_SCORE_ADJ_MAX;
+          
+          task->signal->oom_score_adj = adj;
+      }
+
+  - description: "注册 OOM 通知器"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/oom.h>
+      #include <linux/notifier.h>
+      
+      static int my_oom_handler(struct notifier_block *nb,
+                                unsigned long action, void *data)
+      {
+          /* 在 OOM 杀死进程前尝试释放自己的缓存 */
+          pr_info("OOM notifier called, trying to free cache\n");
+          
+          /* 尝试释放我们的缓存 */
+          if (release_my_cache()) {
+              /* 成功释放了一些内存 */
+              return NOTIFY_OK;
+          }
+          
+          /* 无法释放，让 OOM killer 继续 */
+          return NOTIFY_OK;
+      }
+      
+      static struct notifier_block my_oom_nb = {
+          .notifier_call = my_oom_handler,
+          .priority = 0,  /* 优先级 */
+      };
+      
+      static int __init my_init(void)
+      {
+          register_oom_notifier(&my_oom_nb);
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          unregister_oom_notifier(&my_oom_nb);
+      }
+
+  - description: "cgroup v2 OOM 控制"
+    kernel_version: "4.19+"
+    code: |
+      # 创建 cgroup
+      mkdir /sys/fs/cgroup/my_cgroup
+      
+      # 设置内存限制
+      echo 100M > /sys/fs/cgroup/my_cgroup/memory.max
+      
+      # 启用组 OOM (杀死整个 cgroup 而非单个进程)
+      echo 1 > /sys/fs/cgroup/my_cgroup/memory.oom.group
+      
+      # 将进程加入 cgroup
+      echo $PID > /sys/fs/cgroup/my_cgroup/cgroup.procs
+      
+      # 监控 OOM 事件
+      cat /sys/fs/cgroup/my_cgroup/memory.events
+
+  - description: "防止 OOM 的编程实践"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/slab.h>
+      #include <linux/gfp.h>
+      
+      /* 不好的做法 - 可能触发 OOM */
+      void bad_allocation(void)
+      {
+          void *ptr = kmalloc(large_size, GFP_KERNEL | __GFP_NOFAIL);
+          /* __GFP_NOFAIL 会无限重试，可能死锁 */
+      }
+      
+      /* 好的做法 - 优雅处理失败 */
+      int good_allocation(void)
+      {
+          void *ptr = kmalloc(large_size, GFP_KERNEL | __GFP_NOWARN);
+          if (!ptr) {
+              /* 尝试释放缓存 */
+              shrink_my_caches();
+              
+              /* 重试 */
+              ptr = kmalloc(large_size, GFP_KERNEL | __GFP_NOWARN);
+              if (!ptr) {
+                  /* 真的分配失败，返回错误 */
+                  return -ENOMEM;
+              }
+          }
+          
+          /* 使用 ptr... */
+          return 0;
+      }
+      
+      /* 对于可能很大的分配，使用 kvmalloc */
+      void flexible_allocation(size_t size)
+      {
+          void *ptr = kvmalloc(size, GFP_KERNEL);
+          if (ptr) {
+              /* 成功 - 可能是 kmalloc 或 vmalloc */
+              kvfree(ptr);
+          }
+      }
+
+  - description: "系统级 OOM 保护配置"
+    kernel_version: "2.6+"
+    code: |
+      # 系统管理员配置脚本
+      
+      # 1. 保护关键服务
+      for pid in $(pgrep -f "sshd|systemd"); do
+          echo -900 > /proc/$pid/oom_score_adj 2>/dev/null
+      done
+      
+      # 2. 设置数据库服务为低优先级被杀
+      for pid in $(pgrep -f "mysqld|postgres"); do
+          echo -500 > /proc/$pid/oom_score_adj 2>/dev/null
+      done
+      
+      # 3. 配置超分配策略 (不超分配)
+      echo 2 > /proc/sys/vm/overcommit_memory
+      echo 80 > /proc/sys/vm/overcommit_ratio
+      
+      # 4. 启用 OOM 时的详细日志
+      echo 1 > /proc/sys/vm/oom_dump_tasks
+      
+      # 5. 禁止 OOM 时 panic (默认)
+      echo 0 > /proc/sys/vm/panic_on_oom

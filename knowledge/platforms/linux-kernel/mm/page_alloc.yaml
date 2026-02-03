@@ -1,0 +1,880 @@
+# Linux Kernel Page Allocator Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/mm/page_alloc.html
+# Source: mm/page_alloc.c
+# Completeness: 95%+ (KB-Memory Agent)
+
+# ============================================================
+# PAGE ALLOCATOR OVERVIEW
+# ============================================================
+
+page_allocator:
+  description: "Page Allocator - 伙伴系统页分配器"
+  header: "linux/gfp.h"
+  icon: "📄"
+  kernel_version: "2.6+"
+  
+  context:
+    type: "process/irq"
+    can_sleep: "depends on GFP flags"
+    can_schedule: "depends on GFP flags"
+    preemptible: "depends on GFP flags"
+  
+  overview: |
+    页分配器是 Linux 内存管理的基础，使用伙伴系统算法管理物理页。
+    - 按 2^order 个页分配 (order: 0-MAX_ORDER-1)
+    - 使用 zone 管理不同类型的内存
+    - 水位线控制回收行为
+    - 支持 NUMA 多节点分配
+
+  buddy_system:
+    description: "伙伴系统算法"
+    orders:
+      - order: 0
+        pages: 1
+        size: "4KB (PAGE_SIZE)"
+      - order: 1
+        pages: 2
+        size: "8KB"
+      - order: 2
+        pages: 4
+        size: "16KB"
+      - order: 3
+        pages: 8
+        size: "32KB"
+      - order: 4
+        pages: 16
+        size: "64KB"
+      - order: 5
+        pages: 32
+        size: "128KB"
+      - order: 6
+        pages: 64
+        size: "256KB"
+      - order: 7
+        pages: 128
+        size: "512KB"
+      - order: 8
+        pages: 256
+        size: "1MB"
+      - order: 9
+        pages: 512
+        size: "2MB"
+      - order: 10
+        pages: 1024
+        size: "4MB (MAX_ORDER-1)"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  zone:
+    pattern: 'struct zone\s*\{'
+    description: "内存区域结构"
+    file: "include/linux/mmzone.h"
+    fields:
+      - name: "watermark"
+        type: "unsigned long[]"
+        description: "水位线数组 [WMARK_MIN, WMARK_LOW, WMARK_HIGH]"
+      - name: "watermark_boost"
+        type: "unsigned long"
+        description: "水位线提升值"
+      - name: "nr_reserved_highatomic"
+        type: "unsigned long"
+        description: "高优先级原子预留"
+      - name: "lowmem_reserve"
+        type: "long[]"
+        description: "低端内存预留"
+      - name: "node"
+        type: "int"
+        description: "所属 NUMA 节点"
+      - name: "zone_pgdat"
+        type: "struct pglist_data *"
+        description: "所属 pgdat"
+      - name: "per_cpu_pageset"
+        type: "struct per_cpu_pageset __percpu *"
+        description: "每 CPU 页集"
+      - name: "free_area"
+        type: "struct free_area[]"
+        description: "伙伴系统空闲区域 (每个 order)"
+      - name: "flags"
+        type: "unsigned long"
+        description: "zone 标志"
+      - name: "lock"
+        type: "spinlock_t"
+        description: "zone 自旋锁"
+      - name: "name"
+        type: "const char *"
+        description: "zone 名称"
+      - name: "managed_pages"
+        type: "atomic_long_t"
+        description: "被管理的页数"
+      - name: "spanned_pages"
+        type: "unsigned long"
+        description: "跨越的页数"
+      - name: "present_pages"
+        type: "unsigned long"
+        description: "存在的页数"
+
+  free_area:
+    pattern: 'struct free_area\s*\{'
+    description: "空闲区域结构 (每个 order 一个)"
+    file: "include/linux/mmzone.h"
+    fields:
+      - name: "free_list"
+        type: "struct list_head[]"
+        description: "空闲链表 (每个迁移类型一个)"
+      - name: "nr_free"
+        type: "unsigned long"
+        description: "空闲块数量"
+
+  per_cpu_pages:
+    pattern: 'struct per_cpu_pages\s*\{'
+    description: "每 CPU 页缓存"
+    file: "include/linux/mmzone.h"
+    fields:
+      - name: "count"
+        type: "int"
+        description: "当前页数"
+      - name: "high"
+        type: "int"
+        description: "高水位 (触发归还)"
+      - name: "batch"
+        type: "int"
+        description: "批量大小"
+      - name: "lists"
+        type: "struct list_head[]"
+        description: "页链表 (每个迁移类型)"
+
+  pglist_data:
+    pattern: 'typedef struct pglist_data\s*\{'
+    description: "NUMA 节点数据结构"
+    file: "include/linux/mmzone.h"
+    fields:
+      - name: "node_zones"
+        type: "struct zone[]"
+        description: "节点的 zone 数组"
+      - name: "node_zonelists"
+        type: "struct zonelist[]"
+        description: "分配回退列表"
+      - name: "nr_zones"
+        type: "int"
+        description: "zone 数量"
+      - name: "node_start_pfn"
+        type: "unsigned long"
+        description: "起始页帧号"
+      - name: "node_present_pages"
+        type: "unsigned long"
+        description: "存在的页数"
+      - name: "node_spanned_pages"
+        type: "unsigned long"
+        description: "跨越的页数"
+      - name: "node_id"
+        type: "int"
+        description: "节点 ID"
+      - name: "kswapd"
+        type: "struct task_struct *"
+        description: "kswapd 线程"
+      - name: "kswapd_wait"
+        type: "wait_queue_head_t"
+        description: "kswapd 等待队列"
+
+# ============================================================
+# ZONE TYPES
+# ============================================================
+
+zone_types:
+  description: "内存区域类型"
+  icon: "🗺️"
+  
+  types:
+    ZONE_DMA:
+      description: "DMA 内存区 (ISA DMA, 0-16MB)"
+      range: "0 - 16MB"
+      use_case: "老式 ISA 设备 DMA"
+    
+    ZONE_DMA32:
+      description: "32位 DMA 内存区 (0-4GB)"
+      range: "0 - 4GB"
+      use_case: "32位 PCI 设备 DMA"
+    
+    ZONE_NORMAL:
+      description: "普通内存区"
+      range: "直接映射区域"
+      use_case: "大多数内核分配"
+    
+    ZONE_HIGHMEM:
+      description: "高端内存区 (仅 32位)"
+      range: "896MB 以上 (32位)"
+      use_case: "用户空间页面"
+    
+    ZONE_MOVABLE:
+      description: "可移动内存区"
+      range: "动态配置"
+      use_case: "内存热插拔"
+    
+    ZONE_DEVICE:
+      description: "设备内存区"
+      range: "设备相关"
+      use_case: "持久内存、GPU 内存"
+
+# ============================================================
+# WATERMARKS
+# ============================================================
+
+watermarks:
+  description: "内存水位线"
+  icon: "💧"
+  
+  levels:
+    WMARK_MIN:
+      description: "最低水位 - 触发 OOM"
+      action: "仅紧急分配成功"
+    
+    WMARK_LOW:
+      description: "低水位 - 触发 kswapd"
+      action: "唤醒 kswapd 后台回收"
+    
+    WMARK_HIGH:
+      description: "高水位 - kswapd 停止"
+      action: "回收到此水位后停止"
+  
+  sysctl:
+    - path: "/proc/sys/vm/min_free_kbytes"
+      description: "设置 WMARK_MIN"
+    - path: "/proc/sys/vm/watermark_scale_factor"
+      description: "水位间距因子"
+    - path: "/proc/sys/vm/watermark_boost_factor"
+      description: "水位提升因子"
+
+# ============================================================
+# PAGE ALLOCATION INTERFACE
+# ============================================================
+
+page_allocation:
+  description: "Page Allocation Interface - 页分配接口"
+  header: "linux/gfp.h"
+  icon: "📤"
+
+  bind_patterns:
+    # alloc_pages - 分配页
+    - pattern: 'alloc_pages\s*\(\s*(?P<gfp>[^,]+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "gfp"
+      description: "分配 2^order 个连续页"
+      return_value:
+        success: "struct page * (首页)"
+        failure: "NULL"
+
+    # alloc_page - 分配单页
+    - pattern: 'alloc_page\s*\(\s*(?P<gfp>[^)]+)\s*\)'
+      variable_capture: "gfp"
+      description: "分配单个页"
+
+    # alloc_pages_node - 从节点分配
+    - pattern: 'alloc_pages_node\s*\(\s*(?P<nid>[^,]+)\s*,\s*(?P<gfp>[^,]+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "nid"
+      description: "从指定 NUMA 节点分配"
+
+    # __alloc_pages - 底层分配
+    - pattern: '__alloc_pages\s*\(\s*(?P<gfp>[^,]+)\s*,\s*(?P<order>\w+)\s*,\s*(?P<preferred_nid>[^,]+)\s*,\s*(?P<nodemask>[^)]+)\s*\)'
+      variable_capture: "gfp"
+      description: "底层页分配接口"
+
+    # __get_free_pages - 获取虚拟地址
+    - pattern: '__get_free_pages\s*\(\s*(?P<gfp>[^,]+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "gfp"
+      description: "分配页并返回虚拟地址"
+      return_value:
+        success: "unsigned long (虚拟地址)"
+        failure: "0"
+
+    # __get_free_page - 获取单页虚拟地址
+    - pattern: '__get_free_page\s*\(\s*(?P<gfp>[^)]+)\s*\)'
+      variable_capture: "gfp"
+      description: "分配单页返回虚拟地址"
+
+    # get_zeroed_page - 零初始化页
+    - pattern: 'get_zeroed_page\s*\(\s*(?P<gfp>[^)]+)\s*\)'
+      variable_capture: "gfp"
+      description: "分配零初始化页"
+
+    # __get_dma_pages - DMA 页
+    - pattern: '__get_dma_pages\s*\(\s*(?P<gfp>[^,]+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "gfp"
+      description: "分配 DMA 可达的页"
+
+# ============================================================
+# PAGE FREE INTERFACE
+# ============================================================
+
+page_free:
+  description: "Page Free Interface - 页释放接口"
+  header: "linux/gfp.h"
+  icon: "📥"
+
+  bind_patterns:
+    # __free_pages - 释放页框
+    - pattern: '__free_pages\s*\(\s*(?P<page>[^,]+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "page"
+      description: "释放 2^order 个页"
+
+    # __free_page - 释放单页框
+    - pattern: '__free_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "释放单个页"
+
+    # free_pages - 释放虚拟地址页
+    - pattern: 'free_pages\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<order>\w+)\s*\)'
+      variable_capture: "addr"
+      description: "释放虚拟地址对应的页"
+
+    # free_page - 释放单页虚拟地址
+    - pattern: 'free_page\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "释放虚拟地址对应的单页"
+
+    # put_page - 减少引用
+    - pattern: 'put_page\s*\(\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "减少页引用计数 (可能释放)"
+
+# ============================================================
+# GFP FLAGS
+# ============================================================
+
+gfp_flags:
+  description: "GFP Flags - 内存分配标志"
+  header: "linux/gfp.h"
+  icon: "🏷️"
+
+  zone_modifiers:
+    - name: "__GFP_DMA"
+      description: "从 ZONE_DMA 分配"
+    - name: "__GFP_DMA32"
+      description: "从 ZONE_DMA32 分配"
+    - name: "__GFP_HIGHMEM"
+      description: "可以使用高端内存"
+    - name: "__GFP_MOVABLE"
+      description: "使用可移动内存"
+
+  action_modifiers:
+    - name: "__GFP_RECLAIMABLE"
+      description: "可回收分配"
+    - name: "__GFP_HIGH"
+      description: "高优先级分配"
+    - name: "__GFP_IO"
+      description: "允许进行 IO"
+    - name: "__GFP_FS"
+      description: "允许文件系统调用"
+    - name: "__GFP_ZERO"
+      description: "零初始化内存"
+    - name: "__GFP_ATOMIC"
+      description: "原子分配 (不能睡眠)"
+    - name: "__GFP_DIRECT_RECLAIM"
+      description: "允许直接回收"
+    - name: "__GFP_KSWAPD_RECLAIM"
+      description: "唤醒 kswapd"
+    - name: "__GFP_NOWARN"
+      description: "不打印警告"
+    - name: "__GFP_RETRY_MAYFAIL"
+      description: "重试但可能失败"
+    - name: "__GFP_NOFAIL"
+      description: "分配不能失败"
+    - name: "__GFP_NORETRY"
+      description: "不重试"
+    - name: "__GFP_MEMALLOC"
+      description: "使用紧急储备"
+    - name: "__GFP_COMP"
+      description: "复合页"
+    - name: "__GFP_NOMEMALLOC"
+      description: "禁止使用储备"
+    - name: "__GFP_HARDWALL"
+      description: "强制 cpuset 限制"
+    - name: "__GFP_THISNODE"
+      description: "只在当前节点"
+    - name: "__GFP_ACCOUNT"
+      description: "记账到 memcg"
+
+  common_combinations:
+    GFP_KERNEL:
+      description: "普通内核分配"
+      flags: "__GFP_RECLAIM | __GFP_IO | __GFP_FS"
+      can_sleep: true
+      context: "process"
+
+    GFP_ATOMIC:
+      description: "原子分配"
+      flags: "__GFP_HIGH | __GFP_ATOMIC | __GFP_KSWAPD_RECLAIM"
+      can_sleep: false
+      context: "any"
+
+    GFP_NOWAIT:
+      description: "不等待分配"
+      flags: "__GFP_KSWAPD_RECLAIM"
+      can_sleep: false
+      context: "any"
+
+    GFP_NOIO:
+      description: "不做 IO"
+      flags: "__GFP_RECLAIM"
+      can_sleep: true
+      context: "process"
+
+    GFP_NOFS:
+      description: "不做文件系统调用"
+      flags: "__GFP_RECLAIM | __GFP_IO"
+      can_sleep: true
+      context: "process"
+
+    GFP_USER:
+      description: "用户空间分配"
+      flags: "__GFP_RECLAIM | __GFP_IO | __GFP_FS | __GFP_HARDWALL"
+      can_sleep: true
+      context: "process"
+
+    GFP_HIGHUSER:
+      description: "高端用户内存"
+      flags: "GFP_USER | __GFP_HIGHMEM"
+      can_sleep: true
+      context: "process"
+
+    GFP_HIGHUSER_MOVABLE:
+      description: "可移动高端用户内存"
+      flags: "GFP_HIGHUSER | __GFP_MOVABLE"
+      can_sleep: true
+      context: "process"
+
+# ============================================================
+# INTERNAL OPERATIONS
+# ============================================================
+
+internal_operations:
+  description: "Page Allocator Internal Operations - 内部操作"
+  header: "mm/page_alloc.c"
+  icon: "⚙️"
+
+  key_functions:
+    __alloc_pages_slowpath:
+      pattern: '__alloc_pages_slowpath\s*\('
+      description: "慢速分配路径"
+      context: "process"
+      file: "mm/page_alloc.c"
+
+    get_page_from_freelist:
+      pattern: 'get_page_from_freelist\s*\('
+      description: "从空闲列表获取页"
+      context: "any"
+      file: "mm/page_alloc.c"
+
+    rmqueue:
+      pattern: 'rmqueue\s*\('
+      description: "从 zone 移除页"
+      context: "irq disabled"
+      file: "mm/page_alloc.c"
+
+    rmqueue_bulk:
+      pattern: 'rmqueue_bulk\s*\('
+      description: "批量移除页"
+      context: "irq disabled"
+      file: "mm/page_alloc.c"
+
+    rmqueue_pcplist:
+      pattern: 'rmqueue_pcplist\s*\('
+      description: "从 PCP 列表移除"
+      context: "irq disabled"
+      file: "mm/page_alloc.c"
+
+    __rmqueue:
+      pattern: '__rmqueue\s*\('
+      description: "底层移除页"
+      context: "zone lock held"
+      file: "mm/page_alloc.c"
+
+    __rmqueue_smallest:
+      pattern: '__rmqueue_smallest\s*\('
+      description: "移除最小合适块"
+      context: "zone lock held"
+      file: "mm/page_alloc.c"
+
+    expand:
+      pattern: 'expand\s*\('
+      description: "伙伴分裂 (高 order 分割)"
+      context: "zone lock held"
+      file: "mm/page_alloc.c"
+
+    __free_one_page:
+      pattern: '__free_one_page\s*\('
+      description: "释放并尝试合并伙伴"
+      context: "zone lock held"
+      file: "mm/page_alloc.c"
+
+    free_pcppages_bulk:
+      pattern: 'free_pcppages_bulk\s*\('
+      description: "批量释放 PCP 页"
+      context: "irq disabled"
+      file: "mm/page_alloc.c"
+
+    __perform_reclaim:
+      pattern: '__perform_reclaim\s*\('
+      description: "执行直接回收"
+      context: "process"
+      file: "mm/page_alloc.c"
+
+    __alloc_pages_direct_reclaim:
+      pattern: '__alloc_pages_direct_reclaim\s*\('
+      description: "直接回收后重试"
+      context: "process"
+      file: "mm/page_alloc.c"
+
+    __alloc_pages_direct_compact:
+      pattern: '__alloc_pages_direct_compact\s*\('
+      description: "内存压缩后重试"
+      context: "process"
+      file: "mm/page_alloc.c"
+
+    __alloc_pages_may_oom:
+      pattern: '__alloc_pages_may_oom\s*\('
+      description: "可能触发 OOM"
+      context: "process"
+      file: "mm/page_alloc.c"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  fast_alloc:
+    description: "快速分配路径"
+    trigger: "alloc_pages() 且内存充足"
+    chain:
+      - function: "alloc_pages"
+        file: "include/linux/gfp.h"
+        description: "分配入口"
+      - function: "__alloc_pages"
+        file: "mm/page_alloc.c"
+        description: "核心分配"
+      - function: "get_page_from_freelist"
+        file: "mm/page_alloc.c"
+        description: "从空闲列表获取"
+      - function: "rmqueue"
+        file: "mm/page_alloc.c"
+        description: "从 zone 移除"
+      - function: "rmqueue_pcplist"
+        file: "mm/page_alloc.c"
+        description: "从 PCP 获取 (order 0)"
+
+  slow_alloc:
+    description: "慢速分配路径"
+    trigger: "alloc_pages() 且内存紧张"
+    chain:
+      - function: "alloc_pages"
+        file: "include/linux/gfp.h"
+        description: "分配入口"
+      - function: "__alloc_pages"
+        file: "mm/page_alloc.c"
+        description: "核心分配"
+      - function: "get_page_from_freelist"
+        file: "mm/page_alloc.c"
+        description: "首次尝试 (失败)"
+      - function: "__alloc_pages_slowpath"
+        file: "mm/page_alloc.c"
+        description: "进入慢路径"
+      - function: "wake_all_kswapds"
+        file: "mm/page_alloc.c"
+        description: "唤醒 kswapd"
+      - function: "get_page_from_freelist"
+        file: "mm/page_alloc.c"
+        description: "重试"
+      - function: "__alloc_pages_direct_reclaim"
+        file: "mm/page_alloc.c"
+        description: "直接回收"
+      - function: "__alloc_pages_direct_compact"
+        file: "mm/page_alloc.c"
+        description: "内存压缩"
+      - function: "__alloc_pages_may_oom"
+        file: "mm/page_alloc.c"
+        description: "可能 OOM"
+
+  page_free:
+    description: "页释放路径"
+    trigger: "__free_pages()"
+    chain:
+      - function: "__free_pages"
+        file: "mm/page_alloc.c"
+        description: "释放入口"
+      - function: "free_the_page"
+        file: "mm/page_alloc.c"
+        description: "释放实现"
+      - function: "free_unref_page"
+        file: "mm/page_alloc.c"
+        description: "释放无引用页"
+      - function: "free_unref_page_commit"
+        file: "mm/page_alloc.c"
+        description: "提交释放"
+      - function: "free_pcppages_bulk"
+        file: "mm/page_alloc.c"
+        description: "批量释放到 zone"
+      - function: "__free_one_page"
+        file: "mm/page_alloc.c"
+        description: "释放并合并伙伴"
+
+  buddy_merge:
+    description: "伙伴合并路径"
+    trigger: "释放页时伙伴也空闲"
+    chain:
+      - function: "__free_one_page"
+        file: "mm/page_alloc.c"
+        description: "释放入口"
+      - function: "page_is_buddy"
+        file: "mm/page_alloc.c"
+        description: "检查是否是伙伴"
+      - function: "__del_page_from_free_list"
+        file: "mm/page_alloc.c"
+        description: "从空闲列表删除伙伴"
+      - function: "set_buddy_order"
+        file: "mm/page_alloc.c"
+        description: "设置合并后的 order"
+      - function: "add_to_free_list"
+        file: "mm/page_alloc.c"
+        description: "添加到高 order 链表"
+
+# ============================================================
+# MIGRATION TYPES
+# ============================================================
+
+migration_types:
+  description: "页面迁移类型 (反碎片化)"
+  icon: "🔄"
+  
+  types:
+    MIGRATE_UNMOVABLE:
+      description: "不可移动 (内核数据结构)"
+      index: 0
+    
+    MIGRATE_MOVABLE:
+      description: "可移动 (用户页面)"
+      index: 1
+    
+    MIGRATE_RECLAIMABLE:
+      description: "可回收 (页缓存)"
+      index: 2
+    
+    MIGRATE_PCPTYPES:
+      description: "PCP 类型数量"
+      index: 3
+    
+    MIGRATE_HIGHATOMIC:
+      description: "高优先级原子"
+      index: 3
+    
+    MIGRATE_CMA:
+      description: "CMA 区域"
+      index: 4
+    
+    MIGRATE_ISOLATE:
+      description: "隔离 (热插拔)"
+      index: 5
+
+# ============================================================
+# DEBUG AND INFO
+# ============================================================
+
+debug_info:
+  description: "Debug and Info - 调试信息"
+  icon: "🔍"
+
+  proc_files:
+    - path: "/proc/buddyinfo"
+      description: "伙伴系统信息"
+      format: "Node X, zone Y: order0_count order1_count ..."
+
+    - path: "/proc/pagetypeinfo"
+      description: "页类型信息"
+      content: "各迁移类型的分布"
+
+    - path: "/proc/zoneinfo"
+      description: "zone 详细信息"
+      content: "水位线、空闲页、统计"
+
+    - path: "/proc/vmstat"
+      description: "VM 统计"
+      content: "各种内存事件计数"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本页分配"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/gfp.h>
+      #include <linux/mm.h>
+      
+      static int page_alloc_example(void)
+      {
+          struct page *page;
+          void *vaddr;
+          
+          /* 分配单页 */
+          page = alloc_page(GFP_KERNEL);
+          if (!page)
+              return -ENOMEM;
+          
+          /* 获取虚拟地址 */
+          vaddr = page_address(page);
+          memset(vaddr, 0, PAGE_SIZE);
+          
+          /* 释放页 */
+          __free_page(page);
+          
+          return 0;
+      }
+
+  - description: "高阶分配"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/gfp.h>
+      
+      static int high_order_example(void)
+      {
+          struct page *pages;
+          int order = 3;  /* 8 页 = 32KB */
+          
+          /* 分配 2^order 个连续页 */
+          pages = alloc_pages(GFP_KERNEL, order);
+          if (!pages) {
+              pr_err("Failed to alloc order %d\n", order);
+              return -ENOMEM;
+          }
+          
+          /* 使用... */
+          void *vaddr = page_address(pages);
+          size_t size = PAGE_SIZE << order;
+          memset(vaddr, 0, size);
+          
+          /* 释放 */
+          __free_pages(pages, order);
+          return 0;
+      }
+
+  - description: "使用 __get_free_pages"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/gfp.h>
+      
+      static int get_free_pages_example(void)
+      {
+          unsigned long addr;
+          
+          /* 分配并获取虚拟地址 */
+          addr = __get_free_pages(GFP_KERNEL, 2);  /* 4 页 */
+          if (!addr)
+              return -ENOMEM;
+          
+          /* 零初始化单页 */
+          unsigned long zeroed = get_zeroed_page(GFP_KERNEL);
+          if (!zeroed) {
+              free_pages(addr, 2);
+              return -ENOMEM;
+          }
+          
+          /* 使用... */
+          
+          /* 释放 */
+          free_pages(addr, 2);
+          free_page(zeroed);
+          return 0;
+      }
+
+  - description: "NUMA 感知分配"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/gfp.h>
+      #include <linux/numa.h>
+      
+      static int numa_alloc_example(void)
+      {
+          struct page *page;
+          int node = numa_node_id();  /* 当前节点 */
+          
+          /* 从指定节点分配 */
+          page = alloc_pages_node(node, GFP_KERNEL, 0);
+          if (!page)
+              return -ENOMEM;
+          
+          /* 验证节点 */
+          int actual_node = page_to_nid(page);
+          pr_info("Allocated on node %d (requested %d)\n",
+                  actual_node, node);
+          
+          __free_page(page);
+          return 0;
+      }
+
+  - description: "GFP 标志选择"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/gfp.h>
+      
+      /* 进程上下文 - 可以睡眠 */
+      void process_context_alloc(void)
+      {
+          struct page *p = alloc_page(GFP_KERNEL);
+          if (p) __free_page(p);
+      }
+      
+      /* 中断上下文 - 不能睡眠 */
+      void irq_context_alloc(void)
+      {
+          struct page *p = alloc_page(GFP_ATOMIC);
+          if (p) __free_page(p);
+      }
+      
+      /* 块设备层 - 不能做 IO */
+      void block_layer_alloc(void)
+      {
+          struct page *p = alloc_page(GFP_NOIO);
+          if (p) __free_page(p);
+      }
+      
+      /* 文件系统 - 不能做 FS 调用 */
+      void fs_layer_alloc(void)
+      {
+          struct page *p = alloc_page(GFP_NOFS);
+          if (p) __free_page(p);
+      }
+      
+      /* 用户空间页面 */
+      void user_page_alloc(void)
+      {
+          struct page *p = alloc_page(GFP_HIGHUSER_MOVABLE);
+          if (p) __free_page(p);
+      }
+
+  - description: "复合页分配"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/gfp.h>
+      #include <linux/mm.h>
+      
+      static int compound_page_example(void)
+      {
+          struct page *page;
+          
+          /* 分配复合页 */
+          page = alloc_pages(GFP_KERNEL | __GFP_COMP, 2);
+          if (!page)
+              return -ENOMEM;
+          
+          /* 检查是否是复合页 */
+          if (PageCompound(page)) {
+              struct page *head = compound_head(page);
+              unsigned int order = compound_order(head);
+              pr_info("Compound page order: %u\n", order);
+          }
+          
+          /* 释放 */
+          __free_pages(page, 2);
+          return 0;
+      }

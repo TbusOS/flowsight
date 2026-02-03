@@ -1,0 +1,1002 @@
+# Linux Kernel Block Multi-Queue (blk-mq) Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/block/blk-mq.html
+# Source: block/blk-mq*.c, include/linux/blk-mq.h
+
+# ============================================================
+# BLK-MQ OVERVIEW
+# ============================================================
+
+blk_mq_overview:
+  description: "Block Multi-Queue - 高性能多队列块层框架"
+  header: "linux/blk-mq.h"
+  icon: "⚡"
+  kernel_version: "3.13+"
+
+  context:
+    type: "varies"
+    can_sleep: "depends on callback"
+
+  purpose: |
+    blk-mq 是 Linux 内核的现代块层框架，专为高速存储设备 (NVMe, 高速 SSD) 设计。
+    
+    核心特性：
+    - 多队列架构 - 每 CPU 软件队列 + 多硬件队列
+    - 无锁设计 - 减少 CPU 间竞争
+    - 直接发送 - 绕过调度器直接发送到设备
+    - 标签管理 - 高效的请求标识和跟踪
+    - 轮询支持 - 低延迟 io_uring 轮询模式
+
+
+# ============================================================
+# BLK-MQ DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  blk_mq_tag_set:
+    description: "多队列标签集 - 描述设备的队列配置"
+    header: "include/linux/blk-mq.h"
+    pattern: 'struct blk_mq_tag_set\s*\{'
+    fields:
+      - name: "ops"
+        type: "const struct blk_mq_ops *"
+        description: "多队列操作回调"
+      - name: "map"
+        type: "struct blk_mq_queue_map[]"
+        description: "队列类型到 CPU 的映射"
+      - name: "nr_maps"
+        type: "unsigned int"
+        description: "队列映射数量"
+      - name: "nr_hw_queues"
+        type: "unsigned int"
+        description: "硬件队列数量"
+      - name: "queue_depth"
+        type: "unsigned int"
+        description: "每队列深度 (标签数)"
+      - name: "reserved_tags"
+        type: "unsigned int"
+        description: "保留标签数"
+      - name: "cmd_size"
+        type: "unsigned int"
+        description: "驱动私有命令结构大小"
+      - name: "numa_node"
+        type: "int"
+        description: "首选 NUMA 节点"
+      - name: "timeout"
+        type: "unsigned int"
+        description: "请求超时 (jiffies)"
+      - name: "flags"
+        type: "unsigned int"
+        description: "BLK_MQ_F_* 标志"
+      - name: "driver_data"
+        type: "void *"
+        description: "驱动私有数据"
+      - name: "tags"
+        type: "struct blk_mq_tags **"
+        description: "每硬件队列的标签数组"
+
+  blk_mq_hw_ctx:
+    description: "硬件队列上下文 - 代表一个硬件队列"
+    header: "include/linux/blk-mq.h"
+    pattern: 'struct blk_mq_hw_ctx\s*\{'
+    fields:
+      - name: "state"
+        type: "unsigned long"
+        description: "队列状态位"
+      - name: "run_work"
+        type: "struct delayed_work"
+        description: "延迟运行工作"
+      - name: "cpumask"
+        type: "cpumask_var_t"
+        description: "关联的 CPU 掩码"
+      - name: "next_cpu"
+        type: "int"
+        description: "下一个 CPU (轮询)"
+      - name: "next_cpu_batch"
+        type: "int"
+        description: "批量 CPU 计数"
+      - name: "flags"
+        type: "unsigned long"
+        description: "标志位"
+      - name: "sched_data"
+        type: "void *"
+        description: "调度器私有数据"
+      - name: "queue"
+        type: "struct request_queue *"
+        description: "所属请求队列"
+      - name: "fq"
+        type: "struct blk_flush_queue *"
+        description: "刷新队列"
+      - name: "driver_data"
+        type: "void *"
+        description: "驱动私有数据"
+      - name: "tags"
+        type: "struct blk_mq_tags *"
+        description: "标签管理"
+      - name: "sched_tags"
+        type: "struct blk_mq_tags *"
+        description: "调度器标签"
+      - name: "queued"
+        type: "unsigned long"
+        description: "入队计数"
+      - name: "run"
+        type: "unsigned long"
+        description: "运行计数"
+      - name: "dispatched"
+        type: "unsigned long[]"
+        description: "分发统计"
+      - name: "numa_node"
+        type: "unsigned int"
+        description: "NUMA 节点"
+      - name: "queue_num"
+        type: "unsigned int"
+        description: "硬件队列号"
+      - name: "nr_active"
+        type: "atomic_t"
+        description: "活跃请求数"
+
+  blk_mq_ctx:
+    description: "软件队列上下文 - per-CPU 软件队列"
+    header: "block/blk-mq.h"
+    pattern: 'struct blk_mq_ctx\s*\{'
+    fields:
+      - name: "rq_dispatched"
+        type: "struct blk_mq_ctx_sysfs_entry[]"
+        description: "分发计数"
+      - name: "rq_merged"
+        type: "unsigned long"
+        description: "合并计数"
+      - name: "rq_completed"
+        type: "unsigned long[]"
+        description: "完成计数"
+      - name: "rq_lists"
+        type: "struct list_head[]"
+        description: "请求链表 (按类型)"
+      - name: "cpu"
+        type: "unsigned int"
+        description: "CPU 编号"
+      - name: "index_hw"
+        type: "unsigned short[]"
+        description: "硬件队列索引 (按类型)"
+      - name: "queue"
+        type: "struct request_queue *"
+        description: "所属请求队列"
+
+  blk_mq_queue_data:
+    description: "队列请求数据 - 传递给 queue_rq 的参数"
+    header: "include/linux/blk-mq.h"
+    pattern: 'struct blk_mq_queue_data\s*\{'
+    fields:
+      - name: "rq"
+        type: "struct request *"
+        description: "请求指针"
+      - name: "last"
+        type: "bool"
+        description: "是否为批量中的最后一个"
+
+
+# ============================================================
+# BLK-MQ OPS CALLBACKS
+# ============================================================
+
+blk_mq_ops:
+  description: "Block Multi-Queue Operations - 驱动必须实现的回调"
+  header: "linux/blk-mq.h"
+  icon: "🔧"
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct blk_mq_ops\s+(?P<name>\w+)\s*=\s*\{'
+    description: "blk-mq 操作结构定义"
+
+  callbacks:
+    queue_rq:
+      pattern: '\.queue_rq\s*=\s*(?P<handler>\w+)'
+      description: "处理请求 (必须实现)"
+      trigger: "请求分发到硬件队列"
+      context: "softirq/process"
+      can_sleep: false
+      signature: "blk_status_t (*)(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue_data *bd)"
+      return_value:
+        BLK_STS_OK: "请求已成功处理/提交"
+        BLK_STS_RESOURCE: "资源不足，稍后重试"
+        BLK_STS_DEV_RESOURCE: "设备资源不足"
+        other: "其他 BLK_STS_* 错误"
+      typical_actions:
+        - "调用 blk_mq_start_request()"
+        - "设置 DMA 映射"
+        - "将命令发送到硬件"
+        - "返回状态"
+
+    commit_rqs:
+      pattern: '\.commit_rqs\s*=\s*(?P<handler>\w+)'
+      description: "提交批量请求"
+      trigger: "批量请求结束"
+      context: "softirq"
+      can_sleep: false
+      signature: "void (*)(struct blk_mq_hw_ctx *hctx)"
+      typical_actions:
+        - "触发硬件门铃"
+        - "启动 DMA"
+
+    complete:
+      pattern: '\.complete\s*=\s*(?P<handler>\w+)'
+      description: "完成请求处理 (可选)"
+      trigger: "请求完成"
+      context: "softirq/hardirq"
+      can_sleep: false
+      signature: "void (*)(struct request *rq)"
+
+    timeout:
+      pattern: '\.timeout\s*=\s*(?P<handler>\w+)'
+      description: "处理请求超时"
+      trigger: "请求超过 tag_set.timeout"
+      context: "softirq"
+      can_sleep: false
+      signature: "enum blk_eh_timer_return (*)(struct request *rq)"
+      return_value:
+        BLK_EH_DONE: "超时已处理，不重试"
+        BLK_EH_RESET_TIMER: "重置定时器，继续等待"
+      typical_actions:
+        - "中止硬件命令"
+        - "重置设备"
+        - "记录错误"
+
+    poll:
+      pattern: '\.poll\s*=\s*(?P<handler>\w+)'
+      description: "轮询完成 (io_uring)"
+      trigger: "io_uring 轮询模式"
+      context: "process"
+      can_sleep: false
+      signature: "int (*)(struct blk_mq_hw_ctx *hctx, struct io_comp_batch *iob)"
+      return_value:
+        positive: "完成的请求数"
+        zero: "无完成"
+
+    init_hctx:
+      pattern: '\.init_hctx\s*=\s*(?P<handler>\w+)'
+      description: "初始化硬件队列上下文"
+      trigger: "创建硬件队列"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct blk_mq_hw_ctx *hctx, void *data, unsigned int hctx_idx)"
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    exit_hctx:
+      pattern: '\.exit_hctx\s*=\s*(?P<handler>\w+)'
+      description: "清理硬件队列上下文"
+      trigger: "销毁硬件队列"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct blk_mq_hw_ctx *hctx, unsigned int hctx_idx)"
+
+    init_request:
+      pattern: '\.init_request\s*=\s*(?P<handler>\w+)'
+      description: "初始化请求私有数据"
+      trigger: "分配请求时"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct blk_mq_tag_set *set, struct request *rq, unsigned int hctx_idx, unsigned int numa_node)"
+
+    exit_request:
+      pattern: '\.exit_request\s*=\s*(?P<handler>\w+)'
+      description: "清理请求私有数据"
+      trigger: "释放请求时"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct blk_mq_tag_set *set, struct request *rq, unsigned int hctx_idx)"
+
+    map_queues:
+      pattern: '\.map_queues\s*=\s*(?P<handler>\w+)'
+      description: "映射 CPU 到硬件队列"
+      trigger: "初始化队列映射"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct blk_mq_tag_set *set)"
+      typical_actions:
+        - "使用 blk_mq_map_queues()"
+        - "设置 NUMA 感知映射"
+
+    show_rq:
+      pattern: '\.show_rq\s*=\s*(?P<handler>\w+)'
+      description: "显示请求调试信息"
+      trigger: "debugfs 读取"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct seq_file *m, struct request *rq)"
+
+    set_rq_affinity:
+      pattern: '\.set_rq_affinity\s*=\s*(?P<handler>\w+)'
+      description: "设置请求 CPU 亲和性"
+      trigger: "请求分配"
+      context: "process"
+      can_sleep: false
+
+
+# ============================================================
+# BLK-MQ TAG SET MANAGEMENT
+# ============================================================
+
+tag_set_management:
+  description: "标签集管理函数"
+  header: "linux/blk-mq.h"
+  icon: "🏷️"
+
+  kernel_functions:
+    blk_mq_alloc_tag_set:
+      pattern: 'blk_mq_alloc_tag_set\s*\(\s*(?P<set>[^)]+)\s*\)'
+      description: "分配并初始化标签集"
+      signature: "int blk_mq_alloc_tag_set(struct blk_mq_tag_set *set)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+      preconditions:
+        - "set->ops 必须设置"
+        - "set->nr_hw_queues > 0"
+        - "set->queue_depth > 0"
+
+    blk_mq_free_tag_set:
+      pattern: 'blk_mq_free_tag_set\s*\(\s*(?P<set>[^)]+)\s*\)'
+      description: "释放标签集"
+      signature: "void blk_mq_free_tag_set(struct blk_mq_tag_set *set)"
+      context: "process"
+      can_sleep: true
+
+    blk_mq_update_nr_hw_queues:
+      pattern: 'blk_mq_update_nr_hw_queues\s*\(\s*(?P<set>[^,]+)\s*,\s*(?P<nr_hw_queues>\w+)\s*\)'
+      description: "动态更新硬件队列数量"
+      signature: "int blk_mq_update_nr_hw_queues(struct blk_mq_tag_set *set, int nr_hw_queues)"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# BLK-MQ QUEUE MANAGEMENT
+# ============================================================
+
+queue_management:
+  description: "请求队列管理函数"
+  header: "linux/blk-mq.h"
+  icon: "📋"
+
+  kernel_functions:
+    blk_mq_alloc_disk:
+      pattern: 'blk_mq_alloc_disk\s*\(\s*(?P<set>[^,]+)\s*,\s*(?P<lim>[^,]*)\s*,\s*(?P<queuedata>[^)]*)\s*\)'
+      description: "分配磁盘及其请求队列 (6.0+)"
+      signature: "struct gendisk *blk_mq_alloc_disk(struct blk_mq_tag_set *set, struct queue_limits *lim, void *queuedata)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "gendisk 指针"
+        failure: "ERR_PTR()"
+
+    blk_mq_init_queue:
+      pattern: 'blk_mq_init_queue\s*\(\s*(?P<set>[^)]+)\s*\)'
+      description: "初始化请求队列 (旧 API)"
+      signature: "struct request_queue *blk_mq_init_queue(struct blk_mq_tag_set *set)"
+      context: "process"
+      can_sleep: true
+
+    blk_mq_destroy_queue:
+      pattern: 'blk_mq_destroy_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "销毁请求队列"
+      signature: "void blk_mq_destroy_queue(struct request_queue *q)"
+      context: "process"
+      can_sleep: true
+
+    blk_mq_freeze_queue:
+      pattern: 'blk_mq_freeze_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "冻结队列 (等待所有请求完成)"
+      signature: "void blk_mq_freeze_queue(struct request_queue *q)"
+      context: "process"
+      can_sleep: true
+
+    blk_mq_unfreeze_queue:
+      pattern: 'blk_mq_unfreeze_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "解冻队列"
+      signature: "void blk_mq_unfreeze_queue(struct request_queue *q)"
+      context: "process"
+      can_sleep: false
+
+    blk_mq_quiesce_queue:
+      pattern: 'blk_mq_quiesce_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "静默队列 (停止处理新请求)"
+      signature: "void blk_mq_quiesce_queue(struct request_queue *q)"
+      context: "process"
+      can_sleep: true
+
+    blk_mq_unquiesce_queue:
+      pattern: 'blk_mq_unquiesce_queue\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "取消静默"
+      signature: "void blk_mq_unquiesce_queue(struct request_queue *q)"
+      context: "process"
+      can_sleep: false
+
+
+# ============================================================
+# BLK-MQ REQUEST HANDLING
+# ============================================================
+
+request_handling:
+  description: "请求处理函数"
+  header: "linux/blk-mq.h"
+  icon: "📝"
+
+  kernel_functions:
+    blk_mq_start_request:
+      pattern: 'blk_mq_start_request\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "开始处理请求 (必须在 queue_rq 中调用)"
+      signature: "void blk_mq_start_request(struct request *rq)"
+      context: "softirq"
+      can_sleep: false
+      important: "必须在将请求发送到硬件前调用"
+
+    blk_mq_end_request:
+      pattern: 'blk_mq_end_request\s*\(\s*(?P<rq>[^,]+)\s*,\s*(?P<status>\w+)\s*\)'
+      description: "完成请求"
+      signature: "void blk_mq_end_request(struct request *rq, blk_status_t error)"
+      context: "softirq/hardirq"
+      can_sleep: false
+
+    blk_mq_end_request_batch:
+      pattern: 'blk_mq_end_request_batch\s*\(\s*(?P<iob>[^)]+)\s*\)'
+      description: "批量完成请求"
+      signature: "void blk_mq_end_request_batch(struct io_comp_batch *iob)"
+      context: "softirq"
+      can_sleep: false
+
+    blk_mq_complete_request:
+      pattern: 'blk_mq_complete_request\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "异步完成请求 (从中断上下文)"
+      signature: "void blk_mq_complete_request(struct request *rq)"
+      context: "hardirq"
+      can_sleep: false
+
+    blk_mq_requeue_request:
+      pattern: 'blk_mq_requeue_request\s*\(\s*(?P<rq>[^,]+)\s*,\s*(?P<kick>\w+)\s*\)'
+      description: "重新入队请求"
+      signature: "void blk_mq_requeue_request(struct request *rq, bool kick_requeue_list)"
+      context: "softirq"
+      can_sleep: false
+
+    blk_mq_kick_requeue_list:
+      pattern: 'blk_mq_kick_requeue_list\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "启动重入队列表处理"
+      signature: "void blk_mq_kick_requeue_list(struct request_queue *q)"
+      context: "any"
+      can_sleep: false
+
+    blk_mq_delay_kick_requeue_list:
+      pattern: 'blk_mq_delay_kick_requeue_list\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<delay>\w+)\s*\)'
+      description: "延迟启动重入队列表"
+      signature: "void blk_mq_delay_kick_requeue_list(struct request_queue *q, unsigned long delay)"
+      context: "any"
+      can_sleep: false
+
+
+# ============================================================
+# BLK-MQ REQUEST ACCESSORS
+# ============================================================
+
+request_accessors:
+  description: "请求访问函数"
+  header: "linux/blk-mq.h"
+  icon: "🔍"
+
+  kernel_functions:
+    blk_mq_rq_to_pdu:
+      pattern: 'blk_mq_rq_to_pdu\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求的驱动私有数据"
+      signature: "static inline void *blk_mq_rq_to_pdu(struct request *rq)"
+      context: "any"
+      return: "rq + 1 (紧跟在请求结构后)"
+
+    blk_mq_rq_from_pdu:
+      pattern: 'blk_mq_rq_from_pdu\s*\(\s*(?P<pdu>[^)]+)\s*\)'
+      description: "从驱动私有数据获取请求"
+      signature: "static inline struct request *blk_mq_rq_from_pdu(void *pdu)"
+      context: "any"
+
+    blk_rq_pos:
+      pattern: 'blk_rq_pos\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求起始扇区"
+      signature: "static inline sector_t blk_rq_pos(const struct request *rq)"
+      context: "any"
+
+    blk_rq_bytes:
+      pattern: 'blk_rq_bytes\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求总字节数"
+      signature: "static inline unsigned int blk_rq_bytes(const struct request *rq)"
+      context: "any"
+
+    blk_rq_sectors:
+      pattern: 'blk_rq_sectors\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求扇区数"
+      signature: "static inline unsigned int blk_rq_sectors(const struct request *rq)"
+      context: "any"
+
+    blk_rq_cur_bytes:
+      pattern: 'blk_rq_cur_bytes\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取当前段字节数"
+      signature: "static inline unsigned int blk_rq_cur_bytes(const struct request *rq)"
+      context: "any"
+
+    blk_rq_cur_sectors:
+      pattern: 'blk_rq_cur_sectors\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取当前段扇区数"
+      signature: "static inline unsigned int blk_rq_cur_sectors(const struct request *rq)"
+      context: "any"
+
+    rq_data_dir:
+      pattern: 'rq_data_dir\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求方向 (READ=0/WRITE=1)"
+      signature: "static inline int rq_data_dir(const struct request *rq)"
+      context: "any"
+
+    req_op:
+      pattern: 'req_op\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      description: "获取请求操作类型"
+      signature: "static inline enum req_op req_op(const struct request *rq)"
+      context: "any"
+
+    blk_rq_map_sg:
+      pattern: 'blk_rq_map_sg\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<rq>[^,]+)\s*,\s*(?P<sg>[^)]+)\s*\)'
+      description: "映射请求到 scatter-gather 列表"
+      signature: "int blk_rq_map_sg(struct request_queue *q, struct request *rq, struct scatterlist *sglist)"
+      context: "softirq"
+      can_sleep: false
+      return_value:
+        success: "sg 条目数"
+
+
+# ============================================================
+# BLK-MQ FLAGS
+# ============================================================
+
+blk_mq_flags:
+  description: "blk-mq 标志"
+  header: "linux/blk-mq.h"
+  icon: "🚩"
+
+  tag_set_flags:
+    - name: "BLK_MQ_F_SHOULD_MERGE"
+      description: "允许请求合并"
+    - name: "BLK_MQ_F_TAG_QUEUE_SHARED"
+      description: "标签队列在多个 hctx 间共享"
+    - name: "BLK_MQ_F_STACKING"
+      description: "堆叠设备 (dm, md)"
+    - name: "BLK_MQ_F_TAG_HCTX_SHARED"
+      description: "硬件上下文共享标签"
+    - name: "BLK_MQ_F_BLOCKING"
+      description: "允许 queue_rq 阻塞"
+    - name: "BLK_MQ_F_NO_SCHED"
+      description: "不使用 I/O 调度器"
+    - name: "BLK_MQ_F_NO_SCHED_BY_DEFAULT"
+      description: "默认不使用调度器"
+
+  hctx_state:
+    - name: "BLK_MQ_S_STOPPED"
+      description: "队列已停止"
+    - name: "BLK_MQ_S_TAG_ACTIVE"
+      description: "标签活跃"
+    - name: "BLK_MQ_S_SCHED_RESTART"
+      description: "调度器需要重启"
+    - name: "BLK_MQ_S_INACTIVE"
+      description: "队列非活跃"
+
+
+# ============================================================
+# BLK-MQ QUEUE HELPERS
+# ============================================================
+
+queue_helpers:
+  description: "队列辅助函数"
+  header: "linux/blk-mq.h"
+  icon: "🛠️"
+
+  kernel_functions:
+    blk_mq_run_hw_queues:
+      pattern: 'blk_mq_run_hw_queues\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<async>\w+)\s*\)'
+      description: "运行所有硬件队列"
+      signature: "void blk_mq_run_hw_queues(struct request_queue *q, bool async)"
+      context: "any"
+      can_sleep: false
+
+    blk_mq_run_hw_queue:
+      pattern: 'blk_mq_run_hw_queue\s*\(\s*(?P<hctx>[^,]+)\s*,\s*(?P<async>\w+)\s*\)'
+      description: "运行指定硬件队列"
+      signature: "void blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx, bool async)"
+      context: "any"
+      can_sleep: false
+
+    blk_mq_delay_run_hw_queues:
+      pattern: 'blk_mq_delay_run_hw_queues\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<delay>\w+)\s*\)'
+      description: "延迟运行硬件队列"
+      signature: "void blk_mq_delay_run_hw_queues(struct request_queue *q, unsigned long msecs)"
+      context: "any"
+      can_sleep: false
+
+    blk_mq_stop_hw_queue:
+      pattern: 'blk_mq_stop_hw_queue\s*\(\s*(?P<hctx>[^)]+)\s*\)'
+      description: "停止硬件队列"
+      signature: "void blk_mq_stop_hw_queue(struct blk_mq_hw_ctx *hctx)"
+      context: "any"
+      can_sleep: false
+
+    blk_mq_start_hw_queue:
+      pattern: 'blk_mq_start_hw_queue\s*\(\s*(?P<hctx>[^)]+)\s*\)'
+      description: "启动硬件队列"
+      signature: "void blk_mq_start_hw_queue(struct blk_mq_hw_ctx *hctx)"
+      context: "any"
+      can_sleep: false
+
+    blk_mq_stop_hw_queues:
+      pattern: 'blk_mq_stop_hw_queues\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "停止所有硬件队列"
+      signature: "void blk_mq_stop_hw_queues(struct request_queue *q)"
+      context: "any"
+      can_sleep: false
+
+    blk_mq_start_hw_queues:
+      pattern: 'blk_mq_start_hw_queues\s*\(\s*(?P<q>[^)]+)\s*\)'
+      description: "启动所有硬件队列"
+      signature: "void blk_mq_start_hw_queues(struct request_queue *q)"
+      context: "any"
+      can_sleep: false
+
+    blk_mq_start_stopped_hw_queues:
+      pattern: 'blk_mq_start_stopped_hw_queues\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<async>\w+)\s*\)'
+      description: "启动已停止的硬件队列"
+      signature: "void blk_mq_start_stopped_hw_queues(struct request_queue *q, bool async)"
+      context: "any"
+      can_sleep: false
+
+    blk_mq_map_queues:
+      pattern: 'blk_mq_map_queues\s*\(\s*(?P<qmap>[^)]+)\s*\)'
+      description: "自动映射 CPU 到硬件队列"
+      signature: "void blk_mq_map_queues(struct blk_mq_queue_map *qmap)"
+      context: "process"
+      can_sleep: false
+
+
+# ============================================================
+# BLK-MQ CALL CHAINS
+# ============================================================
+
+call_chains:
+  blk_mq_submit_bio_chain:
+    description: "blk-mq bio 提交路径"
+    trigger: "submit_bio 调用"
+    chain:
+      - function: "submit_bio"
+        file: "block/blk-core.c"
+        description: "bio 提交入口"
+        context: "process"
+      - function: "submit_bio_noacct"
+        file: "block/blk-core.c"
+        description: "内部提交"
+      - function: "__submit_bio"
+        file: "block/blk-core.c"
+        description: "提交到队列"
+      - function: "blk_mq_submit_bio"
+        file: "block/blk-mq.c"
+        description: "blk-mq 提交"
+      - function: "blk_mq_get_new_requests"
+        file: "block/blk-mq.c"
+        description: "分配请求"
+      - function: "blk_mq_bio_to_request"
+        file: "block/blk-mq.c"
+        description: "bio 转请求"
+      - function: "blk_mq_try_issue_directly"
+        file: "block/blk-mq.c"
+        description: "尝试直接发送"
+      - function: "__blk_mq_issue_directly"
+        file: "block/blk-mq.c"
+        description: "实际发送"
+      - function: "hctx->ops->queue_rq"
+        file: "驱动代码"
+        description: "驱动 queue_rq 回调"
+        is_user_entry: true
+
+  blk_mq_complete_chain:
+    description: "blk-mq 请求完成路径"
+    trigger: "I/O 完成中断"
+    chain:
+      - function: "blk_mq_complete_request"
+        file: "block/blk-mq.c"
+        description: "请求完成入口 (从 hardirq)"
+        context: "hardirq"
+      - function: "__blk_mq_complete_request_remote"
+        file: "block/blk-mq.c"
+        description: "远程完成 (IPI)"
+      - function: "__blk_mq_complete_request"
+        file: "block/blk-mq.c"
+        description: "实际完成处理"
+        context: "softirq"
+      - function: "hctx->ops->complete"
+        file: "驱动代码"
+        description: "驱动 complete 回调 (可选)"
+      - function: "blk_mq_end_request"
+        file: "block/blk-mq.c"
+        description: "结束请求"
+      - function: "__blk_mq_end_request"
+        file: "block/blk-mq.c"
+        description: "内部结束处理"
+      - function: "blk_update_request"
+        file: "block/blk-core.c"
+        description: "更新请求状态"
+      - function: "bio_endio"
+        file: "block/bio.c"
+        description: "完成 bio"
+
+  blk_mq_timeout_chain:
+    description: "blk-mq 超时处理路径"
+    trigger: "请求超时定时器触发"
+    chain:
+      - function: "blk_mq_timeout_work"
+        file: "block/blk-mq.c"
+        description: "超时工作队列"
+        context: "process"
+      - function: "blk_mq_check_expired"
+        file: "block/blk-mq.c"
+        description: "检查过期请求"
+      - function: "blk_mq_handle_expired"
+        file: "block/blk-mq.c"
+        description: "处理过期"
+      - function: "hctx->ops->timeout"
+        file: "驱动代码"
+        description: "驱动 timeout 回调"
+        is_user_entry: true
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "完整的 blk-mq 驱动示例"
+    kernel_version: "6.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/blkdev.h>
+      #include <linux/blk-mq.h>
+      
+      #define MY_SECTOR_SIZE 512
+      #define MY_SECTORS     (1024 * 1024 * 2)  /* 1GB */
+      
+      struct my_device {
+          struct gendisk *disk;
+          struct blk_mq_tag_set tag_set;
+          void *data;
+      };
+      
+      /* 驱动私有命令结构 */
+      struct my_cmd {
+          struct request *rq;
+          /* 硬件命令字段 */
+      };
+      
+      static struct my_device my_dev;
+      
+      /* 核心: queue_rq 回调 */
+      static blk_status_t my_queue_rq(struct blk_mq_hw_ctx *hctx,
+                                      const struct blk_mq_queue_data *bd)
+      {
+          struct request *rq = bd->rq;
+          struct my_cmd *cmd = blk_mq_rq_to_pdu(rq);
+          struct req_iterator iter;
+          struct bio_vec bvec;
+          sector_t sector = blk_rq_pos(rq);
+          void *buf;
+          
+          /* 必须调用: 标记请求开始处理 */
+          blk_mq_start_request(rq);
+          
+          cmd->rq = rq;
+          
+          /* 处理每个数据段 */
+          rq_for_each_segment(bvec, rq, iter) {
+              buf = page_address(bvec.bv_page) + bvec.bv_offset;
+              
+              if (rq_data_dir(rq) == READ) {
+                  memcpy(buf, my_dev.data + sector * MY_SECTOR_SIZE,
+                         bvec.bv_len);
+              } else {
+                  memcpy(my_dev.data + sector * MY_SECTOR_SIZE,
+                         buf, bvec.bv_len);
+              }
+              
+              sector += bvec.bv_len / MY_SECTOR_SIZE;
+          }
+          
+          /* 完成请求 */
+          blk_mq_end_request(rq, BLK_STS_OK);
+          return BLK_STS_OK;
+      }
+      
+      /* 初始化硬件队列 */
+      static int my_init_hctx(struct blk_mq_hw_ctx *hctx,
+                              void *data, unsigned int hctx_idx)
+      {
+          hctx->driver_data = data;
+          return 0;
+      }
+      
+      /* blk-mq 操作结构 */
+      static const struct blk_mq_ops my_mq_ops = {
+          .queue_rq  = my_queue_rq,
+          .init_hctx = my_init_hctx,
+      };
+      
+      /* 块设备操作 */
+      static const struct block_device_operations my_fops = {
+          .owner = THIS_MODULE,
+      };
+      
+      static int __init my_init(void)
+      {
+          int ret;
+          
+          /* 分配数据存储 */
+          my_dev.data = vzalloc(MY_SECTORS * MY_SECTOR_SIZE);
+          if (!my_dev.data)
+              return -ENOMEM;
+          
+          /* 配置标签集 */
+          my_dev.tag_set.ops = &my_mq_ops;
+          my_dev.tag_set.nr_hw_queues = 1;
+          my_dev.tag_set.queue_depth = 128;
+          my_dev.tag_set.numa_node = NUMA_NO_NODE;
+          my_dev.tag_set.cmd_size = sizeof(struct my_cmd);
+          my_dev.tag_set.flags = BLK_MQ_F_SHOULD_MERGE;
+          
+          ret = blk_mq_alloc_tag_set(&my_dev.tag_set);
+          if (ret)
+              goto err_data;
+          
+          /* 分配磁盘 */
+          my_dev.disk = blk_mq_alloc_disk(&my_dev.tag_set, NULL, NULL);
+          if (IS_ERR(my_dev.disk)) {
+              ret = PTR_ERR(my_dev.disk);
+              goto err_tag;
+          }
+          
+          /* 配置磁盘 */
+          my_dev.disk->major = 0;
+          my_dev.disk->first_minor = 0;
+          my_dev.disk->minors = 1;
+          my_dev.disk->fops = &my_fops;
+          my_dev.disk->private_data = &my_dev;
+          snprintf(my_dev.disk->disk_name, DISK_NAME_LEN, "myblk");
+          
+          set_capacity(my_dev.disk, MY_SECTORS);
+          
+          /* 添加到系统 */
+          ret = add_disk(my_dev.disk);
+          if (ret)
+              goto err_disk;
+          
+          return 0;
+          
+      err_disk:
+          put_disk(my_dev.disk);
+      err_tag:
+          blk_mq_free_tag_set(&my_dev.tag_set);
+      err_data:
+          vfree(my_dev.data);
+          return ret;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          del_gendisk(my_dev.disk);
+          put_disk(my_dev.disk);
+          blk_mq_free_tag_set(&my_dev.tag_set);
+          vfree(my_dev.data);
+      }
+      
+      module_init(my_init);
+      module_exit(my_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "带超时和多队列的驱动"
+    kernel_version: "5.0+"
+    code: |
+      /* 超时处理 */
+      static enum blk_eh_timer_return my_timeout(struct request *rq)
+      {
+          struct my_cmd *cmd = blk_mq_rq_to_pdu(rq);
+          
+          pr_warn("Request timeout: rq=%p, cmd=%p\n", rq, cmd);
+          
+          /* 尝试中止命令 */
+          if (my_abort_cmd(cmd) == 0) {
+              blk_mq_end_request(rq, BLK_STS_TIMEOUT);
+              return BLK_EH_DONE;
+          }
+          
+          /* 重置定时器继续等待 */
+          return BLK_EH_RESET_TIMER;
+      }
+      
+      /* 多队列映射 */
+      static void my_map_queues(struct blk_mq_tag_set *set)
+      {
+          /* 使用默认 CPU 到队列映射 */
+          blk_mq_map_queues(&set->map[HCTX_TYPE_DEFAULT]);
+      }
+      
+      /* 批量提交 */
+      static void my_commit_rqs(struct blk_mq_hw_ctx *hctx)
+      {
+          struct my_device *dev = hctx->driver_data;
+          
+          /* 触发硬件门铃，通知有新命令 */
+          writel(1, dev->doorbell_reg);
+      }
+      
+      static const struct blk_mq_ops my_mq_ops = {
+          .queue_rq   = my_queue_rq,
+          .commit_rqs = my_commit_rqs,
+          .timeout    = my_timeout,
+          .init_hctx  = my_init_hctx,
+          .exit_hctx  = my_exit_hctx,
+          .map_queues = my_map_queues,
+      };
+      
+      /* 多队列配置 */
+      static int setup_multiqueue(struct my_device *dev)
+      {
+          dev->tag_set.ops = &my_mq_ops;
+          dev->tag_set.nr_hw_queues = num_online_cpus();
+          dev->tag_set.queue_depth = 1024;
+          dev->tag_set.numa_node = dev->numa_node;
+          dev->tag_set.cmd_size = sizeof(struct my_cmd);
+          dev->tag_set.flags = BLK_MQ_F_SHOULD_MERGE;
+          dev->tag_set.timeout = 30 * HZ;  /* 30 秒超时 */
+          dev->tag_set.driver_data = dev;
+          
+          return blk_mq_alloc_tag_set(&dev->tag_set);
+      }
+
+  - description: "使用 scatter-gather 映射"
+    kernel_version: "5.0+"
+    code: |
+      static blk_status_t my_queue_rq_sg(struct blk_mq_hw_ctx *hctx,
+                                         const struct blk_mq_queue_data *bd)
+      {
+          struct request *rq = bd->rq;
+          struct my_cmd *cmd = blk_mq_rq_to_pdu(rq);
+          struct scatterlist *sg;
+          int nsegs;
+          
+          blk_mq_start_request(rq);
+          
+          /* 分配 scatter-gather 列表 */
+          sg = kmalloc_array(blk_rq_nr_phys_segments(rq),
+                             sizeof(*sg), GFP_ATOMIC);
+          if (!sg) {
+              blk_mq_end_request(rq, BLK_STS_RESOURCE);
+              return BLK_STS_RESOURCE;
+          }
+          
+          sg_init_table(sg, blk_rq_nr_phys_segments(rq));
+          
+          /* 映射请求到 SG 列表 */
+          nsegs = blk_rq_map_sg(hctx->queue, rq, sg);
+          
+          /* 设置 DMA */
+          cmd->sg = sg;
+          cmd->nsegs = nsegs;
+          cmd->dma_addr = dma_map_sg(dev->dev, sg, nsegs,
+                                     rq_data_dir(rq) ? DMA_TO_DEVICE
+                                                     : DMA_FROM_DEVICE);
+          
+          /* 发送到硬件 */
+          my_send_cmd(cmd);
+          
+          return BLK_STS_OK;
+      }

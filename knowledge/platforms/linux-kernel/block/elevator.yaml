@@ -1,0 +1,770 @@
+# Linux Kernel I/O Scheduler (Elevator) Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/block/index.html
+# Source: block/elevator.c, block/mq-deadline.c, block/bfq-iosched.c
+
+# ============================================================
+# ELEVATOR OVERVIEW
+# ============================================================
+
+elevator_overview:
+  description: "I/O Scheduler (Elevator) - I/O 调度器框架"
+  header: "linux/elevator.h"
+  icon: "📊"
+  kernel_version: "2.6+ (blk-mq: 3.13+)"
+
+  context:
+    type: "varies"
+    can_sleep: "depends on callback"
+
+  purpose: |
+    I/O 调度器负责对块设备请求进行排序和合并，优化磁盘访问模式。
+    
+    现代 blk-mq 调度器：
+    - none - 无调度，直接发送 (NVMe 推荐)
+    - mq-deadline - 截止时间调度器
+    - bfq - Budget Fair Queueing (桌面/移动推荐)
+    - kyber - 低延迟调度器
+    
+    选择建议：
+    - NVMe/高速 SSD: none
+    - SATA SSD: mq-deadline 或 none
+    - HDD: mq-deadline 或 bfq
+    - 桌面交互: bfq
+
+
+# ============================================================
+# ELEVATOR DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  elevator_type:
+    description: "调度器类型描述结构"
+    header: "include/linux/elevator.h"
+    pattern: 'struct elevator_type\s*\{'
+    fields:
+      - name: "ops"
+        type: "struct elevator_mq_ops"
+        description: "调度器操作回调"
+      - name: "icq_size"
+        type: "size_t"
+        description: "io_cq 结构大小"
+      - name: "icq_align"
+        type: "size_t"
+        description: "io_cq 对齐要求"
+      - name: "elevator_attrs"
+        type: "struct elv_fs_entry *"
+        description: "sysfs 属性"
+      - name: "elevator_name"
+        type: "const char *"
+        description: "调度器名称"
+      - name: "elevator_alias"
+        type: "const char *"
+        description: "调度器别名"
+      - name: "elevator_features"
+        type: "unsigned int"
+        description: "特性标志"
+      - name: "elevator_owner"
+        type: "struct module *"
+        description: "模块所有者"
+      - name: "list"
+        type: "struct list_head"
+        description: "注册链表"
+
+  elevator_queue:
+    description: "调度器队列实例"
+    header: "include/linux/elevator.h"
+    pattern: 'struct elevator_queue\s*\{'
+    fields:
+      - name: "type"
+        type: "struct elevator_type *"
+        description: "调度器类型"
+      - name: "elevator_data"
+        type: "void *"
+        description: "调度器私有数据"
+      - name: "kobj"
+        type: "struct kobject"
+        description: "sysfs 对象"
+      - name: "registered"
+        type: "bool"
+        description: "是否已注册"
+
+  elevator_mq_ops:
+    description: "blk-mq 调度器操作"
+    header: "include/linux/elevator.h"
+    pattern: 'struct elevator_mq_ops\s*\{'
+    fields:
+      - name: "init_sched"
+        type: "int (*)(struct request_queue *, struct elevator_type *)"
+        description: "初始化调度器"
+      - name: "exit_sched"
+        type: "void (*)(struct elevator_queue *)"
+        description: "退出调度器"
+      - name: "init_hctx"
+        type: "int (*)(struct blk_mq_hw_ctx *, unsigned int)"
+        description: "初始化硬件队列"
+      - name: "exit_hctx"
+        type: "void (*)(struct blk_mq_hw_ctx *, unsigned int)"
+        description: "退出硬件队列"
+      - name: "depth_updated"
+        type: "void (*)(struct blk_mq_hw_ctx *)"
+        description: "队列深度更新"
+      - name: "allow_merge"
+        type: "bool (*)(struct request_queue *, struct request *, struct bio *)"
+        description: "是否允许合并"
+      - name: "bio_merge"
+        type: "bool (*)(struct request_queue *, struct bio *, unsigned int)"
+        description: "尝试合并 bio"
+      - name: "request_merge"
+        type: "int (*)(struct request_queue *, struct request **, struct bio *)"
+        description: "请求合并"
+      - name: "request_merged"
+        type: "void (*)(struct request_queue *, struct request *, enum elv_merge)"
+        description: "合并完成通知"
+      - name: "requests_merged"
+        type: "void (*)(struct request_queue *, struct request *, struct request *)"
+        description: "两请求合并完成"
+      - name: "limit_depth"
+        type: "void (*)(blk_opf_t, struct blk_mq_alloc_data *)"
+        description: "限制队列深度"
+      - name: "prepare_request"
+        type: "void (*)(struct request *)"
+        description: "准备请求"
+      - name: "finish_request"
+        type: "void (*)(struct request *)"
+        description: "完成请求"
+      - name: "insert_requests"
+        type: "void (*)(struct blk_mq_hw_ctx *, struct list_head *, bool)"
+        description: "插入请求"
+      - name: "dispatch_request"
+        type: "struct request *(*)(struct blk_mq_hw_ctx *)"
+        description: "分发请求"
+      - name: "has_work"
+        type: "bool (*)(struct blk_mq_hw_ctx *)"
+        description: "是否有待处理工作"
+      - name: "completed_request"
+        type: "void (*)(struct request *, u64)"
+        description: "请求完成通知"
+      - name: "requeue_request"
+        type: "void (*)(struct request *)"
+        description: "重入队请求"
+
+
+# ============================================================
+# ELEVATOR REGISTRATION
+# ============================================================
+
+elevator_registration:
+  description: "调度器注册函数"
+  header: "linux/elevator.h"
+  icon: "📝"
+
+  kernel_functions:
+    elv_register:
+      pattern: 'elv_register\s*\(\s*(?P<e>[^)]+)\s*\)'
+      description: "注册 I/O 调度器"
+      signature: "int elv_register(struct elevator_type *e)"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "0"
+        failure: "-ERRNO"
+
+    elv_unregister:
+      pattern: 'elv_unregister\s*\(\s*(?P<e>[^)]+)\s*\)'
+      description: "注销 I/O 调度器"
+      signature: "void elv_unregister(struct elevator_type *e)"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# ELEVATOR OPERATIONS CALLBACKS
+# ============================================================
+
+elevator_callbacks:
+  description: "调度器回调函数"
+  header: "linux/elevator.h"
+  icon: "⚙️"
+
+  callbacks:
+    init_sched:
+      pattern: '\.init_sched\s*=\s*(?P<handler>\w+)'
+      description: "初始化调度器实例"
+      trigger: "调度器附加到队列"
+      context: "process"
+      can_sleep: true
+      signature: "int (*)(struct request_queue *q, struct elevator_type *e)"
+      typical_actions:
+        - "分配调度器私有数据"
+        - "初始化数据结构"
+        - "设置 q->elevator->elevator_data"
+
+    exit_sched:
+      pattern: '\.exit_sched\s*=\s*(?P<handler>\w+)'
+      description: "清理调度器实例"
+      trigger: "调度器从队列分离"
+      context: "process"
+      can_sleep: true
+      signature: "void (*)(struct elevator_queue *e)"
+
+    insert_requests:
+      pattern: '\.insert_requests\s*=\s*(?P<handler>\w+)'
+      description: "插入请求到调度器"
+      trigger: "新请求需要调度"
+      context: "softirq/process"
+      can_sleep: false
+      signature: "void (*)(struct blk_mq_hw_ctx *hctx, struct list_head *list, bool at_head)"
+      typical_actions:
+        - "将请求添加到内部队列"
+        - "按截止时间/优先级排序"
+        - "更新统计信息"
+
+    dispatch_request:
+      pattern: '\.dispatch_request\s*=\s*(?P<handler>\w+)'
+      description: "从调度器获取下一个请求"
+      trigger: "硬件队列需要请求"
+      context: "softirq"
+      can_sleep: false
+      signature: "struct request *(*)(struct blk_mq_hw_ctx *hctx)"
+      return_value:
+        success: "下一个要发送的请求"
+        failure: "NULL (无请求)"
+
+    has_work:
+      pattern: '\.has_work\s*=\s*(?P<handler>\w+)'
+      description: "检查是否有待处理请求"
+      trigger: "检查队列状态"
+      context: "any"
+      can_sleep: false
+      signature: "bool (*)(struct blk_mq_hw_ctx *hctx)"
+
+    bio_merge:
+      pattern: '\.bio_merge\s*=\s*(?P<handler>\w+)'
+      description: "尝试将 bio 合并到现有请求"
+      trigger: "新 bio 提交"
+      context: "softirq/process"
+      can_sleep: false
+      signature: "bool (*)(struct request_queue *q, struct bio *bio, unsigned int nr_segs)"
+      return_value:
+        true: "合并成功"
+        false: "需要新请求"
+
+    allow_merge:
+      pattern: '\.allow_merge\s*=\s*(?P<handler>\w+)'
+      description: "检查是否允许合并"
+      trigger: "合并检查"
+      context: "softirq/process"
+      can_sleep: false
+      signature: "bool (*)(struct request_queue *q, struct request *rq, struct bio *bio)"
+
+    completed_request:
+      pattern: '\.completed_request\s*=\s*(?P<handler>\w+)'
+      description: "请求完成通知"
+      trigger: "请求完成"
+      context: "softirq"
+      can_sleep: false
+      signature: "void (*)(struct request *rq, u64 now)"
+      typical_actions:
+        - "更新延迟统计"
+        - "调整调度参数"
+
+
+# ============================================================
+# MQ-DEADLINE SCHEDULER
+# ============================================================
+
+mq_deadline:
+  description: "MQ-Deadline I/O Scheduler - 截止时间调度器"
+  header: "block/mq-deadline.c"
+  icon: "⏰"
+  kernel_version: "4.11+"
+
+  purpose: |
+    mq-deadline 是 blk-mq 的默认调度器，基于截止时间保证请求延迟。
+    
+    特点：
+    - 读请求优先 (默认 500ms 截止时间)
+    - 写请求批量处理 (默认 5s 截止时间)
+    - 防止饥饿
+    - 适合 SATA SSD 和 HDD
+
+  parameters:
+    - name: "read_expire"
+      default: "500"
+      unit: "ms"
+      description: "读请求截止时间"
+      sysfs: "/sys/block/sdX/queue/iosched/read_expire"
+
+    - name: "write_expire"
+      default: "5000"
+      unit: "ms"
+      description: "写请求截止时间"
+      sysfs: "/sys/block/sdX/queue/iosched/write_expire"
+
+    - name: "writes_starved"
+      default: "2"
+      description: "写请求饥饿阈值"
+      sysfs: "/sys/block/sdX/queue/iosched/writes_starved"
+
+    - name: "fifo_batch"
+      default: "16"
+      description: "批量处理请求数"
+      sysfs: "/sys/block/sdX/queue/iosched/fifo_batch"
+
+    - name: "front_merges"
+      default: "1"
+      description: "是否允许前向合并"
+      sysfs: "/sys/block/sdX/queue/iosched/front_merges"
+
+  data_structures:
+    deadline_data:
+      description: "deadline 调度器私有数据"
+      fields:
+        - name: "sort_list"
+          type: "struct rb_root[]"
+          description: "按扇区排序的红黑树 (读/写)"
+        - name: "fifo_list"
+          type: "struct list_head[]"
+          description: "按到期时间排序的 FIFO (读/写)"
+        - name: "next_rq"
+          type: "struct request *[]"
+          description: "下一个要分发的请求"
+        - name: "batching"
+          type: "unsigned int"
+          description: "当前批量计数"
+        - name: "starved"
+          type: "unsigned int"
+          description: "饥饿计数"
+
+
+# ============================================================
+# BFQ SCHEDULER
+# ============================================================
+
+bfq_scheduler:
+  description: "BFQ (Budget Fair Queueing) I/O Scheduler"
+  header: "block/bfq-iosched.c"
+  icon: "⚖️"
+  kernel_version: "4.12+"
+
+  purpose: |
+    BFQ 是面向桌面和移动设备的公平调度器。
+    
+    特点：
+    - 基于预算的公平调度
+    - 低延迟保证 (交互式应用)
+    - I/O 优先级支持
+    - cgroup 支持
+    - 适合桌面/移动/容器环境
+
+  parameters:
+    - name: "slice_idle"
+      default: "8"
+      unit: "ms"
+      description: "空闲切片时间"
+      sysfs: "/sys/block/sdX/queue/iosched/slice_idle"
+
+    - name: "slice_idle_us"
+      default: "8000"
+      unit: "us"
+      description: "空闲切片时间 (微秒)"
+
+    - name: "strict_guarantees"
+      default: "0"
+      description: "严格带宽保证"
+
+    - name: "low_latency"
+      default: "1"
+      description: "低延迟模式"
+
+    - name: "timeout_sync"
+      default: "125"
+      unit: "ms"
+      description: "同步请求超时"
+
+    - name: "timeout_async"
+      default: "250"
+      unit: "ms"
+      description: "异步请求超时"
+
+
+# ============================================================
+# KYBER SCHEDULER
+# ============================================================
+
+kyber_scheduler:
+  description: "Kyber I/O Scheduler - 低延迟调度器"
+  header: "block/kyber-iosched.c"
+  icon: "🚀"
+  kernel_version: "4.12+"
+
+  purpose: |
+    Kyber 是为快速设备设计的低开销调度器。
+    
+    特点：
+    - 极低开销
+    - 基于令牌的限流
+    - 按请求类型区分 (读/写/丢弃/其他)
+    - 适合快速 NVMe 设备
+
+  parameters:
+    - name: "read_lat_nsec"
+      default: "2000000"
+      unit: "ns"
+      description: "目标读延迟 (2ms)"
+
+    - name: "write_lat_nsec"
+      default: "10000000"
+      unit: "ns"
+      description: "目标写延迟 (10ms)"
+
+
+# ============================================================
+# ELEVATOR HELPER FUNCTIONS
+# ============================================================
+
+elevator_helpers:
+  description: "调度器辅助函数"
+  header: "linux/elevator.h"
+  icon: "🛠️"
+
+  kernel_functions:
+    elevator_switch:
+      pattern: 'elevator_switch\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<new>[^)]+)\s*\)'
+      description: "切换调度器"
+      signature: "int elevator_switch(struct request_queue *q, struct elevator_type *new_e)"
+      context: "process"
+      can_sleep: true
+
+    elevator_change:
+      pattern: 'elevator_change\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "按名称切换调度器"
+      signature: "int elevator_change(struct request_queue *q, const char *name)"
+      context: "process"
+      can_sleep: true
+
+    elv_rb_add:
+      pattern: 'elv_rb_add\s*\(\s*(?P<root>[^,]+)\s*,\s*(?P<rq>[^)]+)\s*\)'
+      description: "添加请求到红黑树"
+      signature: "void elv_rb_add(struct rb_root *root, struct request *rq)"
+      context: "softirq"
+      can_sleep: false
+
+    elv_rb_del:
+      pattern: 'elv_rb_del\s*\(\s*(?P<root>[^,]+)\s*,\s*(?P<rq>[^)]+)\s*\)'
+      description: "从红黑树删除请求"
+      signature: "void elv_rb_del(struct rb_root *root, struct request *rq)"
+      context: "softirq"
+      can_sleep: false
+
+    elv_rb_find:
+      pattern: 'elv_rb_find\s*\(\s*(?P<root>[^,]+)\s*,\s*(?P<sector>\w+)\s*\)'
+      description: "在红黑树中查找扇区"
+      signature: "struct request *elv_rb_find(struct rb_root *root, sector_t sector)"
+      context: "any"
+      can_sleep: false
+
+    elv_rqhash_add:
+      pattern: 'elv_rqhash_add\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<rq>[^)]+)\s*\)'
+      description: "添加请求到哈希表"
+      signature: "void elv_rqhash_add(struct request_queue *q, struct request *rq)"
+      context: "softirq"
+      can_sleep: false
+
+    elv_rqhash_del:
+      pattern: 'elv_rqhash_del\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<rq>[^)]+)\s*\)'
+      description: "从哈希表删除请求"
+      signature: "void elv_rqhash_del(struct request_queue *q, struct request *rq)"
+      context: "softirq"
+      can_sleep: false
+
+    blk_mq_sched_try_merge:
+      pattern: 'blk_mq_sched_try_merge\s*\(\s*(?P<q>[^,]+)\s*,\s*(?P<bio>[^,]+)\s*,\s*(?P<nr_segs>\w+)\s*,\s*(?P<merged>[^)]+)\s*\)'
+      description: "尝试合并 bio"
+      signature: "bool blk_mq_sched_try_merge(struct request_queue *q, struct bio *bio, unsigned int nr_segs, struct request **merged_request)"
+      context: "softirq"
+      can_sleep: false
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  scheduler_dispatch_chain:
+    description: "调度器分发路径"
+    trigger: "硬件队列需要请求"
+    chain:
+      - function: "blk_mq_do_dispatch_sched"
+        file: "block/blk-mq-sched.c"
+        description: "调度器分发入口"
+        context: "softirq"
+      - function: "e->type->ops.dispatch_request"
+        file: "调度器代码"
+        description: "调度器分发回调"
+        is_user_entry: true
+      - function: "blk_mq_dispatch_rq_list"
+        file: "block/blk-mq.c"
+        description: "分发请求列表"
+      - function: "hctx->ops->queue_rq"
+        file: "驱动代码"
+        description: "驱动队列请求"
+
+  scheduler_insert_chain:
+    description: "调度器插入路径"
+    trigger: "新请求需要调度"
+    chain:
+      - function: "blk_mq_sched_insert_request"
+        file: "block/blk-mq-sched.c"
+        description: "插入请求入口"
+        context: "softirq/process"
+      - function: "__blk_mq_sched_insert_request"
+        file: "block/blk-mq-sched.c"
+        description: "内部插入"
+      - function: "e->type->ops.insert_requests"
+        file: "调度器代码"
+        description: "调度器插入回调"
+        is_user_entry: true
+      - function: "blk_mq_run_hw_queue"
+        file: "block/blk-mq.c"
+        description: "触发队列运行"
+
+  scheduler_merge_chain:
+    description: "调度器合并路径"
+    trigger: "新 bio 可能合并"
+    chain:
+      - function: "blk_mq_sched_bio_merge"
+        file: "block/blk-mq-sched.c"
+        description: "合并检查入口"
+        context: "softirq/process"
+      - function: "e->type->ops.bio_merge"
+        file: "调度器代码"
+        description: "调度器合并回调"
+        is_user_entry: true
+      - function: "blk_try_merge"
+        file: "block/blk-merge.c"
+        description: "尝试合并"
+      - function: "bio_attempt_back_merge"
+        file: "block/blk-merge.c"
+        description: "后向合并"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单 I/O 调度器实现"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/blkdev.h>
+      #include <linux/elevator.h>
+      #include <linux/blk-mq.h>
+      
+      struct my_sched_data {
+          struct list_head queue;    /* 请求队列 */
+          spinlock_t lock;
+      };
+      
+      static int my_init_sched(struct request_queue *q,
+                               struct elevator_type *e)
+      {
+          struct my_sched_data *sd;
+          struct elevator_queue *eq;
+          
+          eq = elevator_alloc(q, e);
+          if (!eq)
+              return -ENOMEM;
+          
+          sd = kzalloc(sizeof(*sd), GFP_KERNEL);
+          if (!sd) {
+              kobject_put(&eq->kobj);
+              return -ENOMEM;
+          }
+          
+          INIT_LIST_HEAD(&sd->queue);
+          spin_lock_init(&sd->lock);
+          
+          eq->elevator_data = sd;
+          q->elevator = eq;
+          
+          return 0;
+      }
+      
+      static void my_exit_sched(struct elevator_queue *e)
+      {
+          struct my_sched_data *sd = e->elevator_data;
+          
+          BUG_ON(!list_empty(&sd->queue));
+          kfree(sd);
+      }
+      
+      static void my_insert_requests(struct blk_mq_hw_ctx *hctx,
+                                     struct list_head *list,
+                                     bool at_head)
+      {
+          struct my_sched_data *sd = hctx->queue->elevator->elevator_data;
+          struct request *rq, *next;
+          
+          spin_lock(&sd->lock);
+          list_for_each_entry_safe(rq, next, list, queuelist) {
+              list_del_init(&rq->queuelist);
+              if (at_head)
+                  list_add(&rq->queuelist, &sd->queue);
+              else
+                  list_add_tail(&rq->queuelist, &sd->queue);
+          }
+          spin_unlock(&sd->lock);
+      }
+      
+      static struct request *my_dispatch_request(struct blk_mq_hw_ctx *hctx)
+      {
+          struct my_sched_data *sd = hctx->queue->elevator->elevator_data;
+          struct request *rq = NULL;
+          
+          spin_lock(&sd->lock);
+          if (!list_empty(&sd->queue)) {
+              rq = list_first_entry(&sd->queue, struct request,
+                                    queuelist);
+              list_del_init(&rq->queuelist);
+          }
+          spin_unlock(&sd->lock);
+          
+          return rq;
+      }
+      
+      static bool my_has_work(struct blk_mq_hw_ctx *hctx)
+      {
+          struct my_sched_data *sd = hctx->queue->elevator->elevator_data;
+          
+          return !list_empty(&sd->queue);
+      }
+      
+      static struct elevator_type my_sched = {
+          .ops = {
+              .init_sched      = my_init_sched,
+              .exit_sched      = my_exit_sched,
+              .insert_requests = my_insert_requests,
+              .dispatch_request = my_dispatch_request,
+              .has_work        = my_has_work,
+          },
+          .elevator_name = "my-sched",
+          .elevator_owner = THIS_MODULE,
+      };
+      
+      static int __init my_sched_init(void)
+      {
+          return elv_register(&my_sched);
+      }
+      
+      static void __exit my_sched_exit(void)
+      {
+          elv_unregister(&my_sched);
+      }
+      
+      module_init(my_sched_init);
+      module_exit(my_sched_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "带截止时间的调度器"
+    kernel_version: "5.0+"
+    code: |
+      /* 带截止时间的调度器示例 */
+      struct deadline_sched_data {
+          struct rb_root sort_list[2];    /* 按扇区排序 */
+          struct list_head fifo_list[2];  /* 按时间排序 */
+          struct request *next_rq[2];     /* 下一个请求 */
+          unsigned int batching;
+          unsigned int fifo_expire[2];
+      };
+      
+      static void dd_insert_request(struct blk_mq_hw_ctx *hctx,
+                                    struct request *rq, bool at_head)
+      {
+          struct request_queue *q = hctx->queue;
+          struct deadline_sched_data *dd = q->elevator->elevator_data;
+          const int data_dir = rq_data_dir(rq);
+          u64 deadline;
+          
+          /* 设置截止时间 */
+          deadline = ktime_get_ns() + dd->fifo_expire[data_dir];
+          rq->fifo_time = deadline;
+          
+          /* 添加到红黑树 (按扇区排序) */
+          elv_rb_add(&dd->sort_list[data_dir], rq);
+          
+          /* 添加到 FIFO (按截止时间排序) */
+          list_add_tail(&rq->queuelist, &dd->fifo_list[data_dir]);
+      }
+      
+      static struct request *dd_dispatch_request(struct blk_mq_hw_ctx *hctx)
+      {
+          struct request_queue *q = hctx->queue;
+          struct deadline_sched_data *dd = q->elevator->elevator_data;
+          struct request *rq;
+          int data_dir;
+          
+          /* 检查是否有过期请求 */
+          for (data_dir = READ; data_dir <= WRITE; data_dir++) {
+              if (!list_empty(&dd->fifo_list[data_dir])) {
+                  rq = list_first_entry(&dd->fifo_list[data_dir],
+                                        struct request, queuelist);
+                  if (ktime_get_ns() >= rq->fifo_time) {
+                      /* 请求已过期，优先处理 */
+                      goto dispatch;
+                  }
+              }
+          }
+          
+          /* 批量处理：继续当前方向 */
+          if (dd->next_rq[READ])
+              rq = dd->next_rq[READ];
+          else if (dd->next_rq[WRITE])
+              rq = dd->next_rq[WRITE];
+          else
+              return NULL;
+          
+      dispatch:
+          data_dir = rq_data_dir(rq);
+          
+          /* 从队列移除 */
+          list_del_init(&rq->queuelist);
+          elv_rb_del(&dd->sort_list[data_dir], rq);
+          
+          /* 更新下一个请求 */
+          dd->next_rq[data_dir] = elv_rb_latter_request(q, rq);
+          
+          return rq;
+      }
+
+  - description: "用户空间调度器配置"
+    kernel_version: "4.0+"
+    code: |
+      /* 查看当前调度器 */
+      $ cat /sys/block/sda/queue/scheduler
+      [mq-deadline] kyber bfq none
+      
+      /* 切换调度器 */
+      $ echo bfq > /sys/block/sda/queue/scheduler
+      
+      /* 查看 mq-deadline 参数 */
+      $ ls /sys/block/sda/queue/iosched/
+      fifo_batch  front_merges  read_expire  write_expire  writes_starved
+      
+      /* 调整读请求截止时间 */
+      $ echo 100 > /sys/block/sda/queue/iosched/read_expire
+      
+      /* 启用低延迟模式 (BFQ) */
+      $ echo 1 > /sys/block/sda/queue/iosched/low_latency
+      
+      /* 对于 NVMe，通常使用 none */
+      $ echo none > /sys/block/nvme0n1/queue/scheduler
+      
+      /* 查看队列深度 */
+      $ cat /sys/block/sda/queue/nr_requests
+      256
+      
+      /* 调整队列深度 */
+      $ echo 128 > /sys/block/sda/queue/nr_requests

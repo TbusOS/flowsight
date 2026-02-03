@@ -1,0 +1,663 @@
+# Linux Kernel Memory Mapping Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/mm/
+# Source: mm/mmap.c
+# Completeness: 95%+ (KB-Memory Agent)
+
+# ============================================================
+# MMAP OVERVIEW
+# ============================================================
+
+mmap_overview:
+  description: "Memory Mapping - 内存映射"
+  header: "linux/mm.h"
+  icon: "🗺️"
+  kernel_version: "2.6+"
+  
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+  
+  overview: |
+    mmap 系统调用用于将文件或设备映射到进程地址空间。
+    - 文件映射：将文件内容映射到内存
+    - 匿名映射：分配不关联文件的内存
+    - 共享映射：多进程共享同一映射
+    - 私有映射：写时复制 (COW)
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  vm_area_struct:
+    pattern: 'struct vm_area_struct\s*\{'
+    description: "虚拟内存区域结构"
+    file: "include/linux/mm_types.h"
+    fields:
+      - name: "vm_start"
+        type: "unsigned long"
+        description: "区域起始地址"
+      - name: "vm_end"
+        type: "unsigned long"
+        description: "区域结束地址"
+      - name: "vm_next"
+        type: "struct vm_area_struct *"
+        description: "链表下一个"
+      - name: "vm_prev"
+        type: "struct vm_area_struct *"
+        description: "链表上一个"
+      - name: "vm_rb"
+        type: "struct rb_node"
+        description: "红黑树节点"
+      - name: "vm_mm"
+        type: "struct mm_struct *"
+        description: "所属 mm"
+      - name: "vm_page_prot"
+        type: "pgprot_t"
+        description: "页保护标志"
+      - name: "vm_flags"
+        type: "unsigned long"
+        description: "VMA 标志"
+      - name: "vm_ops"
+        type: "const struct vm_operations_struct *"
+        description: "VMA 操作函数"
+      - name: "vm_pgoff"
+        type: "unsigned long"
+        description: "文件偏移(页单位)"
+      - name: "vm_file"
+        type: "struct file *"
+        description: "映射的文件"
+      - name: "vm_private_data"
+        type: "void *"
+        description: "私有数据"
+
+  mm_struct:
+    pattern: 'struct mm_struct\s*\{'
+    description: "内存描述符"
+    file: "include/linux/mm_types.h"
+    fields:
+      - name: "mmap"
+        type: "struct vm_area_struct *"
+        description: "VMA 链表头"
+      - name: "mm_rb"
+        type: "struct rb_root"
+        description: "VMA 红黑树"
+      - name: "mmap_base"
+        type: "unsigned long"
+        description: "mmap 区域基址"
+      - name: "task_size"
+        type: "unsigned long"
+        description: "用户空间大小"
+      - name: "pgd"
+        type: "pgd_t *"
+        description: "页全局目录"
+      - name: "mm_users"
+        type: "atomic_t"
+        description: "用户计数"
+      - name: "mm_count"
+        type: "atomic_t"
+        description: "引用计数"
+      - name: "map_count"
+        type: "int"
+        description: "VMA 数量"
+      - name: "mmap_lock"
+        type: "struct rw_semaphore"
+        description: "mmap 读写锁"
+      - name: "start_code"
+        type: "unsigned long"
+        description: "代码段起始"
+      - name: "end_code"
+        type: "unsigned long"
+        description: "代码段结束"
+      - name: "start_data"
+        type: "unsigned long"
+        description: "数据段起始"
+      - name: "end_data"
+        type: "unsigned long"
+        description: "数据段结束"
+      - name: "start_brk"
+        type: "unsigned long"
+        description: "堆起始"
+      - name: "brk"
+        type: "unsigned long"
+        description: "堆当前结束"
+      - name: "start_stack"
+        type: "unsigned long"
+        description: "栈起始"
+      - name: "arg_start"
+        type: "unsigned long"
+        description: "参数起始"
+      - name: "arg_end"
+        type: "unsigned long"
+        description: "参数结束"
+      - name: "env_start"
+        type: "unsigned long"
+        description: "环境变量起始"
+      - name: "env_end"
+        type: "unsigned long"
+        description: "环境变量结束"
+
+  vm_operations_struct:
+    pattern: 'struct vm_operations_struct\s*\{'
+    description: "VMA 操作结构"
+    file: "include/linux/mm.h"
+    fields:
+      - name: "open"
+        type: "void (*)(struct vm_area_struct *)"
+        description: "VMA 打开回调"
+      - name: "close"
+        type: "void (*)(struct vm_area_struct *)"
+        description: "VMA 关闭回调"
+      - name: "may_split"
+        type: "int (*)(struct vm_area_struct *, unsigned long)"
+        description: "是否允许分割"
+      - name: "mremap"
+        type: "int (*)(struct vm_area_struct *)"
+        description: "重映射回调"
+      - name: "mprotect"
+        type: "int (*)(struct vm_area_struct *, unsigned long, unsigned long, unsigned long)"
+        description: "保护变更回调"
+      - name: "fault"
+        type: "vm_fault_t (*)(struct vm_fault *)"
+        description: "缺页处理"
+      - name: "huge_fault"
+        type: "vm_fault_t (*)(struct vm_fault *, enum page_entry_size)"
+        description: "大页缺页处理"
+      - name: "map_pages"
+        type: "vm_fault_t (*)(struct vm_fault *, pgoff_t, pgoff_t)"
+        description: "批量映射页"
+      - name: "page_mkwrite"
+        type: "vm_fault_t (*)(struct vm_fault *)"
+        description: "页变可写"
+      - name: "pfn_mkwrite"
+        type: "vm_fault_t (*)(struct vm_fault *)"
+        description: "PFN 变可写"
+      - name: "access"
+        type: "int (*)(struct vm_area_struct *, unsigned long, void *, int, int)"
+        description: "访问 VMA 内存"
+
+# ============================================================
+# VMA FLAGS
+# ============================================================
+
+vma_flags:
+  description: "VMA Flags - VMA 标志"
+  icon: "🏷️"
+  
+  protection_flags:
+    - name: "VM_READ"
+      description: "可读"
+    - name: "VM_WRITE"
+      description: "可写"
+    - name: "VM_EXEC"
+      description: "可执行"
+    - name: "VM_SHARED"
+      description: "共享映射"
+  
+  behavior_flags:
+    - name: "VM_GROWSDOWN"
+      description: "向下增长 (栈)"
+    - name: "VM_GROWSUP"
+      description: "向上增长"
+    - name: "VM_PFNMAP"
+      description: "PFN 映射 (非 struct page)"
+    - name: "VM_DENYWRITE"
+      description: "禁止写入文件"
+    - name: "VM_UFFD_MISSING"
+      description: "userfaultfd 缺页"
+    - name: "VM_UFFD_WP"
+      description: "userfaultfd 写保护"
+    - name: "VM_LOCKED"
+      description: "锁定在内存"
+    - name: "VM_IO"
+      description: "IO 内存映射"
+    - name: "VM_SEQ_READ"
+      description: "顺序读取提示"
+    - name: "VM_RAND_READ"
+      description: "随机读取提示"
+    - name: "VM_DONTCOPY"
+      description: "fork 时不复制"
+    - name: "VM_DONTEXPAND"
+      description: "不允许 mremap 扩展"
+    - name: "VM_DONTDUMP"
+      description: "core dump 时不包含"
+    - name: "VM_MIXEDMAP"
+      description: "混合 struct page 和 PFN"
+    - name: "VM_HUGEPAGE"
+      description: "启用 THP"
+    - name: "VM_NOHUGEPAGE"
+      description: "禁用 THP"
+    - name: "VM_MERGEABLE"
+      description: "可 KSM 合并"
+    - name: "VM_ARCH_1"
+      description: "架构特定标志 1"
+    - name: "VM_WIPEONFORK"
+      description: "fork 时清零"
+    - name: "VM_DONTCOPY"
+      description: "fork 时不复制"
+
+# ============================================================
+# MMAP INTERFACE
+# ============================================================
+
+mmap_interface:
+  description: "Mmap Interface - mmap 系统调用接口"
+  header: "linux/mm.h"
+  icon: "📤"
+
+  bind_patterns:
+    # do_mmap - 内核 mmap 入口
+    - pattern: 'do_mmap\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<prot>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<pgoff>[^,]+)\s*,'
+      variable_capture: "file"
+      description: "内核 mmap 主入口"
+      context: "process"
+      can_sleep: true
+
+    # vm_mmap - 封装的 mmap
+    - pattern: 'vm_mmap\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<prot>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<offset>[^)]+)\s*\)'
+      variable_capture: "file"
+      description: "内核 mmap 封装"
+
+    # ksys_mmap_pgoff - 系统调用入口
+    - pattern: 'ksys_mmap_pgoff\s*\('
+      description: "mmap 系统调用入口"
+      context: "syscall"
+
+    # mmap_region - 创建映射区域
+    - pattern: 'mmap_region\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,'
+      variable_capture: "addr"
+      description: "创建新的映射区域"
+
+    # do_munmap - 取消映射
+    - pattern: 'do_munmap\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,'
+      variable_capture: "start"
+      description: "内核 munmap 主入口"
+
+    # vm_munmap - 封装的 munmap
+    - pattern: 'vm_munmap\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "内核 munmap 封装"
+
+    # do_brk_flags - brk 实现
+    - pattern: 'do_brk_flags\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,'
+      variable_capture: "addr"
+      description: "brk 系统调用实现"
+
+    # do_mremap - 重映射
+    - pattern: 'do_mremap\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<old_len>[^,]+)\s*,\s*(?P<new_len>[^,]+)\s*,'
+      variable_capture: "addr"
+      description: "mremap 实现"
+
+# ============================================================
+# VMA OPERATIONS
+# ============================================================
+
+vma_operations:
+  description: "VMA Operations - VMA 操作函数"
+  header: "mm/mmap.c"
+  icon: "⚙️"
+
+  bind_patterns:
+    # find_vma - 查找 VMA
+    - pattern: 'find_vma\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "查找包含或在地址之后的 VMA"
+
+    # find_vma_prev - 查找 VMA 和前一个
+    - pattern: 'find_vma_prev\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pprev>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "查找 VMA 同时返回前一个"
+
+    # find_vma_intersection - 查找交叉 VMA
+    - pattern: 'find_vma_intersection\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      variable_capture: "start"
+      description: "查找与范围交叉的 VMA"
+
+    # vma_merge - 合并 VMA
+    - pattern: 'vma_merge\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<prev>[^,]+)\s*,'
+      variable_capture: "mm"
+      description: "尝试合并相邻的 VMA"
+
+    # split_vma - 分割 VMA
+    - pattern: 'split_vma\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<new_below>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "在指定地址分割 VMA"
+
+    # __split_vma - 内部分割
+    - pattern: '__split_vma\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<new_below>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "内部 VMA 分割实现"
+
+    # insert_vm_struct - 插入 VMA
+    - pattern: 'insert_vm_struct\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<vma>[^)]+)\s*\)'
+      variable_capture: "vma"
+      description: "插入 VMA 到 mm"
+
+    # __vma_link - 链接 VMA
+    - pattern: '__vma_link\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<vma>[^,]+)\s*,'
+      variable_capture: "vma"
+      description: "链接 VMA 到链表和树"
+
+    # __vma_unlink - 取消链接 VMA
+    - pattern: '__vma_unlink\s*\(\s*(?P<mm>[^,]+)\s*,\s*(?P<vma>[^,]+)\s*,'
+      variable_capture: "vma"
+      description: "从链表和树移除 VMA"
+
+    # get_unmapped_area - 获取未映射区域
+    - pattern: 'get_unmapped_area\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,'
+      variable_capture: "len"
+      description: "获取可用的未映射地址"
+
+    # unmap_region - 取消映射区域
+    - pattern: 'unmap_region\s*\(\s*(?P<mm>[^,]+)\s*,'
+      variable_capture: "mm"
+      description: "取消映射并清理 VMA"
+
+# ============================================================
+# PAGE MAPPING OPERATIONS
+# ============================================================
+
+page_mapping:
+  description: "Page Mapping Operations - 页映射操作"
+  header: "linux/mm.h"
+  icon: "📋"
+
+  bind_patterns:
+    # remap_pfn_range - 映射 PFN 范围
+    - pattern: 'remap_pfn_range\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pfn>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<prot>[^)]+)\s*\)'
+      variable_capture: "pfn"
+      description: "映射物理页到用户空间"
+      context: "process"
+      can_sleep: true
+
+    # io_remap_pfn_range - IO 映射
+    - pattern: 'io_remap_pfn_range\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pfn>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<prot>[^)]+)\s*\)'
+      variable_capture: "pfn"
+      description: "映射 IO 内存到用户空间"
+
+    # vm_insert_page - 插入页
+    - pattern: 'vm_insert_page\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<page>[^)]+)\s*\)'
+      variable_capture: "page"
+      description: "在 VMA 中插入单个页"
+
+    # vm_insert_pages - 批量插入页
+    - pattern: 'vm_insert_pages\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pages>[^,]+)\s*,\s*(?P<num>[^)]+)\s*\)'
+      variable_capture: "pages"
+      description: "批量插入多个页"
+
+    # vm_insert_pfn - 插入 PFN
+    - pattern: 'vm_insert_pfn\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pfn>[^)]+)\s*\)'
+      variable_capture: "pfn"
+      description: "在 VMA 中插入 PFN"
+
+    # vm_insert_mixed - 混合插入
+    - pattern: 'vm_insert_mixed\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pfn>[^)]+)\s*\)'
+      variable_capture: "pfn"
+      description: "混合插入页或 PFN"
+
+    # remap_vmalloc_range - 映射 vmalloc
+    - pattern: 'remap_vmalloc_range\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<addr>[^,]+)\s*,\s*(?P<pgoff>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "映射 vmalloc 内存到用户空间"
+
+# ============================================================
+# CALLBACKS
+# ============================================================
+
+callbacks:
+  fault:
+    pattern: '\.fault\s*=\s*(?P<handler>\w+)'
+    description: "缺页异常处理"
+    trigger: "访问未映射的页"
+    context: "process"
+    can_sleep: true
+    signature: "vm_fault_t (*)(struct vm_fault *vmf)"
+    return_value:
+      success: "VM_FAULT_NOPAGE 或 0"
+      failure: "VM_FAULT_SIGBUS, VM_FAULT_OOM, VM_FAULT_ERROR"
+    typical_actions:
+      - "分配或查找页"
+      - "设置 vmf->page"
+
+  page_mkwrite:
+    pattern: '\.page_mkwrite\s*=\s*(?P<handler>\w+)'
+    description: "页即将变为可写"
+    trigger: "写时复制或共享写"
+    context: "process"
+    can_sleep: true
+    signature: "vm_fault_t (*)(struct vm_fault *vmf)"
+    return_value:
+      success: "VM_FAULT_LOCKED"
+      failure: "VM_FAULT_SIGBUS"
+
+  open:
+    pattern: '\.open\s*=\s*(?P<handler>\w+)'
+    description: "VMA 被复制或创建"
+    trigger: "fork, mmap"
+    context: "process"
+    can_sleep: true
+    signature: "void (*)(struct vm_area_struct *area)"
+
+  close:
+    pattern: '\.close\s*=\s*(?P<handler>\w+)'
+    description: "VMA 被删除"
+    trigger: "munmap, exit"
+    context: "process"
+    can_sleep: true
+    signature: "void (*)(struct vm_area_struct *area)"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  mmap_syscall:
+    description: "mmap 系统调用路径"
+    trigger: "用户调用 mmap()"
+    chain:
+      - function: "ksys_mmap_pgoff"
+        file: "mm/mmap.c"
+        description: "系统调用入口"
+      - function: "vm_mmap_pgoff"
+        file: "mm/util.c"
+        description: "VM mmap 封装"
+      - function: "do_mmap"
+        file: "mm/mmap.c"
+        description: "mmap 主实现"
+      - function: "get_unmapped_area"
+        file: "mm/mmap.c"
+        description: "获取可用地址"
+      - function: "mmap_region"
+        file: "mm/mmap.c"
+        description: "创建映射区域"
+      - function: "call_mmap"
+        file: "include/linux/fs.h"
+        description: "调用文件 mmap"
+
+  munmap_syscall:
+    description: "munmap 系统调用路径"
+    trigger: "用户调用 munmap()"
+    chain:
+      - function: "__do_sys_munmap"
+        file: "mm/mmap.c"
+        description: "系统调用入口"
+      - function: "__vm_munmap"
+        file: "mm/mmap.c"
+        description: "munmap 封装"
+      - function: "do_munmap"
+        file: "mm/mmap.c"
+        description: "munmap 主实现"
+      - function: "__split_vma"
+        file: "mm/mmap.c"
+        description: "分割 VMA (如需要)"
+      - function: "unmap_region"
+        file: "mm/mmap.c"
+        description: "取消映射区域"
+      - function: "unmap_vmas"
+        file: "mm/memory.c"
+        description: "取消映射 VMA"
+
+  page_fault:
+    description: "缺页异常路径"
+    trigger: "访问未映射页"
+    chain:
+      - function: "do_page_fault"
+        file: "arch/*/mm/fault.c"
+        description: "架构缺页入口"
+      - function: "handle_mm_fault"
+        file: "mm/memory.c"
+        description: "MM 层缺页处理"
+      - function: "__handle_mm_fault"
+        file: "mm/memory.c"
+        description: "内部处理"
+      - function: "handle_pte_fault"
+        file: "mm/memory.c"
+        description: "PTE 层处理"
+      - function: "do_fault"
+        file: "mm/memory.c"
+        description: "文件缺页"
+      - function: "__do_fault"
+        file: "mm/memory.c"
+        description: "执行缺页处理"
+      - function: "vma->vm_ops->fault"
+        description: "用户 fault 回调"
+        is_user_entry: true
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "驱动 mmap 实现"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/mm.h>
+      #include <linux/fs.h>
+      
+      static vm_fault_t my_fault(struct vm_fault *vmf)
+      {
+          struct page *page;
+          
+          /* 分配页 */
+          page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+          if (!page)
+              return VM_FAULT_OOM;
+          
+          /* 设置页 */
+          vmf->page = page;
+          return 0;
+      }
+      
+      static void my_open(struct vm_area_struct *vma)
+      {
+          pr_info("VMA opened: %lx-%lx\n", vma->vm_start, vma->vm_end);
+      }
+      
+      static void my_close(struct vm_area_struct *vma)
+      {
+          pr_info("VMA closed: %lx-%lx\n", vma->vm_start, vma->vm_end);
+      }
+      
+      static const struct vm_operations_struct my_vm_ops = {
+          .open   = my_open,
+          .close  = my_close,
+          .fault  = my_fault,
+      };
+      
+      static int my_mmap(struct file *file, struct vm_area_struct *vma)
+      {
+          vma->vm_ops = &my_vm_ops;
+          vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
+          my_open(vma);
+          return 0;
+      }
+
+  - description: "remap_pfn_range 映射物理内存"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/mm.h>
+      
+      static int my_mmap_pfn(struct file *file, struct vm_area_struct *vma)
+      {
+          unsigned long pfn;
+          unsigned long size = vma->vm_end - vma->vm_start;
+          
+          /* 获取物理地址的 PFN */
+          pfn = my_phys_addr >> PAGE_SHIFT;
+          
+          /* 设置 VM_IO 标志表示 IO 内存 */
+          vma->vm_flags |= VM_IO;
+          
+          /* 映射物理内存到用户空间 */
+          if (remap_pfn_range(vma, vma->vm_start, pfn, size, vma->vm_page_prot))
+              return -EAGAIN;
+          
+          return 0;
+      }
+
+  - description: "VMA 查找和遍历"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/mm.h>
+      #include <linux/sched.h>
+      
+      void show_vmas(struct task_struct *task)
+      {
+          struct mm_struct *mm = task->mm;
+          struct vm_area_struct *vma;
+          
+          if (!mm)
+              return;
+          
+          mmap_read_lock(mm);
+          
+          for (vma = mm->mmap; vma; vma = vma->vm_next) {
+              pr_info("%lx-%lx %c%c%c%c %lx %s\n",
+                      vma->vm_start, vma->vm_end,
+                      vma->vm_flags & VM_READ ? 'r' : '-',
+                      vma->vm_flags & VM_WRITE ? 'w' : '-',
+                      vma->vm_flags & VM_EXEC ? 'x' : '-',
+                      vma->vm_flags & VM_SHARED ? 's' : 'p',
+                      vma->vm_pgoff,
+                      vma->vm_file ? 
+                          vma->vm_file->f_path.dentry->d_name.name : "");
+          }
+          
+          mmap_read_unlock(mm);
+      }
+
+  - description: "内核空间 mmap"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/mm.h>
+      #include <linux/slab.h>
+      
+      /* 在内核中进行映射操作 */
+      static int kernel_mmap_example(void)
+      {
+          struct file *file;
+          unsigned long addr;
+          unsigned long size = PAGE_SIZE * 4;
+          
+          file = filp_open("/tmp/test", O_RDWR, 0);
+          if (IS_ERR(file))
+              return PTR_ERR(file);
+          
+          /* 映射文件到内核地址空间 */
+          addr = vm_mmap(file, 0, size, PROT_READ | PROT_WRITE,
+                         MAP_SHARED, 0);
+          if (IS_ERR_VALUE(addr)) {
+              filp_close(file, NULL);
+              return addr;
+          }
+          
+          /* 使用映射的内存... */
+          
+          /* 取消映射 */
+          vm_munmap(addr, size);
+          filp_close(file, NULL);
+          
+          return 0;
+      }

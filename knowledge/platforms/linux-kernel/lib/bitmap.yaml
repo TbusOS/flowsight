@@ -1,0 +1,737 @@
+# Linux Kernel Bitmap Operations Knowledge Base
+#
+# Reference: lib/bitmap.c
+# Reference: include/linux/bitmap.h
+# Kernel Version: 2.6+
+
+# ============================================================
+# BITMAP OVERVIEW - 位图概述
+# ============================================================
+
+bitmap:
+  description: "Bitmap Operations - 内核位图操作"
+  header: "linux/bitmap.h"
+  icon: "🔢"
+  kernel_version: "2.6+"
+
+  overview:
+    description: "位图是由 unsigned long 数组组成的位集合"
+    representation: |
+      位图在内存中的布局：
+      
+      unsigned long bits[BITS_TO_LONGS(nbits)]
+      
+      Word 0:  bit 0 ... bit 63 (64位系统)
+      Word 1:  bit 64 ... bit 127
+      ...
+      
+      低位在前 (LSB first within each word)
+
+  macros:
+    BITS_PER_LONG:
+      description: "每个 unsigned long 的位数"
+      value: "32 或 64 (取决于架构)"
+
+    BITS_PER_BYTE:
+      description: "每字节位数"
+      value: 8
+
+    BITS_TO_LONGS:
+      pattern: 'BITS_TO_LONGS\s*\(\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "计算存储 nbits 位需要的 unsigned long 数量"
+      formula: "DIV_ROUND_UP(nbits, BITS_PER_LONG)"
+
+    DECLARE_BITMAP:
+      pattern: 'DECLARE_BITMAP\s*\(\s*(?P<name>\w+)\s*,\s*(?P<bits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "声明位图变量"
+      expansion: "unsigned long name[BITS_TO_LONGS(bits)]"
+
+    BITMAP_FIRST_WORD_MASK:
+      pattern: 'BITMAP_FIRST_WORD_MASK\s*\(\s*(?P<start>[\w]+)\s*\)'
+      description: "第一个字的掩码"
+
+    BITMAP_LAST_WORD_MASK:
+      pattern: 'BITMAP_LAST_WORD_MASK\s*\(\s*(?P<nbits>[\w]+)\s*\)'
+      description: "最后一个字的掩码"
+
+
+# ============================================================
+# BITMAP BASIC OPERATIONS - 基本操作
+# ============================================================
+
+bitmap_basic:
+  description: "Bitmap Basic Operations - 基本位图操作"
+  header: "linux/bitmap.h"
+  icon: "⚙️"
+
+  functions:
+    bitmap_zero:
+      pattern: 'bitmap_zero\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "将位图所有位清零"
+      prototype: "void bitmap_zero(unsigned long *dst, unsigned int nbits)"
+      notes:
+        - "等效于 memset(dst, 0, BITS_TO_LONGS(nbits) * sizeof(long))"
+
+    bitmap_fill:
+      pattern: 'bitmap_fill\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "将位图所有位设为 1"
+      prototype: "void bitmap_fill(unsigned long *dst, unsigned int nbits)"
+
+    bitmap_copy:
+      pattern: 'bitmap_copy\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "复制位图"
+      prototype: "void bitmap_copy(unsigned long *dst, const unsigned long *src, unsigned int nbits)"
+
+    bitmap_copy_clear_tail:
+      pattern: 'bitmap_copy_clear_tail\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "复制位图并清除尾部无效位"
+      prototype: "void bitmap_copy_clear_tail(unsigned long *dst, const unsigned long *src, unsigned int nbits)"
+
+
+# ============================================================
+# BITMAP SET/CLEAR OPERATIONS - 设置/清除操作
+# ============================================================
+
+bitmap_set_clear:
+  description: "Bitmap Set/Clear Operations - 位图设置和清除"
+  header: "linux/bitmap.h"
+  icon: "🎯"
+
+  functions:
+    bitmap_set:
+      pattern: 'bitmap_set\s*\(\s*(?P<map>[\w\.\->]+)\s*,\s*(?P<start>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "设置连续的位"
+      prototype: "void bitmap_set(unsigned long *map, unsigned int start, unsigned int nbits)"
+      notes:
+        - "设置从 start 开始的 nbits 个位为 1"
+        - "非原子操作"
+
+    bitmap_clear:
+      pattern: 'bitmap_clear\s*\(\s*(?P<map>[\w\.\->]+)\s*,\s*(?P<start>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "清除连续的位"
+      prototype: "void bitmap_clear(unsigned long *map, unsigned int start, unsigned int nbits)"
+      notes:
+        - "清除从 start 开始的 nbits 个位"
+
+    __bitmap_set:
+      pattern: '__bitmap_set\s*\(\s*(?P<map>[\w\.\->]+)\s*,\s*(?P<start>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<len>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "设置位（内部实现）"
+      prototype: "void __bitmap_set(unsigned long *map, unsigned int start, int len)"
+
+    __bitmap_clear:
+      pattern: '__bitmap_clear\s*\(\s*(?P<map>[\w\.\->]+)\s*,\s*(?P<start>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<len>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "清除位（内部实现）"
+      prototype: "void __bitmap_clear(unsigned long *map, unsigned int start, int len)"
+
+
+# ============================================================
+# BITMAP LOGICAL OPERATIONS - 逻辑操作
+# ============================================================
+
+bitmap_logic:
+  description: "Bitmap Logical Operations - 位图逻辑运算"
+  header: "linux/bitmap.h"
+  icon: "🔣"
+
+  functions:
+    bitmap_and:
+      pattern: 'bitmap_and\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src1>[\w\.\->]+)\s*,\s*(?P<src2>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "位图与运算"
+      prototype: "int bitmap_and(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits)"
+      return_type: "int"
+      return_values:
+        - value: "0"
+          description: "结果为空（所有位都是 0）"
+        - value: "1"
+          description: "结果非空"
+      notes:
+        - "dst = src1 & src2"
+        - "dst 可以是 src1 或 src2"
+
+    bitmap_or:
+      pattern: 'bitmap_or\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src1>[\w\.\->]+)\s*,\s*(?P<src2>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "位图或运算"
+      prototype: "void bitmap_or(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits)"
+      notes:
+        - "dst = src1 | src2"
+
+    bitmap_xor:
+      pattern: 'bitmap_xor\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src1>[\w\.\->]+)\s*,\s*(?P<src2>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "位图异或运算"
+      prototype: "void bitmap_xor(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits)"
+      notes:
+        - "dst = src1 ^ src2"
+
+    bitmap_andnot:
+      pattern: 'bitmap_andnot\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src1>[\w\.\->]+)\s*,\s*(?P<src2>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "位图与非运算"
+      prototype: "int bitmap_andnot(unsigned long *dst, const unsigned long *src1, const unsigned long *src2, unsigned int nbits)"
+      return_type: "int (结果是否非空)"
+      notes:
+        - "dst = src1 & ~src2"
+        - "常用于从集合中移除元素"
+
+    bitmap_complement:
+      pattern: 'bitmap_complement\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "位图取反"
+      prototype: "void bitmap_complement(unsigned long *dst, const unsigned long *src, unsigned int nbits)"
+      notes:
+        - "dst = ~src"
+
+
+# ============================================================
+# BITMAP COMPARISON - 位图比较
+# ============================================================
+
+bitmap_compare:
+  description: "Bitmap Comparison - 位图比较操作"
+  header: "linux/bitmap.h"
+  icon: "⚖️"
+
+  functions:
+    bitmap_equal:
+      pattern: 'bitmap_equal\s*\(\s*(?P<src1>[\w\.\->]+)\s*,\s*(?P<src2>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "比较两个位图是否相等"
+      prototype: "bool bitmap_equal(const unsigned long *src1, const unsigned long *src2, unsigned int nbits)"
+      return_type: "bool"
+
+    bitmap_intersects:
+      pattern: 'bitmap_intersects\s*\(\s*(?P<src1>[\w\.\->]+)\s*,\s*(?P<src2>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "检查两个位图是否有交集"
+      prototype: "bool bitmap_intersects(const unsigned long *src1, const unsigned long *src2, unsigned int nbits)"
+      return_type: "bool"
+      notes:
+        - "返回 (src1 & src2) != 0"
+
+    bitmap_subset:
+      pattern: 'bitmap_subset\s*\(\s*(?P<src1>[\w\.\->]+)\s*,\s*(?P<src2>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "检查 src1 是否是 src2 的子集"
+      prototype: "bool bitmap_subset(const unsigned long *src1, const unsigned long *src2, unsigned int nbits)"
+      return_type: "bool"
+      notes:
+        - "返回 (src1 & ~src2) == 0"
+
+    bitmap_empty:
+      pattern: 'bitmap_empty\s*\(\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "检查位图是否为空"
+      prototype: "bool bitmap_empty(const unsigned long *src, unsigned int nbits)"
+      return_type: "bool"
+
+    bitmap_full:
+      pattern: 'bitmap_full\s*\(\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "检查位图是否全满"
+      prototype: "bool bitmap_full(const unsigned long *src, unsigned int nbits)"
+      return_type: "bool"
+
+
+# ============================================================
+# BITMAP WEIGHT - 位图权重
+# ============================================================
+
+bitmap_weight:
+  description: "Bitmap Weight - 位图权重（计数）"
+  header: "linux/bitmap.h"
+  icon: "⚖️"
+
+  functions:
+    bitmap_weight:
+      pattern: 'bitmap_weight\s*\(\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "计算设置的位数"
+      prototype: "unsigned int bitmap_weight(const unsigned long *src, unsigned int nbits)"
+      return_type: "unsigned int"
+      notes:
+        - "也称为 popcount 或 hamming weight"
+
+    bitmap_weight_and:
+      pattern: 'bitmap_weight_and\s*\(\s*(?P<src1>[\w\.\->]+)\s*,\s*(?P<src2>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "计算两个位图交集的权重"
+      prototype: "unsigned int bitmap_weight_and(const unsigned long *src1, const unsigned long *src2, unsigned int nbits)"
+      return_type: "unsigned int"
+      notes:
+        - "返回 (src1 & src2) 中设置的位数"
+
+
+# ============================================================
+# BITMAP FIND OPERATIONS - 查找操作
+# ============================================================
+
+bitmap_find:
+  description: "Bitmap Find Operations - 位图查找"
+  header: "linux/bitmap.h"
+  icon: "🔍"
+
+  functions:
+    find_first_bit:
+      pattern: 'find_first_bit\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "查找第一个设置的位"
+      prototype: "unsigned long find_first_bit(const unsigned long *addr, unsigned long size)"
+      return_type: "unsigned long"
+      return_values:
+        - value: "0 to size-1"
+          description: "找到的位索引"
+        - value: ">= size"
+          description: "未找到"
+
+    find_first_zero_bit:
+      pattern: 'find_first_zero_bit\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "查找第一个未设置的位"
+      prototype: "unsigned long find_first_zero_bit(const unsigned long *addr, unsigned long size)"
+      return_type: "unsigned long"
+
+    find_last_bit:
+      pattern: 'find_last_bit\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "查找最后一个设置的位"
+      prototype: "unsigned long find_last_bit(const unsigned long *addr, unsigned long size)"
+      return_type: "unsigned long"
+
+    find_next_bit:
+      pattern: 'find_next_bit\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<offset>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "从 offset 开始查找下一个设置的位"
+      prototype: "unsigned long find_next_bit(const unsigned long *addr, unsigned long size, unsigned long offset)"
+      return_type: "unsigned long"
+      notes:
+        - "offset 是起始搜索位置"
+        - "返回 >= size 表示未找到"
+
+    find_next_zero_bit:
+      pattern: 'find_next_zero_bit\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<offset>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "从 offset 开始查找下一个未设置的位"
+      prototype: "unsigned long find_next_zero_bit(const unsigned long *addr, unsigned long size, unsigned long offset)"
+      return_type: "unsigned long"
+
+    find_next_and_bit:
+      pattern: 'find_next_and_bit\s*\(\s*(?P<addr1>[\w\.\->]+)\s*,\s*(?P<addr2>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<offset>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "查找两个位图交集中的下一个设置位"
+      prototype: "unsigned long find_next_and_bit(const unsigned long *addr1, const unsigned long *addr2, unsigned long size, unsigned long offset)"
+      return_type: "unsigned long"
+
+
+# ============================================================
+# BITMAP ITERATION - 位图迭代
+# ============================================================
+
+bitmap_iteration:
+  description: "Bitmap Iteration - 位图遍历"
+  header: "linux/bitmap.h"
+  icon: "🔄"
+
+  macros:
+    for_each_set_bit:
+      pattern: 'for_each_set_bit\s*\(\s*(?P<bit>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "遍历所有设置的位"
+      expansion: |
+        for ((bit) = find_first_bit((addr), (size));
+             (bit) < (size);
+             (bit) = find_next_bit((addr), (size), (bit) + 1))
+      recommended: true
+      example: |
+        unsigned long bits[2] = { 0x5, 0x3 };  /* bits 0,2,64,65 */
+        int bit;
+        for_each_set_bit(bit, bits, 128)
+            pr_info("bit %d is set\n", bit);
+
+    for_each_set_bit_from:
+      pattern: 'for_each_set_bit_from\s*\(\s*(?P<bit>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "从指定位置开始遍历设置的位"
+      notes:
+        - "bit 是起始位置（会被修改）"
+
+    for_each_clear_bit:
+      pattern: 'for_each_clear_bit\s*\(\s*(?P<bit>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "遍历所有未设置的位"
+
+    for_each_clear_bit_from:
+      pattern: 'for_each_clear_bit_from\s*\(\s*(?P<bit>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "从指定位置开始遍历未设置的位"
+
+    for_each_set_bitrange:
+      pattern: 'for_each_set_bitrange\s*\(\s*(?P<b>\w+)\s*,\s*(?P<e>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "遍历连续设置位的范围"
+      notes:
+        - "b 是范围起始，e 是范围结束（不含）"
+        - "用于找连续的位段"
+
+    for_each_set_bitrange_from:
+      pattern: 'for_each_set_bitrange_from\s*\(\s*(?P<b>\w+)\s*,\s*(?P<e>\w+)\s*,\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "从指定位置开始遍历连续设置位的范围"
+
+
+# ============================================================
+# BITMAP ALLOCATION - 位图分配
+# ============================================================
+
+bitmap_allocation:
+  description: "Bitmap Allocation - 位图动态分配"
+  header: "linux/bitmap.h"
+  icon: "📦"
+
+  functions:
+    bitmap_alloc:
+      pattern: 'bitmap_alloc\s*\(\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<flags>[\w\|]+)\s*\)'
+      description: "分配位图"
+      prototype: "unsigned long *bitmap_alloc(unsigned int nbits, gfp_t flags)"
+      return_type: "unsigned long * (或 NULL)"
+      notes:
+        - "返回未初始化的位图"
+        - "使用 kmalloc 分配"
+
+    bitmap_zalloc:
+      pattern: 'bitmap_zalloc\s*\(\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<flags>[\w\|]+)\s*\)'
+      description: "分配并清零位图"
+      prototype: "unsigned long *bitmap_zalloc(unsigned int nbits, gfp_t flags)"
+      return_type: "unsigned long *"
+      recommended: true
+
+    bitmap_free:
+      pattern: 'bitmap_free\s*\(\s*(?P<bitmap>[\w\.\->]+)\s*\)'
+      description: "释放位图"
+      prototype: "void bitmap_free(unsigned long *bitmap)"
+
+    devm_bitmap_alloc:
+      pattern: 'devm_bitmap_alloc\s*\(\s*(?P<dev>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<flags>[\w\|]+)\s*\)'
+      description: "设备管理的位图分配"
+      prototype: "unsigned long *devm_bitmap_alloc(struct device *dev, unsigned int nbits, gfp_t flags)"
+
+    devm_bitmap_zalloc:
+      pattern: 'devm_bitmap_zalloc\s*\(\s*(?P<dev>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<flags>[\w\|]+)\s*\)'
+      description: "设备管理的清零位图分配"
+      prototype: "unsigned long *devm_bitmap_zalloc(struct device *dev, unsigned int nbits, gfp_t flags)"
+
+
+# ============================================================
+# BITMAP STRING OPERATIONS - 位图字符串操作
+# ============================================================
+
+bitmap_string:
+  description: "Bitmap String Operations - 位图与字符串转换"
+  header: "linux/bitmap.h"
+  icon: "📝"
+
+  functions:
+    bitmap_parse:
+      pattern: 'bitmap_parse\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<buflen>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<maskp>[\w\.\->]+)\s*,\s*(?P<nmaskbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "从字符串解析位图"
+      prototype: "int bitmap_parse(const char *buf, unsigned int buflen, unsigned long *maskp, int nmaskbits)"
+      return_type: "int (0 成功)"
+      notes:
+        - "格式: 十六进制，逗号分隔"
+        - "例如: \"0-3,8,16-23\""
+
+    bitmap_parselist:
+      pattern: 'bitmap_parselist\s*\(\s*(?P<buf>[\w\.\->"]+)\s*,\s*(?P<maskp>[\w\.\->]+)\s*,\s*(?P<nmaskbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "从范围列表解析位图"
+      prototype: "int bitmap_parselist(const char *buf, unsigned long *maskp, int nmaskbits)"
+      return_type: "int"
+      notes:
+        - "格式: \"0-3,8,16-23\""
+        - "支持范围和单个值"
+      example: |
+        /* 解析 CPU 列表 */
+        int ret = bitmap_parselist("0-3,8", cpumask, NR_CPUS);
+
+    bitmap_print_to_pagebuf:
+      pattern: 'bitmap_print_to_pagebuf\s*\(\s*(?P<list>[\w]+)\s*,\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<maskp>[\w\.\->]+)\s*,\s*(?P<nmaskbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "将位图打印到缓冲区"
+      prototype: "int bitmap_print_to_pagebuf(bool list, char *buf, const unsigned long *maskp, int nmaskbits)"
+      return_type: "int (写入的字符数)"
+      notes:
+        - "list=true: 输出范围列表格式"
+        - "list=false: 输出十六进制格式"
+
+
+# ============================================================
+# BITMAP SHIFT OPERATIONS - 位图移位操作
+# ============================================================
+
+bitmap_shift:
+  description: "Bitmap Shift Operations - 位图移位"
+  header: "linux/bitmap.h"
+  icon: "↔️"
+
+  functions:
+    bitmap_shift_left:
+      pattern: 'bitmap_shift_left\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<shift>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "位图左移"
+      prototype: "void bitmap_shift_left(unsigned long *dst, const unsigned long *src, unsigned int shift, unsigned int nbits)"
+      notes:
+        - "高位丢失，低位补零"
+
+    bitmap_shift_right:
+      pattern: 'bitmap_shift_right\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<shift>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "位图右移"
+      prototype: "void bitmap_shift_right(unsigned long *dst, const unsigned long *src, unsigned int shift, unsigned int nbits)"
+      notes:
+        - "低位丢失，高位补零"
+
+    bitmap_cut:
+      pattern: 'bitmap_cut\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<first>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<cut>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "从位图中删除位段"
+      prototype: "void bitmap_cut(unsigned long *dst, const unsigned long *src, unsigned int first, unsigned int cut, unsigned int nbits)"
+      notes:
+        - "删除从 first 开始的 cut 个位"
+        - "后面的位向前移动"
+
+    bitmap_replace:
+      pattern: 'bitmap_replace\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<old>[\w\.\->]+)\s*,\s*(?P<new>[\w\.\->]+)\s*,\s*(?P<mask>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "根据掩码替换位"
+      prototype: "void bitmap_replace(unsigned long *dst, const unsigned long *old, const unsigned long *new, const unsigned long *mask, unsigned int nbits)"
+      notes:
+        - "dst = (old & ~mask) | (new & mask)"
+
+
+# ============================================================
+# BITMAP SCATTER/GATHER - 位图分散/聚集
+# ============================================================
+
+bitmap_scatter_gather:
+  description: "Bitmap Scatter/Gather - 位图分散和聚集操作"
+  header: "linux/bitmap.h"
+  icon: "🔀"
+
+  functions:
+    bitmap_scatter:
+      pattern: 'bitmap_scatter\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<mask>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "按掩码分散位"
+      prototype: "void bitmap_scatter(unsigned long *dst, const unsigned long *src, const unsigned long *mask, unsigned int nbits)"
+      notes:
+        - "将 src 的位分散到 mask 指定的位置"
+
+    bitmap_gather:
+      pattern: 'bitmap_gather\s*\(\s*(?P<dst>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<mask>[\w\.\->]+)\s*,\s*(?P<nbits>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "按掩码聚集位"
+      prototype: "void bitmap_gather(unsigned long *dst, const unsigned long *src, const unsigned long *mask, unsigned int nbits)"
+      notes:
+        - "将 src 中 mask 指定位置的位聚集到 dst"
+
+
+# ============================================================
+# CPUMASK - CPU 掩码
+# ============================================================
+
+cpumask:
+  description: "CPU Mask - CPU 掩码（基于位图）"
+  header: "linux/cpumask.h"
+  icon: "🖥️"
+
+  types:
+    cpumask_t:
+      description: "CPU 掩码类型"
+      definition: "typedef struct cpumask { DECLARE_BITMAP(bits, NR_CPUS); } cpumask_t"
+
+    cpumask_var_t:
+      description: "CPU 掩码变量类型"
+      definition: "typedef cpumask_t *cpumask_var_t (或栈分配)"
+
+  macros:
+    cpu_online_mask:
+      description: "在线 CPU 掩码"
+    cpu_possible_mask:
+      description: "可能存在的 CPU 掩码"
+    cpu_present_mask:
+      description: "物理存在的 CPU 掩码"
+    cpu_active_mask:
+      description: "活动 CPU 掩码"
+
+  functions:
+    cpumask_set_cpu:
+      pattern: 'cpumask_set_cpu\s*\(\s*(?P<cpu>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<dstp>[\w\.\->]+)\s*\)'
+      description: "设置 CPU 位"
+      prototype: "void cpumask_set_cpu(unsigned int cpu, struct cpumask *dstp)"
+
+    cpumask_clear_cpu:
+      pattern: 'cpumask_clear_cpu\s*\(\s*(?P<cpu>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<dstp>[\w\.\->]+)\s*\)'
+      description: "清除 CPU 位"
+      prototype: "void cpumask_clear_cpu(unsigned int cpu, struct cpumask *dstp)"
+
+    cpumask_test_cpu:
+      pattern: 'cpumask_test_cpu\s*\(\s*(?P<cpu>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<cpumask>[\w\.\->]+)\s*\)'
+      description: "测试 CPU 位"
+      prototype: "bool cpumask_test_cpu(int cpu, const struct cpumask *cpumask)"
+
+    for_each_cpu:
+      pattern: 'for_each_cpu\s*\(\s*(?P<cpu>\w+)\s*,\s*(?P<mask>[\w\.\->]+)\s*\)'
+      description: "遍历掩码中的每个 CPU"
+
+    for_each_online_cpu:
+      pattern: 'for_each_online_cpu\s*\(\s*(?P<cpu>\w+)\s*\)'
+      description: "遍历每个在线 CPU"
+
+    for_each_possible_cpu:
+      pattern: 'for_each_possible_cpu\s*\(\s*(?P<cpu>\w+)\s*\)'
+      description: "遍历每个可能的 CPU"
+
+
+# ============================================================
+# EXAMPLES - 示例代码
+# ============================================================
+
+examples:
+  - description: "基本位图操作"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/bitmap.h>
+      
+      void bitmap_basic_example(void)
+      {
+          DECLARE_BITMAP(bitmap1, 128);
+          DECLARE_BITMAP(bitmap2, 128);
+          DECLARE_BITMAP(result, 128);
+          
+          /* 初始化 */
+          bitmap_zero(bitmap1, 128);
+          bitmap_fill(bitmap2, 128);
+          
+          /* 设置位 */
+          bitmap_set(bitmap1, 0, 4);    /* 设置 bit 0-3 */
+          bitmap_set(bitmap1, 64, 4);   /* 设置 bit 64-67 */
+          
+          /* 清除位 */
+          bitmap_clear(bitmap2, 10, 10); /* 清除 bit 10-19 */
+          
+          /* 逻辑运算 */
+          bitmap_and(result, bitmap1, bitmap2, 128);
+          bitmap_or(result, bitmap1, bitmap2, 128);
+          
+          /* 比较 */
+          if (bitmap_empty(result, 128))
+              pr_info("Result is empty\n");
+          
+          /* 权重 */
+          pr_info("Bits set: %u\n", bitmap_weight(bitmap1, 128));
+      }
+
+  - description: "位图遍历"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/bitmap.h>
+      
+      void bitmap_iterate_example(void)
+      {
+          DECLARE_BITMAP(bitmap, 256);
+          int bit;
+          
+          /* 设置一些位 */
+          bitmap_zero(bitmap, 256);
+          bitmap_set(bitmap, 0, 4);
+          bitmap_set(bitmap, 100, 5);
+          bitmap_set(bitmap, 200, 3);
+          
+          /* 遍历所有设置的位 */
+          pr_info("Set bits:\n");
+          for_each_set_bit(bit, bitmap, 256) {
+              pr_info("  bit %d\n", bit);
+          }
+          
+          /* 遍历连续的位范围 */
+          unsigned long b, e;
+          pr_info("Set bit ranges:\n");
+          for_each_set_bitrange(b, e, bitmap, 256) {
+              pr_info("  range [%lu, %lu)\n", b, e);
+          }
+      }
+
+  - description: "动态位图分配"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/bitmap.h>
+      #include <linux/slab.h>
+      
+      int bitmap_alloc_example(unsigned int nbits)
+      {
+          unsigned long *bitmap;
+          int bit;
+          
+          /* 分配并清零 */
+          bitmap = bitmap_zalloc(nbits, GFP_KERNEL);
+          if (!bitmap)
+              return -ENOMEM;
+          
+          /* 使用位图 */
+          bitmap_set(bitmap, 0, min(nbits, 10U));
+          
+          for_each_set_bit(bit, bitmap, nbits) {
+              pr_info("bit %d is set\n", bit);
+          }
+          
+          /* 释放 */
+          bitmap_free(bitmap);
+          return 0;
+      }
+
+  - description: "CPU 掩码操作"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/cpumask.h>
+      
+      void cpumask_example(void)
+      {
+          cpumask_var_t mask;
+          int cpu;
+          
+          /* 分配 CPU 掩码 */
+          if (!alloc_cpumask_var(&mask, GFP_KERNEL))
+              return;
+          
+          /* 复制在线 CPU */
+          cpumask_copy(mask, cpu_online_mask);
+          
+          /* 遍历 */
+          for_each_cpu(cpu, mask) {
+              pr_info("CPU %d is in mask\n", cpu);
+          }
+          
+          /* 设置/清除 */
+          cpumask_set_cpu(0, mask);
+          cpumask_clear_cpu(1, mask);
+          
+          /* 测试 */
+          if (cpumask_test_cpu(0, mask))
+              pr_info("CPU 0 is in mask\n");
+          
+          /* 权重 */
+          pr_info("CPUs in mask: %u\n", cpumask_weight(mask));
+          
+          free_cpumask_var(mask);
+      }
+
+  - description: "位图字符串解析"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/bitmap.h>
+      
+      void bitmap_parse_example(void)
+      {
+          DECLARE_BITMAP(bitmap, 64);
+          char buf[64];
+          int ret, bit;
+          
+          /* 从范围列表解析 */
+          ret = bitmap_parselist("0-7,16,32-47", bitmap, 64);
+          if (ret) {
+              pr_err("Parse failed: %d\n", ret);
+              return;
+          }
+          
+          /* 打印结果 */
+          pr_info("Parsed bits:\n");
+          for_each_set_bit(bit, bitmap, 64) {
+              pr_info("  %d\n", bit);
+          }
+          
+          /* 转换回字符串 */
+          ret = bitmap_print_to_pagebuf(true, buf, bitmap, 64);
+          pr_info("As string: %s\n", buf);
+      }
+
+
+# ============================================================
+# NOTES - 注意事项
+# ============================================================
+
+notes:
+  - "位图操作通常不是原子的，需要外部同步"
+  - "for_each_set_bit 是遍历位图的推荐方式"
+  - "使用 bitmap_zalloc 分配已初始化的位图"
+  - "cpumask 是位图在 CPU 管理中的特化应用"
+  - "位图大小以位为单位，实际占用内存按 unsigned long 对齐"
+  - "find_* 函数返回 >= size 表示未找到"

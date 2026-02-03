@@ -1,0 +1,549 @@
+# Linux Kernel Red-Black Tree Knowledge Base
+#
+# Reference: lib/rbtree.c
+# Reference: include/linux/rbtree.h
+# Kernel Version: 2.6+
+
+# ============================================================
+# RBTREE OVERVIEW - 红黑树概述
+# ============================================================
+
+rbtree:
+  description: "Red-Black Tree - 红黑树"
+  header: "linux/rbtree.h"
+  icon: "🌳"
+  kernel_version: "2.6+"
+
+  overview:
+    description: "自平衡二叉搜索树"
+    properties:
+      - "每个节点是红色或黑色"
+      - "根节点是黑色"
+      - "叶子节点（NIL）是黑色"
+      - "红色节点的子节点必须是黑色"
+      - "从任一节点到其叶子的路径包含相同数量的黑色节点"
+    complexity:
+      search: "O(log n)"
+      insert: "O(log n)"
+      delete: "O(log n)"
+    use_cases:
+      - "CFS 调度器的任务队列"
+      - "内存管理的 VMA"
+      - "定时器管理"
+      - "I/O 调度器"
+
+
+# ============================================================
+# RBTREE STRUCTURES - 红黑树结构
+# ============================================================
+
+rbtree_structures:
+  description: "Red-Black Tree Structures - 红黑树数据结构"
+  header: "linux/rbtree.h"
+  icon: "📊"
+
+  structures:
+    rb_root:
+      pattern: 'struct rb_root\s+(?P<name>\w+)'
+      description: "红黑树根节点"
+      fields:
+        - name: "rb_node"
+          type: "struct rb_node *"
+          description: "指向根节点"
+
+    rb_node:
+      pattern: 'struct rb_node\s+(?P<name>\w+)'
+      description: "红黑树节点"
+      fields:
+        - name: "__rb_parent_color"
+          type: "unsigned long"
+          description: "父指针和颜色（低位存颜色）"
+        - name: "rb_right"
+          type: "struct rb_node *"
+          description: "右子节点"
+        - name: "rb_left"
+          type: "struct rb_node *"
+          description: "左子节点"
+
+    rb_root_cached:
+      pattern: 'struct rb_root_cached\s+(?P<name>\w+)'
+      description: "带缓存的红黑树根（缓存最左节点）"
+      fields:
+        - name: "rb_root"
+          type: "struct rb_root"
+          description: "红黑树根"
+        - name: "rb_leftmost"
+          type: "struct rb_node *"
+          description: "最左（最小）节点缓存"
+      notes:
+        - "用于需要快速访问最小元素的场景"
+        - "如 CFS 调度器"
+
+  definition_patterns:
+    RB_ROOT:
+      pattern: 'RB_ROOT'
+      description: "静态初始化空红黑树"
+      expansion: "{ NULL }"
+
+    RB_ROOT_CACHED:
+      pattern: 'RB_ROOT_CACHED'
+      description: "静态初始化带缓存的空红黑树"
+      expansion: "{ { NULL }, NULL }"
+
+    DEFINE_RB_ROOT:
+      pattern: 'struct rb_root\s+(?P<name>\w+)\s*=\s*RB_ROOT'
+      description: "定义并初始化红黑树根"
+
+
+# ============================================================
+# RBTREE BASIC OPERATIONS - 基本操作
+# ============================================================
+
+rbtree_basic:
+  description: "Red-Black Tree Basic Operations - 基本操作"
+  header: "linux/rbtree.h"
+  icon: "⚙️"
+
+  init_operations:
+    RB_EMPTY_ROOT:
+      pattern: 'RB_EMPTY_ROOT\s*\(\s*&?(?P<root>[\w\.\->]+)\s*\)'
+      description: "测试树是否为空"
+      return_type: "int (非零表示空)"
+
+    RB_EMPTY_NODE:
+      pattern: 'RB_EMPTY_NODE\s*\(\s*&?(?P<node>[\w\.\->]+)\s*\)'
+      description: "测试节点是否未链接"
+      return_type: "int"
+
+    RB_CLEAR_NODE:
+      pattern: 'RB_CLEAR_NODE\s*\(\s*&?(?P<node>[\w\.\->]+)\s*\)'
+      description: "清除节点（标记为未链接）"
+
+  link_operations:
+    rb_link_node:
+      pattern: 'rb_link_node\s*\(\s*&?(?P<node>[\w\.\->]+)\s*,\s*(?P<parent>[\w\.\->]+)\s*,\s*(?P<rb_link>[\w\.\->]+)\s*\)'
+      description: "链接新节点到树中"
+      prototype: "void rb_link_node(struct rb_node *node, struct rb_node *parent, struct rb_node **rb_link)"
+      notes:
+        - "node: 新节点"
+        - "parent: 父节点（可为 NULL）"
+        - "rb_link: 指向父节点的 left 或 right 指针"
+        - "⚠️ 只链接，不平衡"
+
+    rb_insert_color:
+      pattern: 'rb_insert_color\s*\(\s*&?(?P<node>[\w\.\->]+)\s*,\s*&?(?P<root>[\w\.\->]+)\s*\)'
+      description: "插入后重新平衡树"
+      prototype: "void rb_insert_color(struct rb_node *node, struct rb_root *root)"
+      notes:
+        - "在 rb_link_node 后调用"
+        - "恢复红黑树性质"
+
+  erase_operations:
+    rb_erase:
+      pattern: 'rb_erase\s*\(\s*&?(?P<node>[\w\.\->]+)\s*,\s*&?(?P<root>[\w\.\->]+)\s*\)'
+      description: "从树中删除节点"
+      prototype: "void rb_erase(struct rb_node *node, struct rb_root *root)"
+      notes:
+        - "删除并重新平衡"
+        - "不释放内存"
+
+  replace_operations:
+    rb_replace_node:
+      pattern: 'rb_replace_node\s*\(\s*&?(?P<victim>[\w\.\->]+)\s*,\s*&?(?P<new>[\w\.\->]+)\s*,\s*&?(?P<root>[\w\.\->]+)\s*\)'
+      description: "用新节点替换旧节点"
+      prototype: "void rb_replace_node(struct rb_node *victim, struct rb_node *new, struct rb_root *root)"
+      notes:
+        - "new 必须有相同的键值"
+        - "不做比较，直接替换"
+
+
+# ============================================================
+# RBTREE NAVIGATION - 红黑树导航
+# ============================================================
+
+rbtree_navigation:
+  description: "Red-Black Tree Navigation - 红黑树遍历"
+  header: "linux/rbtree.h"
+  icon: "🧭"
+
+  functions:
+    rb_first:
+      pattern: 'rb_first\s*\(\s*&?(?P<root>[\w\.\->]+)\s*\)'
+      description: "获取最小节点（最左）"
+      prototype: "struct rb_node *rb_first(const struct rb_root *root)"
+      return_type: "struct rb_node * (或 NULL)"
+
+    rb_last:
+      pattern: 'rb_last\s*\(\s*&?(?P<root>[\w\.\->]+)\s*\)'
+      description: "获取最大节点（最右）"
+      prototype: "struct rb_node *rb_last(const struct rb_root *root)"
+      return_type: "struct rb_node *"
+
+    rb_next:
+      pattern: 'rb_next\s*\(\s*&?(?P<node>[\w\.\->]+)\s*\)'
+      description: "获取后继节点（中序遍历）"
+      prototype: "struct rb_node *rb_next(const struct rb_node *node)"
+      return_type: "struct rb_node *"
+
+    rb_prev:
+      pattern: 'rb_prev\s*\(\s*&?(?P<node>[\w\.\->]+)\s*\)'
+      description: "获取前驱节点"
+      prototype: "struct rb_node *rb_prev(const struct rb_node *node)"
+      return_type: "struct rb_node *"
+
+    rb_parent:
+      pattern: 'rb_parent\s*\(\s*&?(?P<node>[\w\.\->]+)\s*\)'
+      description: "获取父节点"
+      prototype: "struct rb_node *rb_parent(const struct rb_node *node)"
+      return_type: "struct rb_node *"
+
+
+# ============================================================
+# RBTREE ENTRY - 获取包含结构体
+# ============================================================
+
+rbtree_entry:
+  description: "Red-Black Tree Entry - 获取包含结构体"
+  header: "linux/rbtree.h"
+  icon: "📦"
+
+  macros:
+    rb_entry:
+      pattern: 'rb_entry\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "从红黑树节点获取包含结构体"
+      expansion: "container_of(ptr, type, member)"
+      notes:
+        - "ptr: 指向 rb_node 的指针"
+        - "type: 包含结构体的类型"
+        - "member: rb_node 在结构体中的成员名"
+
+    rb_entry_safe:
+      pattern: 'rb_entry_safe\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "安全版本（ptr 可以为 NULL）"
+      notes:
+        - "如果 ptr 为 NULL，返回 NULL"
+
+
+# ============================================================
+# RBTREE ITERATION - 红黑树遍历
+# ============================================================
+
+rbtree_iteration:
+  description: "Red-Black Tree Iteration - 红黑树遍历宏"
+  header: "linux/rbtree.h"
+  icon: "🔄"
+
+  macros:
+    rbtree_postorder_for_each_entry_safe:
+      pattern: 'rbtree_postorder_for_each_entry_safe\s*\(\s*(?P<pos>\w+)\s*,\s*(?P<n>\w+)\s*,\s*&?(?P<root>[\w\.\->]+)\s*,\s*(?P<field>\w+)\s*\)'
+      description: "后序遍历（用于销毁）"
+      notes:
+        - "✅ 安全遍历，可以在遍历中删除"
+        - "后序遍历：先访问子节点，再访问父节点"
+        - "适合批量释放节点"
+
+  manual_iteration:
+    description: "手动遍历（中序）"
+    code: |
+      struct rb_node *node;
+      for (node = rb_first(&root); node; node = rb_next(node)) {
+          struct my_type *data = rb_entry(node, struct my_type, node);
+          /* 处理 data */
+      }
+
+
+# ============================================================
+# RBTREE CACHED - 带缓存的红黑树
+# ============================================================
+
+rbtree_cached:
+  description: "Cached Red-Black Tree - 带缓存的红黑树"
+  header: "linux/rbtree.h"
+  icon: "⚡"
+  kernel_version: "4.14+"
+
+  overview:
+    description: "缓存最左节点，O(1) 访问最小元素"
+    use_cases:
+      - "CFS 调度器（快速获取下一个任务）"
+      - "定时器队列（快速获取最早超时的定时器）"
+
+  functions:
+    rb_first_cached:
+      pattern: 'rb_first_cached\s*\(\s*&?(?P<root>[\w\.\->]+)\s*\)'
+      description: "O(1) 获取最左节点"
+      prototype: "struct rb_node *rb_first_cached(const struct rb_root_cached *root)"
+      notes:
+        - "直接返回缓存的最左节点"
+        - "比 rb_first() 更快"
+
+    rb_insert_color_cached:
+      pattern: 'rb_insert_color_cached\s*\(\s*&?(?P<node>[\w\.\->]+)\s*,\s*&?(?P<root>[\w\.\->]+)\s*,\s*(?P<leftmost>[\w]+)\s*\)'
+      description: "插入并更新缓存"
+      prototype: "void rb_insert_color_cached(struct rb_node *node, struct rb_root_cached *root, bool leftmost)"
+      notes:
+        - "leftmost: 是否是新的最左节点"
+
+    rb_erase_cached:
+      pattern: 'rb_erase_cached\s*\(\s*&?(?P<node>[\w\.\->]+)\s*,\s*&?(?P<root>[\w\.\->]+)\s*\)'
+      description: "删除并更新缓存"
+      prototype: "void rb_erase_cached(struct rb_node *node, struct rb_root_cached *root)"
+
+    rb_replace_node_cached:
+      pattern: 'rb_replace_node_cached\s*\(\s*&?(?P<victim>[\w\.\->]+)\s*,\s*&?(?P<new>[\w\.\->]+)\s*,\s*&?(?P<root>[\w\.\->]+)\s*\)'
+      description: "替换节点并更新缓存"
+      prototype: "void rb_replace_node_cached(struct rb_node *victim, struct rb_node *new, struct rb_root_cached *root)"
+
+
+# ============================================================
+# RBTREE AUGMENTED - 增强红黑树
+# ============================================================
+
+rbtree_augmented:
+  description: "Augmented Red-Black Tree - 增强红黑树"
+  header: "linux/rbtree_augmented.h"
+  icon: "🔧"
+  kernel_version: "3.0+"
+
+  overview:
+    description: "允许在每个节点存储额外的聚合信息"
+    use_cases:
+      - "区间树（存储子树的最大结束点）"
+      - "优先级搜索树"
+      - "任何需要子树聚合信息的场景"
+
+  callbacks:
+    rb_augment_callbacks:
+      pattern: 'struct rb_augment_callbacks\s+(?P<name>\w+)'
+      description: "增强回调结构"
+      fields:
+        - name: "propagate"
+          type: "void (*)(struct rb_node *node, struct rb_node *stop)"
+          description: "向上传播聚合信息"
+        - name: "copy"
+          type: "void (*)(struct rb_node *old, struct rb_node *new)"
+          description: "复制聚合信息"
+        - name: "rotate"
+          type: "void (*)(struct rb_node *old, struct rb_node *new)"
+          description: "旋转时更新聚合信息"
+
+  functions:
+    rb_insert_augmented:
+      pattern: 'rb_insert_augmented\s*\(\s*&?(?P<node>[\w\.\->]+)\s*,\s*&?(?P<root>[\w\.\->]+)\s*,\s*&?(?P<augment>[\w\.\->]+)\s*\)'
+      description: "增强插入"
+      prototype: "void rb_insert_augmented(struct rb_node *node, struct rb_root *root, const struct rb_augment_callbacks *augment)"
+
+    rb_erase_augmented:
+      pattern: 'rb_erase_augmented\s*\(\s*&?(?P<node>[\w\.\->]+)\s*,\s*&?(?P<root>[\w\.\->]+)\s*,\s*&?(?P<augment>[\w\.\->]+)\s*\)'
+      description: "增强删除"
+      prototype: "void rb_erase_augmented(struct rb_node *node, struct rb_root *root, const struct rb_augment_callbacks *augment)"
+
+
+# ============================================================
+# EXAMPLES - 示例代码
+# ============================================================
+
+examples:
+  - description: "基本红黑树使用"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/rbtree.h>
+      #include <linux/slab.h>
+      
+      struct my_node {
+          int key;
+          int value;
+          struct rb_node rb;
+      };
+      
+      static struct rb_root my_tree = RB_ROOT;
+      
+      /* 查找节点 */
+      struct my_node *my_search(struct rb_root *root, int key)
+      {
+          struct rb_node *node = root->rb_node;
+          
+          while (node) {
+              struct my_node *data = rb_entry(node, struct my_node, rb);
+              
+              if (key < data->key)
+                  node = node->rb_left;
+              else if (key > data->key)
+                  node = node->rb_right;
+              else
+                  return data;  /* 找到 */
+          }
+          return NULL;  /* 未找到 */
+      }
+      
+      /* 插入节点 */
+      int my_insert(struct rb_root *root, struct my_node *new)
+      {
+          struct rb_node **link = &root->rb_node;
+          struct rb_node *parent = NULL;
+          
+          /* 查找插入位置 */
+          while (*link) {
+              struct my_node *data = rb_entry(*link, struct my_node, rb);
+              parent = *link;
+              
+              if (new->key < data->key)
+                  link = &(*link)->rb_left;
+              else if (new->key > data->key)
+                  link = &(*link)->rb_right;
+              else
+                  return -EEXIST;  /* 已存在 */
+          }
+          
+          /* 链接新节点 */
+          rb_link_node(&new->rb, parent, link);
+          /* 重新平衡 */
+          rb_insert_color(&new->rb, root);
+          
+          return 0;
+      }
+      
+      /* 删除节点 */
+      void my_delete(struct rb_root *root, struct my_node *node)
+      {
+          rb_erase(&node->rb, root);
+          kfree(node);
+      }
+
+  - description: "中序遍历"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/rbtree.h>
+      
+      void print_tree(struct rb_root *root)
+      {
+          struct rb_node *node;
+          
+          /* 从最小到最大遍历 */
+          for (node = rb_first(root); node; node = rb_next(node)) {
+              struct my_node *data = rb_entry(node, struct my_node, rb);
+              pr_info("key=%d, value=%d\n", data->key, data->value);
+          }
+      }
+      
+      /* 反向遍历 */
+      void print_tree_reverse(struct rb_root *root)
+      {
+          struct rb_node *node;
+          
+          for (node = rb_last(root); node; node = rb_prev(node)) {
+              struct my_node *data = rb_entry(node, struct my_node, rb);
+              pr_info("key=%d, value=%d\n", data->key, data->value);
+          }
+      }
+
+  - description: "销毁整棵树"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/rbtree.h>
+      
+      void destroy_tree(struct rb_root *root)
+      {
+          struct my_node *pos, *n;
+          
+          /* 使用后序遍历安全删除 */
+          rbtree_postorder_for_each_entry_safe(pos, n, root, rb) {
+              kfree(pos);
+          }
+          
+          /* 重新初始化根 */
+          *root = RB_ROOT;
+      }
+
+  - description: "带缓存的红黑树（CFS 风格）"
+    kernel_version: "4.14+"
+    code: |
+      #include <linux/rbtree.h>
+      
+      struct task_node {
+          u64 vruntime;  /* 虚拟运行时间 */
+          struct rb_node rb;
+      };
+      
+      static struct rb_root_cached task_tree = RB_ROOT_CACHED;
+      
+      /* 获取下一个要运行的任务（最小 vruntime）*/
+      struct task_node *pick_next_task(void)
+      {
+          struct rb_node *left = rb_first_cached(&task_tree);
+          if (!left)
+              return NULL;
+          return rb_entry(left, struct task_node, rb);
+      }
+      
+      /* 插入任务 */
+      void enqueue_task(struct task_node *task)
+      {
+          struct rb_node **link = &task_tree.rb_root.rb_node;
+          struct rb_node *parent = NULL;
+          bool leftmost = true;
+          
+          while (*link) {
+              struct task_node *entry = rb_entry(*link,
+                  struct task_node, rb);
+              parent = *link;
+              
+              if (task->vruntime < entry->vruntime) {
+                  link = &(*link)->rb_left;
+              } else {
+                  link = &(*link)->rb_right;
+                  leftmost = false;
+              }
+          }
+          
+          rb_link_node(&task->rb, parent, link);
+          rb_insert_color_cached(&task->rb, &task_tree, leftmost);
+      }
+      
+      /* 删除任务 */
+      void dequeue_task(struct task_node *task)
+      {
+          rb_erase_cached(&task->rb, &task_tree);
+          RB_CLEAR_NODE(&task->rb);
+      }
+
+  - description: "区间树（增强红黑树）"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/rbtree_augmented.h>
+      #include <linux/interval_tree.h>
+      
+      /* Linux 内核提供了 interval_tree API */
+      struct interval_tree_node {
+          struct rb_node rb;
+          unsigned long start;
+          unsigned long last;
+          unsigned long __subtree_last;
+      };
+      
+      /* 使用内核提供的区间树 API */
+      void interval_tree_insert(struct interval_tree_node *node,
+                               struct rb_root_cached *root);
+      void interval_tree_remove(struct interval_tree_node *node,
+                               struct rb_root_cached *root);
+      struct interval_tree_node *
+      interval_tree_iter_first(struct rb_root_cached *root,
+                              unsigned long start, unsigned long last);
+      struct interval_tree_node *
+      interval_tree_iter_next(struct interval_tree_node *node,
+                             unsigned long start, unsigned long last);
+
+
+# ============================================================
+# NOTES - 注意事项
+# ============================================================
+
+notes:
+  - "红黑树不是自动排序的，需要用户提供比较逻辑"
+  - "插入分两步: rb_link_node() + rb_insert_color()"
+  - "使用 rb_entry() 从节点获取包含结构体"
+  - "删除节点后不会自动释放内存"
+  - "带缓存版本适合频繁访问最小元素的场景"
+  - "增强红黑树用于需要子树聚合信息的高级场景"
+  - "红黑树操作不是原子的，需要外部同步"
+  - "rbtree_postorder_for_each_entry_safe 用于安全销毁树"

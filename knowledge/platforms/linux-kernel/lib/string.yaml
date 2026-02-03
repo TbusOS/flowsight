@@ -1,0 +1,722 @@
+# Linux Kernel String Functions Knowledge Base
+#
+# Reference: lib/string.c
+# Reference: include/linux/string.h
+# Kernel Version: 2.6+
+
+# ============================================================
+# STRING COPY FUNCTIONS - 字符串复制
+# ============================================================
+
+string_copy:
+  description: "String Copy Functions - 字符串复制函数"
+  header: "linux/string.h"
+  icon: "📋"
+  kernel_version: "2.6+"
+
+  functions:
+    strcpy:
+      pattern: 'strcpy\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->"]+)\s*\)'
+      description: "复制字符串（不安全，已废弃）"
+      prototype: "char *strcpy(char *dest, const char *src)"
+      return_type: "char * (dest)"
+      notes:
+        - "⚠️ 不检查缓冲区大小，可能溢出"
+        - "不推荐使用，应使用 strscpy"
+        - "会复制终止 NUL"
+      deprecated: true
+      replacement: "strscpy"
+
+    strncpy:
+      pattern: 'strncpy\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->"]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "复制最多 n 个字符"
+      prototype: "char *strncpy(char *dest, const char *src, size_t count)"
+      return_type: "char * (dest)"
+      notes:
+        - "⚠️ 如果 src 长度 >= count，dest 不会 NUL 终止"
+        - "⚠️ 如果 src 短于 count，会用 NUL 填充剩余空间"
+        - "不推荐使用，应使用 strscpy"
+      deprecated: true
+      replacement: "strscpy"
+
+    strscpy:
+      pattern: 'strscpy\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->"]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "安全的字符串复制（推荐）"
+      prototype: "ssize_t strscpy(char *dest, const char *src, size_t size)"
+      return_type: "ssize_t"
+      return_values:
+        - value: ">= 0"
+          description: "复制的字符数（不含 NUL）"
+        - value: "-E2BIG"
+          description: "源字符串被截断"
+      notes:
+        - "✅ 总是 NUL 终止（除非 size == 0）"
+        - "✅ 不会超过 size"
+        - "✅ 返回值可检测截断"
+        - "✅ 推荐的字符串复制函数"
+      recommended: true
+
+    strscpy_pad:
+      pattern: 'strscpy_pad\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->"]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "安全复制并填充剩余空间为 NUL"
+      prototype: "ssize_t strscpy_pad(char *dest, const char *src, size_t size)"
+      return_type: "ssize_t"
+      notes:
+        - "类似 strscpy，但用 NUL 填充剩余空间"
+        - "用于需要固定大小缓冲区的场景"
+
+    strlcpy:
+      pattern: 'strlcpy\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->"]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "BSD 风格安全复制（Linux 不推荐）"
+      prototype: "size_t strlcpy(char *dest, const char *src, size_t size)"
+      return_type: "size_t (src 的长度)"
+      notes:
+        - "返回值是 src 的长度，不是复制的长度"
+        - "需要额外检查返回值"
+        - "Linux 推荐使用 strscpy 代替"
+      deprecated: true
+      replacement: "strscpy"
+
+
+# ============================================================
+# STRING CONCATENATION - 字符串连接
+# ============================================================
+
+string_concat:
+  description: "String Concatenation - 字符串连接函数"
+  header: "linux/string.h"
+  icon: "🔗"
+
+  functions:
+    strcat:
+      pattern: 'strcat\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->"]+)\s*\)'
+      description: "连接字符串（不安全，已废弃）"
+      prototype: "char *strcat(char *dest, const char *src)"
+      return_type: "char * (dest)"
+      notes:
+        - "⚠️ 不检查缓冲区大小"
+        - "⚠️ 可能导致缓冲区溢出"
+      deprecated: true
+
+    strncat:
+      pattern: 'strncat\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->"]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "连接最多 n 个字符"
+      prototype: "char *strncat(char *dest, const char *src, size_t count)"
+      return_type: "char * (dest)"
+      notes:
+        - "count 是从 src 复制的最大字符数"
+        - "总是添加 NUL 终止符"
+        - "⚠️ dest 必须有足够空间容纳 strlen(dest) + count + 1"
+      deprecated: true
+
+    strlcat:
+      pattern: 'strlcat\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->"]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "BSD 风格安全连接"
+      prototype: "size_t strlcat(char *dest, const char *src, size_t size)"
+      return_type: "size_t (理想结果长度)"
+      notes:
+        - "size 是 dest 缓冲区总大小"
+        - "返回理想结果长度（不含 NUL）"
+        - "如果返回值 >= size，发生了截断"
+
+
+# ============================================================
+# STRING COMPARISON - 字符串比较
+# ============================================================
+
+string_compare:
+  description: "String Comparison - 字符串比较函数"
+  header: "linux/string.h"
+  icon: "⚖️"
+
+  functions:
+    strcmp:
+      pattern: 'strcmp\s*\(\s*(?P<s1>[\w\.\->"]+)\s*,\s*(?P<s2>[\w\.\->"]+)\s*\)'
+      description: "比较两个字符串"
+      prototype: "int strcmp(const char *s1, const char *s2)"
+      return_type: "int"
+      return_values:
+        - value: "< 0"
+          description: "s1 < s2"
+        - value: "0"
+          description: "s1 == s2"
+        - value: "> 0"
+          description: "s1 > s2"
+      notes:
+        - "区分大小写"
+        - "比较到 NUL 终止符"
+
+    strncmp:
+      pattern: 'strncmp\s*\(\s*(?P<s1>[\w\.\->"]+)\s*,\s*(?P<s2>[\w\.\->"]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "比较最多 n 个字符"
+      prototype: "int strncmp(const char *s1, const char *s2, size_t count)"
+      return_type: "int"
+      notes:
+        - "最多比较 count 个字符"
+        - "区分大小写"
+
+    strcasecmp:
+      pattern: 'strcasecmp\s*\(\s*(?P<s1>[\w\.\->"]+)\s*,\s*(?P<s2>[\w\.\->"]+)\s*\)'
+      description: "不区分大小写比较"
+      prototype: "int strcasecmp(const char *s1, const char *s2)"
+      return_type: "int"
+      notes:
+        - "忽略大小写"
+        - "仅对 ASCII 字符有效"
+
+    strncasecmp:
+      pattern: 'strncasecmp\s*\(\s*(?P<s1>[\w\.\->"]+)\s*,\s*(?P<s2>[\w\.\->"]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "不区分大小写比较最多 n 个字符"
+      prototype: "int strncasecmp(const char *s1, const char *s2, size_t count)"
+      return_type: "int"
+
+    str_has_prefix:
+      pattern: 'str_has_prefix\s*\(\s*(?P<str>[\w\.\->"]+)\s*,\s*(?P<prefix>[\w\.\->"]+)\s*\)'
+      description: "检查字符串是否有指定前缀"
+      prototype: "size_t str_has_prefix(const char *str, const char *prefix)"
+      return_type: "size_t"
+      return_values:
+        - value: "0"
+          description: "没有该前缀"
+        - value: "> 0"
+          description: "前缀长度"
+      recommended: true
+
+
+# ============================================================
+# STRING LENGTH - 字符串长度
+# ============================================================
+
+string_length:
+  description: "String Length - 字符串长度函数"
+  header: "linux/string.h"
+  icon: "📏"
+
+  functions:
+    strlen:
+      pattern: 'strlen\s*\(\s*(?P<s>[\w\.\->"]+)\s*\)'
+      description: "获取字符串长度"
+      prototype: "size_t strlen(const char *s)"
+      return_type: "size_t"
+      notes:
+        - "不含终止 NUL"
+        - "⚠️ 如果 s 不是 NUL 终止，会越界"
+
+    strnlen:
+      pattern: 'strnlen\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "获取字符串长度（有上限）"
+      prototype: "size_t strnlen(const char *s, size_t count)"
+      return_type: "size_t"
+      notes:
+        - "最多扫描 count 个字符"
+        - "返回 min(strlen(s), count)"
+        - "✅ 比 strlen 更安全"
+      recommended: true
+
+
+# ============================================================
+# STRING SEARCH - 字符串搜索
+# ============================================================
+
+string_search:
+  description: "String Search - 字符串搜索函数"
+  header: "linux/string.h"
+  icon: "🔍"
+
+  functions:
+    strchr:
+      pattern: 'strchr\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<c>[\w\']+)\s*\)'
+      description: "查找字符首次出现位置"
+      prototype: "char *strchr(const char *s, int c)"
+      return_type: "char * (指向找到的字符，或 NULL)"
+      notes:
+        - "搜索包括终止 NUL"
+        - "strchr(s, '\\0') 返回字符串结尾"
+
+    strrchr:
+      pattern: 'strrchr\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<c>[\w\']+)\s*\)'
+      description: "查找字符最后出现位置"
+      prototype: "char *strrchr(const char *s, int c)"
+      return_type: "char * (指向找到的字符，或 NULL)"
+
+    strnchr:
+      pattern: 'strnchr\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<c>[\w\']+)\s*\)'
+      description: "在前 n 个字符中查找字符"
+      prototype: "char *strnchr(const char *s, size_t count, int c)"
+      return_type: "char *"
+
+    strchrnul:
+      pattern: 'strchrnul\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<c>[\w\']+)\s*\)'
+      description: "查找字符，未找到返回字符串结尾"
+      prototype: "char *strchrnul(const char *s, int c)"
+      return_type: "char *"
+      notes:
+        - "不返回 NULL，而是返回 NUL 终止符位置"
+        - "便于后续处理"
+
+    strstr:
+      pattern: 'strstr\s*\(\s*(?P<s1>[\w\.\->"]+)\s*,\s*(?P<s2>[\w\.\->"]+)\s*\)'
+      description: "查找子字符串"
+      prototype: "char *strstr(const char *s1, const char *s2)"
+      return_type: "char * (指向子串开始，或 NULL)"
+
+    strnstr:
+      pattern: 'strnstr\s*\(\s*(?P<s1>[\w\.\->"]+)\s*,\s*(?P<s2>[\w\.\->"]+)\s*,\s*(?P<len>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "在前 n 个字符中查找子串"
+      prototype: "char *strnstr(const char *s1, const char *s2, size_t len)"
+      return_type: "char *"
+
+    strcasestr:
+      pattern: 'strcasestr\s*\(\s*(?P<s1>[\w\.\->"]+)\s*,\s*(?P<s2>[\w\.\->"]+)\s*\)'
+      description: "不区分大小写查找子串"
+      prototype: "char *strcasestr(const char *s1, const char *s2)"
+      return_type: "char *"
+
+    strpbrk:
+      pattern: 'strpbrk\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<accept>[\w\.\->"]+)\s*\)'
+      description: "查找任意字符集中字符首次出现"
+      prototype: "char *strpbrk(const char *s, const char *accept)"
+      return_type: "char *"
+      notes:
+        - "accept 是字符集，不是子串"
+
+    strspn:
+      pattern: 'strspn\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<accept>[\w\.\->"]+)\s*\)'
+      description: "返回前缀中只包含 accept 字符的长度"
+      prototype: "size_t strspn(const char *s, const char *accept)"
+      return_type: "size_t"
+
+    strcspn:
+      pattern: 'strcspn\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<reject>[\w\.\->"]+)\s*\)'
+      description: "返回前缀中不包含 reject 字符的长度"
+      prototype: "size_t strcspn(const char *s, const char *reject)"
+      return_type: "size_t"
+
+
+# ============================================================
+# STRING TOKENIZATION - 字符串分割
+# ============================================================
+
+string_token:
+  description: "String Tokenization - 字符串分割函数"
+  header: "linux/string.h"
+  icon: "✂️"
+
+  functions:
+    strsep:
+      pattern: 'strsep\s*\(\s*&?(?P<stringp>[\w\.\->]+)\s*,\s*(?P<delim>[\w\.\->"]+)\s*\)'
+      description: "分割字符串（推荐）"
+      prototype: "char *strsep(char **stringp, const char *delim)"
+      return_type: "char * (指向 token，或 NULL)"
+      notes:
+        - "修改原字符串（用 NUL 替换分隔符）"
+        - "更新 *stringp 指向下一个 token"
+        - "✅ 推荐使用，替代 strtok"
+        - "可以处理空 token"
+      recommended: true
+      example: |
+        char *str = "a,b,,c";
+        char *token;
+        while ((token = strsep(&str, ",")) != NULL)
+            pr_info("token: '%s'\n", token);
+        /* 输出: 'a', 'b', '', 'c' */
+
+    skip_spaces:
+      pattern: 'skip_spaces\s*\(\s*(?P<str>[\w\.\->"]+)\s*\)'
+      description: "跳过前导空白字符"
+      prototype: "char *skip_spaces(const char *str)"
+      return_type: "char *"
+
+    strim:
+      pattern: 'strim\s*\(\s*(?P<s>[\w\.\->]+)\s*\)'
+      description: "去除首尾空白字符"
+      prototype: "char *strim(char *s)"
+      return_type: "char *"
+      notes:
+        - "修改原字符串"
+        - "返回去除前导空白后的指针"
+
+
+# ============================================================
+# MEMORY FUNCTIONS - 内存操作函数
+# ============================================================
+
+memory_functions:
+  description: "Memory Functions - 内存操作函数"
+  header: "linux/string.h"
+  icon: "💾"
+
+  functions:
+    memcpy:
+      pattern: 'memcpy\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "内存复制（不可重叠）"
+      prototype: "void *memcpy(void *dest, const void *src, size_t count)"
+      return_type: "void * (dest)"
+      notes:
+        - "⚠️ src 和 dest 不能重叠"
+        - "如果重叠，使用 memmove"
+        - "通常由架构优化实现"
+
+    memmove:
+      pattern: 'memmove\s*\(\s*(?P<dest>[\w\.\->]+)\s*,\s*(?P<src>[\w\.\->]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "内存复制（允许重叠）"
+      prototype: "void *memmove(void *dest, const void *src, size_t count)"
+      return_type: "void * (dest)"
+      notes:
+        - "✅ 安全处理重叠区域"
+        - "比 memcpy 稍慢"
+
+    memset:
+      pattern: 'memset\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<c>[\w\']+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "内存填充"
+      prototype: "void *memset(void *s, int c, size_t count)"
+      return_type: "void * (s)"
+      notes:
+        - "将 count 字节设置为 c 的低 8 位"
+        - "常用于清零: memset(buf, 0, size)"
+
+    memzero_explicit:
+      pattern: 'memzero_explicit\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "安全清零（不会被编译器优化掉）"
+      prototype: "void memzero_explicit(void *s, size_t count)"
+      return_type: "void"
+      notes:
+        - "✅ 用于清除敏感数据（密码、密钥）"
+        - "编译器不会优化掉"
+      recommended: true
+
+    memcmp:
+      pattern: 'memcmp\s*\(\s*(?P<s1>[\w\.\->]+)\s*,\s*(?P<s2>[\w\.\->]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "内存比较"
+      prototype: "int memcmp(const void *s1, const void *s2, size_t count)"
+      return_type: "int"
+      return_values:
+        - value: "< 0"
+          description: "s1 < s2"
+        - value: "0"
+          description: "s1 == s2"
+        - value: "> 0"
+          description: "s1 > s2"
+
+    memchr:
+      pattern: 'memchr\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<c>[\w\']+)\s*,\s*(?P<n>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "在内存中查找字符"
+      prototype: "void *memchr(const void *s, int c, size_t n)"
+      return_type: "void * (指向找到的字符，或 NULL)"
+
+    memrchr:
+      pattern: 'memrchr\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<c>[\w\']+)\s*,\s*(?P<n>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "从后向前在内存中查找字符"
+      prototype: "void *memrchr(const void *s, int c, size_t n)"
+      return_type: "void *"
+
+    memscan:
+      pattern: 'memscan\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<c>[\w\']+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      description: "扫描内存查找字符（不返回 NULL）"
+      prototype: "void *memscan(void *addr, int c, size_t size)"
+      return_type: "void *"
+      notes:
+        - "未找到返回 addr + size，不是 NULL"
+
+
+# ============================================================
+# STRING FORMATTING - 字符串格式化
+# ============================================================
+
+string_format:
+  description: "String Formatting - 字符串格式化函数"
+  header: "linux/kernel.h"
+  icon: "📝"
+
+  functions:
+    sprintf:
+      pattern: 'sprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<fmt>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+      description: "格式化字符串（不安全）"
+      prototype: "int sprintf(char *buf, const char *fmt, ...)"
+      return_type: "int (写入的字符数)"
+      notes:
+        - "⚠️ 不检查缓冲区大小"
+        - "应使用 snprintf 或 scnprintf"
+      deprecated: true
+
+    snprintf:
+      pattern: 'snprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<fmt>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+      description: "安全的格式化字符串"
+      prototype: "int snprintf(char *buf, size_t size, const char *fmt, ...)"
+      return_type: "int (如果缓冲区足够大，应写入的字符数)"
+      notes:
+        - "返回值可能 >= size（表示截断）"
+        - "总是 NUL 终止（除非 size == 0）"
+
+    scnprintf:
+      pattern: 'scnprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<fmt>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+      description: "安全格式化，返回实际写入长度"
+      prototype: "int scnprintf(char *buf, size_t size, const char *fmt, ...)"
+      return_type: "int (实际写入的字符数，不含 NUL)"
+      notes:
+        - "✅ 返回值是实际写入的字符数"
+        - "✅ 适合顺序写入缓冲区"
+        - "✅ 推荐使用"
+      recommended: true
+      example: |
+        char buf[100];
+        int len = 0;
+        len += scnprintf(buf + len, sizeof(buf) - len, "Value: %d\n", val1);
+        len += scnprintf(buf + len, sizeof(buf) - len, "Name: %s\n", name);
+
+    vsnprintf:
+      pattern: 'vsnprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<fmt>[\w\.\->"]+)\s*,\s*(?P<args>[\w]+)\s*\)'
+      description: "va_list 版本的 snprintf"
+      prototype: "int vsnprintf(char *buf, size_t size, const char *fmt, va_list args)"
+      return_type: "int"
+
+    vscnprintf:
+      pattern: 'vscnprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<fmt>[\w\.\->"]+)\s*,\s*(?P<args>[\w]+)\s*\)'
+      description: "va_list 版本的 scnprintf"
+      prototype: "int vscnprintf(char *buf, size_t size, const char *fmt, va_list args)"
+      return_type: "int"
+
+
+# ============================================================
+# STRING CONVERSION - 字符串转换
+# ============================================================
+
+string_conversion:
+  description: "String Conversion - 字符串转换函数"
+  header: "linux/kernel.h"
+  icon: "🔄"
+
+  functions:
+    simple_strtoul:
+      pattern: 'simple_strtoul\s*\(\s*(?P<cp>[\w\.\->"]+)\s*,\s*(?P<endp>[\w\.\->&]+)\s*,\s*(?P<base>[\w]+)\s*\)'
+      description: "字符串转无符号长整型"
+      prototype: "unsigned long simple_strtoul(const char *cp, char **endp, unsigned int base)"
+      return_type: "unsigned long"
+      notes:
+        - "base 为 0 时自动检测进制"
+        - "base 为 16 时可以有 0x 前缀"
+
+    simple_strtol:
+      pattern: 'simple_strtol\s*\(\s*(?P<cp>[\w\.\->"]+)\s*,\s*(?P<endp>[\w\.\->&]+)\s*,\s*(?P<base>[\w]+)\s*\)'
+      description: "字符串转有符号长整型"
+      prototype: "long simple_strtol(const char *cp, char **endp, unsigned int base)"
+      return_type: "long"
+
+    simple_strtoull:
+      pattern: 'simple_strtoull\s*\(\s*(?P<cp>[\w\.\->"]+)\s*,\s*(?P<endp>[\w\.\->&]+)\s*,\s*(?P<base>[\w]+)\s*\)'
+      description: "字符串转无符号 64 位整型"
+      prototype: "unsigned long long simple_strtoull(const char *cp, char **endp, unsigned int base)"
+      return_type: "unsigned long long"
+
+    simple_strtoll:
+      pattern: 'simple_strtoll\s*\(\s*(?P<cp>[\w\.\->"]+)\s*,\s*(?P<endp>[\w\.\->&]+)\s*,\s*(?P<base>[\w]+)\s*\)'
+      description: "字符串转有符号 64 位整型"
+      prototype: "long long simple_strtoll(const char *cp, char **endp, unsigned int base)"
+      return_type: "long long"
+
+    kstrtoul:
+      pattern: 'kstrtoul\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<base>[\w]+)\s*,\s*(?P<res>[\w\.\->&]+)\s*\)'
+      description: "安全的字符串转无符号长整型"
+      prototype: "int kstrtoul(const char *s, unsigned int base, unsigned long *res)"
+      return_type: "int (0 成功，负值失败)"
+      notes:
+        - "✅ 检查溢出"
+        - "✅ 检查无效字符"
+        - "✅ 推荐使用"
+      recommended: true
+
+    kstrtol:
+      pattern: 'kstrtol\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<base>[\w]+)\s*,\s*(?P<res>[\w\.\->&]+)\s*\)'
+      description: "安全的字符串转有符号长整型"
+      prototype: "int kstrtol(const char *s, unsigned int base, long *res)"
+      return_type: "int"
+      recommended: true
+
+    kstrtoint:
+      pattern: 'kstrtoint\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<base>[\w]+)\s*,\s*(?P<res>[\w\.\->&]+)\s*\)'
+      description: "安全的字符串转 int"
+      prototype: "int kstrtoint(const char *s, unsigned int base, int *res)"
+      return_type: "int"
+      recommended: true
+
+    kstrtouint:
+      pattern: 'kstrtouint\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<base>[\w]+)\s*,\s*(?P<res>[\w\.\->&]+)\s*\)'
+      description: "安全的字符串转 unsigned int"
+      prototype: "int kstrtouint(const char *s, unsigned int base, unsigned int *res)"
+      return_type: "int"
+      recommended: true
+
+    kstrtobool:
+      pattern: 'kstrtobool\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<res>[\w\.\->&]+)\s*\)'
+      description: "字符串转布尔值"
+      prototype: "int kstrtobool(const char *s, bool *res)"
+      return_type: "int"
+      notes:
+        - "接受: 1, y, Y, true, TRUE, yes, YES"
+        - "接受: 0, n, N, false, FALSE, no, NO"
+
+
+# ============================================================
+# EXAMPLES - 示例代码
+# ============================================================
+
+examples:
+  - description: "安全字符串复制"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/string.h>
+      
+      void safe_copy_example(void)
+      {
+          char dest[32];
+          const char *src = "Hello, Kernel!";
+          ssize_t ret;
+          
+          /* 推荐: 使用 strscpy */
+          ret = strscpy(dest, src, sizeof(dest));
+          if (ret < 0)
+              pr_warn("String truncated!\n");
+          else
+              pr_info("Copied %zd chars: %s\n", ret, dest);
+          
+          /* 避免: 不要使用 strcpy */
+          // strcpy(dest, src);  /* 危险! */
+      }
+
+  - description: "字符串分割"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/string.h>
+      #include <linux/slab.h>
+      
+      void parse_options(const char *options)
+      {
+          char *buf, *p, *token;
+          
+          /* 复制字符串，因为 strsep 会修改它 */
+          buf = kstrdup(options, GFP_KERNEL);
+          if (!buf)
+              return;
+          
+          p = buf;
+          while ((token = strsep(&p, ",")) != NULL) {
+              if (*token == '\0')
+                  continue;  /* 跳过空 token */
+              
+              pr_info("Option: %s\n", token);
+              
+              /* 检查特定选项 */
+              if (str_has_prefix(token, "size=")) {
+                  const char *val = token + 5;
+                  unsigned long size;
+                  if (kstrtoul(val, 0, &size) == 0)
+                      pr_info("Size: %lu\n", size);
+              }
+          }
+          
+          kfree(buf);
+      }
+
+  - description: "安全格式化输出"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/kernel.h>
+      
+      void format_status(char *buf, size_t size, struct device *dev)
+      {
+          int len = 0;
+          
+          /* 使用 scnprintf 顺序写入 */
+          len += scnprintf(buf + len, size - len,
+                          "Device: %s\n", dev_name(dev));
+          len += scnprintf(buf + len, size - len,
+                          "State: %s\n", dev->state ? "active" : "idle");
+          len += scnprintf(buf + len, size - len,
+                          "Refcount: %d\n", atomic_read(&dev->refcount));
+          
+          /* len 是实际写入的字符数 */
+      }
+
+  - description: "安全数值解析"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/kernel.h>
+      
+      int parse_config_value(const char *str, unsigned int *value)
+      {
+          int ret;
+          
+          /* 去除前导空白 */
+          str = skip_spaces(str);
+          
+          /* 使用 kstrtouint 安全解析 */
+          ret = kstrtouint(str, 0, value);
+          if (ret) {
+              pr_err("Invalid value: %s\n", str);
+              return ret;
+          }
+          
+          /* 验证范围 */
+          if (*value > 1000) {
+              pr_err("Value out of range: %u\n", *value);
+              return -ERANGE;
+          }
+          
+          return 0;
+      }
+
+  - description: "内存操作"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/string.h>
+      #include <linux/slab.h>
+      
+      void memory_ops_example(void)
+      {
+          char *buf1, *buf2;
+          
+          buf1 = kmalloc(256, GFP_KERNEL);
+          buf2 = kmalloc(256, GFP_KERNEL);
+          if (!buf1 || !buf2)
+              goto out;
+          
+          /* 初始化 */
+          memset(buf1, 0, 256);
+          
+          /* 复制（不重叠） */
+          memcpy(buf2, buf1, 256);
+          
+          /* 移动（可能重叠） */
+          memmove(buf1 + 10, buf1, 100);
+          
+          /* 比较 */
+          if (memcmp(buf1, buf2, 10) == 0)
+              pr_info("First 10 bytes equal\n");
+          
+          /* 查找 */
+          char *p = memchr(buf1, 'A', 256);
+          if (p)
+              pr_info("Found 'A' at offset %ld\n", p - buf1);
+          
+          /* 安全清除敏感数据 */
+          memzero_explicit(buf1, 256);
+          
+      out:
+          kfree(buf1);
+          kfree(buf2);
+      }
+
+
+# ============================================================
+# NOTES - 注意事项
+# ============================================================
+
+notes:
+  - "✅ 优先使用 strscpy 而非 strcpy/strncpy/strlcpy"
+  - "✅ 优先使用 scnprintf 而非 snprintf/sprintf"
+  - "✅ 优先使用 kstrtoul 而非 simple_strtoul"
+  - "✅ 使用 memzero_explicit 清除敏感数据"
+  - "⚠️ strsep 会修改原字符串"
+  - "⚠️ memcpy 的 src 和 dest 不能重叠"
+  - "⚠️ 所有字符串函数都假设输入是有效的 NUL 终止字符串"
+  - "内核字符串函数不使用 locale，仅支持 ASCII"

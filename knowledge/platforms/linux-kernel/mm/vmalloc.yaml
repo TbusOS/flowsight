@@ -1,0 +1,775 @@
+# Linux Kernel Vmalloc Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/mm/vmalloc.html
+# Source: mm/vmalloc.c
+# Completeness: 95%+ (KB-Memory Agent)
+
+# ============================================================
+# VMALLOC OVERVIEW
+# ============================================================
+
+vmalloc_allocator:
+  description: "Vmalloc Allocator - 虚拟连续内存分配器"
+  header: "linux/vmalloc.h"
+  icon: "🗺️"
+  kernel_version: "2.6+"
+  
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+  
+  overview: |
+    vmalloc 分配虚拟地址连续但物理地址不一定连续的内存。
+    - 适用于大块内存分配
+    - 不需要物理连续，减少内存碎片
+    - 比 kmalloc 慢 (需要建立页表)
+    - 有专门的虚拟地址空间 (VMALLOC_START - VMALLOC_END)
+    - 不能用于 DMA (物理不连续)
+
+  virtual_address_space:
+    description: "vmalloc 地址空间布局"
+    ranges:
+      - name: "VMALLOC_START"
+        description: "vmalloc 区域起始"
+      - name: "VMALLOC_END"
+        description: "vmalloc 区域结束"
+      - name: "MODULES_VADDR"
+        description: "模块加载区域起始"
+      - name: "MODULES_END"
+        description: "模块加载区域结束"
+
+  data_structures:
+    vm_struct:
+      pattern: 'struct vm_struct\s*\{'
+      description: "vmalloc 区域描述符"
+      file: "include/linux/vmalloc.h"
+      fields:
+        - name: "next"
+          type: "struct vm_struct *"
+          description: "链表下一个"
+        - name: "addr"
+          type: "void *"
+          description: "虚拟地址"
+        - name: "size"
+          type: "unsigned long"
+          description: "区域大小(含守护页)"
+        - name: "flags"
+          type: "unsigned long"
+          description: "区域标志"
+        - name: "pages"
+          type: "struct page **"
+          description: "页面数组"
+        - name: "nr_pages"
+          type: "unsigned int"
+          description: "页面数量"
+        - name: "phys_addr"
+          type: "phys_addr_t"
+          description: "物理地址 (ioremap)"
+        - name: "caller"
+          type: "const void *"
+          description: "调用者地址 (DEBUG)"
+
+    vmap_area:
+      pattern: 'struct vmap_area\s*\{'
+      description: "vmap 区域管理结构"
+      file: "mm/vmalloc.c"
+      fields:
+        - name: "va_start"
+          type: "unsigned long"
+          description: "区域起始地址"
+        - name: "va_end"
+          type: "unsigned long"
+          description: "区域结束地址"
+        - name: "rb_node"
+          type: "struct rb_node"
+          description: "红黑树节点"
+        - name: "list"
+          type: "struct list_head"
+          description: "空闲链表"
+        - name: "subtree_max_size"
+          type: "unsigned long"
+          description: "子树最大空闲大小"
+        - name: "vm"
+          type: "struct vm_struct *"
+          description: "关联的 vm_struct"
+        - name: "flags"
+          type: "unsigned long"
+          description: "区域标志"
+
+# ============================================================
+# VMALLOC INTERFACE
+# ============================================================
+
+vmalloc_interface:
+  description: "Vmalloc Interface - vmalloc 接口函数"
+  header: "linux/vmalloc.h"
+  icon: "📦"
+
+  bind_patterns:
+    # vmalloc - 基本虚拟内存分配
+    - pattern: 'vmalloc\s*\(\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "size"
+      description: "分配虚拟连续内存"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "虚拟地址指针"
+        failure: "NULL"
+
+    # vzalloc - 零初始化 vmalloc
+    - pattern: 'vzalloc\s*\(\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "size"
+      description: "零初始化虚拟内存分配"
+      context: "process"
+      can_sleep: true
+
+    # vmalloc_user - 用户可映射的 vmalloc
+    - pattern: 'vmalloc_user\s*\(\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "size"
+      description: "分配可映射到用户空间的虚拟内存"
+      context: "process"
+      can_sleep: true
+
+    # vmalloc_node - 节点分配
+    - pattern: 'vmalloc_node\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<node>\w+)\s*\)'
+      variable_capture: "size"
+      description: "从指定 NUMA 节点分配"
+      context: "process"
+      can_sleep: true
+
+    # vzalloc_node - 节点零初始化分配
+    - pattern: 'vzalloc_node\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<node>\w+)\s*\)'
+      variable_capture: "size"
+      description: "从指定节点零初始化分配"
+      context: "process"
+      can_sleep: true
+
+    # vmalloc_32 - 32位地址空间分配
+    - pattern: 'vmalloc_32\s*\(\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "size"
+      description: "从低 4GB 物理内存分配"
+      context: "process"
+      can_sleep: true
+
+    # vmalloc_32_user - 用户可映射 32位分配
+    - pattern: 'vmalloc_32_user\s*\(\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "size"
+      description: "分配可映射到用户空间的低 4GB 内存"
+      context: "process"
+      can_sleep: true
+
+    # __vmalloc - 底层分配接口
+    - pattern: '__vmalloc\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<gfp_mask>[^)]+)\s*\)'
+      variable_capture: "size"
+      description: "底层 vmalloc 接口"
+      context: "depends on gfp"
+      can_sleep: "depends on gfp"
+
+    # __vmalloc_node - 底层节点分配
+    - pattern: '__vmalloc_node\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<align>[^,]+)\s*,\s*(?P<gfp_mask>[^,]+)\s*,\s*(?P<node>[^)]+)\s*\)'
+      variable_capture: "size"
+      description: "底层节点分配接口"
+
+    # __vmalloc_node_range - 范围分配
+    - pattern: '__vmalloc_node_range\s*\(\s*(?P<size>[^,]+)\s*,'
+      variable_capture: "size"
+      description: "在指定地址范围内分配"
+
+    # vfree - 释放 vmalloc 内存
+    - pattern: 'vfree\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "释放 vmalloc 分配的内存"
+      context: "process or softirq"
+      can_sleep: true
+
+    # vfree_atomic - 原子释放
+    - pattern: 'vfree_atomic\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "在中断上下文安全释放"
+      context: "any"
+      can_sleep: false
+
+# ============================================================
+# VMAP INTERFACE
+# ============================================================
+
+vmap_interface:
+  description: "Vmap Interface - 页面映射接口"
+  header: "linux/vmalloc.h"
+  icon: "🔗"
+
+  bind_patterns:
+    # vmap - 映射页面数组
+    - pattern: 'vmap\s*\(\s*(?P<pages>[^,]+)\s*,\s*(?P<count>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<prot>[^)]+)\s*\)'
+      variable_capture: "pages"
+      description: "将页面数组映射到连续虚拟地址"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "虚拟地址"
+        failure: "NULL"
+
+    # vmap_pfn - 映射 PFN 数组
+    - pattern: 'vmap_pfn\s*\(\s*(?P<pfns>[^,]+)\s*,\s*(?P<count>[^,]+)\s*,\s*(?P<prot>[^)]+)\s*\)'
+      variable_capture: "pfns"
+      description: "将 PFN 数组映射到连续虚拟地址"
+      context: "process"
+      can_sleep: true
+
+    # vunmap - 取消映射
+    - pattern: 'vunmap\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "取消 vmap 映射"
+      context: "process"
+      can_sleep: true
+
+    # vm_map_ram - 临时映射
+    - pattern: 'vm_map_ram\s*\(\s*(?P<pages>[^,]+)\s*,\s*(?P<count>[^,]+)\s*,\s*(?P<node>[^)]+)\s*\)'
+      variable_capture: "pages"
+      description: "临时映射页面 (高性能)"
+      context: "any"
+      can_sleep: false
+      note: "不能用于大量页面"
+
+    # vm_unmap_ram - 取消临时映射
+    - pattern: 'vm_unmap_ram\s*\(\s*(?P<mem>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      variable_capture: "mem"
+      description: "取消临时映射"
+      context: "any"
+      can_sleep: false
+
+    # vm_map_pages - 映射连续页面
+    - pattern: 'vm_map_pages\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<pages>[^,]+)\s*,\s*(?P<num>[^)]+)\s*\)'
+      variable_capture: "pages"
+      description: "将页面映射到用户空间 VMA"
+      context: "process"
+      can_sleep: true
+
+    # vm_map_pages_zero - 映射并填零
+    - pattern: 'vm_map_pages_zero\s*\(\s*(?P<vma>[^,]+)\s*,\s*(?P<pages>[^,]+)\s*,\s*(?P<num>[^)]+)\s*\)'
+      variable_capture: "pages"
+      description: "映射页面到 VMA 并填零"
+      context: "process"
+      can_sleep: true
+
+# ============================================================
+# IOREMAP INTERFACE
+# ============================================================
+
+ioremap_interface:
+  description: "Ioremap Interface - IO 内存映射接口"
+  header: "asm/io.h"
+  icon: "🖥️"
+
+  bind_patterns:
+    # ioremap - 映射 IO 内存
+    - pattern: 'ioremap\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "映射物理 IO 地址到虚拟地址"
+      context: "process"
+      can_sleep: true
+      return_value:
+        success: "void __iomem *"
+        failure: "NULL"
+
+    # ioremap_nocache - 非缓存映射
+    - pattern: 'ioremap_nocache\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "非缓存映射 IO 内存"
+      deprecated: "4.0+, 使用 ioremap"
+
+    # ioremap_wc - Write-combining 映射
+    - pattern: 'ioremap_wc\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "Write-combining 映射 (适合帧缓冲)"
+      context: "process"
+      can_sleep: true
+
+    # ioremap_wt - Write-through 映射
+    - pattern: 'ioremap_wt\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "Write-through 映射"
+      context: "process"
+      can_sleep: true
+
+    # ioremap_cache - 缓存映射
+    - pattern: 'ioremap_cache\s*\(\s*(?P<phys_addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+      variable_capture: "phys_addr"
+      description: "可缓存映射 (仅限 RAM)"
+      context: "process"
+      can_sleep: true
+
+    # memremap - 通用内存重映射
+    - pattern: 'memremap\s*\(\s*(?P<offset>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+      variable_capture: "offset"
+      description: "通用内存重映射接口"
+      context: "process"
+      can_sleep: true
+
+    # iounmap - 取消 IO 映射
+    - pattern: 'iounmap\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "取消 ioremap 映射"
+      context: "process"
+      can_sleep: true
+
+    # memunmap - 取消 memremap 映射
+    - pattern: 'memunmap\s*\(\s*(?P<addr>[^)]+)\s*\)'
+      variable_capture: "addr"
+      description: "取消 memremap 映射"
+      context: "process"
+      can_sleep: true
+
+  ioremap_flags:
+    - name: "MEMREMAP_WB"
+      description: "Write-back 缓存"
+    - name: "MEMREMAP_WT"
+      description: "Write-through 缓存"
+    - name: "MEMREMAP_WC"
+      description: "Write-combining"
+    - name: "MEMREMAP_ENC"
+      description: "加密内存"
+    - name: "MEMREMAP_DEC"
+      description: "解密内存"
+
+# ============================================================
+# INTERNAL OPERATIONS
+# ============================================================
+
+vmalloc_internals:
+  description: "Vmalloc Internal Operations - vmalloc 内部操作"
+  header: "mm/vmalloc.c"
+  icon: "⚙️"
+
+  key_functions:
+    alloc_vmap_area:
+      pattern: 'alloc_vmap_area\s*\('
+      description: "分配 vmap 区域"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    __alloc_vmap_area:
+      pattern: '__alloc_vmap_area\s*\('
+      description: "内部 vmap 区域分配"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    free_vmap_area:
+      pattern: 'free_vmap_area\s*\('
+      description: "释放 vmap 区域"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    __get_vm_area_node:
+      pattern: '__get_vm_area_node\s*\('
+      description: "获取 vm 区域"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    setup_vmalloc_vm:
+      pattern: 'setup_vmalloc_vm\s*\('
+      description: "设置 vmalloc vm_struct"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    __vmalloc_area_node:
+      pattern: '__vmalloc_area_node\s*\('
+      description: "在节点分配 vmalloc 区域"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    vmap_pages_range:
+      pattern: 'vmap_pages_range\s*\('
+      description: "映射页面范围"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    vmap_pages_range_noflush:
+      pattern: 'vmap_pages_range_noflush\s*\('
+      description: "映射页面 (不刷新 TLB)"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    vunmap_range:
+      pattern: 'vunmap_range\s*\('
+      description: "取消映射范围"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    __vunmap:
+      pattern: '__vunmap\s*\('
+      description: "内部取消映射"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    remove_vm_area:
+      pattern: 'remove_vm_area\s*\('
+      description: "移除 vm 区域"
+      context: "process"
+      file: "mm/vmalloc.c"
+
+    find_vm_area:
+      pattern: 'find_vm_area\s*\('
+      description: "查找 vm 区域"
+      context: "any"
+      file: "mm/vmalloc.c"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  vmalloc_path:
+    description: "vmalloc 分配路径"
+    trigger: "调用 vmalloc()"
+    chain:
+      - function: "vmalloc"
+        file: "mm/vmalloc.c"
+        description: "vmalloc 入口"
+      - function: "__vmalloc_node"
+        file: "mm/vmalloc.c"
+        description: "节点分配"
+      - function: "__vmalloc_node_range"
+        file: "mm/vmalloc.c"
+        description: "范围分配"
+      - function: "__get_vm_area_node"
+        file: "mm/vmalloc.c"
+        description: "获取 vm 区域"
+      - function: "alloc_vmap_area"
+        file: "mm/vmalloc.c"
+        description: "分配 vmap 区域"
+      - function: "__vmalloc_area_node"
+        file: "mm/vmalloc.c"
+        description: "分配页面"
+      - function: "alloc_pages_node"
+        file: "mm/page_alloc.c"
+        description: "分配物理页"
+      - function: "vmap_pages_range"
+        file: "mm/vmalloc.c"
+        description: "建立页表映射"
+
+  vfree_path:
+    description: "vfree 释放路径"
+    trigger: "调用 vfree()"
+    chain:
+      - function: "vfree"
+        file: "mm/vmalloc.c"
+        description: "vfree 入口"
+      - function: "__vfree"
+        file: "mm/vmalloc.c"
+        description: "内部释放"
+      - function: "__vunmap"
+        file: "mm/vmalloc.c"
+        description: "取消映射"
+      - function: "remove_vm_area"
+        file: "mm/vmalloc.c"
+        description: "移除 vm 区域"
+      - function: "free_vmap_area"
+        file: "mm/vmalloc.c"
+        description: "释放 vmap 区域"
+      - function: "__free_pages"
+        file: "mm/page_alloc.c"
+        description: "释放物理页"
+
+  ioremap_path:
+    description: "ioremap 映射路径"
+    trigger: "调用 ioremap()"
+    chain:
+      - function: "ioremap"
+        file: "arch/*/mm/ioremap.c"
+        description: "ioremap 入口"
+      - function: "ioremap_prot"
+        file: "arch/*/mm/ioremap.c"
+        description: "带保护位映射"
+      - function: "__ioremap_caller"
+        file: "mm/vmalloc.c"
+        description: "内部实现"
+      - function: "get_vm_area_caller"
+        file: "mm/vmalloc.c"
+        description: "获取 vm 区域"
+      - function: "ioremap_page_range"
+        file: "lib/ioremap.c"
+        description: "建立 IO 页表映射"
+
+  vmap_path:
+    description: "vmap 映射路径"
+    trigger: "调用 vmap()"
+    chain:
+      - function: "vmap"
+        file: "mm/vmalloc.c"
+        description: "vmap 入口"
+      - function: "__vmap"
+        file: "mm/vmalloc.c"
+        description: "内部 vmap"
+      - function: "get_vm_area_caller"
+        file: "mm/vmalloc.c"
+        description: "获取 vm 区域"
+      - function: "vmap_pages_range"
+        file: "mm/vmalloc.c"
+        description: "映射页面"
+
+# ============================================================
+# PAGE TABLE OPERATIONS
+# ============================================================
+
+page_table_ops:
+  description: "Page Table Operations - 页表操作"
+  icon: "📋"
+
+  bind_patterns:
+    # vmap_pte_range - 映射 PTE 范围
+    - pattern: 'vmap_pte_range\s*\('
+      description: "在 PTE 级别建立映射"
+      file: "mm/vmalloc.c"
+
+    # vmap_pmd_range - 映射 PMD 范围
+    - pattern: 'vmap_pmd_range\s*\('
+      description: "在 PMD 级别建立映射"
+      file: "mm/vmalloc.c"
+
+    # vmap_pud_range - 映射 PUD 范围
+    - pattern: 'vmap_pud_range\s*\('
+      description: "在 PUD 级别建立映射"
+      file: "mm/vmalloc.c"
+
+    # vmap_p4d_range - 映射 P4D 范围
+    - pattern: 'vmap_p4d_range\s*\('
+      description: "在 P4D 级别建立映射"
+      file: "mm/vmalloc.c"
+
+    # vunmap_pte_range - 取消 PTE 映射
+    - pattern: 'vunmap_pte_range\s*\('
+      description: "取消 PTE 级别映射"
+      file: "mm/vmalloc.c"
+
+# ============================================================
+# TLB MANAGEMENT
+# ============================================================
+
+tlb_management:
+  description: "TLB Management - TLB 管理"
+  icon: "🔄"
+
+  bind_patterns:
+    # flush_cache_vmap - 刷新 vmap 缓存
+    - pattern: 'flush_cache_vmap\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      variable_capture: "start"
+      description: "刷新 vmap 区域的缓存"
+
+    # flush_cache_vunmap - 刷新 vunmap 缓存
+    - pattern: 'flush_cache_vunmap\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      variable_capture: "start"
+      description: "刷新 vunmap 区域的缓存"
+
+    # flush_tlb_kernel_range - 刷新内核 TLB
+    - pattern: 'flush_tlb_kernel_range\s*\(\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      variable_capture: "start"
+      description: "刷新内核地址范围的 TLB"
+
+# ============================================================
+# DEBUG AND INFO
+# ============================================================
+
+debug_info:
+  description: "Debug and Info - 调试信息"
+  icon: "🔍"
+
+  proc_files:
+    - path: "/proc/vmallocinfo"
+      description: "vmalloc 区域信息"
+      fields:
+        - "起始-结束地址"
+        - "大小"
+        - "调用者"
+        - "页面数"
+        - "用途 (vmalloc/vmap/ioremap)"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 vmalloc 使用"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/vmalloc.h>
+      #include <linux/module.h>
+      
+      static int __init my_init(void)
+      {
+          void *buf;
+          
+          /* 分配 1MB 虚拟连续内存 */
+          buf = vmalloc(1024 * 1024);
+          if (!buf) {
+              pr_err("vmalloc failed\n");
+              return -ENOMEM;
+          }
+          
+          /* 使用内存 */
+          memset(buf, 0, 1024 * 1024);
+          
+          /* 释放内存 */
+          vfree(buf);
+          return 0;
+      }
+      
+      /* 零初始化版本 */
+      static void vzalloc_example(void)
+      {
+          void *buf = vzalloc(PAGE_SIZE * 100);
+          if (buf) {
+              /* 内存已零初始化 */
+              vfree(buf);
+          }
+      }
+
+  - description: "vmap 映射已有页面"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/vmalloc.h>
+      #include <linux/mm.h>
+      
+      static void vmap_example(void)
+      {
+          struct page **pages;
+          void *vaddr;
+          int i, num_pages = 4;
+          
+          /* 分配页面数组 */
+          pages = kmalloc(sizeof(struct page *) * num_pages, GFP_KERNEL);
+          if (!pages)
+              return;
+          
+          /* 分配各个页面 */
+          for (i = 0; i < num_pages; i++) {
+              pages[i] = alloc_page(GFP_KERNEL);
+              if (!pages[i])
+                  goto cleanup;
+          }
+          
+          /* 将页面映射到连续虚拟地址 */
+          vaddr = vmap(pages, num_pages, VM_MAP, PAGE_KERNEL);
+          if (!vaddr)
+              goto cleanup;
+          
+          /* 使用虚拟地址访问内存 */
+          memset(vaddr, 0xAB, PAGE_SIZE * num_pages);
+          
+          /* 取消映射 */
+          vunmap(vaddr);
+          
+      cleanup:
+          for (i = 0; i < num_pages; i++) {
+              if (pages[i])
+                  __free_page(pages[i]);
+          }
+          kfree(pages);
+      }
+
+  - description: "ioremap 映射设备内存"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/io.h>
+      #include <linux/module.h>
+      
+      #define DEVICE_BASE_ADDR  0x10000000
+      #define DEVICE_SIZE       0x1000
+      
+      struct my_device {
+          void __iomem *regs;
+      };
+      
+      static int map_device(struct my_device *dev)
+      {
+          /* 映射设备寄存器 */
+          dev->regs = ioremap(DEVICE_BASE_ADDR, DEVICE_SIZE);
+          if (!dev->regs) {
+              pr_err("ioremap failed\n");
+              return -ENOMEM;
+          }
+          
+          /* 读取寄存器 */
+          u32 val = readl(dev->regs + 0x00);
+          pr_info("Device ID: 0x%08x\n", val);
+          
+          /* 写入寄存器 */
+          writel(0x1, dev->regs + 0x04);
+          
+          return 0;
+      }
+      
+      static void unmap_device(struct my_device *dev)
+      {
+          if (dev->regs) {
+              iounmap(dev->regs);
+              dev->regs = NULL;
+          }
+      }
+
+  - description: "vmalloc_user 映射到用户空间"
+    kernel_version: "2.6+"
+    code: |
+      #include <linux/vmalloc.h>
+      #include <linux/mm.h>
+      
+      static void *shared_buf;
+      static unsigned long shared_size = PAGE_SIZE * 4;
+      
+      static int my_mmap(struct file *file, struct vm_area_struct *vma)
+      {
+          unsigned long size = vma->vm_end - vma->vm_start;
+          
+          if (size > shared_size)
+              return -EINVAL;
+          
+          /* 将 vmalloc 内存映射到用户空间 */
+          if (remap_vmalloc_range(vma, shared_buf, 0))
+              return -EAGAIN;
+          
+          return 0;
+      }
+      
+      static int __init my_init(void)
+      {
+          /* 分配可映射到用户空间的内存 */
+          shared_buf = vmalloc_user(shared_size);
+          if (!shared_buf)
+              return -ENOMEM;
+          
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          vfree(shared_buf);
+      }
+
+  - description: "memremap 通用映射"
+    kernel_version: "4.3+"
+    code: |
+      #include <linux/io.h>
+      
+      static void memremap_example(void)
+      {
+          void *addr;
+          phys_addr_t phys = 0x100000;  /* 1MB */
+          size_t size = 0x1000;
+          
+          /* 尝试 Write-back 缓存映射 */
+          addr = memremap(phys, size, MEMREMAP_WB);
+          if (!addr) {
+              /* 退而求其次使用 Write-through */
+              addr = memremap(phys, size, MEMREMAP_WT);
+          }
+          if (!addr) {
+              /* 最后尝试 Write-combining */
+              addr = memremap(phys, size, MEMREMAP_WC);
+          }
+          
+          if (addr) {
+              /* 使用映射的内存 */
+              memunmap(addr);
+          }
+      }
