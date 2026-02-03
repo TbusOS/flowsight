@@ -2,6 +2,16 @@
 #
 # Reference: https://www.kernel.org/doc/html/latest/driver-api/gpio/index.html
 
+kernel_version:
+  minimum: "4.8"
+  recommended: "5.10+"
+  tested: "6.1"
+  notes:
+    - "旧的 gpio_request/gpio_free API 在 5.10+ 废弃"
+    - "新代码必须使用 gpiod_* 描述符 API"
+    - "5.13+ 推荐使用 GPIO forwarder (gpio-aggregator)"
+    - "6.0+ struct gpio_chip 的 .request/.free 改为可选"
+
 # ============================================================
 # GPIO LIBRARY
 # ============================================================
@@ -412,4 +422,143 @@ examples:
                                    "button", NULL);
 
           return ret;
+      }
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  gpio_chip:
+    description: "GPIO 控制器/芯片结构"
+    header: "linux/gpio/driver.h"
+    fields:
+      - name: "label"
+        type: "const char *"
+        description: "芯片标签 (显示在 /sys/class/gpio)"
+      - name: "parent"
+        type: "struct device *"
+        description: "父设备 (通常是 platform_device)"
+      - name: "base"
+        type: "int"
+        description: "GPIO 编号起始值 (-1 表示动态分配)"
+      - name: "ngpio"
+        type: "u16"
+        description: "该芯片管理的 GPIO 数量"
+      - name: "can_sleep"
+        type: "bool"
+        description: "操作是否可能睡眠 (I2C/SPI GPIO 扩展器)"
+      - name: "get_direction"
+        type: "function pointer"
+        description: "获取当前方向 (0=out, 1=in)"
+      - name: "direction_input"
+        type: "function pointer"
+        description: "设置为输入方向"
+      - name: "direction_output"
+        type: "function pointer"
+        description: "设置为输出方向并设初值"
+      - name: "get"
+        type: "function pointer"
+        description: "读取 GPIO 值 (0 或 1)"
+      - name: "set"
+        type: "function pointer"
+        description: "设置 GPIO 输出值"
+      - name: "to_irq"
+        type: "function pointer"
+        description: "GPIO 转换为 IRQ 号"
+      - name: "irq"
+        type: "struct gpio_irq_chip"
+        description: "嵌入的 IRQ 芯片结构 (GPIO 中断支持)"
+
+  gpio_desc:
+    description: "GPIO 描述符 (内核内部使用)"
+    header: "linux/gpio/consumer.h"
+    notes:
+      - "用户不直接访问此结构"
+      - "通过 gpiod_* API 操作"
+
+
+# ============================================================
+# ADDITIONAL EXAMPLES
+# ============================================================
+
+  - description: "GPIO Chip 驱动实现 (MMIO)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/gpio/driver.h>
+      #include <linux/platform_device.h>
+
+      #define GPIO_DATA    0x00
+      #define GPIO_DIR     0x04
+      #define NUM_GPIOS    32
+
+      struct my_gpio {
+          struct gpio_chip gc;
+          void __iomem *base;
+          raw_spinlock_t lock;
+      };
+
+      static int my_gpio_direction_input(struct gpio_chip *gc,
+                                         unsigned int offset)
+      {
+          struct my_gpio *gpio = gpiochip_get_data(gc);
+          unsigned long flags;
+          u32 dir;
+
+          raw_spin_lock_irqsave(&gpio->lock, flags);
+          dir = readl(gpio->base + GPIO_DIR);
+          dir &= ~BIT(offset);  /* 0 = input */
+          writel(dir, gpio->base + GPIO_DIR);
+          raw_spin_unlock_irqrestore(&gpio->lock, flags);
+
+          return 0;
+      }
+
+      static int my_gpio_get(struct gpio_chip *gc, unsigned int offset)
+      {
+          struct my_gpio *gpio = gpiochip_get_data(gc);
+          return !!(readl(gpio->base + GPIO_DATA) & BIT(offset));
+      }
+
+      static void my_gpio_set(struct gpio_chip *gc,
+                              unsigned int offset, int value)
+      {
+          struct my_gpio *gpio = gpiochip_get_data(gc);
+          unsigned long flags;
+          u32 data;
+
+          raw_spin_lock_irqsave(&gpio->lock, flags);
+          data = readl(gpio->base + GPIO_DATA);
+          if (value)
+              data |= BIT(offset);
+          else
+              data &= ~BIT(offset);
+          writel(data, gpio->base + GPIO_DATA);
+          raw_spin_unlock_irqrestore(&gpio->lock, flags);
+      }
+
+      static int my_gpio_probe(struct platform_device *pdev)
+      {
+          struct my_gpio *gpio;
+
+          gpio = devm_kzalloc(&pdev->dev, sizeof(*gpio), GFP_KERNEL);
+          if (!gpio)
+              return -ENOMEM;
+
+          gpio->base = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(gpio->base))
+              return PTR_ERR(gpio->base);
+
+          raw_spin_lock_init(&gpio->lock);
+
+          gpio->gc.label = dev_name(&pdev->dev);
+          gpio->gc.parent = &pdev->dev;
+          gpio->gc.base = -1;
+          gpio->gc.ngpio = NUM_GPIOS;
+          gpio->gc.direction_input = my_gpio_direction_input;
+          gpio->gc.get = my_gpio_get;
+          gpio->gc.set = my_gpio_set;
+
+          return devm_gpiochip_add_data(&pdev->dev, &gpio->gc, gpio);
       }

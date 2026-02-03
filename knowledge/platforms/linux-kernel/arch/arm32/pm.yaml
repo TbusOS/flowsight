@@ -3,6 +3,11 @@
 # Reference: arch/arm/kernel/suspend.c
 # Reference: arch/arm/include/asm/suspend.h
 
+kernel_version:
+  minimum: "4.14"
+  recommended: "5.10+"
+  tested_on: "6.1"
+
 # ============================================================
 # ARM32 SUSPEND/RESUME
 # ============================================================
@@ -328,4 +333,168 @@ examples:
 
       static struct smp_operations my_smp_ops __initdata = {
           .smp_boot_secondary = my_boot_secondary,
+      };
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  platform_suspend_ops:
+    description: "平台休眠操作回调结构体"
+    header: "include/linux/suspend.h"
+    fields:
+      - name: "valid"
+        type: "int (*)(suspend_state_t state)"
+        description: "验证休眠状态是否支持"
+      - name: "begin"
+        type: "int (*)(suspend_state_t state)"
+        description: "休眠开始前调用"
+      - name: "prepare"
+        type: "int (*)(void)"
+        description: "设备 suspend 后调用"
+      - name: "enter"
+        type: "int (*)(suspend_state_t state)"
+        description: "进入休眠状态 (必须实现)"
+      - name: "wake"
+        type: "void (*)(void)"
+        description: "唤醒后立即调用"
+      - name: "finish"
+        type: "void (*)(void)"
+        description: "resume 设备前调用"
+      - name: "end"
+        type: "void (*)(void)"
+        description: "休眠流程结束"
+
+  smp_operations:
+    description: "ARM32 SMP 操作回调结构体"
+    header: "arch/arm/include/asm/smp.h"
+    fields:
+      - name: "smp_init_cpus"
+        type: "void (*)(void)"
+        description: "设置 cpu_possible 掩码"
+      - name: "smp_prepare_cpus"
+        type: "void (*)(unsigned int max_cpus)"
+        description: "准备 CPU, 启用一致性"
+      - name: "smp_secondary_init"
+        type: "void (*)(unsigned int cpu)"
+        description: "第二核初始化回调"
+      - name: "smp_boot_secondary"
+        type: "int (*)(unsigned int cpu, struct task_struct *idle)"
+        description: "启动第二核"
+      - name: "cpu_kill"
+        type: "int (*)(unsigned int cpu)"
+        description: "杀死 CPU (热插拔)"
+      - name: "cpu_die"
+        type: "void (*)(unsigned int cpu)"
+        description: "CPU 死亡回调"
+
+  psci_operations:
+    description: "PSCI 电源管理操作"
+    header: "include/linux/psci.h"
+    fields:
+      - name: "cpu_suspend"
+        type: "int (*)(u32 state, unsigned long entry_point)"
+        description: "CPU 休眠"
+      - name: "cpu_off"
+        type: "int (*)(u32 state)"
+        description: "关闭 CPU"
+      - name: "cpu_on"
+        type: "int (*)(unsigned long cpuid, unsigned long entry_point)"
+        description: "启动 CPU"
+      - name: "affinity_info"
+        type: "int (*)(unsigned long target_affinity, unsigned long lowest_level)"
+        description: "查询 CPU 亲和性状态"
+
+
+# ============================================================
+# ADDITIONAL EXAMPLES
+# ============================================================
+
+  - description: "PSCI CPU 热插拔实现"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/psci.h>
+      #include <linux/cpu.h>
+      #include <asm/smp_plat.h>
+      
+      static int psci_boot_secondary(unsigned int cpu,
+                                     struct task_struct *idle)
+      {
+          phys_addr_t boot_addr;
+          int err;
+          
+          /* 获取启动地址 */
+          boot_addr = __pa_symbol(secondary_startup);
+          
+          /* 通过 PSCI 启动 CPU */
+          err = psci_ops.cpu_on(cpu_logical_map(cpu), boot_addr);
+          if (err)
+              pr_err("Failed to boot CPU%d via PSCI: %d\n", cpu, err);
+          
+          return err;
+      }
+      
+      #ifdef CONFIG_HOTPLUG_CPU
+      static void psci_cpu_die(unsigned int cpu)
+      {
+          int ret;
+          
+          /* 通过 PSCI 关闭当前 CPU */
+          ret = psci_ops.cpu_off(PSCI_POWER_STATE_TYPE_POWER_DOWN);
+          
+          /* 如果 cpu_off 返回说明出错 */
+          pr_err("CPU%d: PSCI cpu_off failed: %d\n", cpu, ret);
+      }
+      #endif
+
+  - description: "CPU 空闲状态配置"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/cpuidle.h>
+      #include <linux/cpu_pm.h>
+      
+      static int my_enter_idle(struct cpuidle_device *dev,
+                               struct cpuidle_driver *drv,
+                               int index)
+      {
+          switch (index) {
+          case 0:
+              /* WFI - 最浅的睡眠 */
+              cpu_do_idle();
+              break;
+          case 1:
+              /* 深度睡眠 - 需要 PM 通知 */
+              cpu_pm_enter();
+              my_deep_sleep_enter();
+              cpu_do_idle();
+              my_deep_sleep_exit();
+              cpu_pm_exit();
+              break;
+          }
+          
+          return index;
+      }
+      
+      static struct cpuidle_driver my_idle_driver = {
+          .name           = "my_idle",
+          .owner          = THIS_MODULE,
+          .states = {
+              {
+                  .name           = "WFI",
+                  .desc           = "Wait for interrupt",
+                  .exit_latency   = 1,
+                  .target_residency = 1,
+                  .enter          = my_enter_idle,
+              },
+              {
+                  .name           = "DEEP_SLEEP",
+                  .desc           = "Power gated",
+                  .exit_latency   = 500,
+                  .target_residency = 1000,
+                  .enter          = my_enter_idle,
+              },
+          },
+          .state_count = 2,
       };

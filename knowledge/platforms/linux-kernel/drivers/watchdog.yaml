@@ -835,3 +835,124 @@ examples:
 
       /* 不安全关闭 (如果设置了 nowayout) */
       close(fd);          /* 看门狗继续运行 */
+
+
+# ============================================================
+# WATCHDOG SYSFS INTERFACE
+# ============================================================
+
+watchdog_sysfs:
+  description: "Watchdog Sysfs Interface - 看门狗 sysfs 接口"
+  path: "/sys/class/watchdog/watchdogN/"
+  attributes:
+    - name: "identity"
+      access: "ro"
+      description: "看门狗身份标识字符串"
+    - name: "nowayout"
+      access: "ro"
+      description: "nowayout 特性状态"
+    - name: "state"
+      access: "ro"
+      description: "看门狗当前状态 (active/inactive)"
+    - name: "timeleft"
+      access: "ro"
+      description: "距离超时的剩余时间 (秒)"
+    - name: "timeout"
+      access: "rw"
+      description: "当前超时值 (秒)"
+    - name: "pretimeout"
+      access: "rw"
+      description: "Pretimeout 值 (秒)"
+
+
+# ============================================================
+# HARDWARE HEARTBEAT API
+# ============================================================
+
+hardware_heartbeat:
+  description: "Hardware Heartbeat API - 硬件心跳 API"
+  kernel_version: "4.5+"
+  fields:
+    - name: "min_hw_heartbeat_ms"
+      type: "unsigned int"
+      description: "硬件最小心跳间隔 (毫秒)"
+    - name: "max_hw_heartbeat_ms"
+      type: "unsigned int"
+      description: "硬件最大超时 (毫秒)"
+  usage: |
+    当设置了 min_hw_heartbeat_ms 或 max_hw_heartbeat_ms 时，
+    内核会自动使用软件定时器来调节喂狗频率。
+
+
+# ============================================================
+# ADDITIONAL WATCHDOG EXAMPLES
+# ============================================================
+
+  - description: "带硬件心跳限制的看门狗驱动"
+    kernel_version: "4.5+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/watchdog.h>
+      #include <linux/platform_device.h>
+
+      #define HW_MIN_HEARTBEAT_MS  500
+      #define HW_MAX_TIMEOUT_MS    10000
+
+      static int hw_limit_wdt_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct watchdog_device *wdd;
+
+          wdd = devm_kzalloc(dev, sizeof(*wdd), GFP_KERNEL);
+          if (!wdd)
+              return -ENOMEM;
+
+          /* 设置硬件心跳限制 */
+          wdd->min_hw_heartbeat_ms = HW_MIN_HEARTBEAT_MS;
+          wdd->max_hw_heartbeat_ms = HW_MAX_TIMEOUT_MS;
+
+          /* 用户可配置的范围 (软件可模拟更长) */
+          wdd->min_timeout = 1;
+          wdd->max_timeout = 120;
+
+          watchdog_init_timeout(wdd, 30, dev);
+          watchdog_stop_on_reboot(wdd);
+
+          return devm_watchdog_register_device(dev, wdd);
+      }
+
+  - description: "带 restart 功能的看门狗驱动"
+    kernel_version: "4.4+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/watchdog.h>
+      #include <linux/delay.h>
+
+      #define WDT_CTRL    0x00
+      #define WDT_LOAD    0x04
+      #define WDT_EN      BIT(0)
+
+      static int my_wdt_restart(struct watchdog_device *wdd,
+                                unsigned long action, void *data)
+      {
+          struct my_wdt *wdt = watchdog_get_drvdata(wdd);
+
+          /* 设置最短超时 (立即复位) */
+          writel(1, wdt->base + WDT_LOAD);
+
+          /* 使能复位输出 */
+          writel(WDT_EN, wdt->base + WDT_CTRL);
+
+          /* 等待复位发生 */
+          mdelay(1000);
+
+          return 0;  /* 不应该到达这里 */
+      }
+
+      static const struct watchdog_ops my_wdt_ops = {
+          .owner = THIS_MODULE,
+          .start = my_wdt_start,
+          .stop = my_wdt_stop,
+          .ping = my_wdt_ping,
+          .restart = my_wdt_restart,  /* 启用重启功能 */
+      };

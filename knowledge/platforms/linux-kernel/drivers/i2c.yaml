@@ -2,6 +2,15 @@
 #
 # Reference: https://www.kernel.org/doc/html/latest/i2c/index.html
 
+kernel_version:
+  minimum: "4.9"
+  recommended: "5.10+"
+  tested: "6.1"
+  notes:
+    - "probe_new API 在 5.0+ 推荐使用 (单参数 probe)"
+    - "5.6+ 废弃 probe 双参数形式"
+    - "6.3+ remove 回调返回 void"
+
 # ============================================================
 # I2C DRIVER
 # ============================================================
@@ -390,3 +399,145 @@ examples:
           }
           return 0;
       }
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  i2c_driver:
+    description: "I2C 设备驱动程序结构"
+    header: "linux/i2c.h"
+    fields:
+      - name: "class"
+        type: "unsigned int"
+        description: "I2C 设备类 (I2C_CLASS_HWMON, I2C_CLASS_DDC 等)"
+      - name: "probe"
+        type: "int (*)(struct i2c_client *)"
+        description: "新版 probe 回调 (5.0+ 推荐)"
+      - name: "remove"
+        type: "void (*)(struct i2c_client *)"
+        description: "设备移除回调 (6.3+ 返回 void)"
+      - name: "driver"
+        type: "struct device_driver"
+        description: "嵌入的设备驱动结构"
+      - name: "id_table"
+        type: "const struct i2c_device_id *"
+        description: "设备 ID 匹配表"
+
+  i2c_client:
+    description: "I2C 客户端设备结构"
+    header: "linux/i2c.h"
+    fields:
+      - name: "flags"
+        type: "unsigned short"
+        description: "I2C_CLIENT_TEN, I2C_CLIENT_SLAVE 等"
+      - name: "addr"
+        type: "unsigned short"
+        description: "I2C 设备地址 (7 或 10 位)"
+      - name: "name"
+        type: "char[I2C_NAME_SIZE]"
+        description: "设备名称 (最大 20 字符)"
+      - name: "adapter"
+        type: "struct i2c_adapter *"
+        description: "连接的 I2C 适配器"
+      - name: "dev"
+        type: "struct device"
+        description: "嵌入的设备结构"
+      - name: "irq"
+        type: "int"
+        description: "当前 IRQ 号"
+
+  i2c_msg:
+    description: "I2C 消息结构"
+    header: "linux/i2c.h"
+    fields:
+      - name: "addr"
+        type: "__u16"
+        description: "从设备地址"
+      - name: "flags"
+        type: "__u16"
+        description: "I2C_M_RD, I2C_M_TEN, I2C_M_NOSTART 等"
+      - name: "len"
+        type: "__u16"
+        description: "数据长度 (字节)"
+      - name: "buf"
+        type: "__u8 *"
+        description: "数据缓冲区指针"
+
+
+# ============================================================
+# ADDITIONAL EXAMPLES
+# ============================================================
+
+  - description: "SMBus 操作示例"
+    kernel_version: "5.0+"
+    code: |
+      static int my_smbus_probe(struct i2c_client *client)
+      {
+          int ret;
+          u8 chip_id;
+          u16 reg_val;
+
+          /* 读取单字节 */
+          ret = i2c_smbus_read_byte(client);
+          if (ret < 0)
+              return ret;
+          chip_id = ret;
+
+          /* 读取寄存器字节 */
+          ret = i2c_smbus_read_byte_data(client, REG_STATUS);
+          if (ret < 0)
+              return ret;
+
+          /* 写入寄存器字节 */
+          ret = i2c_smbus_write_byte_data(client, REG_CONFIG, 0x80);
+
+          /* 读取 16 位值 */
+          ret = i2c_smbus_read_word_data(client, REG_TEMP);
+          if (ret < 0)
+              return ret;
+          reg_val = ret;
+
+          return 0;
+      }
+
+  - description: "I2C 适配器驱动 (控制器驱动)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/i2c.h>
+      #include <linux/platform_device.h>
+
+      static int my_i2c_xfer(struct i2c_adapter *adap,
+                             struct i2c_msg *msgs, int num)
+      {
+          struct my_i2c_adapter *i2c = i2c_get_adapdata(adap);
+          int i, ret;
+
+          for (i = 0; i < num; i++) {
+              /* 配置地址和方向 */
+              writel(msgs[i].addr << 1, i2c->base + I2C_ADDR);
+              if (msgs[i].flags & I2C_M_RD)
+                  writel(I2C_READ, i2c->base + I2C_DIR);
+              else
+                  writel(I2C_WRITE, i2c->base + I2C_DIR);
+
+              /* 配置数据和启动传输 */
+              writel(msgs[i].len, i2c->base + I2C_LEN);
+              writel(I2C_START, i2c->base + I2C_CTRL);
+
+              /* 等待完成 */
+              ret = wait_for_completion_timeout(&i2c->xfer_done,
+                                                adap->timeout);
+              if (!ret)
+                  return -ETIMEDOUT;
+          }
+
+          return num;
+      }
+
+      static const struct i2c_algorithm my_i2c_algo = {
+          .master_xfer = my_i2c_xfer,
+          .functionality = my_i2c_func,
+      };

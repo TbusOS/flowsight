@@ -3,6 +3,11 @@
 # Reference: arch/arm/include/asm/irq.h
 # Reference: arch/arm/kernel/irq.c
 
+kernel_version:
+  minimum: "4.14"
+  recommended: "5.10+"
+  tested_on: "6.1"
+
 # ============================================================
 # ARM32 INTERRUPT ENTRY
 # ============================================================
@@ -313,3 +318,207 @@ ipi:
   notes:
     - "用于 SMP 系统多核通信"
     - "通过 GIC 的 SGI 实现"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  irq_desc:
+    description: "中断描述符 - 每个中断的核心数据结构"
+    header: "include/linux/irqdesc.h"
+    fields:
+      - name: "irq_common_data"
+        type: "struct irq_common_data"
+        description: "所有 irqchip 共享的数据"
+      - name: "irq_data"
+        type: "struct irq_data"
+        description: "传递给 chip 函数的数据"
+      - name: "handle_irq"
+        type: "irq_flow_handler_t"
+        description: "高层中断处理函数 (如 handle_level_irq)"
+      - name: "action"
+        type: "struct irqaction *"
+        description: "中断处理链表"
+      - name: "depth"
+        type: "unsigned int"
+        description: "disable 嵌套深度"
+      - name: "lock"
+        type: "raw_spinlock_t"
+        description: "SMP 保护锁"
+
+  irq_data:
+    description: "传递给 irqchip 函数的中断数据"
+    header: "include/linux/irq.h"
+    fields:
+      - name: "irq"
+        type: "unsigned int"
+        description: "Linux 中断号"
+      - name: "hwirq"
+        type: "unsigned long"
+        description: "硬件中断号 (中断域内)"
+      - name: "chip"
+        type: "struct irq_chip *"
+        description: "底层中断芯片"
+      - name: "domain"
+        type: "struct irq_domain *"
+        description: "中断域"
+      - name: "chip_data"
+        type: "void *"
+        description: "平台私有数据"
+
+  irq_chip:
+    description: "中断控制器芯片操作结构体"
+    header: "include/linux/irq.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "芯片名称"
+      - name: "irq_enable"
+        type: "void (*)(struct irq_data *)"
+        description: "启用中断"
+      - name: "irq_disable"
+        type: "void (*)(struct irq_data *)"
+        description: "禁用中断"
+      - name: "irq_ack"
+        type: "void (*)(struct irq_data *)"
+        description: "应答中断"
+      - name: "irq_mask"
+        type: "void (*)(struct irq_data *)"
+        description: "屏蔽中断"
+      - name: "irq_unmask"
+        type: "void (*)(struct irq_data *)"
+        description: "解除屏蔽"
+      - name: "irq_eoi"
+        type: "void (*)(struct irq_data *)"
+        description: "中断结束 (End of Interrupt)"
+      - name: "irq_set_type"
+        type: "int (*)(struct irq_data *, unsigned int)"
+        description: "设置触发类型"
+
+  irqaction:
+    description: "中断处理动作 - 注册的中断处理函数"
+    header: "include/linux/interrupt.h"
+    fields:
+      - name: "handler"
+        type: "irq_handler_t"
+        description: "中断处理函数"
+      - name: "dev_id"
+        type: "void *"
+        description: "设备标识 (传递给 handler)"
+      - name: "thread_fn"
+        type: "irq_handler_t"
+        description: "线程化处理函数"
+      - name: "thread"
+        type: "struct task_struct *"
+        description: "处理线程"
+      - name: "flags"
+        type: "unsigned int"
+        description: "IRQF_* 标志"
+      - name: "name"
+        type: "const char *"
+        description: "中断名称"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "ARM32 中断处理函数实现"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/interrupt.h>
+      #include <linux/module.h>
+      
+      static irqreturn_t my_irq_handler(int irq, void *dev_id)
+      {
+          struct my_device *dev = dev_id;
+          u32 status;
+          
+          /* 读取中断状态 */
+          status = readl(dev->regs + IRQ_STATUS);
+          if (!(status & IRQ_PENDING))
+              return IRQ_NONE;  /* 不是我们的中断 */
+          
+          /* 清除中断 */
+          writel(status, dev->regs + IRQ_CLEAR);
+          
+          /* 处理中断 */
+          dev->irq_count++;
+          wake_up(&dev->wait_queue);
+          
+          return IRQ_HANDLED;
+      }
+      
+      static int my_driver_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev;
+          int irq, ret;
+          
+          dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+          
+          /* 获取中断号 */
+          irq = platform_get_irq(pdev, 0);
+          if (irq < 0)
+              return irq;
+          
+          /* 注册中断处理函数 */
+          ret = devm_request_irq(&pdev->dev, irq, my_irq_handler,
+                                 IRQF_SHARED | IRQF_TRIGGER_RISING,
+                                 "my-device", dev);
+          if (ret)
+              return dev_err_probe(&pdev->dev, ret, "Failed to request IRQ\n");
+          
+          return 0;
+      }
+
+  - description: "中断线程化处理"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/interrupt.h>
+      
+      /* 快速中断处理 (hardirq context) */
+      static irqreturn_t my_irq_handler(int irq, void *dev_id)
+      {
+          struct my_device *dev = dev_id;
+          u32 status;
+          
+          status = readl(dev->regs + IRQ_STATUS);
+          if (!(status & IRQ_PENDING))
+              return IRQ_NONE;
+          
+          /* 保存状态供线程处理 */
+          dev->pending_status = status;
+          
+          /* 禁用中断直到线程处理完成 */
+          writel(0, dev->regs + IRQ_ENABLE);
+          
+          return IRQ_WAKE_THREAD;  /* 唤醒处理线程 */
+      }
+      
+      /* 线程化处理 (process context, can sleep) */
+      static irqreturn_t my_irq_thread(int irq, void *dev_id)
+      {
+          struct my_device *dev = dev_id;
+          
+          /* 可以进行耗时操作 */
+          mutex_lock(&dev->lock);
+          my_process_data(dev, dev->pending_status);
+          mutex_unlock(&dev->lock);
+          
+          /* 重新启用中断 */
+          writel(IRQ_ENABLE_MASK, dev->regs + IRQ_ENABLE);
+          
+          return IRQ_HANDLED;
+      }
+      
+      /* 注册线程化中断 */
+      ret = devm_request_threaded_irq(&pdev->dev, irq,
+                                      my_irq_handler,
+                                      my_irq_thread,
+                                      IRQF_ONESHOT,
+                                      "my-threaded-irq", dev);

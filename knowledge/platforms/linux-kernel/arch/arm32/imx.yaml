@@ -3,6 +3,28 @@
 # Reference: arch/arm/mach-imx/
 # Reference: Documentation/devicetree/bindings/arm/fsl.yaml
 
+kernel_version:
+  minimum: "4.14"
+  recommended: "5.10+"
+  tested_on: "6.1"
+  
+supported_socs:
+  - name: "i.MX6Q"
+    compatible: "fsl,imx6q"
+    description: "Quad-core Cortex-A9"
+  - name: "i.MX6DL"
+    compatible: "fsl,imx6dl"
+    description: "Dual-Lite Cortex-A9"
+  - name: "i.MX6SL"
+    compatible: "fsl,imx6sl"
+    description: "Solo-Lite Cortex-A9"
+  - name: "i.MX6UL"
+    compatible: "fsl,imx6ul"
+    description: "UltraLite Cortex-A7"
+  - name: "i.MX7D"
+    compatible: "fsl,imx7d"
+    description: "Dual Cortex-A7 + M4"
+
 # ============================================================
 # i.MX CLOCK FRAMEWORK
 # ============================================================
@@ -430,3 +452,126 @@ examples:
           { },
       };
       MODULE_DEVICE_TABLE(of, my_imx_ids);
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  clk_hw:
+    description: "时钟硬件抽象结构"
+    header: "include/linux/clk-provider.h"
+    fields:
+      - name: "core"
+        type: "struct clk_core *"
+        description: "时钟核心"
+      - name: "clk"
+        type: "struct clk *"
+        description: "时钟实例"
+      - name: "init"
+        type: "const struct clk_init_data *"
+        description: "初始化数据"
+
+  clk_gate:
+    description: "门控时钟结构"
+    header: "include/linux/clk-provider.h"
+    fields:
+      - name: "hw"
+        type: "struct clk_hw"
+        description: "时钟硬件抽象"
+      - name: "reg"
+        type: "void __iomem *"
+        description: "控制寄存器"
+      - name: "bit_idx"
+        type: "u8"
+        description: "控制位索引"
+      - name: "lock"
+        type: "spinlock_t *"
+        description: "保护锁"
+
+  clk_mux:
+    description: "多路选择时钟结构"
+    header: "include/linux/clk-provider.h"
+    fields:
+      - name: "hw"
+        type: "struct clk_hw"
+        description: "时钟硬件抽象"
+      - name: "reg"
+        type: "void __iomem *"
+        description: "控制寄存器"
+      - name: "shift"
+        type: "u32"
+        description: "位移量"
+      - name: "mask"
+        type: "u32"
+        description: "掩码"
+
+  imx_pinctrl_soc_info:
+    description: "i.MX 引脚控制 SoC 信息"
+    header: "drivers/pinctrl/freescale/pinctrl-imx.h"
+    fields:
+      - name: "pins"
+        type: "const struct pinctrl_pin_desc *"
+        description: "引脚描述数组"
+      - name: "npins"
+        type: "unsigned int"
+        description: "引脚数量"
+      - name: "flags"
+        type: "unsigned int"
+        description: "功能标志"
+
+
+# ============================================================
+# ADDITIONAL EXAMPLES
+# ============================================================
+
+  - description: "i.MX6 GPC 电源域控制"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/io.h>
+      #include <linux/of_irq.h>
+      
+      #define GPC_IMR1        0x008
+      #define GPC_PGC_GPU_PDN 0x260
+      #define GPC_PGC_GPU_SR  0x264
+      
+      static void __iomem *gpc_base;
+      
+      /* 屏蔽所有 GPC 中断 */
+      static void imx_gpc_mask_all(void)
+      {
+          int i;
+          for (i = 0; i < 4; i++)
+              writel_relaxed(~0, gpc_base + GPC_IMR1 + i * 4);
+      }
+      
+      /* GPU 电源域下电 */
+      static void imx_gpc_gpu_power_down(void)
+      {
+          writel_relaxed(1, gpc_base + GPC_PGC_GPU_PDN);
+          
+          while (readl_relaxed(gpc_base + GPC_PGC_GPU_SR) & 1)
+              cpu_relax();
+      }
+
+  - description: "i.MX IOMUX 引脚配置"
+    kernel_version: "5.0+"
+    code: |
+      /* 引脚配置值定义 */
+      #define PAD_CTL_HYS             (1 << 16)
+      #define PAD_CTL_PUS_100K_UP     (2 << 14)
+      #define PAD_CTL_PUE             (1 << 13)
+      #define PAD_CTL_PKE             (1 << 12)
+      #define PAD_CTL_ODE             (1 << 11)
+      #define PAD_CTL_SPEED_MED       (1 << 6)
+      #define PAD_CTL_DSE_43OHM       (6 << 3)
+      #define PAD_CTL_SRE_FAST        (1 << 0)
+      
+      /* UART 引脚配置 */
+      #define UART_PAD_CTRL (PAD_CTL_PUS_100K_UP | PAD_CTL_SPEED_MED | \
+                             PAD_CTL_DSE_43OHM | PAD_CTL_SRE_FAST | PAD_CTL_HYS)
+      
+      /* I2C 引脚配置 (开漏) */
+      #define I2C_PAD_CTRL (PAD_CTL_PUS_100K_UP | PAD_CTL_SPEED_MED | \
+                            PAD_CTL_DSE_43OHM | PAD_CTL_ODE | PAD_CTL_HYS)

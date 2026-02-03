@@ -1,6 +1,16 @@
 # USB Driver Framework Knowledge Base
 # Reference: https://www.kernel.org/doc/html/latest/driver-api/usb/
 
+kernel_version:
+  minimum: "4.4"
+  recommended: "5.10+"
+  tested: "6.1"
+  notes:
+    - "5.0+ 推荐使用 usb_interface_claim_exclusive()"
+    - "5.8+ URB 状态字段改为 int"
+    - "5.19+ usb_control_msg_send/recv 简化控制传输"
+    - "6.0+ gadget 驱动推荐使用 usb_func_*_free_inst"
+
 # ============================================================
 # USB DEVICE DRIVER (Host Side)
 # ============================================================
@@ -504,3 +514,194 @@ examples:
           usb_ep_disable(func->ep_in);
           usb_ep_disable(func->ep_out);
       }
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  usb_driver:
+    description: "USB 设备驱动结构 (Host 侧)"
+    header: "linux/usb.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "驱动名称 (显示在 /sys/bus/usb/drivers/)"
+      - name: "probe"
+        type: "function pointer"
+        description: "设备探测回调"
+      - name: "disconnect"
+        type: "function pointer"
+        description: "设备断开回调"
+      - name: "suspend"
+        type: "function pointer"
+        description: "电源管理挂起回调"
+      - name: "resume"
+        type: "function pointer"
+        description: "电源管理恢复回调"
+      - name: "id_table"
+        type: "const struct usb_device_id *"
+        description: "设备 ID 匹配表"
+      - name: "supports_autosuspend"
+        type: "bit field"
+        description: "支持自动挂起"
+
+  usb_interface:
+    description: "USB 接口结构"
+    header: "linux/usb.h"
+    fields:
+      - name: "altsetting"
+        type: "struct usb_host_interface *"
+        description: "所有备用设置数组"
+      - name: "cur_altsetting"
+        type: "struct usb_host_interface *"
+        description: "当前活动的备用设置"
+      - name: "num_altsetting"
+        type: "unsigned"
+        description: "备用设置数量"
+      - name: "minor"
+        type: "int"
+        description: "次设备号 (usb_register_dev 设置)"
+      - name: "dev"
+        type: "struct device"
+        description: "嵌入的设备结构"
+
+  urb:
+    description: "USB Request Block (异步传输)"
+    header: "linux/usb.h"
+    fields:
+      - name: "dev"
+        type: "struct usb_device *"
+        description: "目标 USB 设备"
+      - name: "pipe"
+        type: "unsigned int"
+        description: "端点管道 (使用 usb_snd/rcvbulkpipe() 等宏)"
+      - name: "status"
+        type: "int"
+        description: "完成状态 (0=成功, -ENOENT, -EPIPE 等)"
+      - name: "transfer_flags"
+        type: "unsigned int"
+        description: "URB_SHORT_NOT_OK, URB_ISO_ASAP 等"
+      - name: "transfer_buffer"
+        type: "void *"
+        description: "数据缓冲区"
+      - name: "transfer_buffer_length"
+        type: "u32"
+        description: "缓冲区长度"
+      - name: "actual_length"
+        type: "u32"
+        description: "实际传输长度"
+      - name: "complete"
+        type: "usb_complete_t"
+        description: "完成回调函数"
+      - name: "context"
+        type: "void *"
+        description: "完成回调上下文"
+
+
+# ============================================================
+# ADDITIONAL EXAMPLES
+# ============================================================
+
+  - description: "完整 USB 驱动 (批量传输)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/usb.h>
+
+      struct my_usb_device {
+          struct usb_device *udev;
+          struct usb_interface *intf;
+          struct urb *bulk_in_urb;
+          unsigned char *bulk_in_buffer;
+          __u8 bulk_in_endpointAddr;
+          __u8 bulk_out_endpointAddr;
+      };
+
+      static void my_bulk_in_callback(struct urb *urb)
+      {
+          struct my_usb_device *dev = urb->context;
+
+          switch (urb->status) {
+          case 0:
+              /* 成功 - 处理数据 */
+              dev_dbg(&dev->intf->dev, "Received %d bytes\n",
+                      urb->actual_length);
+              /* 重新提交 URB */
+              usb_submit_urb(urb, GFP_ATOMIC);
+              break;
+          case -ECONNRESET:
+          case -ENOENT:
+          case -ESHUTDOWN:
+              /* 正常终止 */
+              break;
+          default:
+              dev_err(&dev->intf->dev, "URB error: %d\n", urb->status);
+              break;
+          }
+      }
+
+      static int my_probe(struct usb_interface *intf,
+                          const struct usb_device_id *id)
+      {
+          struct usb_device *udev = interface_to_usbdev(intf);
+          struct my_usb_device *dev;
+          struct usb_endpoint_descriptor *bulk_in, *bulk_out;
+          int ret;
+
+          /* 查找端点 */
+          ret = usb_find_common_endpoints(intf->cur_altsetting,
+                                          &bulk_in, &bulk_out, NULL, NULL);
+          if (ret)
+              return ret;
+
+          dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+
+          dev->udev = usb_get_dev(udev);
+          dev->intf = intf;
+          dev->bulk_in_endpointAddr = bulk_in->bEndpointAddress;
+          dev->bulk_out_endpointAddr = bulk_out->bEndpointAddress;
+
+          /* 分配 URB */
+          dev->bulk_in_urb = usb_alloc_urb(0, GFP_KERNEL);
+          dev->bulk_in_buffer = kmalloc(512, GFP_KERNEL);
+
+          usb_fill_bulk_urb(dev->bulk_in_urb, udev,
+                            usb_rcvbulkpipe(udev, dev->bulk_in_endpointAddr),
+                            dev->bulk_in_buffer, 512,
+                            my_bulk_in_callback, dev);
+
+          usb_set_intfdata(intf, dev);
+          usb_submit_urb(dev->bulk_in_urb, GFP_KERNEL);
+
+          return 0;
+      }
+
+      static void my_disconnect(struct usb_interface *intf)
+      {
+          struct my_usb_device *dev = usb_get_intfdata(intf);
+
+          usb_kill_urb(dev->bulk_in_urb);
+          usb_free_urb(dev->bulk_in_urb);
+          kfree(dev->bulk_in_buffer);
+          usb_put_dev(dev->udev);
+          kfree(dev);
+      }
+
+      static const struct usb_device_id my_id_table[] = {
+          { USB_DEVICE(0x1234, 0x5678) },
+          { }
+      };
+      MODULE_DEVICE_TABLE(usb, my_id_table);
+
+      static struct usb_driver my_driver = {
+          .name = "my_usb_driver",
+          .id_table = my_id_table,
+          .probe = my_probe,
+          .disconnect = my_disconnect,
+          .supports_autosuspend = 1,
+      };
+      module_usb_driver(my_driver);

@@ -606,3 +606,226 @@ completion:
     - "wait_for_completion*() 只能在进程上下文调用"
     - "内部使用 swait_queue（simple wait queue）实现，比标准 wait_queue 更轻量"
     - "如果需要等待多个条件或复杂条件，考虑使用 wait_event 系列"
+
+
+# ============================================================
+# DATA STRUCTURES (详细内存布局)
+# ============================================================
+
+data_structures:
+  completion:
+    description: "completion 结构体 - 一次性事件同步原语"
+    header: "include/linux/completion.h"
+    size: "12-16 bytes (取决于架构)"
+    layout: |
+      struct completion {
+          unsigned int done;           /* 完成计数器 */
+          struct swait_queue_head wait; /* 简单等待队列头 */
+      };
+    fields_detail:
+      done:
+        type: "unsigned int"
+        description: |
+          完成计数器:
+          - 0: 未完成，等待者会睡眠
+          - >0: 已完成，每次 wait 消费一个计数
+          - UINT_MAX/2: complete_all() 后的特殊值
+      wait:
+        type: "struct swait_queue_head"
+        description: |
+          简单等待队列头（swait = simple wait）
+          比标准 wait_queue 更轻量，不支持独占唤醒
+
+  swait_queue_head:
+    description: "简单等待队列头 - completion 内部使用"
+    header: "include/linux/swait.h"
+    fields:
+      - name: "lock"
+        type: "raw_spinlock_t"
+        description: "保护等待队列的自旋锁"
+      - name: "task_list"
+        type: "struct list_head"
+        description: "等待进程链表"
+
+
+# ============================================================
+# REAL KERNEL EXAMPLES
+# ============================================================
+
+real_kernel_examples:
+  - name: "usb_transfer_completion"
+    description: "USB 传输 - 等待 URB 完成"
+    source_file: "drivers/usb/core/message.c"
+    code: |
+      /* USB 控制传输等待完成 */
+      DECLARE_COMPLETION_ONSTACK(done);
+
+      usb_fill_control_urb(urb, ..., usb_api_blocking_completion, &done);
+
+      ret = usb_submit_urb(urb, GFP_KERNEL);
+      if (ret)
+          goto out;
+
+      /* 等待 URB 完成 */
+      if (!wait_for_completion_timeout(&done,
+              msecs_to_jiffies(USB_CTRL_GET_TIMEOUT))) {
+          usb_kill_urb(urb);
+          ret = -ETIMEDOUT;
+      }
+
+      /* 完成回调 - 在中断上下文执行 */
+      static void usb_api_blocking_completion(struct urb *urb)
+      {
+          struct completion *done = urb->context;
+          complete(done);  /* 在硬中断上下文唤醒等待者 */
+      }
+
+  - name: "i2c_transfer_completion"
+    description: "I2C 传输 - 等待 I2C 事务完成"
+    source_file: "drivers/i2c/busses/i2c-imx.c"
+    code: |
+      /* I2C 传输等待完成 */
+      reinit_completion(&i2c_imx->cmd_complete);
+
+      /* 启动传输 */
+      i2c_imx_start(i2c_imx);
+
+      /* 等待完成，带超时 */
+      result = wait_for_completion_timeout(
+          &i2c_imx->cmd_complete,
+          adapter->timeout);
+
+      if (!result) {
+          dev_err(&adapter->dev, "i2c transfer timeout\n");
+          return -ETIMEDOUT;
+      }
+
+      /* 在中断处理函数中 */
+      static irqreturn_t i2c_imx_isr(int irq, void *dev_id)
+      {
+          struct imx_i2c_struct *i2c_imx = dev_id;
+
+          if (status & I2SR_IIF) {
+              writeb(0, i2c_imx->base + IMX_I2C_I2SR);
+              complete(&i2c_imx->cmd_complete);
+          }
+
+          return IRQ_HANDLED;
+      }
+
+  - name: "firmware_loading"
+    description: "固件加载 - 异步固件请求等待"
+    source_file: "drivers/base/firmware_loader/main.c"
+    code: |
+      /* 固件加载等待完成 */
+      struct firmware_priv *fw_priv;
+
+      fw_priv = kzalloc(sizeof(*fw_priv), GFP_KERNEL);
+      init_completion(&fw_priv->completion);
+
+      /* 提交固件请求 */
+      ret = _request_firmware(fw_priv, name, device);
+      if (ret)
+          goto out;
+
+      /* 等待固件加载完成 */
+      wait_for_completion(&fw_priv->completion);
+
+      *fw = fw_priv->fw;
+
+
+# ============================================================
+# COMMON BUGS
+# ============================================================
+
+common_bugs:
+  - name: "missing_reinit"
+    description: "重用 completion 时忘记 reinit"
+    severity: "high"
+    symptoms:
+      - "第二次等待立即返回"
+      - "等待超时但数据已准备好"
+    bad_code: |
+      /* 第一次使用 */
+      wait_for_completion(&dev->done);
+      process_data();
+
+      /* 第二次使用 - BUG! done 仍然 > 0 */
+      submit_new_request();
+      wait_for_completion(&dev->done);  /* 可能立即返回! */
+    good_code: |
+      /* 第一次使用 */
+      wait_for_completion(&dev->done);
+      process_data();
+
+      /* 第二次使用 - 正确 */
+      reinit_completion(&dev->done);
+      submit_new_request();
+      wait_for_completion(&dev->done);
+
+  - name: "complete_before_init"
+    description: "在初始化之前调用 complete"
+    severity: "critical"
+    symptoms:
+      - "空指针解引用"
+      - "使用未初始化的等待队列"
+    bad_code: |
+      void callback(struct my_dev *dev) {
+          complete(&dev->done);  /* 可能在 init 之前调用! */
+      }
+
+      int probe(struct my_dev *dev) {
+          start_async_op(callback, dev);  /* BUG: done 未初始化 */
+          init_completion(&dev->done);    /* 太晚了! */
+      }
+    good_code: |
+      int probe(struct my_dev *dev) {
+          init_completion(&dev->done);    /* 先初始化 */
+          start_async_op(callback, dev);  /* 再启动异步操作 */
+      }
+
+  - name: "signal_handling_ignored"
+    description: "使用 interruptible 但不处理返回值"
+    severity: "medium"
+    bad_code: |
+      wait_for_completion_interruptible(&done);
+      /* 不检查返回值，可能已被信号中断 */
+      process_result();  /* 数据可能未准备好! */
+    good_code: |
+      int ret = wait_for_completion_interruptible(&done);
+      if (ret == -ERESTARTSYS) {
+          cancel_operation();
+          return -EINTR;
+      }
+      process_result();
+
+
+# ============================================================
+# DEBUGGING TIPS
+# ============================================================
+
+debugging:
+  ftrace:
+    description: "使用 ftrace 跟踪 completion 操作"
+    commands:
+      - description: "跟踪所有 completion 函数"
+        command: |
+          echo 'wait_for_completion*' > /sys/kernel/debug/tracing/set_ftrace_filter
+          echo 'complete*' >> /sys/kernel/debug/tracing/set_ftrace_filter
+          echo function > /sys/kernel/debug/tracing/current_tracer
+          echo 1 > /sys/kernel/debug/tracing/tracing_on
+
+  proc_wchan:
+    description: "查看进程等待位置"
+    commands:
+      - description: "查看所有等待进程的等待点"
+        command: |
+          cat /proc/*/wchan | sort | uniq -c | sort -rn
+      - description: "查看特定进程的等待点"
+        command: |
+          cat /proc/<pid>/wchan
+
+  sysrq_w:
+    description: "显示所有阻塞进程"
+    command: "echo w > /proc/sysrq-trigger"
+    notes: "会打印所有处于 D 状态（不可中断睡眠）的进程"

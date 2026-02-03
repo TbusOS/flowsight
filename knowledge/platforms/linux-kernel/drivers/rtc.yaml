@@ -705,3 +705,134 @@ examples:
           close(fd);
           return 0;
       }
+
+
+# ============================================================
+# RTC TIME STRUCTURES
+# ============================================================
+
+rtc_time:
+  description: "RTC Time Structure - RTC 时间结构体"
+  header: "linux/rtc.h"
+  fields:
+    - name: "tm_sec"
+      type: "int"
+      description: "秒 (0-59)"
+    - name: "tm_min"
+      type: "int"
+      description: "分钟 (0-59)"
+    - name: "tm_hour"
+      type: "int"
+      description: "小时 (0-23)"
+    - name: "tm_mday"
+      type: "int"
+      description: "月中的天数 (1-31)"
+    - name: "tm_mon"
+      type: "int"
+      description: "月份 (0-11, 注意从0开始)"
+    - name: "tm_year"
+      type: "int"
+      description: "年份 (从 1900 年开始的年数)"
+
+rtc_wkalrm:
+  description: "RTC Wake Alarm Structure - RTC 唤醒闹钟结构体"
+  header: "linux/rtc.h"
+  fields:
+    - name: "enabled"
+      type: "unsigned char"
+      description: "闹钟是否启用 (0 = 禁用, 1 = 启用)"
+    - name: "pending"
+      type: "unsigned char"
+      description: "是否有待处理的闹钟事件"
+    - name: "time"
+      type: "struct rtc_time"
+      description: "闹钟时间"
+
+
+# ============================================================
+# RTC SYSFS INTERFACE
+# ============================================================
+
+rtc_sysfs:
+  description: "RTC Sysfs Interface - RTC sysfs 接口"
+  path: "/sys/class/rtc/rtcN/"
+  attributes:
+    - name: "date"
+      access: "ro"
+      description: "当前日期 (YYYY-MM-DD)"
+    - name: "time"
+      access: "ro"
+      description: "当前时间 (HH:MM:SS)"
+    - name: "since_epoch"
+      access: "ro"
+      description: "自 1970 年以来的秒数"
+    - name: "wakealarm"
+      access: "rw"
+      description: "唤醒闹钟时间 (自 epoch 的秒数)"
+      usage: |
+        # 设置 60 秒后唤醒
+        echo +60 > /sys/class/rtc/rtc0/wakealarm
+        # 取消唤醒闹钟
+        echo 0 > /sys/class/rtc/rtc0/wakealarm
+
+
+# ============================================================
+# ADDITIONAL RTC EXAMPLES
+# ============================================================
+
+  - description: "带电源管理的 RTC 驱动"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/rtc.h>
+      #include <linux/platform_device.h>
+      #include <linux/pm.h>
+
+      struct my_rtc_pm {
+          struct rtc_device *rtc;
+          void __iomem *base;
+          int irq;
+          bool wake_enabled;
+      };
+
+      static int my_rtc_suspend(struct device *dev)
+      {
+          struct my_rtc_pm *priv = dev_get_drvdata(dev);
+
+          if (device_may_wakeup(dev)) {
+              priv->wake_enabled = true;
+              enable_irq_wake(priv->irq);
+          }
+
+          return 0;
+      }
+
+      static int my_rtc_resume(struct device *dev)
+      {
+          struct my_rtc_pm *priv = dev_get_drvdata(dev);
+
+          if (priv->wake_enabled) {
+              disable_irq_wake(priv->irq);
+              priv->wake_enabled = false;
+          }
+
+          return 0;
+      }
+
+      static DEFINE_SIMPLE_DEV_PM_OPS(my_rtc_pm_ops, my_rtc_suspend, my_rtc_resume);
+
+      static int my_rtc_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct my_rtc_pm *priv;
+
+          priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+          if (!priv)
+              return -ENOMEM;
+
+          /* 启用唤醒能力 */
+          device_init_wakeup(dev, true);
+          platform_set_drvdata(pdev, priv);
+
+          return devm_rtc_register_device(priv->rtc);
+      }

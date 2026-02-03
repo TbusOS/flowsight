@@ -775,3 +775,120 @@ examples:
 
           return 0;
       }
+
+
+# ============================================================
+# BULK RESET API
+# ============================================================
+
+reset_bulk_api:
+  description: "Bulk Reset API - 批量复位 API"
+  header: "linux/reset.h"
+  kernel_version: "4.14+"
+
+  functions:
+    - name: "devm_reset_control_bulk_get_exclusive"
+      description: "批量获取独占复位控制"
+      signature: "int devm_reset_control_bulk_get_exclusive(struct device *dev, int num_rstcs, struct reset_control_bulk_data *rstcs)"
+
+    - name: "reset_control_bulk_assert"
+      description: "批量断言复位"
+      signature: "int reset_control_bulk_assert(int num_rstcs, struct reset_control_bulk_data *rstcs)"
+
+    - name: "reset_control_bulk_deassert"
+      description: "批量解除复位"
+      signature: "int reset_control_bulk_deassert(int num_rstcs, struct reset_control_bulk_data *rstcs)"
+
+
+# ============================================================
+# ADDITIONAL RESET EXAMPLES
+# ============================================================
+
+  - description: "批量复位消费者示例"
+    kernel_version: "4.14+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/reset.h>
+
+      /* 设备树:
+       * device@1000 {
+       *     resets = <&rst 0>, <&rst 1>, <&rst 2>;
+       *     reset-names = "core", "axi", "apb";
+       * };
+       */
+
+      static struct reset_control_bulk_data my_resets[] = {
+          { .id = "core" },
+          { .id = "axi" },
+          { .id = "apb" },
+      };
+
+      static int my_device_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          int ret;
+
+          /* 批量获取所有复位控制 */
+          ret = devm_reset_control_bulk_get_exclusive(dev,
+                      ARRAY_SIZE(my_resets), my_resets);
+          if (ret)
+              return ret;
+
+          /* 批量解除复位 */
+          ret = reset_control_bulk_deassert(ARRAY_SIZE(my_resets), my_resets);
+          if (ret)
+              return ret;
+
+          return 0;
+      }
+
+      static void my_device_remove(struct platform_device *pdev)
+      {
+          /* 批量断言复位 */
+          reset_control_bulk_assert(ARRAY_SIZE(my_resets), my_resets);
+      }
+
+  - description: "自定义 of_xlate 复位控制器"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/reset-controller.h>
+
+      #define NUM_BANKS       4
+      #define LINES_PER_BANK  8
+
+      struct bank_reset {
+          void __iomem *base;
+          spinlock_t lock;
+          struct reset_controller_dev rcdev;
+      };
+
+      /* 自定义转换: <bank line> -> global_id */
+      static int bank_reset_xlate(struct reset_controller_dev *rcdev,
+                                  const struct of_phandle_args *spec)
+      {
+          unsigned int bank = spec->args[0];
+          unsigned int line = spec->args[1];
+
+          if (bank >= NUM_BANKS || line >= LINES_PER_BANK)
+              return -EINVAL;
+
+          return bank * LINES_PER_BANK + line;
+      }
+
+      static int bank_reset_probe(struct platform_device *pdev)
+      {
+          struct bank_reset *rst;
+
+          rst = devm_kzalloc(&pdev->dev, sizeof(*rst), GFP_KERNEL);
+          if (!rst)
+              return -ENOMEM;
+
+          rst->rcdev.of_reset_n_cells = 2;  /* <bank line> */
+          rst->rcdev.of_xlate = bank_reset_xlate;
+          rst->rcdev.nr_resets = NUM_BANKS * LINES_PER_BANK;
+
+          return devm_reset_controller_register(&pdev->dev, &rst->rcdev);
+      }
