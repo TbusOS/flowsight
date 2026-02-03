@@ -20,11 +20,16 @@ import {
   Clock,
   Cpu,
   Shield,
+  BookOpen,
+  AlertTriangle,
+  Link2,
+  Info,
 } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { Button } from "../ui/button"
 import { useAtomValue, useSetAtom } from "jotai"
 import { selectedNodeAtom, triggerJumpAtom, setEntryFunctionAtom, type SelectedNodeDetail } from "../../lib/atoms/layout-atoms"
+import { getKnowledgeInfo, type KnowledgeInfo, type CallChainNode } from "../../lib/tauri-api"
 
 interface NodeDetailPanelProps {
   className?: string
@@ -39,38 +44,224 @@ interface NodeDetailPanelProps {
 }
 
 // 执行上下文信息
-const contextInfo: Record<string, { icon: React.ReactNode; label: string; color: string; description: string }> = {
+const contextInfo: Record<string, { icon: React.ReactNode; label: string; color: string; bgColor: string; description: string }> = {
   process: { 
     icon: <Cpu className="h-3 w-3" />, 
     label: "进程上下文", 
     color: "text-emerald-400",
+    bgColor: "bg-emerald-500/10",
     description: "可睡眠，可被调度"
   },
   softirq: { 
     icon: <Clock className="h-3 w-3" />, 
     label: "软中断", 
     color: "text-amber-400",
+    bgColor: "bg-amber-500/10",
     description: "不可睡眠，可被硬中断抢占"
   },
   hardirq: { 
     icon: <Zap className="h-3 w-3" />, 
     label: "硬中断", 
     color: "text-red-400",
+    bgColor: "bg-red-500/10",
     description: "不可睡眠，不可被抢占"
   },
   atomic: { 
     icon: <Shield className="h-3 w-3" />, 
     label: "原子上下文", 
     color: "text-purple-400",
+    bgColor: "bg-purple-500/10",
     description: "不可睡眠，持有锁"
   },
   workqueue: { 
     icon: <Clock className="h-3 w-3" />, 
     label: "工作队列", 
     color: "text-blue-400",
+    bgColor: "bg-blue-500/10",
     description: "进程上下文，可睡眠"
   },
+  user: { 
+    icon: <Shield className="h-3 w-3" />, 
+    label: "用户空间", 
+    color: "text-blue-400",
+    bgColor: "bg-blue-500/10",
+    description: "用户态代码"
+  },
+  unknown: { 
+    icon: <AlertTriangle className="h-3 w-3" />, 
+    label: "未知上下文", 
+    color: "text-gray-400",
+    bgColor: "bg-gray-500/10",
+    description: "需要根据调用路径确定"
+  },
 }
+
+// 调用链节点组件
+const CallChainItem = React.memo(function CallChainItem({
+  node,
+  index,
+  isLast,
+}: {
+  node: CallChainNode
+  index: number
+  isLast: boolean
+}) {
+  const ctx = contextInfo[node.context.toLowerCase()] || contextInfo.unknown
+  
+  return (
+    <div className="flex gap-2">
+      <div className="flex flex-col items-center w-3 pt-1.5">
+        <span className={cn(
+          "w-2 h-2 rounded-full shrink-0",
+          node.is_user_entry ? "bg-[var(--accent)] ring-2 ring-[var(--accent-bg)]" : "bg-[var(--border-light)]"
+        )} />
+        {!isLast && <span className="flex-1 w-0.5 bg-[var(--border-subtle)] mt-1" />}
+      </div>
+      <div className={cn(
+        "flex-1 pb-2",
+        node.is_user_entry && "p-2 bg-[var(--accent-bg)] rounded-md border-l-2 border-[var(--accent)]"
+      )}>
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <code className="text-[11px] font-medium text-[var(--text-primary)]">{node.function}</code>
+          {node.is_user_entry && (
+            <span className="px-1.5 py-0.5 text-[9px] font-medium text-[var(--accent)] bg-[var(--accent-bg)] border border-[var(--accent)] rounded">
+              用户代码入口
+            </span>
+          )}
+        </div>
+        {node.description && (
+          <p className="text-[10px] text-[var(--text-muted)] mb-1">{node.description}</p>
+        )}
+        <div className="flex flex-wrap gap-1">
+          <span className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded", ctx.bgColor, ctx.color)}>
+            {ctx.icon}
+            <span>{ctx.label}</span>
+          </span>
+          {node.file && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-[var(--text-muted)] bg-[var(--bg-tertiary)] rounded">
+              <FileCode className="h-2.5 w-2.5" />
+              <span>{node.file}</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// 知识库信息区块组件
+const KnowledgeSection = React.memo(function KnowledgeSection({
+  knowledge,
+}: {
+  knowledge: KnowledgeInfo
+}) {
+  const [isCallChainExpanded, setIsCallChainExpanded] = React.useState(false)
+  const ctx = contextInfo[knowledge.context || 'unknown'] || contextInfo.unknown
+  
+  return (
+    <div className="border-b border-[var(--border-subtle)]">
+      {/* 知识库头部 */}
+      <div className="px-3 py-2 bg-[var(--bg-tertiary)]/50 border-b border-[var(--border-subtle)]">
+        <div className="flex items-center gap-1.5 mb-1">
+          <BookOpen className="h-3 w-3 text-[var(--accent)]" />
+          <span className="text-[10px] font-semibold text-[var(--text-primary)]">知识库信息</span>
+          {knowledge.framework && (
+            <span className="ml-auto px-1.5 py-0.5 text-[9px] text-[var(--accent)] bg-[var(--accent-bg)] rounded-full">
+              {knowledge.framework}
+              {knowledge.callback_type && ` / ${knowledge.callback_type}`}
+            </span>
+          )}
+        </div>
+        {knowledge.description && (
+          <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{knowledge.description}</p>
+        )}
+      </div>
+
+      {/* 执行上下文卡片 */}
+      <div className="px-3 py-2">
+        <div className={cn("p-2 rounded-md", ctx.bgColor)}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className={ctx.color}>{ctx.icon}</span>
+            <span className={cn("text-[11px] font-semibold", ctx.color)}>{ctx.label}</span>
+          </div>
+          <p className="text-[10px] text-[var(--text-muted)] mb-1.5">{ctx.description}</p>
+          <div className="flex items-center gap-1.5 text-[10px] font-medium">
+            {knowledge.can_sleep ? (
+              <>
+                <Check className="h-3 w-3 text-emerald-400" />
+                <span className="text-emerald-400">可睡眠</span>
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="h-3 w-3 text-red-400" />
+                <span className="text-red-400">不可睡眠</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 触发条件 */}
+      {knowledge.trigger && (
+        <div className="px-3 py-2 border-t border-[var(--border-subtle)]">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Zap className="h-3 w-3 text-[var(--text-muted)]" />
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">触发条件</span>
+          </div>
+          <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{knowledge.trigger}</p>
+        </div>
+      )}
+
+      {/* 调用链 */}
+      {knowledge.call_chain && knowledge.call_chain.length > 0 && (
+        <div className="border-t border-[var(--border-subtle)]">
+          <button 
+            className="w-full px-3 py-2 flex items-center gap-1.5 hover:bg-[var(--bg-hover)] transition-colors"
+            onClick={() => setIsCallChainExpanded(!isCallChainExpanded)}
+          >
+            <Link2 className="h-3 w-3 text-[var(--text-muted)]" />
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">内核调用链</span>
+            <span className="text-[9px] text-[var(--text-muted)] opacity-70">{knowledge.call_chain.length} 步</span>
+            <span className="ml-auto">
+              {isCallChainExpanded ? (
+                <ChevronDown className="h-3 w-3 text-[var(--text-muted)]" />
+              ) : (
+                <ChevronRight className="h-3 w-3 text-[var(--text-muted)]" />
+              )}
+            </span>
+          </button>
+          {isCallChainExpanded && (
+            <div className="px-3 pb-2">
+              {knowledge.call_chain.map((node, index) => (
+                <CallChainItem
+                  key={`${node.function}-${index}`}
+                  node={node}
+                  index={index}
+                  isLast={index === knowledge.call_chain!.length - 1}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 注意事项 */}
+      {knowledge.notes && knowledge.notes.length > 0 && (
+        <div className="px-3 py-2 border-t border-[var(--border-subtle)]">
+          <div className="flex items-center gap-1.5 mb-1">
+            <AlertTriangle className="h-3 w-3 text-amber-400" />
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">注意事项</span>
+          </div>
+          <ul className="pl-4 list-disc space-y-0.5">
+            {knowledge.notes.map((note, i) => (
+              <li key={i} className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+})
 
 // 可折叠列表组件
 const CollapsibleList = React.memo(function CollapsibleList({
@@ -204,6 +395,42 @@ export const NodeDetailPanel = React.memo(function NodeDetailPanel({
   const triggerJump = useSetAtom(triggerJumpAtom)
   const setEntryFunction = useSetAtom(setEntryFunctionAtom)
   const [copied, setCopied] = React.useState(false)
+  
+  // 知识库信息状态
+  const [knowledgeInfo, setKnowledgeInfo] = React.useState<KnowledgeInfo | null>(null)
+  const [knowledgeLoading, setKnowledgeLoading] = React.useState(false)
+  
+  // 加载知识库信息
+  React.useEffect(() => {
+    if (!detail?.name) {
+      setKnowledgeInfo(null)
+      return
+    }
+    
+    let cancelled = false
+    setKnowledgeLoading(true)
+    
+    getKnowledgeInfo(detail.name)
+      .then((info) => {
+        if (!cancelled) {
+          setKnowledgeInfo(info)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setKnowledgeInfo(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setKnowledgeLoading(false)
+        }
+      })
+    
+    return () => {
+      cancelled = true
+    }
+  }, [detail?.name])
 
   // 处理点击位置跳转
   const handleLocationClick = React.useCallback((filePath: string, line: number) => {
@@ -319,8 +546,21 @@ export const NodeDetailPanel = React.memo(function NodeDetailPanel({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* 执行上下文 */}
-        {execContext && (
+        {/* 知识库信息 */}
+        {knowledgeInfo && (
+          <KnowledgeSection knowledge={knowledgeInfo} />
+        )}
+        
+        {/* 知识库加载状态 */}
+        {knowledgeLoading && (
+          <div className="px-3 py-2 border-b border-[var(--border-subtle)] flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+            <div className="h-3 w-3 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+            <span>加载知识库信息...</span>
+          </div>
+        )}
+        
+        {/* 执行上下文（仅当没有知识库信息时显示） */}
+        {!knowledgeInfo && execContext && (
           <div className="px-3 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-tertiary)]/50">
             <div className={cn("flex items-center gap-2 text-xs", execContext.color)}>
               {execContext.icon}
@@ -333,7 +573,7 @@ export const NodeDetailPanel = React.memo(function NodeDetailPanel({
         )}
 
         {/* 描述 */}
-        {detail.description && (
+        {detail.description && !knowledgeInfo?.description && (
           <div className="px-3 py-2 border-b border-[var(--border-subtle)]">
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{detail.description}</p>
           </div>

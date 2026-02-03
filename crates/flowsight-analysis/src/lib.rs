@@ -71,10 +71,11 @@ pub struct Analyzer {
 impl Analyzer {
     /// Create a new analyzer with built-in knowledge base
     pub fn new() -> Self {
+        let kb = KnowledgeBase::builtin();
         Self {
-            async_tracker: async_tracker::AsyncTracker::new(),
-            funcptr_resolver: funcptr::FuncPtrResolver::new(),
-            knowledge_base: KnowledgeBase::builtin(),
+            async_tracker: async_tracker::AsyncTracker::with_knowledge_base(&kb),
+            funcptr_resolver: funcptr::FuncPtrResolver::with_knowledge_base(&kb),
+            knowledge_base: kb,
             symbol_index: None,
         }
     }
@@ -82,11 +83,16 @@ impl Analyzer {
     /// Create a new analyzer with custom knowledge base
     pub fn with_knowledge_base(kb: KnowledgeBase) -> Self {
         Self {
-            async_tracker: async_tracker::AsyncTracker::new(),
-            funcptr_resolver: funcptr::FuncPtrResolver::new(),
+            async_tracker: async_tracker::AsyncTracker::with_knowledge_base(&kb),
+            funcptr_resolver: funcptr::FuncPtrResolver::with_knowledge_base(&kb),
             knowledge_base: kb,
             symbol_index: None,
         }
+    }
+
+    /// Get a reference to the knowledge base
+    pub fn knowledge_base(&self) -> &KnowledgeBase {
+        &self.knowledge_base
     }
 
     /// Set symbol index for cross-file analysis

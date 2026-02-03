@@ -134,6 +134,10 @@ pub struct FrameworkCallback {
     pub signature: Option<String>,
     /// ⭐ 完整的内核调用链！
     pub call_chain: Option<CallChain>,
+    /// ⭐ 正则表达式模式 (从 YAML pattern 字段提取)
+    pub pattern: Option<String>,
+    /// Whether callback can sleep
+    pub can_sleep: Option<bool>,
 }
 
 /// Framework definition
@@ -327,6 +331,8 @@ impl KnowledgeBase {
                                     let mut context = ExecutionContext::Unknown;
                                     let mut sig = None;
                                     let mut cb_desc = String::new();
+                                    let mut pattern = None;
+                                    let mut can_sleep = None;
 
                                     if let Some(serde_yaml::Value::String(t)) = cb_map.get("trigger") {
                                         trigger = t.clone();
@@ -336,6 +342,14 @@ impl KnowledgeBase {
                                     }
                                     if let Some(serde_yaml::Value::String(s)) = cb_map.get("signature") {
                                         sig = Some(s.clone());
+                                    }
+                                    // ⭐ Extract pattern field
+                                    if let Some(serde_yaml::Value::String(p)) = cb_map.get("pattern") {
+                                        pattern = Some(p.clone());
+                                    }
+                                    // ⭐ Extract can_sleep field
+                                    if let Some(serde_yaml::Value::Bool(cs)) = cb_map.get("can_sleep") {
+                                        can_sleep = Some(*cs);
                                     }
                                     if let Some(serde_yaml::Value::String(ctx)) = cb_map.get("context") {
                                         context = match ctx.as_str() {
@@ -353,6 +367,8 @@ impl KnowledgeBase {
                                         context,
                                         signature: sig,
                                         call_chain: None, // TODO: extract call_chain from YAML
+                                        pattern,
+                                        can_sleep,
                                     });
                                 }
                             }
@@ -458,6 +474,8 @@ impl KnowledgeBase {
                     "int (*)(struct usb_interface *, const struct usb_device_id *)".into(),
                 ),
                 call_chain: Some(usb_probe_chain),
+                pattern: Some(r"\.probe\s*=\s*(?P<handler>\w+)".into()),
+                can_sleep: Some(true),
             },
         );
         
@@ -519,6 +537,8 @@ impl KnowledgeBase {
                 context: ExecutionContext::Process,
                 signature: Some("void (*)(struct usb_interface *)".into()),
                 call_chain: Some(usb_disconnect_chain),
+                pattern: Some(r"\.disconnect\s*=\s*(?P<handler>\w+)".into()),
+                can_sleep: Some(true),
             },
         );
 
@@ -591,6 +611,8 @@ impl KnowledgeBase {
                 context: ExecutionContext::Process,
                 signature: Some("int (*)(struct inode *, struct file *)".into()),
                 call_chain: Some(fops_open_chain),
+                pattern: Some(r"\.open\s*=\s*(?P<handler>\w+)".into()),
+                can_sleep: Some(true),
             },
         );
         fops_callbacks.insert(
@@ -603,6 +625,8 @@ impl KnowledgeBase {
                     "ssize_t (*)(struct file *, char __user *, size_t, loff_t *)".into(),
                 ),
                 call_chain: None, // 可以后续添加
+                pattern: Some(r"\.read\s*=\s*(?P<handler>\w+)".into()),
+                can_sleep: Some(true),
             },
         );
         fops_callbacks.insert(
@@ -615,6 +639,8 @@ impl KnowledgeBase {
                     "ssize_t (*)(struct file *, const char __user *, size_t, loff_t *)".into(),
                 ),
                 call_chain: None,
+                pattern: Some(r"\.write\s*=\s*(?P<handler>\w+)".into()),
+                can_sleep: Some(true),
             },
         );
 
@@ -906,5 +932,29 @@ impl KnowledgeBase {
     /// ⭐ 获取异步模式信息
     pub fn get_async_pattern(&self, name: &str) -> Option<&AsyncPattern> {
         self.async_patterns.get(name)
+    }
+
+    /// ⭐ 获取所有框架的回调模式 (用于函数指针解析)
+    pub fn get_all_callback_patterns(&self) -> Vec<(&str, &str, &FrameworkCallback)> {
+        let mut patterns = Vec::new();
+        for (fw_name, framework) in &self.frameworks {
+            for (cb_name, callback) in &framework.callbacks {
+                patterns.push((fw_name.as_str(), cb_name.as_str(), callback));
+            }
+        }
+        patterns
+    }
+
+    /// ⭐ 获取有 pattern 字段的回调列表
+    pub fn get_callbacks_with_patterns(&self) -> Vec<(&str, &str, &str)> {
+        let mut result = Vec::new();
+        for (fw_name, framework) in &self.frameworks {
+            for (cb_name, callback) in &framework.callbacks {
+                if let Some(ref pattern) = callback.pattern {
+                    result.push((fw_name.as_str(), cb_name.as_str(), pattern.as_str()));
+                }
+            }
+        }
+        result
     }
 }

@@ -186,3 +186,119 @@ export async function emit(event: string, payload?: unknown): Promise<void> {
   // 非 Tauri 环境
   console.warn('[TauriAPI] Not in Tauri environment, events not available');
 }
+
+// ============================================
+// 知识库 API
+// ============================================
+
+// 知识库类型定义（内联以避免循环导入）
+export interface CallChainNode {
+  function: string
+  file?: string
+  context: string
+  description?: string
+  is_user_entry: boolean
+}
+
+export interface KnowledgeInfo {
+  name: string
+  description?: string
+  context?: 'process' | 'softirq' | 'hardirq' | 'user' | 'unknown' | 'any'
+  can_sleep?: boolean
+  trigger?: string
+  signature?: string
+  call_chain?: CallChainNode[]
+  examples?: string[]
+  framework?: string
+  callback_type?: string
+  notes?: string[]
+}
+
+export interface AsyncPatternInfo {
+  name: string
+  description: string
+  context: string
+  can_sleep: boolean
+  handler_signature?: string
+  bind_patterns: string[]
+  trigger_patterns: string[]
+  handler_call_chain?: CallChainNode[]
+}
+
+export interface FrameworkSummary {
+  name: string
+  description: string
+  header?: string
+  callback_count: number
+  callbacks: string[]
+}
+
+export interface AsyncPatternSummary {
+  name: string
+  description: string
+  context: string
+  can_sleep: boolean
+}
+
+/**
+ * 获取符号的知识库信息
+ * @param symbol 符号名称（函数名、API 名）
+ * @param codeContext 可选的代码上下文，用于更准确的匹配
+ */
+export async function getKnowledgeInfo(
+  symbol: string,
+  codeContext?: string
+): Promise<KnowledgeInfo | null> {
+  try {
+    const result = await invoke<KnowledgeInfo | null>('get_knowledge_info', {
+      symbol,
+      codeContext,
+    });
+    return result;
+  } catch (error) {
+    console.error('[TauriAPI] Failed to get knowledge info:', error);
+    return null;
+  }
+}
+
+/**
+ * 获取异步模式信息
+ * @param patternName 模式名称（如 "work_struct", "timer_list"）
+ */
+export async function getAsyncPatternInfo(
+  patternName: string
+): Promise<AsyncPatternInfo | null> {
+  try {
+    const result = await invoke<AsyncPatternInfo | null>('get_async_pattern_info', {
+      patternName,
+    });
+    return result;
+  } catch (error) {
+    console.error('[TauriAPI] Failed to get async pattern info:', error);
+    return null;
+  }
+}
+
+/**
+ * 列出所有可用的框架
+ */
+export async function listFrameworks(): Promise<FrameworkSummary[]> {
+  try {
+    return await invoke<FrameworkSummary[]>('list_frameworks');
+  } catch (error) {
+    console.error('[TauriAPI] Failed to list frameworks:', error);
+    return [];
+  }
+}
+
+/**
+ * 列出所有异步模式
+ */
+export async function listAsyncPatterns(): Promise<AsyncPatternSummary[]> {
+  try {
+    return await invoke<AsyncPatternSummary[]>('list_async_patterns');
+  } catch (error) {
+    console.error('[TauriAPI] Failed to list async patterns:', error);
+    return [];
+  }
+}

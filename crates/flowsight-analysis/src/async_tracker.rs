@@ -6,8 +6,11 @@
 //! - Interrupts (request_irq)
 //! - Tasklets (tasklet_init)
 //! - Kernel threads (kthread_run)
+//!
+//! Integrates with KnowledgeBase for enhanced pattern matching.
 
 use flowsight_core::{AsyncBinding, AsyncMechanism, ExecutionContext, FunctionDef, Location};
+use flowsight_knowledge::KnowledgeBase;
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -22,6 +25,22 @@ struct AsyncPattern {
 /// Async mechanism tracker
 pub struct AsyncTracker {
     patterns: Vec<AsyncPattern>,
+    /// Additional patterns from knowledge base
+    kb_patterns: Vec<KbAsyncPattern>,
+}
+
+/// Async pattern from knowledge base
+struct KbAsyncPattern {
+    /// Pattern name from KB (e.g., "work_struct", "timer_list")
+    name: String,
+    /// Async mechanism type
+    mechanism: AsyncMechanism,
+    /// Execution context
+    context: ExecutionContext,
+    /// Bind patterns (regex)
+    bind_patterns: Vec<Regex>,
+    /// Trigger patterns (regex)
+    trigger_patterns: Vec<Regex>,
 }
 
 impl AsyncTracker {
@@ -29,6 +48,79 @@ impl AsyncTracker {
     pub fn new() -> Self {
         Self {
             patterns: Self::default_patterns(),
+            kb_patterns: Vec::new(),
+        }
+    }
+
+    /// Create an async tracker with knowledge base integration
+    pub fn with_knowledge_base(kb: &KnowledgeBase) -> Self {
+        let mut tracker = Self::new();
+        tracker.load_from_knowledge_base(kb);
+        tracker
+    }
+
+    /// Load async patterns from knowledge base
+    pub fn load_from_knowledge_base(&mut self, kb: &KnowledgeBase) {
+        for (pattern_name, async_pattern) in &kb.async_patterns {
+            // Convert KB execution context to core type
+            let context = match async_pattern.context {
+                flowsight_knowledge::ExecutionContext::Process => ExecutionContext::Process,
+                flowsight_knowledge::ExecutionContext::SoftIrq => ExecutionContext::SoftIrq,
+                flowsight_knowledge::ExecutionContext::HardIrq => ExecutionContext::HardIrq,
+                flowsight_knowledge::ExecutionContext::User => ExecutionContext::Process,
+                flowsight_knowledge::ExecutionContext::Unknown => ExecutionContext::Unknown,
+            };
+
+            // Determine mechanism from pattern name
+            let mechanism = Self::infer_mechanism_from_name(pattern_name);
+
+            // Compile bind patterns
+            let bind_patterns: Vec<Regex> = async_pattern
+                .bind_patterns
+                .iter()
+                .filter_map(|p| Regex::new(p).ok())
+                .collect();
+
+            // Compile trigger patterns
+            let trigger_patterns: Vec<Regex> = async_pattern
+                .trigger_patterns
+                .iter()
+                .filter_map(|p| Regex::new(p).ok())
+                .collect();
+
+            if !bind_patterns.is_empty() {
+                self.kb_patterns.push(KbAsyncPattern {
+                    name: pattern_name.clone(),
+                    mechanism,
+                    context,
+                    bind_patterns,
+                    trigger_patterns,
+                });
+            }
+        }
+    }
+
+    /// Infer async mechanism from pattern name
+    fn infer_mechanism_from_name(name: &str) -> AsyncMechanism {
+        let name_lower = name.to_lowercase();
+        if name_lower.contains("work") || name_lower.contains("delayed_work") {
+            AsyncMechanism::WorkQueue { delayed: name_lower.contains("delayed") }
+        } else if name_lower.contains("timer") || name_lower.contains("hrtimer") {
+            AsyncMechanism::Timer { high_resolution: name_lower.contains("hr") }
+        } else if name_lower.contains("irq") || name_lower.contains("interrupt") {
+            AsyncMechanism::Interrupt { threaded: name_lower.contains("threaded") }
+        } else if name_lower.contains("tasklet") {
+            AsyncMechanism::Tasklet
+        } else if name_lower.contains("kthread") || name_lower.contains("thread") {
+            AsyncMechanism::KThread
+        } else if name_lower.contains("rcu") {
+            AsyncMechanism::RcuCallback
+        } else if name_lower.contains("notifier") {
+            AsyncMechanism::Notifier
+        } else if name_lower.contains("softirq") {
+            AsyncMechanism::Softirq
+        } else {
+            AsyncMechanism::Custom(name.to_string())
         }
     }
 
@@ -232,48 +324,76 @@ impl AsyncTracker {
         let mut bindings = Vec::new();
         let lines: Vec<&str> = source.lines().collect();
 
+        // Analyze with hardcoded patterns
         for pattern in &self.patterns {
-            for bind_re in &pattern.bind_patterns {
-                for (line_num, line) in lines.iter().enumerate() {
-                    if let Some(caps) = bind_re.captures(line) {
-                        // Extract handler name (usually last capture group)
-                        let handler = caps
-                            .get(caps.len() - 1)
+            self.analyze_pattern(&lines, source, functions, &mut bindings, 
+                &pattern.mechanism, &pattern.context, &pattern.bind_patterns, &pattern.trigger_patterns);
+        }
+
+        // Analyze with knowledge base patterns
+        for kb_pattern in &self.kb_patterns {
+            self.analyze_pattern(&lines, source, functions, &mut bindings,
+                &kb_pattern.mechanism, &kb_pattern.context, &kb_pattern.bind_patterns, &kb_pattern.trigger_patterns);
+        }
+
+        bindings
+    }
+
+    /// Analyze source with a specific pattern set
+    fn analyze_pattern(
+        &self,
+        lines: &[&str],
+        source: &str,
+        functions: &HashMap<String, FunctionDef>,
+        bindings: &mut Vec<AsyncBinding>,
+        mechanism: &AsyncMechanism,
+        context: &ExecutionContext,
+        bind_patterns: &[Regex],
+        trigger_patterns: &[Regex],
+    ) {
+        for bind_re in bind_patterns {
+            for (line_num, line) in lines.iter().enumerate() {
+                if let Some(caps) = bind_re.captures(line) {
+                    // Extract handler name (usually last capture group)
+                    let handler = caps
+                        .get(caps.len() - 1)
+                        .map(|m| m.as_str().to_string())
+                        .unwrap_or_default();
+
+                    // Extract variable (if present)
+                    let variable = if caps.len() > 2 {
+                        caps.get(1)
                             .map(|m| m.as_str().to_string())
-                            .unwrap_or_default();
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
 
-                        // Extract variable (if present)
-                        let variable = if caps.len() > 2 {
-                            caps.get(1)
-                                .map(|m| m.as_str().to_string())
-                                .unwrap_or_default()
-                        } else {
-                            String::new()
-                        };
-
-                        if !handler.is_empty()
-                            && handler != "NULL"
-                            && functions.contains_key(&handler)
-                        {
-                            // Find trigger locations
-                            let trigger_locations =
-                                self.find_triggers(source, &pattern.trigger_patterns, &variable);
-
-                            bindings.push(AsyncBinding {
-                                mechanism: pattern.mechanism.clone(),
-                                variable,
-                                handler,
-                                bind_location: Some(Location::new("", (line_num + 1) as u32, 0)),
-                                trigger_locations,
-                                context: pattern.context.clone(),
-                            });
+                    if !handler.is_empty()
+                        && handler != "NULL"
+                        && functions.contains_key(&handler)
+                    {
+                        // Avoid duplicates
+                        if bindings.iter().any(|b| b.handler == handler && b.variable == variable) {
+                            continue;
                         }
+
+                        // Find trigger locations
+                        let trigger_locations =
+                            self.find_triggers(source, trigger_patterns, &variable);
+
+                        bindings.push(AsyncBinding {
+                            mechanism: mechanism.clone(),
+                            variable,
+                            handler,
+                            bind_location: Some(Location::new("", (line_num + 1) as u32, 0)),
+                            trigger_locations,
+                            context: context.clone(),
+                        });
                     }
                 }
             }
         }
-
-        bindings
     }
 
     fn find_triggers(&self, source: &str, patterns: &[Regex], variable: &str) -> Vec<Location> {

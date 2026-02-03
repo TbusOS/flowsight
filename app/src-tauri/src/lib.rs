@@ -3,8 +3,9 @@
 mod commands;
 
 pub use commands::{
-    AnalysisResult, AsyncBindingInfo, EntryPointInfo, FileNode, FormatOptions, FormattedFlow,
-    FunctionDetail, FunctionDetailExt, FunctionInfo, FunctionLocation, IndexStats, LocalVarInfo,
+    AnalysisResult, AsyncBindingInfo, AsyncPatternInfo, AsyncPatternSummary, CallChainNodeInfo,
+    EntryPointInfo, FileNode, FormatOptions, FormattedFlow, FrameworkSummary, FunctionDetail,
+    FunctionDetailExt, FunctionInfo, FunctionLocation, IndexStats, KnowledgeInfo, LocalVarInfo,
     ParamInfo, ProjectInfo, SearchOptions, SearchResult,
 };
 
@@ -57,6 +58,11 @@ pub fn run() {
             // LLVM IR Commands
             commands::generate_llvm_ir,
             commands::parse_llvm_ir_file,
+            // Knowledge Base API
+            commands::get_knowledge_info,
+            commands::get_async_pattern_info,
+            commands::list_frameworks,
+            commands::list_async_patterns,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

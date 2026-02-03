@@ -4,8 +4,11 @@
 //! - Operations tables (struct xxx_ops)
 //! - Direct variable assignments
 //! - Callback registration patterns
+//!
+//! Integrates with KnowledgeBase for enhanced pattern matching.
 
 use flowsight_core::FunctionDef;
+use flowsight_knowledge::KnowledgeBase;
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -13,6 +16,21 @@ use std::collections::HashMap;
 pub struct FuncPtrResolver {
     /// Known ops table patterns
     ops_patterns: Vec<OpsTablePattern>,
+    /// Callback patterns from knowledge base (framework -> field -> pattern)
+    kb_callback_patterns: HashMap<String, Vec<KbCallbackPattern>>,
+}
+
+/// Callback pattern from knowledge base
+#[derive(Debug, Clone)]
+struct KbCallbackPattern {
+    /// Field name (e.g., "probe", "disconnect")
+    field: String,
+    /// Regex pattern for matching
+    pattern: Option<Regex>,
+    /// Description from knowledge base
+    description: String,
+    /// Execution context
+    context: String,
 }
 
 /// Pattern for recognizing ops tables
@@ -49,7 +67,67 @@ impl FuncPtrResolver {
     pub fn new() -> Self {
         Self {
             ops_patterns: Self::default_patterns(),
+            kb_callback_patterns: HashMap::new(),
         }
+    }
+
+    /// Create a function pointer resolver with knowledge base integration
+    pub fn with_knowledge_base(kb: &KnowledgeBase) -> Self {
+        let mut resolver = Self::new();
+        resolver.load_from_knowledge_base(kb);
+        resolver
+    }
+
+    /// Load callback patterns from knowledge base
+    pub fn load_from_knowledge_base(&mut self, kb: &KnowledgeBase) {
+        for (framework_name, framework) in &kb.frameworks {
+            let mut patterns = Vec::new();
+            
+            for (callback_name, callback) in &framework.callbacks {
+                // ⭐ Prefer pattern from KB, fallback to generated pattern
+                let pattern = if let Some(ref kb_pattern) = callback.pattern {
+                    // Use the pattern directly from knowledge base YAML
+                    Regex::new(kb_pattern).ok()
+                } else {
+                    // Fallback: generate pattern from callback name
+                    Self::create_callback_pattern(callback_name)
+                };
+                
+                let context = match callback.context {
+                    flowsight_knowledge::ExecutionContext::Process => "process",
+                    flowsight_knowledge::ExecutionContext::SoftIrq => "softirq",
+                    flowsight_knowledge::ExecutionContext::HardIrq => "hardirq",
+                    flowsight_knowledge::ExecutionContext::User => "user",
+                    flowsight_knowledge::ExecutionContext::Unknown => "unknown",
+                };
+                
+                patterns.push(KbCallbackPattern {
+                    field: callback_name.clone(),
+                    pattern,
+                    description: callback.description.clone(),
+                    context: context.to_string(),
+                });
+            }
+            
+            if !patterns.is_empty() {
+                self.kb_callback_patterns.insert(framework_name.clone(), patterns);
+            }
+        }
+    }
+
+    /// Create a regex pattern for matching callback field assignments
+    fn create_callback_pattern(callback_name: &str) -> Option<Regex> {
+        // Pattern: .field_name = function_name
+        let pattern_str = format!(r"\.{}\s*=\s*(\w+)", regex::escape(callback_name));
+        Regex::new(&pattern_str).ok()
+    }
+
+    /// Get callback info from knowledge base for a given framework and field
+    pub fn get_kb_callback_info(&self, framework: &str, field: &str) -> Option<&KbCallbackPattern> {
+        self.kb_callback_patterns
+            .get(framework)?
+            .iter()
+            .find(|p| p.field == field)
     }
 
     fn default_patterns() -> Vec<OpsTablePattern> {
@@ -161,7 +239,7 @@ impl FuncPtrResolver {
 
             // Extract body by finding matching closing brace (handles nested braces)
             if let Some(body) = Self::extract_struct_body(&source[match_end..]) {
-                // Find matching ops pattern
+                // Find matching ops pattern from hardcoded patterns
                 for pattern in &self.ops_patterns {
                     if pattern
                         .struct_pattern
@@ -182,10 +260,66 @@ impl FuncPtrResolver {
                         }
                     }
                 }
+                
+                // Also check against knowledge base patterns
+                for (fw_name, kb_patterns) in &self.kb_callback_patterns {
+                    // Check if struct type matches framework name pattern
+                    if struct_type.contains(&fw_name.replace("_", "")) 
+                        || fw_name.contains(struct_type)
+                        || struct_type == *fw_name
+                    {
+                        for field_caps in field_assign_re.captures_iter(&body) {
+                            let field = field_caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                            let func_name = field_caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                            
+                            // Check against KB patterns
+                            for kb_pattern in kb_patterns {
+                                if kb_pattern.field == field && functions.contains_key(func_name) {
+                                    let context = format!("{}.{}", var_name, field);
+                                    if !mappings.iter().any(|(c, _)| c == &context) {
+                                        mappings.push((context, func_name.to_string()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
         mappings
+    }
+
+    /// Analyze source using knowledge base callback patterns directly
+    /// This uses regex patterns from YAML files if available
+    pub fn analyze_with_kb_patterns(
+        &self,
+        source: &str,
+        functions: &HashMap<String, FunctionDef>,
+    ) -> Vec<FuncPtrBinding> {
+        let mut bindings = Vec::new();
+        
+        for (framework_name, kb_patterns) in &self.kb_callback_patterns {
+            for kb_pattern in kb_patterns {
+                if let Some(ref pattern) = kb_pattern.pattern {
+                    for caps in pattern.captures_iter(source) {
+                        if let Some(func_match) = caps.get(1) {
+                            let func_name = func_match.as_str();
+                            if functions.contains_key(func_name) {
+                                bindings.push(FuncPtrBinding {
+                                    source: framework_name.clone(),
+                                    field: kb_pattern.field.clone(),
+                                    function: func_name.to_string(),
+                                    confidence: Confidence::High,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        bindings
     }
 
     /// Extract struct body handling nested braces

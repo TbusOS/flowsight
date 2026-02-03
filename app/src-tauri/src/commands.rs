@@ -1742,6 +1742,284 @@ fn detect_can_sleep(code: &str) -> Option<bool> {
 }
 
 // ============================================================
+// Knowledge Base API
+// ============================================================
+
+/// Knowledge info for a symbol (function or API)
+#[derive(Debug, Serialize, Deserialize)]
+pub struct KnowledgeInfo {
+    /// Symbol name
+    pub name: String,
+    /// Description from knowledge base
+    pub description: Option<String>,
+    /// Execution context (process/softirq/hardirq)
+    pub context: Option<String>,
+    /// Whether this function can sleep
+    pub can_sleep: Option<bool>,
+    /// Trigger condition (for callbacks)
+    pub trigger: Option<String>,
+    /// Function signature
+    pub signature: Option<String>,
+    /// Call chain from kernel entry to user code
+    pub call_chain: Option<Vec<CallChainNodeInfo>>,
+    /// Related examples
+    pub examples: Option<Vec<String>>,
+    /// Framework name (e.g., "usb_driver", "file_operations")
+    pub framework: Option<String>,
+    /// Callback name within framework
+    pub callback_type: Option<String>,
+    /// Developer notes/warnings
+    pub notes: Option<Vec<String>>,
+}
+
+/// Single node in a call chain
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CallChainNodeInfo {
+    /// Function name
+    pub function: String,
+    /// Source file path
+    pub file: Option<String>,
+    /// Execution context at this point
+    pub context: String,
+    /// Description of this step
+    pub description: Option<String>,
+    /// Whether this is the user code entry point
+    pub is_user_entry: bool,
+}
+
+/// Async pattern info
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AsyncPatternInfo {
+    /// Pattern name (e.g., "work_struct", "timer_list")
+    pub name: String,
+    /// Description
+    pub description: String,
+    /// Execution context
+    pub context: String,
+    /// Whether handler can sleep
+    pub can_sleep: bool,
+    /// Handler signature
+    pub handler_signature: Option<String>,
+    /// Bind patterns (regex)
+    pub bind_patterns: Vec<String>,
+    /// Trigger patterns (regex)
+    pub trigger_patterns: Vec<String>,
+    /// Call chain for handler execution
+    pub handler_call_chain: Option<Vec<CallChainNodeInfo>>,
+}
+
+/// Get knowledge info for a symbol (function, API, callback)
+/// 
+/// Looks up the symbol in the knowledge base and returns
+/// comprehensive information including execution context,
+/// call chains, and developer notes.
+#[tauri::command]
+pub async fn get_knowledge_info(
+    symbol: String,
+    code_context: Option<String>,
+) -> Result<Option<KnowledgeInfo>, String> {
+    use flowsight_knowledge::{KnowledgeBase, ExecutionContext};
+    
+    let kb = KnowledgeBase::builtin();
+    let code_ctx = code_context.unwrap_or_default();
+    
+    // 1. Check if it's a kernel API
+    if let Some(api) = kb.get_api(&symbol) {
+        return Ok(Some(KnowledgeInfo {
+            name: symbol.clone(),
+            description: Some(api.description.clone()),
+            context: Some(if api.can_sleep { "process" } else { "any" }.into()),
+            can_sleep: Some(api.can_sleep),
+            trigger: None,
+            signature: None,
+            call_chain: None,
+            examples: None,
+            framework: None,
+            callback_type: None,
+            notes: if api.can_fail {
+                Some(vec!["This function can fail - check return value".into()])
+            } else {
+                None
+            },
+        }));
+    }
+    
+    // 2. Try to identify as framework callback
+    if let Some((fw_name, cb_name, callback)) = kb.identify_callback(&symbol, &code_ctx) {
+        let call_chain = callback.call_chain.as_ref().map(|chain| {
+            chain.nodes.iter().map(|node| CallChainNodeInfo {
+                function: node.function.clone(),
+                file: node.file.clone(),
+                context: format!("{:?}", node.context),
+                description: node.description.clone(),
+                is_user_entry: node.is_user_entry,
+            }).collect()
+        });
+        
+        return Ok(Some(KnowledgeInfo {
+            name: symbol.clone(),
+            description: Some(callback.description.clone()),
+            context: Some(match callback.context {
+                ExecutionContext::Process => "process".into(),
+                ExecutionContext::SoftIrq => "softirq".into(),
+                ExecutionContext::HardIrq => "hardirq".into(),
+                ExecutionContext::User => "user".into(),
+                ExecutionContext::Unknown => "unknown".into(),
+            }),
+            can_sleep: Some(callback.context.can_sleep()),
+            trigger: Some(callback.trigger.clone()),
+            signature: callback.signature.clone(),
+            call_chain,
+            examples: None,
+            framework: Some(fw_name.to_string()),
+            callback_type: Some(cb_name.to_string()),
+            notes: None,
+        }));
+    }
+    
+    // 3. Check frameworks by common patterns
+    let frameworks_to_check = [
+        ("usb_driver", "probe"),
+        ("usb_driver", "disconnect"),
+        ("file_operations", "open"),
+        ("file_operations", "read"),
+        ("file_operations", "write"),
+        ("file_operations", "release"),
+        ("platform_driver", "probe"),
+        ("platform_driver", "remove"),
+    ];
+    
+    for (fw_name, cb_name) in &frameworks_to_check {
+        if symbol.contains(cb_name) {
+            if let Some(callback) = kb.get_callback(fw_name, cb_name) {
+                let call_chain = callback.call_chain.as_ref().map(|chain| {
+                    chain.nodes.iter().map(|node| CallChainNodeInfo {
+                        function: node.function.clone(),
+                        file: node.file.clone(),
+                        context: format!("{:?}", node.context),
+                        description: node.description.clone(),
+                        is_user_entry: node.is_user_entry,
+                    }).collect()
+                });
+                
+                return Ok(Some(KnowledgeInfo {
+                    name: symbol.clone(),
+                    description: Some(callback.description.clone()),
+                    context: Some(match callback.context {
+                        ExecutionContext::Process => "process".into(),
+                        ExecutionContext::SoftIrq => "softirq".into(),
+                        ExecutionContext::HardIrq => "hardirq".into(),
+                        ExecutionContext::User => "user".into(),
+                        ExecutionContext::Unknown => "unknown".into(),
+                    }),
+                    can_sleep: Some(callback.context.can_sleep()),
+                    trigger: Some(callback.trigger.clone()),
+                    signature: callback.signature.clone(),
+                    call_chain,
+                    examples: None,
+                    framework: Some(fw_name.to_string()),
+                    callback_type: Some(cb_name.to_string()),
+                    notes: None,
+                }));
+            }
+        }
+    }
+    
+    Ok(None)
+}
+
+/// Get async pattern information
+#[tauri::command]
+pub async fn get_async_pattern_info(pattern_name: String) -> Result<Option<AsyncPatternInfo>, String> {
+    use flowsight_knowledge::KnowledgeBase;
+    
+    let kb = KnowledgeBase::builtin();
+    
+    if let Some(pattern) = kb.get_async_pattern(&pattern_name) {
+        let handler_call_chain = pattern.handler_call_chain.as_ref().map(|chain| {
+            chain.nodes.iter().map(|node| CallChainNodeInfo {
+                function: node.function.clone(),
+                file: node.file.clone(),
+                context: format!("{:?}", node.context),
+                description: node.description.clone(),
+                is_user_entry: node.is_user_entry,
+            }).collect()
+        });
+        
+        return Ok(Some(AsyncPatternInfo {
+            name: pattern_name,
+            description: pattern.description.clone(),
+            context: format!("{:?}", pattern.context),
+            can_sleep: pattern.context.can_sleep(),
+            handler_signature: pattern.handler_signature.clone(),
+            bind_patterns: pattern.bind_patterns.clone(),
+            trigger_patterns: pattern.trigger_patterns.clone(),
+            handler_call_chain,
+        }));
+    }
+    
+    Ok(None)
+}
+
+/// List all available frameworks in knowledge base
+#[tauri::command]
+pub async fn list_frameworks() -> Result<Vec<FrameworkSummary>, String> {
+    use flowsight_knowledge::KnowledgeBase;
+    
+    let kb = KnowledgeBase::builtin();
+    
+    let frameworks: Vec<FrameworkSummary> = kb.frameworks
+        .iter()
+        .map(|(name, fw)| FrameworkSummary {
+            name: name.clone(),
+            description: fw.description.clone(),
+            header: fw.header.clone(),
+            callback_count: fw.callbacks.len(),
+            callbacks: fw.callbacks.keys().cloned().collect(),
+        })
+        .collect();
+    
+    Ok(frameworks)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FrameworkSummary {
+    pub name: String,
+    pub description: String,
+    pub header: Option<String>,
+    pub callback_count: usize,
+    pub callbacks: Vec<String>,
+}
+
+/// List all async patterns
+#[tauri::command]
+pub async fn list_async_patterns() -> Result<Vec<AsyncPatternSummary>, String> {
+    use flowsight_knowledge::KnowledgeBase;
+    
+    let kb = KnowledgeBase::builtin();
+    
+    let patterns: Vec<AsyncPatternSummary> = kb.async_patterns
+        .iter()
+        .map(|(name, pattern)| AsyncPatternSummary {
+            name: name.clone(),
+            description: pattern.description.clone(),
+            context: format!("{:?}", pattern.context),
+            can_sleep: pattern.context.can_sleep(),
+        })
+        .collect();
+    
+    Ok(patterns)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AsyncPatternSummary {
+    pub name: String,
+    pub description: String,
+    pub context: String,
+    pub can_sleep: bool,
+}
+
+// ============================================================
 // Extended Function Detail API
 // ============================================================
 

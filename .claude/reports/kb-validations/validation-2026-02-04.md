@@ -1,6 +1,6 @@
 # Pattern 精准度验证报告
 
-验证时间: Wed Feb  4 02:27:51 CST 2026
+验证时间: Wed Feb  4 02:28:35 CST 2026
 内核路径: /Users/sky/linux-kernel/linux
 
 ## Pattern 提取

@@ -29,8 +29,8 @@ const __dirname = path.dirname(__filename);
 // ============================================================================
 
 const FLOWSIGHT_ROOT = path.resolve(__dirname, '../../..');
-const CLI_PATH = path.join(FLOWSIGHT_ROOT, 'target/release/flowsight-cli');
-const CLI_DEBUG_PATH = path.join(FLOWSIGHT_ROOT, 'target/debug/flowsight-cli');
+const CLI_PATH = path.join(FLOWSIGHT_ROOT, 'target/release/flowsight');
+const CLI_DEBUG_PATH = path.join(FLOWSIGHT_ROOT, 'target/debug/flowsight');
 
 // 测试用的内核路径（如果不存在则使用 fixture）
 const KERNEL_PATHS = [

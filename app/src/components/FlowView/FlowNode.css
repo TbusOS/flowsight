@@ -90,6 +90,104 @@
 }
 
 /* ============================================
+   执行上下文样式 - 根据上下文类型着色
+   ============================================ */
+
+/* 进程上下文 - 绿色系 (可睡眠) */
+.node-context-process {
+  border-left: 3px solid var(--context-process, #4CAF50);
+  background: linear-gradient(to right, rgba(76, 175, 80, 0.08), var(--bg-secondary));
+}
+
+.node-context-process:hover {
+  background: linear-gradient(to right, rgba(76, 175, 80, 0.12), var(--bg-tertiary));
+}
+
+/* 软中断上下文 - 橙色系 (不可睡眠) */
+.node-context-softirq {
+  border-left: 3px solid var(--context-softirq, #FF9800);
+  background: linear-gradient(to right, rgba(255, 152, 0, 0.08), var(--bg-secondary));
+}
+
+.node-context-softirq:hover {
+  background: linear-gradient(to right, rgba(255, 152, 0, 0.12), var(--bg-tertiary));
+}
+
+/* 硬中断上下文 - 红色系 (不可睡眠，最严格) */
+.node-context-hardirq {
+  border-left: 3px solid var(--context-hardirq, #F44336);
+  background: linear-gradient(to right, rgba(244, 67, 54, 0.08), var(--bg-secondary));
+}
+
+.node-context-hardirq:hover {
+  background: linear-gradient(to right, rgba(244, 67, 54, 0.12), var(--bg-tertiary));
+}
+
+/* 工作队列上下文 - 蓝色系 (进程上下文，可睡眠) */
+.node-context-workqueue {
+  border-left: 3px solid var(--context-workqueue, #2196F3);
+  background: linear-gradient(to right, rgba(33, 150, 243, 0.08), var(--bg-secondary));
+}
+
+.node-context-workqueue:hover {
+  background: linear-gradient(to right, rgba(33, 150, 243, 0.12), var(--bg-tertiary));
+}
+
+/* 定时器上下文 - 紫色系 (软中断上下文) */
+.node-context-timer {
+  border-left: 3px solid var(--context-timer, #9C27B0);
+  background: linear-gradient(to right, rgba(156, 39, 176, 0.08), var(--bg-secondary));
+}
+
+.node-context-timer:hover {
+  background: linear-gradient(to right, rgba(156, 39, 176, 0.12), var(--bg-tertiary));
+}
+
+/* 原子上下文 - 紫红色系 (不可睡眠，持有锁) */
+.node-context-atomic {
+  border-left: 3px solid var(--context-atomic, #E91E63);
+  background: linear-gradient(to right, rgba(233, 30, 99, 0.08), var(--bg-secondary));
+}
+
+.node-context-atomic:hover {
+  background: linear-gradient(to right, rgba(233, 30, 99, 0.12), var(--bg-tertiary));
+}
+
+/* ============================================
+   可睡眠/不可睡眠指示器
+   ============================================ */
+.node-sleep-indicator {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  font-size: 8px;
+  background: var(--bg-secondary);
+  border: 2px solid;
+  transition: all 0.2s;
+}
+
+.node-sleep-indicator.can-sleep {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.node-sleep-indicator.cannot-sleep {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.node-sleep-indicator:hover {
+  transform: scale(1.2);
+}
+
+/* ============================================
    异步类型标签
    ============================================ */
 .node-async-badge {

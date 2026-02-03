@@ -99,7 +99,7 @@
   background: var(--text-muted);
 }
 
-/* 图例颜色变体 */
+/* 图例颜色变体 - 异步机制 */
 .legend-item[data-async="WorkQueue"] .legend-dot { background: var(--async-workqueue); }
 .legend-item[data-async="Timer"] .legend-dot { background: var(--async-timer); }
 .legend-item[data-async="Irq"] .legend-dot { background: var(--async-irq); }
@@ -108,6 +108,85 @@
 .legend-item[data-async="Softirq"] .legend-dot { background: var(--async-softirq); }
 .legend-item[data-async="Completion"] .legend-dot { background: var(--async-completion); }
 .legend-item[data-async="Rcu"] .legend-dot { background: var(--async-rcu); }
+
+/* 图例颜色变体 - 执行上下文 */
+.legend-item[data-context="process"] .legend-dot { background: var(--context-process, #4CAF50); }
+.legend-item[data-context="softirq"] .legend-dot { background: var(--context-softirq, #FF9800); }
+.legend-item[data-context="hardirq"] .legend-dot { background: var(--context-hardirq, #F44336); }
+.legend-item[data-context="workqueue"] .legend-dot { background: var(--context-workqueue, #2196F3); }
+.legend-item[data-context="timer"] .legend-dot { background: var(--context-timer, #9C27B0); }
+
+/* ============================================
+   执行上下文图例
+   ============================================ */
+.context-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-light);
+}
+
+.context-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: var(--text-muted);
+  cursor: help;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.context-legend-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.context-legend-item .legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.context-legend-item.process .legend-dot { background: var(--context-process, #4CAF50); }
+.context-legend-item.softirq .legend-dot { background: var(--context-softirq, #FF9800); }
+.context-legend-item.hardirq .legend-dot { background: var(--context-hardirq, #F44336); }
+.context-legend-item.workqueue .legend-dot { background: var(--context-workqueue, #2196F3); }
+
+/* 可睡眠指示器样式 */
+.sleep-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-light);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.sleep-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sleep-legend-item.can-sleep .sleep-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.sleep-legend-item.cannot-sleep .sleep-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--error);
+}
 
 /* ============================================
    深度选择器
