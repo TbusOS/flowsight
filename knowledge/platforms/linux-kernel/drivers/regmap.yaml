@@ -1,0 +1,1102 @@
+# Linux Kernel Regmap (Register Map) Framework Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/regmap.html
+# Kernel Version: 3.1+
+#
+# 验证统计 (2026-02-04):
+#   regmap_read: 1646 调用
+#   regmap_write: 2209 调用
+#   regmap_update_bits: 1779 调用
+#   regmap_bulk_read: 249 调用
+#   regmap_bulk_write: 166 调用
+#   regmap_field_read: 76 调用
+#   regmap_field_write: 99 调用
+#   devm_regmap_init_i2c: 200 调用
+#   devm_regmap_init_spi: 32 调用
+#   devm_regmap_init_mmio: 48 调用
+
+# ============================================================
+# REGMAP CORE
+# ============================================================
+
+regmap_core:
+  description: "Regmap Core - 寄存器映射抽象层框架"
+  header: "linux/regmap.h"
+  icon: "📝"
+  kernel_version: "3.1+"
+
+  overview: |
+    Regmap 框架提供了统一的寄存器访问抽象层，隐藏底层总线(I2C/SPI/MMIO)差异。
+    
+    主要优势:
+    - 统一的 API 访问不同总线
+    - 自动处理字节序和寄存器宽度
+    - 支持寄存器缓存和脏位跟踪
+    - 支持批量操作和原子更新
+    - 集成 IRQ 域支持
+    
+    典型使用场景:
+    - MFD (多功能设备) 驱动
+    - 音频编解码器驱动
+    - 电源管理 IC 驱动
+    - 传感器驱动
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+
+# ============================================================
+# REGMAP INITIALIZATION
+# ============================================================
+
+regmap_init:
+  description: "Regmap Initialization - regmap 初始化"
+  header: "linux/regmap.h"
+  icon: "🚀"
+
+  context:
+    type: "process"
+    can_sleep: true
+
+  registration:
+    # I2C 初始化
+    - pattern: 'devm_regmap_init_i2c\s*\(\s*(?P<client>[^,]+)\s*,\s*&?(?P<config>\w+)\s*\)'
+      description: "为 I2C 设备创建 regmap (devm 管理)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "client"
+          type: "struct i2c_client *"
+          description: "I2C 客户端"
+        - name: "config"
+          type: "const struct regmap_config *"
+          description: "regmap 配置"
+      return: "struct regmap * 或 ERR_PTR"
+
+    - pattern: 'regmap_init_i2c\s*\(\s*(?P<client>[^,]+)\s*,\s*&?(?P<config>\w+)\s*\)'
+      description: "为 I2C 设备创建 regmap (手动管理)"
+      context: "process"
+      can_sleep: true
+
+    # SPI 初始化
+    - pattern: 'devm_regmap_init_spi\s*\(\s*(?P<spi>[^,]+)\s*,\s*&?(?P<config>\w+)\s*\)'
+      description: "为 SPI 设备创建 regmap (devm 管理)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "spi"
+          type: "struct spi_device *"
+          description: "SPI 设备"
+        - name: "config"
+          type: "const struct regmap_config *"
+          description: "regmap 配置"
+      return: "struct regmap * 或 ERR_PTR"
+
+    - pattern: 'regmap_init_spi\s*\(\s*(?P<spi>[^,]+)\s*,\s*&?(?P<config>\w+)\s*\)'
+      description: "为 SPI 设备创建 regmap (手动管理)"
+      context: "process"
+      can_sleep: true
+
+    # MMIO 初始化
+    - pattern: 'devm_regmap_init_mmio\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<regs>[^,]+)\s*,\s*&?(?P<config>\w+)\s*\)'
+      description: "为内存映射 IO 创建 regmap (devm 管理)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "dev"
+          type: "struct device *"
+          description: "设备指针"
+        - name: "regs"
+          type: "void __iomem *"
+          description: "内存映射基地址"
+        - name: "config"
+          type: "const struct regmap_config *"
+          description: "regmap 配置"
+      return: "struct regmap * 或 ERR_PTR"
+
+    - pattern: 'devm_regmap_init_mmio_clk\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<clk_id>[^,]+)\s*,\s*(?P<regs>[^,]+)\s*,\s*&?(?P<config>\w+)\s*\)'
+      description: "为带时钟的 MMIO 创建 regmap"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'regmap_init_mmio\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<regs>[^,]+)\s*,\s*&?(?P<config>\w+)\s*\)'
+      description: "为 MMIO 创建 regmap (手动管理)"
+      context: "process"
+      can_sleep: true
+
+    # 其他总线
+    - pattern: 'devm_regmap_init_spmi_base\s*\('
+      description: "为 SPMI 基础设备创建 regmap"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_regmap_init_spmi_ext\s*\('
+      description: "为 SPMI 扩展设备创建 regmap"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_regmap_init_slimbus\s*\('
+      description: "为 SLIMbus 设备创建 regmap"
+      context: "process"
+      can_sleep: true
+
+    # 释放
+    - pattern: 'regmap_exit\s*\(\s*(?P<map>[^)]+)\s*\)'
+      description: "释放 regmap (非 devm 版本需要)"
+      context: "process"
+
+
+# ============================================================
+# REGMAP READ API
+# ============================================================
+
+regmap_read:
+  description: "Regmap Read API - 寄存器读取"
+  header: "linux/regmap.h"
+  icon: "📖"
+
+  patterns:
+    # 单寄存器读取
+    - pattern: 'regmap_read\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "读取单个寄存器"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "map"
+          type: "struct regmap *"
+          description: "regmap 实例"
+        - name: "reg"
+          type: "unsigned int"
+          description: "寄存器地址"
+        - name: "val"
+          type: "unsigned int *"
+          description: "读取值的指针"
+      return: "0 成功, 负数错误码"
+      notes:
+        - "可能睡眠 (I2C/SPI)"
+        - "返回值通过指针参数传递"
+
+    # 批量读取
+    - pattern: 'regmap_bulk_read\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<val>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      description: "批量读取连续寄存器"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "map"
+          type: "struct regmap *"
+          description: "regmap 实例"
+        - name: "reg"
+          type: "unsigned int"
+          description: "起始寄存器地址"
+        - name: "val"
+          type: "void *"
+          description: "数据缓冲区"
+        - name: "count"
+          type: "size_t"
+          description: "读取寄存器数量"
+      return: "0 成功, 负数错误码"
+
+    # 原始读取
+    - pattern: 'regmap_raw_read\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<val>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "原始读取 (不处理字节序)"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "不进行字节序转换"
+        - "直接读取原始字节"
+
+    # 带掩码读取
+    - pattern: 'regmap_read_poll_timeout\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<val>[^,]+)\s*,\s*(?P<cond>[^,]+)\s*,\s*(?P<sleep_us>[^,]+)\s*,\s*(?P<timeout_us>[^)]+)\s*\)'
+      description: "轮询读取直到条件满足或超时"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "用于等待硬件状态改变"
+        - "sleep_us 为每次轮询间隔"
+
+
+# ============================================================
+# REGMAP WRITE API
+# ============================================================
+
+regmap_write:
+  description: "Regmap Write API - 寄存器写入"
+  header: "linux/regmap.h"
+  icon: "✏️"
+
+  patterns:
+    # 单寄存器写入
+    - pattern: 'regmap_write\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入单个寄存器"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "map"
+          type: "struct regmap *"
+          description: "regmap 实例"
+        - name: "reg"
+          type: "unsigned int"
+          description: "寄存器地址"
+        - name: "val"
+          type: "unsigned int"
+          description: "要写入的值"
+      return: "0 成功, 负数错误码"
+
+    # 批量写入
+    - pattern: 'regmap_bulk_write\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<val>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+      description: "批量写入连续寄存器"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "count"
+          type: "size_t"
+          description: "写入寄存器数量"
+
+    # 原始写入
+    - pattern: 'regmap_raw_write\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<val>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+      description: "原始写入 (不处理字节序)"
+      context: "process"
+      can_sleep: true
+
+    # 多寄存器写入
+    - pattern: 'regmap_multi_reg_write\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<regs>[^,]+)\s*,\s*(?P<num_regs>[^)]+)\s*\)'
+      description: "写入多个不连续的寄存器"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "regs"
+          type: "const struct reg_sequence *"
+          description: "寄存器序列数组"
+        - name: "num_regs"
+          type: "int"
+          description: "寄存器数量"
+
+    # 序列写入
+    - pattern: 'regmap_register_patch\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<regs>[^,]+)\s*,\s*(?P<num_regs>[^)]+)\s*\)'
+      description: "应用寄存器补丁序列"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# REGMAP UPDATE API
+# ============================================================
+
+regmap_update:
+  description: "Regmap Update API - 位更新操作"
+  header: "linux/regmap.h"
+  icon: "🔄"
+
+  patterns:
+    # 位更新 (读-改-写)
+    - pattern: 'regmap_update_bits\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<mask>[^,]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "原子更新寄存器位 (读-改-写)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "map"
+          type: "struct regmap *"
+          description: "regmap 实例"
+        - name: "reg"
+          type: "unsigned int"
+          description: "寄存器地址"
+        - name: "mask"
+          type: "unsigned int"
+          description: "要修改的位掩码"
+        - name: "val"
+          type: "unsigned int"
+          description: "新值 (只修改 mask 指定的位)"
+      return: "0 成功, 负数错误码"
+      notes:
+        - "执行 (old & ~mask) | (val & mask)"
+        - "原子操作，线程安全"
+        - "非常常用，用于修改单个或多个位"
+
+    # 带检查的位更新
+    - pattern: 'regmap_update_bits_check\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<mask>[^,]+)\s*,\s*(?P<val>[^,]+)\s*,\s*(?P<change>[^)]+)\s*\)'
+      description: "更新位并检查是否有变化"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "change"
+          type: "bool *"
+          description: "输出: 寄存器是否被修改"
+
+    # 异步位更新
+    - pattern: 'regmap_update_bits_async\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<mask>[^,]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "异步更新寄存器位"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "不等待写入完成"
+        - "需要后续 regmap_async_complete() 等待"
+
+    # 写入带掩码
+    - pattern: 'regmap_write_bits\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<mask>[^,]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入带掩码 (不读取原值)"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "某些硬件支持直接带掩码写入"
+        - "不需要先读取原值"
+
+    # 设置/清除位
+    - pattern: 'regmap_set_bits\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<bits>[^)]+)\s*\)'
+      description: "设置指定位"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "等同于 regmap_update_bits(map, reg, bits, bits)"
+
+    - pattern: 'regmap_clear_bits\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<bits>[^)]+)\s*\)'
+      description: "清除指定位"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "等同于 regmap_update_bits(map, reg, bits, 0)"
+
+    - pattern: 'regmap_test_bits\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<reg>[^,]+)\s*,\s*(?P<bits>[^)]+)\s*\)'
+      description: "测试指定位是否设置"
+      context: "process"
+      can_sleep: true
+      return: "1 已设置, 0 未设置, 负数错误"
+
+
+# ============================================================
+# REGMAP FIELD API
+# ============================================================
+
+regmap_field:
+  description: "Regmap Field API - 寄存器字段操作"
+  header: "linux/regmap.h"
+  icon: "🔢"
+
+  overview: |
+    Regmap Field API 提供更高级的寄存器字段抽象。
+    字段可以跨越多个位，自动处理位移和掩码。
+    
+    使用流程:
+    1. 定义 reg_field 描述字段位置
+    2. 使用 devm_regmap_field_alloc() 创建字段
+    3. 使用 regmap_field_read/write() 操作字段
+
+  patterns:
+    # 字段分配
+    - pattern: 'devm_regmap_field_alloc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<regmap>[^,]+)\s*,\s*(?P<reg_field>[^)]+)\s*\)'
+      description: "分配 regmap 字段 (devm 管理)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "dev"
+          type: "struct device *"
+          description: "设备指针"
+        - name: "regmap"
+          type: "struct regmap *"
+          description: "regmap 实例"
+        - name: "reg_field"
+          type: "struct reg_field"
+          description: "字段定义"
+      return: "struct regmap_field * 或 ERR_PTR"
+
+    - pattern: 'devm_regmap_field_bulk_alloc\s*\('
+      description: "批量分配多个 regmap 字段"
+      context: "process"
+      can_sleep: true
+
+    # 字段读取
+    - pattern: 'regmap_field_read\s*\(\s*(?P<field>[^,]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "读取寄存器字段"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "field"
+          type: "struct regmap_field *"
+          description: "字段指针"
+        - name: "val"
+          type: "unsigned int *"
+          description: "读取值的指针"
+      return: "0 成功, 负数错误码"
+      notes:
+        - "自动处理位移和掩码"
+        - "返回字段的逻辑值 (已移位)"
+
+    # 字段写入
+    - pattern: 'regmap_field_write\s*\(\s*(?P<field>[^,]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入寄存器字段"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "field"
+          type: "struct regmap_field *"
+          description: "字段指针"
+        - name: "val"
+          type: "unsigned int"
+          description: "要写入的值"
+      return: "0 成功, 负数错误码"
+      notes:
+        - "自动处理位移和掩码"
+        - "传入字段的逻辑值 (框架自动移位)"
+
+    # 字段更新
+    - pattern: 'regmap_field_update_bits\s*\(\s*(?P<field>[^,]+)\s*,\s*(?P<mask>[^,]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "更新寄存器字段的指定位"
+      context: "process"
+      can_sleep: true
+
+    # 字段强制更新
+    - pattern: 'regmap_field_force_write\s*\(\s*(?P<field>[^,]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "强制写入字段 (绕过缓存)"
+      context: "process"
+      can_sleep: true
+
+  reg_field_structure:
+    description: "reg_field 结构定义字段位置"
+    macro: "REG_FIELD(reg, lsb, msb)"
+    fields:
+      - name: "reg"
+        type: "unsigned int"
+        description: "寄存器地址"
+      - name: "lsb"
+        type: "unsigned int"
+        description: "最低有效位"
+      - name: "msb"
+        type: "unsigned int"
+        description: "最高有效位"
+    example: |
+      /* 定义字段: 寄存器 0x10, 位 [7:4] */
+      static const struct reg_field my_field = REG_FIELD(0x10, 4, 7);
+
+
+# ============================================================
+# REGMAP CONFIG
+# ============================================================
+
+regmap_config:
+  description: "Regmap Config - regmap 配置结构"
+  header: "linux/regmap.h"
+  icon: "⚙️"
+
+  structure:
+    pattern: 'static\s+(?:const\s+)?struct regmap_config\s+(?P<name>\w+)\s*=\s*\{'
+    description: "regmap 配置结构体定义"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "regmap 名称 (用于调试)"
+      - name: "reg_bits"
+        type: "int"
+        description: "寄存器地址位宽 (8/16/32)"
+      - name: "reg_stride"
+        type: "int"
+        description: "寄存器地址步进 (默认 1)"
+      - name: "pad_bits"
+        type: "int"
+        description: "寄存器和值之间的填充位"
+      - name: "val_bits"
+        type: "int"
+        description: "寄存器值位宽 (8/16/32)"
+      - name: "writeable_reg"
+        type: "bool (*)(struct device *, unsigned int)"
+        description: "检查寄存器是否可写"
+      - name: "readable_reg"
+        type: "bool (*)(struct device *, unsigned int)"
+        description: "检查寄存器是否可读"
+      - name: "volatile_reg"
+        type: "bool (*)(struct device *, unsigned int)"
+        description: "检查寄存器是否易失 (不可缓存)"
+      - name: "precious_reg"
+        type: "bool (*)(struct device *, unsigned int)"
+        description: "检查寄存器是否珍贵 (读取会有副作用)"
+      - name: "writeable_noinc_reg"
+        type: "bool (*)(struct device *, unsigned int)"
+        description: "检查是否支持非递增写入"
+      - name: "readable_noinc_reg"
+        type: "bool (*)(struct device *, unsigned int)"
+        description: "检查是否支持非递增读取"
+      - name: "disable_locking"
+        type: "bool"
+        description: "禁用内部锁定"
+      - name: "lock"
+        type: "void (*)(void *)"
+        description: "自定义锁定函数"
+      - name: "unlock"
+        type: "void (*)(void *)"
+        description: "自定义解锁函数"
+      - name: "lock_arg"
+        type: "void *"
+        description: "锁定函数参数"
+      - name: "reg_read"
+        type: "int (*)(void *, unsigned int, unsigned int *)"
+        description: "自定义读取函数"
+      - name: "reg_write"
+        type: "int (*)(void *, unsigned int, unsigned int)"
+        description: "自定义写入函数"
+      - name: "fast_io"
+        type: "bool"
+        description: "使用自旋锁而非互斥锁"
+      - name: "max_register"
+        type: "unsigned int"
+        description: "最大寄存器地址 (用于调试)"
+      - name: "wr_table"
+        type: "const struct regmap_access_table *"
+        description: "可写寄存器表"
+      - name: "rd_table"
+        type: "const struct regmap_access_table *"
+        description: "可读寄存器表"
+      - name: "volatile_table"
+        type: "const struct regmap_access_table *"
+        description: "易失寄存器表"
+      - name: "precious_table"
+        type: "const struct regmap_access_table *"
+        description: "珍贵寄存器表"
+      - name: "reg_defaults"
+        type: "const struct reg_default *"
+        description: "默认寄存器值数组"
+      - name: "num_reg_defaults"
+        type: "unsigned int"
+        description: "默认值数量"
+      - name: "cache_type"
+        type: "enum regcache_type"
+        description: "缓存类型"
+      - name: "reg_defaults_raw"
+        type: "const void *"
+        description: "原始默认值"
+      - name: "num_reg_defaults_raw"
+        type: "unsigned int"
+        description: "原始默认值数量"
+      - name: "use_single_read"
+        type: "bool"
+        description: "强制单次读取"
+      - name: "use_single_write"
+        type: "bool"
+        description: "强制单次写入"
+      - name: "can_multi_write"
+        type: "bool"
+        description: "支持多寄存器写入"
+      - name: "use_relaxed_mmio"
+        type: "bool"
+        description: "MMIO 使用 relaxed 版本"
+      - name: "read_flag_mask"
+        type: "unsigned int"
+        description: "SPI 读取标志掩码"
+      - name: "write_flag_mask"
+        type: "unsigned int"
+        description: "SPI 写入标志掩码"
+      - name: "zero_flag_mask"
+        type: "bool"
+        description: "使用 0 作为读取标志"
+      - name: "ranges"
+        type: "const struct regmap_range_cfg *"
+        description: "范围配置 (用于分页)"
+      - name: "num_ranges"
+        type: "unsigned int"
+        description: "范围数量"
+
+  cache_types:
+    - name: "REGCACHE_NONE"
+      description: "不缓存"
+    - name: "REGCACHE_RBTREE"
+      description: "红黑树缓存 (稀疏寄存器)"
+    - name: "REGCACHE_COMPRESSED"
+      description: "压缩缓存 (废弃)"
+    - name: "REGCACHE_FLAT"
+      description: "平坦数组缓存 (连续寄存器)"
+    - name: "REGCACHE_MAPLE"
+      description: "Maple Tree 缓存 (6.0+)"
+
+
+# ============================================================
+# REGMAP CACHE
+# ============================================================
+
+regmap_cache:
+  description: "Regmap Cache - 寄存器缓存操作"
+  header: "linux/regmap.h"
+  icon: "💾"
+
+  patterns:
+    # 缓存同步
+    - pattern: 'regcache_sync\s*\(\s*(?P<map>[^)]+)\s*\)'
+      description: "同步缓存到硬件"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "写入所有脏 (dirty) 寄存器到硬件"
+        - "通常在 resume 时调用"
+
+    - pattern: 'regcache_sync_region\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<min>[^,]+)\s*,\s*(?P<max>[^)]+)\s*\)'
+      description: "同步指定范围的缓存"
+      context: "process"
+      can_sleep: true
+
+    # 缓存标记
+    - pattern: 'regcache_mark_dirty\s*\(\s*(?P<map>[^)]+)\s*\)'
+      description: "标记所有缓存为脏"
+      context: "process"
+      can_sleep: false
+      notes:
+        - "通常在 suspend 前调用"
+        - "不实际写入硬件"
+
+    # 缓存控制
+    - pattern: 'regcache_cache_only\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<enable>[^)]+)\s*\)'
+      description: "设置仅缓存模式"
+      context: "process"
+      can_sleep: false
+      notes:
+        - "enable=true: 读写只访问缓存"
+        - "用于设备断电期间保持状态"
+
+    - pattern: 'regcache_cache_bypass\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<enable>[^)]+)\s*\)'
+      description: "设置绕过缓存模式"
+      context: "process"
+      can_sleep: false
+      notes:
+        - "enable=true: 直接访问硬件"
+        - "用于调试或特殊操作"
+
+    # 缓存丢弃
+    - pattern: 'regcache_drop_region\s*\(\s*(?P<map>[^,]+)\s*,\s*(?P<min>[^,]+)\s*,\s*(?P<max>[^)]+)\s*\)'
+      description: "丢弃指定范围的缓存"
+      context: "process"
+      can_sleep: false
+
+
+# ============================================================
+# REGMAP IRQ
+# ============================================================
+
+regmap_irq:
+  description: "Regmap IRQ - 基于 regmap 的 IRQ 支持"
+  header: "linux/regmap.h"
+  icon: "⚡"
+
+  patterns:
+    # IRQ 芯片注册
+    - pattern: 'devm_regmap_add_irq_chip\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<regmap>[^,]+)\s*,\s*(?P<irq>[^,]+)\s*,\s*(?P<irq_flags>[^,]+)\s*,\s*(?P<irq_base>[^,]+)\s*,\s*&?(?P<chip>\w+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "添加 regmap IRQ 芯片 (devm 管理)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "dev"
+          type: "struct device *"
+          description: "设备指针"
+        - name: "regmap"
+          type: "struct regmap *"
+          description: "regmap 实例"
+        - name: "irq"
+          type: "int"
+          description: "父 IRQ 号"
+        - name: "irq_flags"
+          type: "unsigned int"
+          description: "IRQ 标志 (IRQF_*)"
+        - name: "irq_base"
+          type: "int"
+          description: "IRQ 基址 (-1 动态分配)"
+        - name: "chip"
+          type: "const struct regmap_irq_chip *"
+          description: "IRQ 芯片描述"
+        - name: "data"
+          type: "struct regmap_irq_chip_data **"
+          description: "输出: IRQ 芯片数据"
+
+    - pattern: 'regmap_add_irq_chip\s*\('
+      description: "添加 regmap IRQ 芯片 (手动管理)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'regmap_del_irq_chip\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "删除 regmap IRQ 芯片"
+      context: "process"
+      can_sleep: true
+
+    # IRQ 域操作
+    - pattern: 'regmap_irq_get_domain\s*\(\s*(?P<data>[^)]+)\s*\)'
+      description: "获取 IRQ 域"
+      context: "any"
+      can_sleep: false
+      return: "struct irq_domain *"
+
+    - pattern: 'regmap_irq_get_virq\s*\(\s*(?P<data>[^,]+)\s*,\s*(?P<irq>[^)]+)\s*\)'
+      description: "获取虚拟 IRQ 号"
+      context: "any"
+      can_sleep: false
+      return: "int virq"
+
+  regmap_irq_chip_structure:
+    description: "regmap_irq_chip 结构"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "IRQ 芯片名称"
+      - name: "status_base"
+        type: "unsigned int"
+        description: "状态寄存器基址"
+      - name: "mask_base"
+        type: "unsigned int"
+        description: "掩码寄存器基址"
+      - name: "unmask_base"
+        type: "unsigned int"
+        description: "取消掩码寄存器基址"
+      - name: "ack_base"
+        type: "unsigned int"
+        description: "确认寄存器基址"
+      - name: "wake_base"
+        type: "unsigned int"
+        description: "唤醒寄存器基址"
+      - name: "irq_reg_stride"
+        type: "int"
+        description: "寄存器步进"
+      - name: "init_ack_masked"
+        type: "bool"
+        description: "初始化时确认所有中断"
+      - name: "mask_invert"
+        type: "bool"
+        description: "掩码取反"
+      - name: "use_ack"
+        type: "bool"
+        description: "需要显式确认"
+      - name: "ack_invert"
+        type: "bool"
+        description: "确认取反"
+      - name: "wake_invert"
+        type: "bool"
+        description: "唤醒取反"
+      - name: "num_regs"
+        type: "int"
+        description: "寄存器数量"
+      - name: "irqs"
+        type: "const struct regmap_irq *"
+        description: "IRQ 描述数组"
+      - name: "num_irqs"
+        type: "int"
+        description: "IRQ 数量"
+
+
+# ============================================================
+# REGMAP HELPERS
+# ============================================================
+
+regmap_helpers:
+  description: "Regmap Helper Functions - 辅助函数"
+  header: "linux/regmap.h"
+  icon: "🛠️"
+
+  patterns:
+    # 获取 regmap
+    - pattern: 'dev_get_regmap\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "从设备获取 regmap"
+      context: "process"
+      can_sleep: false
+      parameters:
+        - name: "dev"
+          type: "struct device *"
+          description: "设备指针 (通常是父设备)"
+        - name: "name"
+          type: "const char *"
+          description: "regmap 名称 (NULL 获取默认)"
+      return: "struct regmap * 或 NULL"
+      notes:
+        - "子设备通过此函数获取父设备的 regmap"
+        - "MFD 子驱动常用模式"
+
+    # 获取设备
+    - pattern: 'regmap_get_device\s*\(\s*(?P<map>[^)]+)\s*\)'
+      description: "从 regmap 获取设备"
+      context: "any"
+      can_sleep: false
+      return: "struct device *"
+
+    # 异步完成
+    - pattern: 'regmap_async_complete\s*\(\s*(?P<map>[^)]+)\s*\)'
+      description: "等待所有异步操作完成"
+      context: "process"
+      can_sleep: true
+
+    # 范围检查
+    - pattern: 'regmap_check_range_table\s*\('
+      description: "检查寄存器是否在范围表中"
+      context: "any"
+      can_sleep: false
+
+    # 解析范围
+    - pattern: 'regmap_parse_val\s*\('
+      description: "解析寄存器值"
+      context: "any"
+      can_sleep: false
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  regmap_read_chain:
+    description: "regmap 读取调用链"
+    trigger: "regmap_read() 调用"
+    chain:
+      - function: "regmap_read"
+        file: "drivers/base/regmap/regmap.c"
+        description: "公共 API 入口"
+        context: "process"
+      - function: "_regmap_read"
+        file: "drivers/base/regmap/regmap.c"
+        description: "内部读取实现"
+      - function: "regcache_read (如果启用缓存)"
+        file: "drivers/base/regmap/regcache.c"
+        description: "缓存读取"
+      - function: "map->reg_read / map->bus->read"
+        file: "驱动代码"
+        description: "底层总线读取"
+        is_user_entry: false
+      - function: "i2c_transfer / spi_sync"
+        file: "drivers/i2c/ 或 drivers/spi/"
+        description: "总线传输"
+
+  regmap_write_chain:
+    description: "regmap 写入调用链"
+    trigger: "regmap_write() 调用"
+    chain:
+      - function: "regmap_write"
+        file: "drivers/base/regmap/regmap.c"
+        description: "公共 API 入口"
+        context: "process"
+      - function: "_regmap_write"
+        file: "drivers/base/regmap/regmap.c"
+        description: "内部写入实现"
+      - function: "regcache_write (如果启用缓存)"
+        file: "drivers/base/regmap/regcache.c"
+        description: "更新缓存"
+      - function: "map->reg_write / map->bus->write"
+        file: "驱动代码"
+        description: "底层总线写入"
+
+  regmap_irq_chain:
+    description: "regmap IRQ 处理链"
+    trigger: "父 IRQ 触发"
+    chain:
+      - function: "regmap_irq_thread"
+        file: "drivers/base/regmap/regmap-irq.c"
+        description: "线程化 IRQ 处理"
+        context: "process"
+      - function: "regmap_read (状态寄存器)"
+        description: "读取中断状态"
+      - function: "handle_nested_irq"
+        file: "kernel/irq/chip.c"
+        description: "处理子中断"
+      - function: "设备中断处理函数"
+        file: "用户代码"
+        description: "子设备处理函数"
+        is_user_entry: true
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 I2C regmap 驱动"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/i2c.h>
+      #include <linux/regmap.h>
+      
+      struct my_device {
+          struct device *dev;
+          struct regmap *regmap;
+      };
+      
+      /* regmap 配置 */
+      static const struct regmap_config my_regmap_config = {
+          .reg_bits = 8,
+          .val_bits = 8,
+          .max_register = 0xFF,
+          .cache_type = REGCACHE_RBTREE,
+      };
+      
+      static int my_probe(struct i2c_client *client)
+      {
+          struct my_device *dev;
+          unsigned int val;
+          int ret;
+          
+          dev = devm_kzalloc(&client->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+          
+          dev->dev = &client->dev;
+          
+          /* 创建 regmap */
+          dev->regmap = devm_regmap_init_i2c(client, &my_regmap_config);
+          if (IS_ERR(dev->regmap)) {
+              dev_err(&client->dev, "Failed to init regmap\n");
+              return PTR_ERR(dev->regmap);
+          }
+          
+          /* 读取 ID 寄存器 */
+          ret = regmap_read(dev->regmap, REG_ID, &val);
+          if (ret) {
+              dev_err(&client->dev, "Failed to read ID\n");
+              return ret;
+          }
+          
+          /* 使用 update_bits 修改配置 */
+          ret = regmap_update_bits(dev->regmap, REG_CTRL,
+                                   CTRL_ENABLE | CTRL_MODE,
+                                   CTRL_ENABLE);
+          if (ret)
+              return ret;
+          
+          i2c_set_clientdata(client, dev);
+          return 0;
+      }
+
+  - description: "带字段 API 的驱动"
+    kernel_version: "5.0+"
+    code: |
+      /* 字段定义 */
+      static const struct reg_field my_enable_field = REG_FIELD(0x10, 0, 0);
+      static const struct reg_field my_mode_field = REG_FIELD(0x10, 4, 7);
+      static const struct reg_field my_gain_field = REG_FIELD(0x20, 0, 3);
+      
+      struct my_device {
+          struct regmap *regmap;
+          struct regmap_field *f_enable;
+          struct regmap_field *f_mode;
+          struct regmap_field *f_gain;
+      };
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev;
+          unsigned int mode;
+          int ret;
+          
+          dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+          
+          /* 获取父设备的 regmap */
+          dev->regmap = dev_get_regmap(pdev->dev.parent, NULL);
+          if (!dev->regmap)
+              return -ENODEV;
+          
+          /* 分配字段 */
+          dev->f_enable = devm_regmap_field_alloc(&pdev->dev, dev->regmap,
+                                                   my_enable_field);
+          if (IS_ERR(dev->f_enable))
+              return PTR_ERR(dev->f_enable);
+          
+          dev->f_mode = devm_regmap_field_alloc(&pdev->dev, dev->regmap,
+                                                 my_mode_field);
+          if (IS_ERR(dev->f_mode))
+              return PTR_ERR(dev->f_mode);
+          
+          /* 使用字段 API */
+          ret = regmap_field_write(dev->f_enable, 1);  /* 启用 */
+          if (ret)
+              return ret;
+          
+          ret = regmap_field_read(dev->f_mode, &mode);
+          if (ret)
+              return ret;
+          
+          dev_info(&pdev->dev, "Current mode: %u\n", mode);
+          return 0;
+      }
+
+  - description: "带 IRQ 的 MFD 父驱动"
+    kernel_version: "5.0+"
+    code: |
+      /* IRQ 定义 */
+      static const struct regmap_irq my_irqs[] = {
+          [0] = { .mask = BIT(0), },  /* IRQ 0 */
+          [1] = { .mask = BIT(1), },  /* IRQ 1 */
+          [2] = { .mask = BIT(2), },  /* IRQ 2 */
+      };
+      
+      static const struct regmap_irq_chip my_irq_chip = {
+          .name = "my-device",
+          .status_base = REG_IRQ_STATUS,
+          .mask_base = REG_IRQ_MASK,
+          .ack_base = REG_IRQ_ACK,
+          .num_regs = 1,
+          .irqs = my_irqs,
+          .num_irqs = ARRAY_SIZE(my_irqs),
+      };
+      
+      struct my_mfd {
+          struct regmap *regmap;
+          struct regmap_irq_chip_data *irq_data;
+      };
+      
+      static int my_mfd_probe(struct i2c_client *client)
+      {
+          struct my_mfd *mfd;
+          int ret;
+          
+          mfd = devm_kzalloc(&client->dev, sizeof(*mfd), GFP_KERNEL);
+          if (!mfd)
+              return -ENOMEM;
+          
+          mfd->regmap = devm_regmap_init_i2c(client, &my_regmap_config);
+          if (IS_ERR(mfd->regmap))
+              return PTR_ERR(mfd->regmap);
+          
+          /* 添加 IRQ 芯片 */
+          ret = devm_regmap_add_irq_chip(&client->dev, mfd->regmap,
+                                         client->irq,
+                                         IRQF_ONESHOT | IRQF_SHARED,
+                                         0, &my_irq_chip,
+                                         &mfd->irq_data);
+          if (ret)
+              return ret;
+          
+          /* 获取 IRQ 域给子设备使用 */
+          struct irq_domain *domain = regmap_irq_get_domain(mfd->irq_data);
+          
+          /* 添加 MFD 子设备... */
+          return devm_mfd_add_devices(&client->dev, PLATFORM_DEVID_AUTO,
+                                      my_cells, ARRAY_SIZE(my_cells),
+                                      NULL, 0, domain);
+      }
+
+  - description: "PM 操作示例"
+    kernel_version: "5.0+"
+    code: |
+      static int my_suspend(struct device *dev)
+      {
+          struct my_device *mydev = dev_get_drvdata(dev);
+          
+          /* 标记缓存为脏，准备恢复时重写 */
+          regcache_mark_dirty(mydev->regmap);
+          
+          /* 设置仅缓存模式 (设备断电后) */
+          regcache_cache_only(mydev->regmap, true);
+          
+          return 0;
+      }
+      
+      static int my_resume(struct device *dev)
+      {
+          struct my_device *mydev = dev_get_drvdata(dev);
+          int ret;
+          
+          /* 退出仅缓存模式 */
+          regcache_cache_only(mydev->regmap, false);
+          
+          /* 同步缓存到硬件 */
+          ret = regcache_sync(mydev->regmap);
+          if (ret) {
+              dev_err(dev, "Failed to sync regcache\n");
+              return ret;
+          }
+          
+          return 0;
+      }
+      
+      static DEFINE_SIMPLE_DEV_PM_OPS(my_pm_ops, my_suspend, my_resume);

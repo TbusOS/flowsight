@@ -24,11 +24,19 @@ mm_core:
     - pattern: 'kmalloc\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "size"
       description: "内核堆分配"
+      can_sleep: "depends on GFP flags"
+      note: |
+        can_sleep 取决于 GFP 标志:
+        - GFP_KERNEL: can_sleep = true (进程上下文)
+        - GFP_ATOMIC: can_sleep = false (可在中断上下文使用)
+        - GFP_NOWAIT: can_sleep = false
 
     # kzalloc - 零初始化分配
     - pattern: 'kzalloc\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "size"
       description: "零初始化内存分配"
+      can_sleep: "depends on GFP flags"
+      note: "同 kmalloc，can_sleep 由 GFP 标志决定"
 
     # kmalloc_array - 数组分配
     - pattern: 'kmalloc_array\s*\(\s*(?P<n>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
@@ -49,21 +57,33 @@ mm_core:
     - pattern: 'kfree\s*\(\s*(?P<ptr>[^)]+)\s*\)'
       variable_capture: "ptr"
       description: "释放内核内存"
+      can_sleep: false
+      context: "any"
+      note: "可在任何上下文调用，包括中断上下文"
 
     # vmalloc - 虚拟内存分配
     - pattern: 'vmalloc\s*\(\s*(?P<size>[^)]+)\s*\)'
       variable_capture: "size"
       description: "虚拟内存分配"
+      can_sleep: true
+      context: "process"
+      note: "始终可能睡眠，不能在中断/原子上下文使用"
 
     # vzalloc - 零初始化虚拟内存分配
     - pattern: 'vzalloc\s*\(\s*(?P<size>[^)]+)\s*\)'
       variable_capture: "size"
       description: "零初始化虚拟内存分配"
+      can_sleep: true
+      context: "process"
+      note: "始终可能睡眠"
 
     # vfree - 释放虚拟内存
     - pattern: 'vfree\s*\(\s*(?P<addr>[^)]+)\s*\)'
       variable_capture: "addr"
       description: "释放虚拟内存"
+      can_sleep: "may sleep"
+      context: "process or softirq"
+      note: "可能触发 TLB flush IPI，在 softirq 中延迟释放"
 
     # __get_free_pages - 获取页
     - pattern: '__get_free_pages\s*\(\s*(?P<flags>\w+)\s*,\s*(?P<order>\w+)\s*\)'
@@ -112,21 +132,29 @@ mm_core:
 
   call_chains:
     kmalloc_path:
-      description: "kmalloc 分配路径"
+      description: "kmalloc 分配路径 (SLUB 分配器)"
       trigger: "调用 kmalloc()"
+      note: "现代内核默认使用 SLUB 分配器"
       chain:
         - function: "kmalloc"
           file: "include/linux/slab.h"
-          description: "内联封装"
+          description: "内联封装，根据大小选择路径"
         - function: "__kmalloc"
-          file: "mm/slab.c"
-          description: "SLAB 分配实现"
+          file: "mm/slub.c"
+          description: "SLUB 分配实现"
+        - function: "kmalloc_slab"
+          file: "mm/slub.c"
+          description: "选择合适的 kmem_cache"
         - function: "slab_alloc"
-          file: "mm/slab.c"
-          description: "从 slab 分配"
-        - function: "cache_alloc_refill"
-          file: "mm/slab.c"
-          description: "refill 本地缓存"
+          file: "mm/slub.c"
+          description: "从 slab 分配对象"
+        - function: "slab_alloc_node"
+          file: "mm/slub.c"
+          description: "从指定 NUMA 节点分配"
+        - function: "___slab_alloc"
+          file: "mm/slub.c"
+          description: "慢路径分配 (需要新页)"
+          note: "如果 GFP 允许阻塞，此处可能睡眠"
 
     vmalloc_path:
       description: "vmalloc 分配路径"
@@ -608,18 +636,44 @@ gfp_flags:
   icon: "🏷️"
   kernel_version: "2.6+"
 
+  sleep_behavior:
+    description: |
+      GFP 标志决定内存分配是否可以睡眠。
+      关键判断：包含 __GFP_DIRECT_RECLAIM 的标志可以睡眠。
+      使用 gfpflags_allow_blocking(gfp) 检查是否允许阻塞。
+    can_sleep_flags:
+      - "GFP_KERNEL"
+      - "GFP_KERNEL_ACCOUNT"
+      - "GFP_NOIO"
+      - "GFP_NOFS"
+      - "GFP_USER"
+      - "GFP_HIGHUSER"
+      - "GFP_HIGHUSER_MOVABLE"
+    cannot_sleep_flags:
+      - "GFP_ATOMIC"
+      - "GFP_NOWAIT"
+
   bind_patterns:
     # GFP_KERNEL - 普通内核分配
     - pattern: 'GFP_KERNEL'
       description: "普通内核分配 (可能睡眠)"
+      can_sleep: true
+      context: "process"
+      note: "包含 __GFP_DIRECT_RECLAIM，可进入直接回收"
 
     # GFP_ATOMIC - 原子分配
     - pattern: 'GFP_ATOMIC'
       description: "原子上下文分配 (不能睡眠)"
+      can_sleep: false
+      context: "any (including hardirq, softirq)"
+      note: "不包含 __GFP_DIRECT_RECLAIM，高优先级访问原子储备"
 
     # GFP_NOWAIT - 不等待分配
     - pattern: 'GFP_NOWAIT'
       description: "不等待内存分配"
+      can_sleep: false
+      context: "any"
+      note: "不触发直接回收，不启动 IO，不调用文件系统"
 
     # GFP_NOIO - 不触发 IO 操作
     - pattern: 'GFP_NOIO'

@@ -23,6 +23,9 @@ irq_handler:
     # request_irq - 标准中断请求
     - pattern: 'request_irq\s*\(\s*(?P<irq>[^,]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<dev_id>[^)]+)\s*\)'
       handler_capture: "handler"
+      can_sleep: true
+      context: "process"
+      note: "内部调用 kmalloc(GFP_KERNEL)，必须在进程上下文调用"
       extra_captures:
         - name: "irq"
           description: "中断号"
@@ -36,6 +39,9 @@ irq_handler:
     # devm_request_irq - 资源管理版本
     - pattern: 'devm_request_irq\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<irq>[^,]+)\s*,\s*(?P<handler>\w+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<dev_id>[^)]+)\s*\)'
       handler_capture: "handler"
+      can_sleep: true
+      context: "process"
+      note: "设备管理版本，自动释放"
       extra_captures:
         - name: "dev"
           description: "struct device 指针"
@@ -51,10 +57,16 @@ irq_handler:
       variable_capture: "irq"
       behavior: "sync"
       description: "释放中断"
+      can_sleep: true
+      context: "process"
+      note: "会等待正在执行的中断处理函数完成 (synchronize_irq)"
 
     - pattern: 'devm_free_irq\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<irq>[^,]+)\s*,\s*(?P<dev_id>[^)]*)\s*\)'
       variable_capture: "irq"
       description: "释放 devm 管理的中断"
+      can_sleep: true
+      context: "process"
+      note: "同 free_irq，设备管理版本"
 
   handler_signature:
     return_type: "irqreturn_t"
@@ -444,11 +456,31 @@ irq_domain:
   icon: "🗺️"
   kernel_version: "3.1+"
 
+  # 验证统计 (2026-02-04):
+  #   irq_domain_add_linear: 111 调用
+  #   irq_domain_add_hierarchy: 8 调用
+  #   irq_create_mapping: 89 调用
+  #   irq_find_mapping: 213 调用
+
   context:
     type: "process"
     can_sleep: true
     can_schedule: true
     preemptible: true
+
+  overview: |
+    IRQ Domain 框架用于将硬件中断号 (hwirq) 映射到 Linux 虚拟中断号 (virq)。
+    
+    映射类型:
+    - 线性映射: 适合连续的中断号，使用数组
+    - 树状映射: 适合稀疏的中断号，使用基数树
+    - 层次结构: 适合级联中断控制器
+    
+    典型使用场景:
+    - GPIO 控制器的中断域
+    - PMIC 的中断域
+    - MFD 设备的中断域
+    - 级联中断控制器
 
   structure:
     pattern: 'static\s+(?:const\s+)?struct\s+irq_domain_ops\s+(?P<name>\w+)\s*=\s*\{'
@@ -489,55 +521,173 @@ irq_domain:
     # irq_domain_add_linear - 线性映射
     - pattern: 'irq_domain_add_linear\s*\(\s*(?P<node>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*&?(?P<ops>\w+)\s*,\s*(?P<host_data>[^)]+)\s*\)'
       description: "创建线性映射 IRQ domain"
-      extra_captures:
+      context: "process"
+      can_sleep: true
+      parameters:
         - name: "node"
+          type: "struct device_node *"
           description: "设备树节点"
         - name: "size"
+          type: "unsigned int"
           description: "中断数量"
         - name: "ops"
+          type: "const struct irq_domain_ops *"
           description: "irq_domain_ops 结构体"
         - name: "host_data"
+          type: "void *"
           description: "私有数据"
+      return: "struct irq_domain * 或 NULL"
+      notes:
+        - "可能睡眠 (分配内存)"
+        - "适合连续中断号"
 
     # irq_domain_add_tree - 树状映射
     - pattern: 'irq_domain_add_tree\s*\(\s*(?P<node>[^,]+)\s*,\s*&?(?P<ops>\w+)\s*,\s*(?P<host_data>[^)]+)\s*\)'
       description: "创建树状映射 IRQ domain (稀疏中断号)"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "使用基数树存储映射"
+        - "适合稀疏中断号"
 
     # irq_domain_add_simple - 简单线性
     - pattern: 'irq_domain_add_simple\s*\(\s*(?P<node>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<first_irq>[^,]+)\s*,\s*&?(?P<ops>\w+)\s*,\s*(?P<host_data>[^)]+)\s*\)'
       description: "创建简单 IRQ domain (支持传统中断号)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "first_irq"
+          type: "unsigned int"
+          description: "第一个传统 IRQ 号 (0 为动态分配)"
 
     # irq_domain_add_hierarchy - 层次结构
     - pattern: 'irq_domain_add_hierarchy\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<node>[^,]+)\s*,\s*&?(?P<ops>\w+)\s*,\s*(?P<host_data>[^)]+)\s*\)'
       description: "创建层次结构 IRQ domain"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "parent"
+          type: "struct irq_domain *"
+          description: "父 IRQ domain"
+        - name: "flags"
+          type: "unsigned int"
+          description: "域标志"
+        - name: "size"
+          type: "unsigned int"
+          description: "中断数量"
+      notes:
+        - "用于级联中断控制器"
+        - "子域中断会路由到父域"
+
+    # irq_domain_create_linear - 新版本 API
+    - pattern: 'irq_domain_create_linear\s*\(\s*(?P<fwnode>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*&?(?P<ops>\w+)\s*,\s*(?P<host_data>[^)]+)\s*\)'
+      description: "创建线性映射 IRQ domain (fwnode 版本)"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "使用 fwnode 而非 device_node"
+        - "支持 ACPI"
 
     # irq_domain_remove - 删除 domain
     - pattern: 'irq_domain_remove\s*\(\s*(?P<domain>[\w\.\->]+)\s*\)'
       description: "删除 IRQ domain"
+      context: "process"
+      can_sleep: true
 
   helper_functions:
     - pattern: 'irq_find_mapping\s*\(\s*(?P<domain>[^,]+)\s*,\s*(?P<hwirq>[^)]+)\s*\)'
       description: "查找 hwirq 对应的 virq"
-      return: "unsigned int virq"
+      context: "any"
+      can_sleep: false
+      parameters:
+        - name: "domain"
+          type: "struct irq_domain *"
+          description: "IRQ 域"
+        - name: "hwirq"
+          type: "irq_hw_number_t"
+          description: "硬件中断号"
+      return: "unsigned int virq (0 表示未找到)"
+      notes:
+        - "不睡眠，可在中断上下文调用"
+        - "常用于级联中断处理函数"
 
     - pattern: 'irq_create_mapping\s*\(\s*(?P<domain>[^,]+)\s*,\s*(?P<hwirq>[^)]+)\s*\)'
       description: "创建 hwirq 到 virq 的映射"
-      return: "unsigned int virq"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "domain"
+          type: "struct irq_domain *"
+          description: "IRQ 域"
+        - name: "hwirq"
+          type: "irq_hw_number_t"
+          description: "硬件中断号"
+      return: "unsigned int virq (0 表示失败)"
+      notes:
+        - "可能睡眠 (分配 irq_desc)"
+        - "如果映射已存在，返回现有 virq"
+        - "调用 domain->ops->map()"
 
     - pattern: 'irq_create_of_mapping\s*\(\s*(?P<oirq>[^)]+)\s*\)'
       description: "从设备树规格创建映射"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "解析设备树中断规格"
+        - "自动查找对应的 IRQ domain"
 
     - pattern: 'irq_dispose_mapping\s*\(\s*(?P<virq>[^)]+)\s*\)'
       description: "删除映射"
+      context: "process"
+      can_sleep: true
 
     - pattern: 'irq_domain_xlate_onecell\s*\('
       description: "单 cell 中断规格翻译器"
+      context: "process"
+      can_sleep: false
+      notes:
+        - "设备树 #interrupt-cells = <1>"
+        - "cell[0] = hwirq"
 
     - pattern: 'irq_domain_xlate_twocell\s*\('
       description: "双 cell 中断规格翻译器"
+      context: "process"
+      can_sleep: false
+      notes:
+        - "设备树 #interrupt-cells = <2>"
+        - "cell[0] = hwirq, cell[1] = 触发类型"
 
     - pattern: 'irq_domain_xlate_onetwocell\s*\('
       description: "一或二 cell 中断规格翻译器"
+      context: "process"
+      can_sleep: false
+      notes:
+        - "自动支持 1 或 2 个 cell"
+
+    - pattern: 'irq_domain_alloc_irqs\s*\(\s*(?P<domain>[^,]+)\s*,\s*(?P<nr_irqs>[^,]+)\s*,\s*(?P<node>[^,]+)\s*,\s*(?P<arg>[^)]+)\s*\)'
+      description: "从域分配多个 IRQ"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "用于层次结构 IRQ domain"
+
+    - pattern: 'irq_domain_free_irqs\s*\(\s*(?P<virq>[^,]+)\s*,\s*(?P<nr_irqs>[^)]+)\s*\)'
+      description: "释放域分配的 IRQ"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'irq_domain_get_irq_data\s*\(\s*(?P<domain>[^,]+)\s*,\s*(?P<virq>[^)]+)\s*\)'
+      description: "获取指定域的 irq_data"
+      context: "any"
+      can_sleep: false
+      return: "struct irq_data *"
+
+    - pattern: 'irq_domain_set_hwirq_and_chip\s*\(\s*(?P<domain>[^,]+)\s*,\s*(?P<virq>[^,]+)\s*,\s*(?P<hwirq>[^,]+)\s*,\s*(?P<chip>[^,]+)\s*,\s*(?P<chip_data>[^)]+)\s*\)'
+      description: "设置 hwirq 和 irq_chip"
+      context: "process"
+      can_sleep: false
+      notes:
+        - "通常在 map 回调中调用"
 
   callbacks:
     map:
@@ -1545,11 +1695,14 @@ irq_control:
         description: "禁用本地 CPU 中断"
         context: "any"
         can_sleep: false
-        notes: "简单禁用，不保存状态，不可嵌套"
+        return: "void"
+        notes: "简单禁用，不保存状态，不可嵌套。禁用后进入原子上下文。"
 
       - pattern: 'local_irq_enable\s*\(\s*\)'
         description: "启用本地 CPU 中断"
         context: "中断禁用状态"
+        can_sleep: false
+        return: "void"
         notes: "简单启用，不可嵌套使用"
 
       - pattern: 'local_irq_save\s*\(\s*(?P<flags>\w+)\s*\)'
@@ -1637,23 +1790,36 @@ irq_control:
 
     - pattern: 'in_interrupt\s*\(\s*\)'
       description: "检查是否在中断上下文"
-      return: "非零表示在中断上下文"
+      can_sleep: false
+      context: "any"
+      return: "non-zero if in interrupt context (hardirq or softirq)"
+      note: "等价于 irq_count()，包括 hardirq 和 softirq"
 
     - pattern: 'in_irq\s*\(\s*\)'
       description: "检查是否在硬中断上下文"
-      return: "非零表示在硬中断"
+      can_sleep: false
+      context: "any"
+      return: "non-zero if in hardirq context"
+      note: "只检查 hardirq，不包括 softirq"
 
     - pattern: 'in_softirq\s*\(\s*\)'
       description: "检查是否在软中断上下文"
-      return: "非零表示在软中断"
+      can_sleep: false
+      context: "any"
+      return: "non-zero if in softirq context"
 
     - pattern: 'in_task\s*\(\s*\)'
       description: "检查是否在任务上下文"
-      return: "非零表示在任务上下文"
+      can_sleep: false
+      context: "any"
+      return: "non-zero if in task/process context"
+      note: "返回 true 表示可以睡眠 (除非持有锁)"
 
     - pattern: 'in_nmi\s*\(\s*\)'
       description: "检查是否在 NMI 上下文"
-      return: "非零表示在 NMI"
+      can_sleep: false
+      context: "any"
+      return: "non-zero if in NMI context"
 
   notes:
     - "local_irq_disable/enable 只影响当前 CPU"

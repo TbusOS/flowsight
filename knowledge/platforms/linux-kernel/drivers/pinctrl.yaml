@@ -518,38 +518,150 @@ pinctrl_consumer:
   description: "Pin Control Consumer API - 引脚控制消费者接口"
   header: "linux/pinctrl/consumer.h"
   icon: "🔗"
+  kernel_version: "3.1+"
+
+  # 验证统计 (2026-02-04):
+  #   pinctrl_get: 33 调用
+  #   devm_pinctrl_get: 24 调用
+  #   pinctrl_lookup_state: 42 调用
+  #   pinctrl_select_state: 34 调用
 
   context:
     type: "process"
     can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  overview: |
+    Pin Control 消费者 API 用于驱动程序控制引脚状态。
+    典型使用场景:
+    - 设备 probe 时选择默认引脚配置
+    - PM suspend/resume 切换引脚状态
+    - 运行时动态切换引脚功能
 
   registration:
     - pattern: 'pinctrl_get\s*\(\s*(?P<dev>[^)]+)\s*\)'
       description: "获取引脚控制句柄"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "dev"
+          type: "struct device *"
+          description: "设备指针"
+      return: "struct pinctrl * 或 ERR_PTR"
+      notes:
+        - "可能睡眠 (需要解析设备树)"
+        - "必须用 pinctrl_put() 释放"
+
     - pattern: 'devm_pinctrl_get\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      description: "资源管理方式获取"
+      description: "获取引脚控制句柄 (devm 管理)"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "dev"
+          type: "struct device *"
+          description: "设备指针"
+      return: "struct pinctrl * 或 ERR_PTR"
+      notes:
+        - "推荐使用，自动释放"
+        - "可能睡眠"
+
     - pattern: 'pinctrl_put\s*\(\s*(?P<p>[^)]+)\s*\)'
       description: "释放引脚控制句柄"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "只用于 pinctrl_get() 获取的句柄"
+        - "devm 版本自动释放"
+
+    - pattern: 'devm_pinctrl_put\s*\(\s*(?P<p>[^)]+)\s*\)'
+      description: "释放 devm 管理的引脚控制句柄"
+      context: "process"
+      can_sleep: true
 
   helper_functions:
-    - pattern: 'pinctrl_lookup_state\s*\(\s*(?P<p>[^)]+)\s*,\s*(?P<name>[^)]+)\s*\)'
-      description: "查找状态"
+    - pattern: 'pinctrl_lookup_state\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "查找引脚状态"
       context: "process"
-    - pattern: 'pinctrl_select_state\s*\(\s*(?P<p>[^)]+)\s*,\s*(?P<state>[^)]+)\s*\)'
-      description: "选择状态"
+      can_sleep: true
+      parameters:
+        - name: "p"
+          type: "struct pinctrl *"
+          description: "pinctrl 句柄"
+        - name: "name"
+          type: "const char *"
+          description: "状态名称 (default/sleep/idle 等)"
+      return: "struct pinctrl_state * 或 ERR_PTR"
+      notes:
+        - "状态名称对应设备树 pinctrl-names"
+        - "可能睡眠"
+
+    - pattern: 'pinctrl_select_state\s*\(\s*(?P<p>[^,]+)\s*,\s*(?P<state>[^)]+)\s*\)'
+      description: "选择并应用引脚状态"
       context: "process"
+      can_sleep: true
+      parameters:
+        - name: "p"
+          type: "struct pinctrl *"
+          description: "pinctrl 句柄"
+        - name: "state"
+          type: "struct pinctrl_state *"
+          description: "要应用的状态"
+      return: "0 成功, 负数错误码"
+      notes:
+        - "实际配置硬件"
+        - "可能睡眠"
+
     - pattern: 'pinctrl_select_default_state\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      description: "选择默认状态"
+      description: "选择默认引脚状态"
       context: "process"
+      can_sleep: true
+      notes:
+        - "便捷函数，自动获取并应用 default 状态"
+
     - pattern: 'pinctrl_pm_select_sleep_state\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      description: "选择睡眠状态"
+      description: "选择睡眠引脚状态 (PM)"
       context: "process"
+      can_sleep: true
+      notes:
+        - "用于 suspend 回调"
+        - "设备树需定义 sleep 状态"
+
     - pattern: 'pinctrl_pm_select_idle_state\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      description: "选择空闲状态"
+      description: "选择空闲引脚状态 (PM)"
       context: "process"
+      can_sleep: true
+      notes:
+        - "用于 runtime suspend"
+
     - pattern: 'pinctrl_pm_select_default_state\s*\(\s*(?P<dev>[^)]+)\s*\)'
-      description: "选择默认状态 (PM)"
+      description: "选择默认引脚状态 (PM)"
       context: "process"
+      can_sleep: true
+      notes:
+        - "用于 resume 回调"
+
+    - pattern: 'pinctrl_get_select\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "获取并选择指定状态"
+      context: "process"
+      can_sleep: true
+      notes:
+        - "组合了 get + lookup + select"
+
+    - pattern: 'pinctrl_get_select_default\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "获取并选择默认状态"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_pinctrl_get_select\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+      description: "获取并选择指定状态 (devm)"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'devm_pinctrl_get_select_default\s*\(\s*(?P<dev>[^)]+)\s*\)'
+      description: "获取并选择默认状态 (devm)"
+      context: "process"
+      can_sleep: true
 
   standard_states:
     - name: "PINCTRL_STATE_DEFAULT"

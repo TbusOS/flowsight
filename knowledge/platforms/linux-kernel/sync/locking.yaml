@@ -25,28 +25,33 @@ spinlock:
     - pattern: 'DEFINE_SPINLOCK\s*\(\s*(?P<lock>\w+)\s*\)'
       variable_capture: "lock"
       description: "静态定义并初始化自旋锁"
+      can_sleep: false
 
     # spinlock_t 变量定义
     - pattern: 'spinlock_t\s+(?P<lock>\w+)'
       variable_capture: "lock"
       description: "自旋锁变量声明"
+      can_sleep: false
 
     # spin_lock_init - 动态初始化
     - pattern: 'spin_lock_init\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "动态初始化自旋锁"
+      can_sleep: false
 
     # __SPIN_LOCK_UNLOCKED - 静态初始化器
     - pattern: '__SPIN_LOCK_UNLOCKED\s*\(\s*(?P<name>\w+)\s*\)'
       variable_capture: "name"
       description: "自旋锁静态初始化器"
+      can_sleep: false
 
-  # --- 获取锁 API ---
+  # --- 获取锁 API (完整变体) ---
   lock_patterns:
     # spin_lock - 基本获取
     - pattern: 'spin_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "获取自旋锁 (禁用抢占)"
+      can_sleep: false
       context: "process/softirq"
       notes:
         - "禁用抢占"
@@ -57,7 +62,8 @@ spinlock:
     - pattern: 'spin_lock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "获取自旋锁并禁用本地中断"
-      context: "process"
+      can_sleep: false
+      context: "disables_irq"
       notes:
         - "禁用本地中断"
         - "unlock 时无条件开启中断"
@@ -71,7 +77,8 @@ spinlock:
           type: "unsigned long"
           description: "保存的中断状态"
       description: "保存中断状态并获取自旋锁"
-      context: "any"
+      can_sleep: false
+      context: "saves_irq_state"
       notes:
         - "最安全的配对使用"
         - "保存原始中断状态"
@@ -82,7 +89,8 @@ spinlock:
     - pattern: 'spin_lock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "获取自旋锁并禁用软中断"
-      context: "process"
+      can_sleep: false
+      context: "disables_bh"
       notes:
         - "禁用软中断 (bottom half)"
         - "用于进程上下文与软中断共享数据"
@@ -91,36 +99,62 @@ spinlock:
     - pattern: 'spin_trylock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "尝试获取自旋锁 (非阻塞)"
-      return_type: "int (成功返回 1，失败返回 0)"
+      can_sleep: false
+      return_type: "int"
+      return: "1 on success, 0 on failure"
+
+    # spin_trylock_irq - 非阻塞+关闭中断
+    - pattern: 'spin_trylock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      variable_capture: "lock"
+      description: "尝试获取自旋锁并禁用中断"
+      can_sleep: false
+      context: "disables_irq"
+      return_type: "int"
+      return: "1 on success, 0 on failure"
 
     # spin_trylock_irqsave - 非阻塞+保存中断
     - pattern: 'spin_trylock_irqsave\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "lock"
       description: "尝试获取自旋锁并保存中断状态"
+      can_sleep: false
+      context: "saves_irq_state"
       return_type: "int"
+      return: "1 on success, 0 on failure"
 
     # spin_trylock_bh
     - pattern: 'spin_trylock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "尝试获取自旋锁并禁用软中断"
+      can_sleep: false
+      context: "disables_bh"
       return_type: "int"
+      return: "1 on success, 0 on failure"
 
-  # --- 释放锁 API ---
+  # --- 释放锁 API (完整变体) ---
   unlock_patterns:
     # spin_unlock - 基本释放
     - pattern: 'spin_unlock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "释放自旋锁"
+      can_sleep: false
+      context: "any"
 
     # spin_unlock_irq - 开启中断
     - pattern: 'spin_unlock_irq\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "释放自旋锁并开启中断"
+      can_sleep: false
+      context: "enables_irq"
+      notes:
+        - "无条件开启中断"
+        - "与 spin_lock_irq 配对"
 
     # spin_unlock_irqrestore - 恢复中断状态
     - pattern: 'spin_unlock_irqrestore\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*,\s*(?P<flags>\w+)\s*\)'
       variable_capture: "lock"
       description: "释放自旋锁并恢复中断状态"
+      can_sleep: false
+      context: "restores_irq_state"
       notes:
         - "与 spin_lock_irqsave 配对"
         - "恢复原始中断状态"
@@ -129,6 +163,11 @@ spinlock:
     - pattern: 'spin_unlock_bh\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
       variable_capture: "lock"
       description: "释放自旋锁并启用软中断"
+      can_sleep: false
+      context: "enables_bh"
+      notes:
+        - "与 spin_lock_bh 配对"
+        - "启用软中断处理"
 
   # --- 状态检查 ---
   status_patterns:
@@ -1669,3 +1708,611 @@ examples:
           do_write();
           percpu_up_write(&my_rwsem);
       }
+
+  - description: "RCU 使用示例 - 读多写少"
+    code: |
+      #include <linux/rcupdate.h>
+      #include <linux/slab.h>
+
+      struct my_data {
+          int value;
+          struct rcu_head rcu;
+      };
+
+      static struct my_data __rcu *global_ptr;
+
+      /* 读者 - 无锁 */
+      int read_value(void)
+      {
+          struct my_data *p;
+          int ret;
+
+          rcu_read_lock();
+          p = rcu_dereference(global_ptr);
+          if (p)
+              ret = p->value;
+          else
+              ret = -1;
+          rcu_read_unlock();
+
+          return ret;
+      }
+
+      /* RCU 回调函数 */
+      static void my_data_free(struct rcu_head *rcu)
+      {
+          struct my_data *p = container_of(rcu, struct my_data, rcu);
+          kfree(p);
+      }
+
+      /* 写者 - 替换指针 */
+      void update_value(int new_val)
+      {
+          struct my_data *old_ptr, *new_ptr;
+
+          new_ptr = kmalloc(sizeof(*new_ptr), GFP_KERNEL);
+          new_ptr->value = new_val;
+
+          spin_lock(&update_lock);
+          old_ptr = rcu_dereference_protected(global_ptr,
+                                              lockdep_is_held(&update_lock));
+          rcu_assign_pointer(global_ptr, new_ptr);
+          spin_unlock(&update_lock);
+
+          if (old_ptr)
+              call_rcu(&old_ptr->rcu, my_data_free);
+      }
+
+
+# ============================================================
+# RCU - Read-Copy-Update
+# ============================================================
+
+rcu:
+  description: "RCU - Read-Copy-Update 无锁同步机制"
+  header: "linux/rcupdate.h"
+  icon: "📖"
+  kernel_version: "2.6+"
+
+  context:
+    type: "rcu_read_side"
+    can_sleep: false   # RCU 读侧临界区不能睡眠
+    can_schedule: false
+    preemptible: false  # Classic RCU
+
+  # --- RCU 读侧 API ---
+  read_patterns:
+    # rcu_read_lock - 进入 RCU 读侧临界区
+    - pattern: 'rcu_read_lock\s*\(\s*\)'
+      description: "进入 RCU 读侧临界区"
+      can_sleep: false
+      context: "rcu_read_side"
+      notes:
+        - "禁止抢占 (Classic RCU)"
+        - "不禁用中断"
+        - "可嵌套调用"
+        - "开销极低"
+
+    # rcu_read_unlock - 退出 RCU 读侧临界区
+    - pattern: 'rcu_read_unlock\s*\(\s*\)'
+      description: "退出 RCU 读侧临界区"
+      can_sleep: false
+      context: "rcu_read_side"
+      notes:
+        - "与 rcu_read_lock 配对"
+        - "允许 grace period 推进"
+
+    # rcu_read_lock_bh - BH 变体
+    - pattern: 'rcu_read_lock_bh\s*\(\s*\)'
+      description: "进入 RCU-bh 读侧临界区"
+      can_sleep: false
+      context: "disables_bh"
+      notes:
+        - "禁用软中断"
+        - "用于 SOFTIRQ 上下文"
+
+    # rcu_read_unlock_bh
+    - pattern: 'rcu_read_unlock_bh\s*\(\s*\)'
+      description: "退出 RCU-bh 读侧临界区"
+      can_sleep: false
+      context: "enables_bh"
+
+    # rcu_read_lock_sched - SCHED 变体
+    - pattern: 'rcu_read_lock_sched\s*\(\s*\)'
+      description: "进入 RCU-sched 读侧临界区"
+      can_sleep: false
+      context: "preempt_disabled"
+      notes:
+        - "禁用抢占"
+        - "用于保护调度器数据"
+
+    # rcu_read_unlock_sched
+    - pattern: 'rcu_read_unlock_sched\s*\(\s*\)'
+      description: "退出 RCU-sched 读侧临界区"
+      can_sleep: false
+      context: "preempt_enabled"
+
+  # --- RCU 写侧/同步 API ---
+  sync_patterns:
+    # synchronize_rcu - 等待 grace period
+    - pattern: 'synchronize_rcu\s*\(\s*\)'
+      description: "等待所有 RCU 读者完成"
+      can_sleep: true
+      context: "process_only"
+      notes:
+        - "可能睡眠"
+        - "等待 grace period 结束"
+        - "只能在进程上下文调用"
+        - "开销较大，避免频繁调用"
+
+    # synchronize_rcu_expedited - 加速版本
+    - pattern: 'synchronize_rcu_expedited\s*\(\s*\)'
+      description: "加速等待 RCU grace period"
+      can_sleep: true
+      context: "process_only"
+      notes:
+        - "比 synchronize_rcu 更快"
+        - "但会发送 IPI，CPU 开销大"
+        - "仅在时间敏感场景使用"
+
+    # call_rcu - 延迟回调
+    - pattern: 'call_rcu\s*\(\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<func>\w+)\s*\)'
+      variable_capture: "head"
+      extra_captures:
+        - name: "func"
+          type: "rcu_callback_t"
+          description: "回调函数"
+      description: "注册 RCU 回调函数"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "不会阻塞"
+        - "回调在 grace period 后执行"
+        - "回调在 softirq 上下文执行"
+        - "常用于延迟释放内存"
+
+    # call_rcu_bh
+    - pattern: 'call_rcu_bh\s*\(\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<func>\w+)\s*\)'
+      variable_capture: "head"
+      description: "注册 RCU-bh 回调函数"
+      can_sleep: false
+
+    # synchronize_rcu_bh
+    - pattern: 'synchronize_rcu_bh\s*\(\s*\)'
+      description: "等待所有 RCU-bh 读者完成"
+      can_sleep: true
+      context: "process_only"
+
+    # synchronize_sched - SCHED 变体
+    - pattern: 'synchronize_sched\s*\(\s*\)'
+      description: "等待所有 RCU-sched 读者完成"
+      can_sleep: true
+      context: "process_only"
+
+  # --- RCU 指针操作 ---
+  pointer_patterns:
+    # rcu_dereference - 解引用 RCU 保护的指针
+    - pattern: 'rcu_dereference\s*\(\s*(?P<ptr>[\w\.\->]+)\s*\)'
+      variable_capture: "ptr"
+      description: "解引用 RCU 保护的指针"
+      can_sleep: false
+      context: "rcu_read_side"
+      notes:
+        - "必须在 rcu_read_lock/rcu_read_unlock 之间使用"
+        - "包含必要的内存屏障"
+        - "返回指针值"
+
+    # rcu_dereference_protected - 写侧解引用
+    - pattern: 'rcu_dereference_protected\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<cond>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "写侧解引用 RCU 保护的指针"
+      can_sleep: false
+      notes:
+        - "用于更新侧"
+        - "需要持有写锁或其他保护"
+        - "第二个参数是 lockdep 条件"
+
+    # rcu_dereference_check
+    - pattern: 'rcu_dereference_check\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<cond>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "带条件检查的 RCU 解引用"
+      can_sleep: false
+
+    # rcu_dereference_bh
+    - pattern: 'rcu_dereference_bh\s*\(\s*(?P<ptr>[\w\.\->]+)\s*\)'
+      variable_capture: "ptr"
+      description: "RCU-bh 指针解引用"
+      can_sleep: false
+      context: "rcu_bh_read_side"
+
+    # rcu_dereference_sched
+    - pattern: 'rcu_dereference_sched\s*\(\s*(?P<ptr>[\w\.\->]+)\s*\)'
+      variable_capture: "ptr"
+      description: "RCU-sched 指针解引用"
+      can_sleep: false
+      context: "rcu_sched_read_side"
+
+    # rcu_dereference_raw - 无检查版本
+    - pattern: 'rcu_dereference_raw\s*\(\s*(?P<ptr>[\w\.\->]+)\s*\)'
+      variable_capture: "ptr"
+      description: "无 lockdep 检查的 RCU 解引用"
+      can_sleep: false
+      notes:
+        - "跳过 lockdep 检查"
+        - "仅在特殊场景使用"
+
+    # rcu_assign_pointer - 发布 RCU 保护的指针
+    - pattern: 'rcu_assign_pointer\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "发布 RCU 保护的指针"
+      can_sleep: false
+      context: "update_side"
+      notes:
+        - "包含写内存屏障"
+        - "确保数据在指针之前可见"
+        - "写侧使用"
+
+    # RCU_INIT_POINTER - 初始化 RCU 指针
+    - pattern: 'RCU_INIT_POINTER\s*\(\s*(?P<ptr>[\w\.\->]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "初始化 RCU 指针 (无屏障)"
+      can_sleep: false
+      notes:
+        - "无内存屏障"
+        - "仅用于初始化"
+        - "或设置为 NULL"
+
+  # --- RCU 列表操作 ---
+  list_patterns:
+    # list_add_rcu
+    - pattern: 'list_add_rcu\s*\(\s*&?(?P<new>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "RCU 保护的链表头插"
+      can_sleep: false
+      notes:
+        - "原子地添加到链表头部"
+        - "读者可以看到一致的视图"
+
+    # list_add_tail_rcu
+    - pattern: 'list_add_tail_rcu\s*\(\s*&?(?P<new>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*\)'
+      description: "RCU 保护的链表尾插"
+      can_sleep: false
+
+    # list_del_rcu
+    - pattern: 'list_del_rcu\s*\(\s*&?(?P<entry>[\w\.\->]+)\s*\)'
+      description: "RCU 保护的链表删除"
+      can_sleep: false
+      notes:
+        - "不修改 next 指针"
+        - "允许遍历者继续遍历"
+
+    # list_replace_rcu
+    - pattern: 'list_replace_rcu\s*\(\s*&?(?P<old>[\w\.\->]+)\s*,\s*&?(?P<new>[\w\.\->]+)\s*\)'
+      description: "RCU 保护的链表替换"
+      can_sleep: false
+
+    # list_for_each_entry_rcu
+    - pattern: 'list_for_each_entry_rcu\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      variable_capture: "pos"
+      description: "RCU 保护的链表遍历"
+      can_sleep: false
+      context: "rcu_read_side"
+      notes:
+        - "必须在 RCU 读侧临界区内使用"
+
+    # hlist_add_head_rcu
+    - pattern: 'hlist_add_head_rcu\s*\(\s*&?(?P<n>[\w\.\->]+)\s*,\s*&?(?P<h>[\w\.\->]+)\s*\)'
+      description: "RCU 保护的 hlist 头插"
+      can_sleep: false
+
+    # hlist_del_rcu
+    - pattern: 'hlist_del_rcu\s*\(\s*&?(?P<n>[\w\.\->]+)\s*\)'
+      description: "RCU 保护的 hlist 删除"
+      can_sleep: false
+
+    # hlist_for_each_entry_rcu
+    - pattern: 'hlist_for_each_entry_rcu\s*\(\s*(?P<pos>\w+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<member>\w+)\s*\)'
+      variable_capture: "pos"
+      description: "RCU 保护的 hlist 遍历"
+      can_sleep: false
+      context: "rcu_read_side"
+
+  # --- SRCU (Sleepable RCU) ---
+  srcu_patterns:
+    # srcu_read_lock
+    - pattern: 'srcu_read_lock\s*\(\s*&?(?P<srcu>[\w\.\->]+)\s*\)'
+      variable_capture: "srcu"
+      description: "进入 SRCU 读侧临界区"
+      can_sleep: true
+      return_type: "int (index)"
+      notes:
+        - "可以在读侧临界区睡眠"
+        - "返回索引，用于 srcu_read_unlock"
+
+    # srcu_read_unlock
+    - pattern: 'srcu_read_unlock\s*\(\s*&?(?P<srcu>[\w\.\->]+)\s*,\s*(?P<idx>\w+)\s*\)'
+      variable_capture: "srcu"
+      description: "退出 SRCU 读侧临界区"
+      can_sleep: true
+      notes:
+        - "idx 必须是 srcu_read_lock 返回的值"
+
+    # synchronize_srcu
+    - pattern: 'synchronize_srcu\s*\(\s*&?(?P<srcu>[\w\.\->]+)\s*\)'
+      variable_capture: "srcu"
+      description: "等待 SRCU grace period"
+      can_sleep: true
+      context: "process_only"
+
+    # call_srcu
+    - pattern: 'call_srcu\s*\(\s*&?(?P<srcu>[\w\.\->]+)\s*,\s*&?(?P<head>[\w\.\->]+)\s*,\s*(?P<func>\w+)\s*\)'
+      variable_capture: "srcu"
+      description: "注册 SRCU 回调"
+      can_sleep: false
+
+    # init_srcu_struct
+    - pattern: 'init_srcu_struct\s*\(\s*&?(?P<srcu>[\w\.\->]+)\s*\)'
+      variable_capture: "srcu"
+      description: "初始化 SRCU 结构"
+      can_sleep: true
+      return_type: "int"
+
+    # cleanup_srcu_struct
+    - pattern: 'cleanup_srcu_struct\s*\(\s*&?(?P<srcu>[\w\.\->]+)\s*\)'
+      variable_capture: "srcu"
+      description: "清理 SRCU 结构"
+      can_sleep: true
+
+    # DEFINE_SRCU
+    - pattern: 'DEFINE_SRCU\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "静态定义 SRCU 结构"
+      can_sleep: false
+
+    # DEFINE_STATIC_SRCU
+    - pattern: 'DEFINE_STATIC_SRCU\s*\(\s*(?P<name>\w+)\s*\)'
+      variable_capture: "name"
+      description: "静态定义 static SRCU 结构"
+      can_sleep: false
+
+  call_chains:
+    rcu_read_path:
+      description: "RCU 读侧路径"
+      trigger: "rcu_read_lock()"
+      chain:
+        - function: "rcu_read_lock()"
+          file: "include/linux/rcupdate.h"
+          description: "进入读侧临界区"
+        - function: "__rcu_read_lock()"
+          description: "禁用抢占 (Classic RCU)"
+        - function: "preempt_disable()"
+          notes:
+            - "增加抢占计数"
+            - "开销极低"
+
+    rcu_sync_path:
+      description: "RCU 同步路径"
+      trigger: "synchronize_rcu()"
+      chain:
+        - function: "synchronize_rcu()"
+          file: "kernel/rcu/tree.c"
+          description: "同步 RCU"
+        - function: "__synchronize_rcu()"
+          description: "等待 grace period"
+        - function: "wait_rcu_gp()"
+          description: "等待所有 CPU 经过静止状态"
+          notes:
+            - "可能睡眠"
+            - "等待 grace period"
+
+    call_rcu_path:
+      description: "RCU 回调注册路径"
+      trigger: "call_rcu()"
+      chain:
+        - function: "call_rcu(&rcu_head, callback)"
+          file: "kernel/rcu/tree.c"
+          description: "注册回调"
+        - function: "__call_rcu()"
+          description: "添加到回调链表"
+        - function: "... grace period ..."
+          description: "等待 grace period"
+        - function: "rcu_process_callbacks()"
+          context: "softirq"
+          description: "执行回调"
+
+  notes:
+    - "RCU 读侧临界区不能睡眠 (除 SRCU 外)"
+    - "写侧需要额外的锁保护"
+    - "call_rcu 比 synchronize_rcu 更高效"
+    - "适合读多写少的场景"
+    - "rcu_dereference 必须在读侧临界区内使用"
+    - "rcu_assign_pointer 用于发布新数据"
+
+  use_cases:
+    - name: "网络路由表"
+      description: "读多写少，路由查找性能关键"
+    - name: "进程列表"
+      description: "任务遍历使用 RCU"
+    - name: "文件系统 dentry"
+      description: "目录项缓存使用 RCU"
+    - name: "模块卸载"
+      description: "确保没有使用者后再卸载"
+
+
+# ============================================================
+# 原子操作补充
+# ============================================================
+
+atomic_ops_extended:
+  description: "Atomic Operations Extended - 原子操作扩展"
+  header: "linux/atomic.h"
+  icon: "⚛️"
+
+  # --- fetch 变体 (返回旧值) ---
+  fetch_ops:
+    atomic_fetch_inc:
+      pattern: 'atomic_fetch_inc\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子自增并返回旧值"
+      can_sleep: false
+      return_type: "int"
+      return: "旧值"
+
+    atomic_fetch_dec:
+      pattern: 'atomic_fetch_dec\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子自减并返回旧值"
+      can_sleep: false
+      return_type: "int"
+      return: "旧值"
+
+    atomic_fetch_and:
+      pattern: 'atomic_fetch_and\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子与并返回旧值"
+      can_sleep: false
+      return_type: "int"
+
+    atomic_fetch_or:
+      pattern: 'atomic_fetch_or\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子或并返回旧值"
+      can_sleep: false
+      return_type: "int"
+
+    atomic_fetch_xor:
+      pattern: 'atomic_fetch_xor\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子异或并返回旧值"
+      can_sleep: false
+      return_type: "int"
+
+  # --- 带内存序的变体 ---
+  memory_order_variants:
+    atomic_add_return_relaxed:
+      pattern: 'atomic_add_return_relaxed\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子加返回 (relaxed 内存序)"
+      can_sleep: false
+      notes:
+        - "无内存屏障"
+        - "最快但最弱的保证"
+
+    atomic_add_return_acquire:
+      pattern: 'atomic_add_return_acquire\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子加返回 (acquire 语义)"
+      can_sleep: false
+      notes:
+        - "之后的读写不会重排到前面"
+
+    atomic_add_return_release:
+      pattern: 'atomic_add_return_release\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "原子加返回 (release 语义)"
+      can_sleep: false
+      notes:
+        - "之前的读写不会重排到后面"
+
+  # --- 64 位原子操作 ---
+  atomic64_ops:
+    atomic64_read:
+      pattern: 'atomic64_read\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子读取"
+      can_sleep: false
+      return_type: "s64"
+
+    atomic64_set:
+      pattern: 'atomic64_set\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子设置"
+      can_sleep: false
+
+    atomic64_inc:
+      pattern: 'atomic64_inc\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子自增"
+      can_sleep: false
+
+    atomic64_dec:
+      pattern: 'atomic64_dec\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子自减"
+      can_sleep: false
+
+    atomic64_add:
+      pattern: 'atomic64_add\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子加"
+      can_sleep: false
+
+    atomic64_sub:
+      pattern: 'atomic64_sub\s*\(\s*(?P<val>[^,]+)\s*,\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子减"
+      can_sleep: false
+
+    atomic64_cmpxchg:
+      pattern: 'atomic64_cmpxchg\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<old>[^,]+)\s*,\s*(?P<new>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位比较并交换"
+      can_sleep: false
+      return_type: "s64 (旧值)"
+
+    atomic64_dec_and_test:
+      pattern: 'atomic64_dec_and_test\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子自减并测试是否为 0"
+      can_sleep: false
+      return_type: "bool"
+      return: "true if result is 0"
+
+    atomic64_inc_return:
+      pattern: 'atomic64_inc_return\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "64 位原子自增并返回新值"
+      can_sleep: false
+      return_type: "s64"
+
+  # --- atomic_long 变体 ---
+  atomic_long_ops:
+    atomic_long_read:
+      pattern: 'atomic_long_read\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "长整型原子读取"
+      can_sleep: false
+      return_type: "long"
+      notes:
+        - "32 位系统上是 32 位"
+        - "64 位系统上是 64 位"
+
+    atomic_long_set:
+      pattern: 'atomic_long_set\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "长整型原子设置"
+      can_sleep: false
+
+    atomic_long_inc:
+      pattern: 'atomic_long_inc\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "长整型原子自增"
+      can_sleep: false
+
+    atomic_long_dec:
+      pattern: 'atomic_long_dec\s*\(\s*&?(?P<var>[\w\.\->]+)\s*\)'
+      variable_capture: "var"
+      description: "长整型原子自减"
+      can_sleep: false
+
+    atomic_long_cmpxchg:
+      pattern: 'atomic_long_cmpxchg\s*\(\s*&?(?P<var>[\w\.\->]+)\s*,\s*(?P<old>[^,]+)\s*,\s*(?P<new>[^)]+)\s*\)'
+      variable_capture: "var"
+      description: "长整型比较并交换"
+      can_sleep: false
+      return_type: "long"
+
+  notes:
+    - "所有原子操作都不能睡眠"
+    - "fetch 变体返回旧值，return 变体返回新值"
+    - "默认原子操作带完整内存屏障"
+    - "relaxed/acquire/release 变体用于性能优化"

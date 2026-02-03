@@ -1311,18 +1311,23 @@ sleep_wake:
     schedule:
       pattern: 'schedule\s*\(\s*\)'
       description: "主动让出 CPU"
-      context: "process"
+      context: "process_only"
       can_sleep: true
       preempt_point: true
+      note: |
+        调用者必须在进程上下文。
+        会检查 preempt_count 和中断状态。
+        在调用前应设置任务状态 (TASK_INTERRUPTIBLE/TASK_UNINTERRUPTIBLE)。
 
     schedule_timeout:
       pattern: 'schedule_timeout\s*\(\s*(?P<timeout>[^)]+)\s*\)'
       description: "睡眠指定时间或直到被唤醒"
-      context: "process"
+      context: "process_only"
       can_sleep: true
       return_value:
         success: "剩余 jiffies"
         timeout: "0"
+      note: "调用前需设置任务状态，否则立即返回"
 
     schedule_timeout_interruptible:
       pattern: 'schedule_timeout_interruptible\s*\(\s*(?P<timeout>[^)]+)\s*\)'
@@ -1348,8 +1353,12 @@ sleep_wake:
       pattern: 'cond_resched\s*\(\s*\)'
       description: "条件重调度 (如果需要)"
       context: "process"
-      can_sleep: true
+      can_sleep: "可能 (如果需要重调度)"
       use_case: "长时间循环中让出 CPU"
+      note: |
+        如果 TIF_NEED_RESCHED 标志被设置，则调用 schedule()。
+        返回值: 1 表示发生了重调度，0 表示没有。
+        在 CONFIG_PREEMPT_VOLUNTARY 下是显式检查点。
 
     cond_resched_lock:
       pattern: 'cond_resched_lock\s*\(\s*&?(?P<lock>[\w\.\->]+)\s*\)'
