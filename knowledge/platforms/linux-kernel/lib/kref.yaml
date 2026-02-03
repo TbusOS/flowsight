@@ -1,0 +1,390 @@
+# Linux Kernel - kref 引用计数
+#
+# Reference: include/linux/kref.h
+# Reference: lib/kref.c
+# Kernel Version: 2.6+
+
+# ============================================================
+# KREF - 内核引用计数
+# ============================================================
+
+kref:
+  description: "Kernel Reference Counting - 内核引用计数机制"
+  header: "linux/kref.h"
+  icon: "🔢"
+  kernel_version: "2.6+"
+
+  overview:
+    description: "kref 提供简单的引用计数实现，用于对象生命周期管理"
+    notes:
+      - "初始引用计数为 1"
+      - "计数归零时自动调用释放回调"
+      - "线程安全，使用原子操作"
+      - "常与 container_of 配合使用"
+
+  structure:
+    name: "struct kref"
+    fields:
+      - name: "refcount"
+        type: "refcount_t"
+        description: "原子引用计数器"
+    notes:
+      - "refcount_t 是带有溢出检测的原子计数器"
+      - "sizeof(struct kref) == sizeof(refcount_t)"
+
+# ============================================================
+# KREF INITIALIZATION - 初始化
+# ============================================================
+
+kref_init:
+  description: "kref Initialization - 引用计数初始化"
+  header: "linux/kref.h"
+  icon: "🚀"
+
+  patterns:
+    kref_init:
+      pattern: 'kref_init\s*\(\s*&?(?P<kref>[\w\.\->]+)\s*\)'
+      description: "初始化引用计数为 1"
+      prototype: "void kref_init(struct kref *kref)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "必须在对象使用前调用"
+        - "初始值为 1，不是 0"
+
+  examples:
+    basic: |
+      struct my_obj {
+          struct kref refcount;
+          char *name;
+      };
+      
+      struct my_obj *obj = kmalloc(sizeof(*obj), GFP_KERNEL);
+      if (obj)
+          kref_init(&obj->refcount);
+
+# ============================================================
+# KREF GET - 增加引用
+# ============================================================
+
+kref_get:
+  description: "kref Get - 增加引用计数"
+  header: "linux/kref.h"
+  icon: "⬆️"
+
+  patterns:
+    kref_get:
+      pattern: 'kref_get\s*\(\s*&?(?P<kref>[\w\.\->]+)\s*\)'
+      description: "增加引用计数（+1）"
+      prototype: "void kref_get(struct kref *kref)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "原子操作，线程安全"
+        - "调用前引用计数必须 > 0"
+        - "⚠️ 不能在计数为 0 后调用"
+
+    kref_get_unless_zero:
+      pattern: 'kref_get_unless_zero\s*\(\s*&?(?P<kref>[\w\.\->]+)\s*\)'
+      description: "仅当计数 > 0 时增加引用"
+      prototype: "int kref_get_unless_zero(struct kref *kref)"
+      can_sleep: false
+      context: "any"
+      return_type: "int (1 成功，0 失败)"
+      notes:
+        - "✅ 用于安全获取可能已释放的对象引用"
+        - "常用于缓存和查找场景"
+
+  examples:
+    safe_get: |
+      /* 从缓存获取对象 */
+      struct my_obj *obj = cache_lookup(key);
+      if (obj && kref_get_unless_zero(&obj->refcount)) {
+          /* 安全使用 obj */
+          use_object(obj);
+          kref_put(&obj->refcount, my_obj_release);
+      }
+
+# ============================================================
+# KREF PUT - 减少引用
+# ============================================================
+
+kref_put:
+  description: "kref Put - 减少引用计数"
+  header: "linux/kref.h"
+  icon: "⬇️"
+
+  patterns:
+    kref_put:
+      pattern: 'kref_put\s*\(\s*&?(?P<kref>[\w\.\->]+)\s*,\s*(?P<release>[\w]+)\s*\)'
+      description: "减少引用计数，为 0 时调用 release"
+      prototype: "int kref_put(struct kref *kref, void (*release)(struct kref *kref))"
+      can_sleep: "depends on release callback"
+      context: "depends on release callback"
+      return_type: "int (1 表示已释放，0 表示还有引用)"
+      notes:
+        - "计数归零时调用 release 回调"
+        - "release 中通常调用 kfree"
+        - "release 中使用 container_of 获取对象"
+
+    kref_put_mutex:
+      pattern: 'kref_put_mutex\s*\(\s*&?(?P<kref>[\w\.\->]+)\s*,\s*(?P<release>[\w]+)\s*,\s*&?(?P<mutex>[\w\.\->]+)\s*\)'
+      description: "带互斥锁保护的 kref_put"
+      prototype: "int kref_put_mutex(struct kref *kref, void (*release)(struct kref *kref), struct mutex *lock)"
+      can_sleep: true
+      context: "process"
+      notes:
+        - "仅在需要释放时持有锁"
+        - "release 在锁保护下调用"
+        - "调用者负责解锁"
+
+    kref_put_lock:
+      pattern: 'kref_put_lock\s*\(\s*&?(?P<kref>[\w\.\->]+)\s*,\s*(?P<release>[\w]+)\s*,\s*&?(?P<lock>[\w\.\->]+)\s*\)'
+      description: "带自旋锁保护的 kref_put"
+      prototype: "int kref_put_lock(struct kref *kref, void (*release)(struct kref *kref), spinlock_t *lock)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "仅在需要释放时持有锁"
+        - "release 在锁保护下调用"
+
+  examples:
+    basic_put: |
+      static void my_obj_release(struct kref *kref)
+      {
+          struct my_obj *obj = container_of(kref, struct my_obj, refcount);
+          kfree(obj->name);
+          kfree(obj);
+      }
+      
+      /* 使用对象后释放引用 */
+      kref_put(&obj->refcount, my_obj_release);
+
+    mutex_put: |
+      /* 带锁保护的释放 */
+      if (kref_put_mutex(&obj->refcount, my_obj_release, &cache_mutex)) {
+          /* 对象已释放，锁被持有 */
+          hash_del(&obj->node);
+          mutex_unlock(&cache_mutex);
+      }
+
+# ============================================================
+# KREF READ - 读取计数
+# ============================================================
+
+kref_read:
+  description: "kref Read - 读取引用计数"
+  header: "linux/kref.h"
+  icon: "👁️"
+
+  patterns:
+    kref_read:
+      pattern: 'kref_read\s*\(\s*&?(?P<kref>[\w\.\->]+)\s*\)'
+      description: "读取当前引用计数值"
+      prototype: "unsigned int kref_read(const struct kref *kref)"
+      can_sleep: false
+      context: "any"
+      return_type: "unsigned int"
+      notes:
+        - "仅用于调试和诊断"
+        - "返回值可能立即过时"
+        - "⚠️ 不要基于返回值做逻辑判断"
+
+  examples:
+    debug: |
+      /* 仅用于调试输出 */
+      pr_debug("Object %p refcount: %u\n", obj, kref_read(&obj->refcount));
+
+# ============================================================
+# USAGE PATTERNS - 使用模式
+# ============================================================
+
+usage_patterns:
+  description: "Common kref Usage Patterns - 常见使用模式"
+  icon: "📋"
+
+  object_lifecycle:
+    description: "对象生命周期管理"
+    pattern: |
+      /* 1. 定义包含 kref 的结构体 */
+      struct my_device {
+          struct kref refcount;
+          char *name;
+          void *data;
+      };
+      
+      /* 2. 定义释放函数 */
+      static void my_device_release(struct kref *kref)
+      {
+          struct my_device *dev = container_of(kref, struct my_device, refcount);
+          kfree(dev->name);
+          kfree(dev->data);
+          kfree(dev);
+      }
+      
+      /* 3. 创建对象 */
+      struct my_device *my_device_create(const char *name)
+      {
+          struct my_device *dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return NULL;
+          
+          dev->name = kstrdup(name, GFP_KERNEL);
+          if (!dev->name) {
+              kfree(dev);
+              return NULL;
+          }
+          
+          kref_init(&dev->refcount);
+          return dev;
+      }
+      
+      /* 4. 获取引用 */
+      struct my_device *my_device_get(struct my_device *dev)
+      {
+          if (dev)
+              kref_get(&dev->refcount);
+          return dev;
+      }
+      
+      /* 5. 释放引用 */
+      void my_device_put(struct my_device *dev)
+      {
+          if (dev)
+              kref_put(&dev->refcount, my_device_release);
+      }
+
+  file_operations:
+    description: "文件操作中的引用计数"
+    pattern: |
+      static int my_open(struct inode *inode, struct file *file)
+      {
+          struct my_device *dev = container_of(inode->i_cdev, 
+                                               struct my_device, cdev);
+          kref_get(&dev->refcount);
+          file->private_data = dev;
+          return 0;
+      }
+      
+      static int my_release(struct inode *inode, struct file *file)
+      {
+          struct my_device *dev = file->private_data;
+          kref_put(&dev->refcount, my_device_release);
+          return 0;
+      }
+
+  cache_pattern:
+    description: "缓存中的安全引用获取"
+    pattern: |
+      struct cache_entry *cache_get(unsigned long key)
+      {
+          struct cache_entry *entry;
+          
+          rcu_read_lock();
+          entry = radix_tree_lookup(&cache_tree, key);
+          if (entry && !kref_get_unless_zero(&entry->refcount))
+              entry = NULL;  /* 对象正在被释放 */
+          rcu_read_unlock();
+          
+          return entry;
+      }
+
+# ============================================================
+# EXAMPLES - 完整示例
+# ============================================================
+
+examples:
+  - description: "USB 设备引用计数示例"
+    source: "drivers/usb/usb-skeleton.c"
+    code: |
+      #include <linux/kref.h>
+      
+      struct usb_skel {
+          struct usb_device *udev;
+          struct usb_interface *interface;
+          struct kref kref;
+          /* ... */
+      };
+      
+      static void skel_delete(struct kref *kref)
+      {
+          struct usb_skel *dev = container_of(kref, struct usb_skel, kref);
+          
+          usb_put_dev(dev->udev);
+          kfree(dev->bulk_in_buffer);
+          kfree(dev);
+      }
+      
+      static int skel_open(struct inode *inode, struct file *file)
+      {
+          struct usb_skel *dev;
+          struct usb_interface *interface;
+          
+          interface = usb_find_interface(&skel_driver, iminor(inode));
+          if (!interface)
+              return -ENODEV;
+          
+          dev = usb_get_intfdata(interface);
+          if (!dev)
+              return -ENODEV;
+          
+          /* 增加引用计数 */
+          kref_get(&dev->kref);
+          
+          file->private_data = dev;
+          return 0;
+      }
+      
+      static int skel_release(struct inode *inode, struct file *file)
+      {
+          struct usb_skel *dev = file->private_data;
+          
+          /* 减少引用计数 */
+          kref_put(&dev->kref, skel_delete);
+          return 0;
+      }
+
+  - description: "WUSB 设备引用计数"
+    source: "drivers/usb/wusbcore/"
+    code: |
+      static inline void wusb_dev_get(struct wusb_dev *wusb_dev)
+      {
+          kref_get(&wusb_dev->refcnt);
+      }
+      
+      static inline void wusb_dev_put(struct wusb_dev *wusb_dev)
+      {
+          kref_put(&wusb_dev->refcnt, wusb_dev_destroy);
+      }
+
+# ============================================================
+# NOTES - 注意事项
+# ============================================================
+
+notes:
+  - "kref_init 初始值为 1，不是 0"
+  - "kref_put 的 release 函数必须释放对象"
+  - "release 函数中使用 container_of 获取实际对象"
+  - "kref_get 前确保对象未被释放"
+  - "kref_get_unless_zero 用于不确定对象状态的场景"
+  - "kref_read 仅用于调试，不要依赖其值做逻辑判断"
+  - "kref_put_mutex/lock 仅在需要释放时才持有锁"
+  - "kref 使用原子操作，自身是线程安全的"
+  - "但对象的其他字段可能需要额外同步"
+
+# ============================================================
+# RELATED APIs - 相关 API
+# ============================================================
+
+related_apis:
+  - name: "refcount_t"
+    description: "底层引用计数类型"
+    header: "linux/refcount.h"
+    
+  - name: "container_of"
+    description: "从 kref 获取包含结构体"
+    header: "linux/kernel.h"
+    
+  - name: "kobject"
+    description: "更高级的对象管理，内部使用 kref"
+    header: "linux/kobject.h"

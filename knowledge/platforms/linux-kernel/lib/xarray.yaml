@@ -1,0 +1,272 @@
+# Linux Kernel - XArray API (替代 radix_tree)
+# XArray 是 Linux 4.17+ 引入的可扩展数组，用于替代 radix_tree
+# 提供更简洁的 API 和更好的 RCU 支持
+
+xarray_api:
+  description: "可扩展数组，替代 radix_tree"
+  header: "linux/xarray.h"
+  kernel_version: "4.17+"
+  source: "lib/xarray.c"
+  
+  init_patterns:
+    - pattern: 'DEFINE_XARRAY\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态定义 XArray"
+      can_sleep: false
+      example: "DEFINE_XARRAY(my_array)"
+      
+    - pattern: 'DEFINE_XARRAY_FLAGS\s*\(\s*(?P<name>\w+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+      description: "带标志静态定义 XArray"
+      can_sleep: false
+      flags:
+        - XA_FLAGS_LOCK_IRQ: "使用 IRQ-safe 自旋锁"
+        - XA_FLAGS_LOCK_BH: "使用 BH-safe 自旋锁"
+        - XA_FLAGS_TRACK_FREE: "跟踪空闲槽位"
+        - XA_FLAGS_ZERO_BUSY: "将 NULL 视为忙碌"
+        - XA_FLAGS_ALLOC: "支持 xa_alloc"
+        - XA_FLAGS_ALLOC1: "从 1 开始分配"
+      
+    - pattern: 'DEFINE_XARRAY_ALLOC\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态定义支持分配的 XArray"
+      can_sleep: false
+      
+    - pattern: 'DEFINE_XARRAY_ALLOC1\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态定义从 1 开始分配的 XArray"
+      can_sleep: false
+      
+    - pattern: 'xa_init\s*\(\s*&?(?P<xa>[^)]+)\s*\)'
+      description: "动态初始化 XArray"
+      can_sleep: false
+      
+    - pattern: 'xa_init_flags\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+      description: "带标志动态初始化 XArray"
+      can_sleep: false
+      
+  store_patterns:
+    - pattern: 'xa_store\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<entry>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "存储条目到指定索引"
+      can_sleep: "depends on GFP flags"
+      return: "旧条目或 xa_err()"
+      notes: "如果索引已存在则替换"
+      
+    - pattern: 'xa_store_bh\s*\('
+      description: "BH 上下文存储条目"
+      can_sleep: false
+      
+    - pattern: 'xa_store_irq\s*\('
+      description: "IRQ 上下文存储条目"
+      can_sleep: false
+      
+    - pattern: 'xa_insert\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<entry>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "插入条目 (索引必须为空)"
+      can_sleep: "depends on GFP flags"
+      return: "0 成功，-EBUSY 索引已占用，-ENOMEM 内存不足"
+      
+    - pattern: 'xa_insert_bh\s*\('
+      description: "BH 上下文插入条目"
+      can_sleep: false
+      
+    - pattern: 'xa_insert_irq\s*\('
+      description: "IRQ 上下文插入条目"
+      can_sleep: false
+      
+    - pattern: 'xa_erase\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^)]+)\s*\)'
+      description: "删除指定索引的条目"
+      can_sleep: false
+      return: "被删除的条目"
+      
+    - pattern: 'xa_erase_bh\s*\('
+      description: "BH 上下文删除条目"
+      can_sleep: false
+      
+    - pattern: 'xa_erase_irq\s*\('
+      description: "IRQ 上下文删除条目"
+      can_sleep: false
+      
+    - pattern: 'xa_cmpxchg\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<old>[^,]+)\s*,\s*(?P<new>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "原子比较交换"
+      can_sleep: "depends on GFP flags"
+      return: "旧条目"
+      
+  alloc_patterns:
+    - pattern: 'xa_alloc\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<entry>[^,]+)\s*,\s*(?P<limit>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配索引并存储条目"
+      can_sleep: "depends on GFP flags"
+      return: "0 成功，-EBUSY 无可用索引，-ENOMEM 内存不足"
+      notes: "需要 XA_FLAGS_ALLOC 标志"
+      
+    - pattern: 'xa_alloc_bh\s*\('
+      description: "BH 上下文分配索引"
+      can_sleep: false
+      
+    - pattern: 'xa_alloc_irq\s*\('
+      description: "IRQ 上下文分配索引"
+      can_sleep: false
+      
+    - pattern: 'xa_alloc_cyclic\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<id>[^,]+)\s*,\s*(?P<entry>[^,]+)\s*,\s*(?P<limit>[^,]+)\s*,\s*(?P<next>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "循环分配索引"
+      can_sleep: "depends on GFP flags"
+      return: "0 或 1 (回绕)，负值错误"
+      
+    - pattern: 'xa_alloc_cyclic_bh\s*\('
+      description: "BH 上下文循环分配"
+      can_sleep: false
+      
+    - pattern: 'xa_alloc_cyclic_irq\s*\('
+      description: "IRQ 上下文循环分配"
+      can_sleep: false
+      
+  load_patterns:
+    - pattern: 'xa_load\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^)]+)\s*\)'
+      description: "加载指定索引的条目"
+      can_sleep: false
+      return: "条目指针或 NULL"
+      rcu_safe: true
+      
+  iterate_patterns:
+    - pattern: 'xa_for_each\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<entry>\w+)\s*\)'
+      description: "遍历所有非空条目"
+      can_sleep: false
+      rcu_safe: true
+      example: |
+        xa_for_each(&my_array, index, entry) {
+            process(entry);
+        }
+      
+    - pattern: 'xa_for_each_start\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<entry>\w+)\s*\)'
+      description: "从指定索引开始遍历"
+      can_sleep: false
+      rcu_safe: true
+      
+    - pattern: 'xa_for_each_range\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<entry>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+      description: "遍历指定范围"
+      can_sleep: false
+      rcu_safe: true
+      
+    - pattern: 'xa_for_each_marked\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<entry>[^,]+)\s*,\s*(?P<mark>\w+)\s*\)'
+      description: "遍历带标记的条目"
+      can_sleep: false
+      marks:
+        - XA_MARK_0
+        - XA_MARK_1
+        - XA_MARK_2
+      
+  mark_patterns:
+    - pattern: 'xa_set_mark\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<mark>\w+)\s*\)'
+      description: "设置条目标记"
+      can_sleep: false
+      
+    - pattern: 'xa_clear_mark\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<mark>\w+)\s*\)'
+      description: "清除条目标记"
+      can_sleep: false
+      
+    - pattern: 'xa_get_mark\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<mark>\w+)\s*\)'
+      description: "获取条目标记状态"
+      can_sleep: false
+      return: "bool"
+      
+  state_patterns:
+    - pattern: 'xa_empty\s*\(\s*&?(?P<xa>[^)]+)\s*\)'
+      description: "检查 XArray 是否为空"
+      can_sleep: false
+      return: "bool"
+      
+    - pattern: 'xa_marked\s*\(\s*&?(?P<xa>[^,]+)\s*,\s*(?P<mark>\w+)\s*\)'
+      description: "检查是否有条目带指定标记"
+      can_sleep: false
+      return: "bool"
+      
+  destroy_patterns:
+    - pattern: 'xa_destroy\s*\(\s*&?(?P<xa>[^)]+)\s*\)'
+      description: "销毁 XArray (释放内部节点)"
+      can_sleep: false
+      notes: "不释放存储的条目，需要先遍历释放"
+
+  lock_patterns:
+    - pattern: 'xa_lock\s*\(\s*&?(?P<xa>[^)]+)\s*\)'
+      description: "获取 XArray 自旋锁"
+      can_sleep: false
+      
+    - pattern: 'xa_unlock\s*\(\s*&?(?P<xa>[^)]+)\s*\)'
+      description: "释放 XArray 自旋锁"
+      can_sleep: false
+      
+    - pattern: 'xa_lock_bh\s*\('
+      description: "BH-safe 加锁"
+      can_sleep: false
+      
+    - pattern: 'xa_unlock_bh\s*\('
+      description: "BH-safe 解锁"
+      can_sleep: false
+      
+    - pattern: 'xa_lock_irq\s*\('
+      description: "IRQ-safe 加锁"
+      can_sleep: false
+      
+    - pattern: 'xa_unlock_irq\s*\('
+      description: "IRQ-safe 解锁"
+      can_sleep: false
+      
+    - pattern: 'xa_lock_irqsave\s*\('
+      description: "IRQ-safe 加锁并保存状态"
+      can_sleep: false
+      
+    - pattern: 'xa_unlock_irqrestore\s*\('
+      description: "IRQ-safe 解锁并恢复状态"
+      can_sleep: false
+
+  advanced_patterns:
+    - pattern: '__xa_store\s*\('
+      description: "内部存储 (需持有锁)"
+      can_sleep: false
+      
+    - pattern: '__xa_insert\s*\('
+      description: "内部插入 (需持有锁)"
+      can_sleep: false
+      
+    - pattern: '__xa_erase\s*\('
+      description: "内部删除 (需持有锁)"
+      can_sleep: false
+      
+    - pattern: '__xa_cmpxchg\s*\('
+      description: "内部比较交换 (需持有锁)"
+      can_sleep: false
+      
+    - pattern: '__xa_alloc\s*\('
+      description: "内部分配 (需持有锁)"
+      can_sleep: false
+      
+    - pattern: '__xa_alloc_cyclic\s*\('
+      description: "内部循环分配 (需持有锁)"
+      can_sleep: false
+
+# 旧版 radix_tree API (建议迁移到 XArray)
+radix_tree_api:
+  description: "基数树 (建议使用 XArray 替代)"
+  header: "linux/radix-tree.h"
+  deprecated: "4.17+ 建议迁移到 XArray"
+  
+  init_patterns:
+    - pattern: 'RADIX_TREE\s*\(\s*(?P<name>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "静态定义 radix_tree"
+      
+    - pattern: 'INIT_RADIX_TREE\s*\(\s*&?(?P<root>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "初始化 radix_tree"
+      
+  operations:
+    - pattern: 'radix_tree_insert\s*\(\s*&?(?P<root>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<item>[^)]+)\s*\)'
+      description: "插入条目"
+      
+    - pattern: 'radix_tree_lookup\s*\(\s*&?(?P<root>[^,]+)\s*,\s*(?P<index>[^)]+)\s*\)'
+      description: "查找条目"
+      
+    - pattern: 'radix_tree_delete\s*\(\s*&?(?P<root>[^,]+)\s*,\s*(?P<index>[^)]+)\s*\)'
+      description: "删除条目"
+      
+    - pattern: 'radix_tree_for_each_slot\s*\('
+      description: "遍历所有槽位"
+      
+    - pattern: 'radix_tree_gang_lookup\s*\('
+      description: "批量查找"
+      
+    - pattern: 'radix_tree_tagged\s*\('
+      description: "检查标记"

@@ -1,0 +1,553 @@
+# Linux Kernel - container_of 和相关宏
+#
+# Reference: include/linux/kernel.h
+# Reference: include/linux/stddef.h
+# Reference: include/linux/build_bug.h
+# Kernel Version: 2.6+
+
+# ============================================================
+# CONTAINER_OF - 从成员获取容器
+# ============================================================
+
+container_of:
+  description: "Container Of - 从成员指针获取包含结构体指针"
+  header: "linux/kernel.h"
+  icon: "📦"
+  kernel_version: "2.6+"
+
+  overview:
+    description: "container_of 是 Linux 内核最重要的宏之一，用于从结构体成员指针反推出包含它的结构体指针"
+    notes:
+      - "编译时计算，零运行时开销"
+      - "类型安全，带编译时类型检查"
+      - "广泛用于链表、回调、设备驱动等"
+
+  main_patterns:
+    container_of:
+      pattern: 'container_of\s*\(\s*(?P<ptr>[^,]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "从成员指针获取包含结构体指针"
+      prototype: "container_of(ptr, type, member)"
+      can_sleep: false
+      context: "any"
+      parameters:
+        - name: "ptr"
+          description: "指向成员的指针"
+        - name: "type"
+          description: "包含结构体的类型"
+        - name: "member"
+          description: "成员在结构体中的名称"
+      expansion: "((type *)((char *)(ptr) - offsetof(type, member)))"
+      notes:
+        - "ptr 必须指向 type 结构体的 member 成员"
+        - "返回指向 type 结构体的指针"
+        - "✅ 带类型检查，ptr 类型必须与 member 兼容"
+
+    container_of_const:
+      pattern: 'container_of_const\s*\(\s*(?P<ptr>[^,]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "保持 const 属性的 container_of"
+      prototype: "container_of_const(ptr, type, member)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "如果 ptr 是 const，返回 const type *"
+        - "如果 ptr 是非 const，返回 type *"
+        - "内核 6.5+ 新增"
+
+    container_of_safe:
+      pattern: 'container_of_safe\s*\(\s*(?P<ptr>[^,]+)\s*,\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "NULL 安全版本的 container_of"
+      prototype: "container_of_safe(ptr, type, member)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "如果 ptr 为 NULL，返回 NULL"
+        - "避免空指针解引用"
+
+  examples:
+    basic: |
+      struct my_device {
+          int id;
+          char name[32];
+          struct list_head list;
+      };
+      
+      /* 从 list_head 获取 my_device */
+      void process_list_entry(struct list_head *node)
+      {
+          struct my_device *dev = container_of(node, struct my_device, list);
+          printk("Device: %s (id=%d)\n", dev->name, dev->id);
+      }
+
+    kref: |
+      struct usb_device {
+          struct kref refcount;
+          char *product;
+      };
+      
+      static void usb_device_release(struct kref *kref)
+      {
+          struct usb_device *dev = container_of(kref, struct usb_device, refcount);
+          kfree(dev->product);
+          kfree(dev);
+      }
+
+    work: |
+      struct my_work {
+          struct work_struct work;
+          int task_id;
+      };
+      
+      static void my_work_handler(struct work_struct *work)
+      {
+          struct my_work *mw = container_of(work, struct my_work, work);
+          /* 使用 mw->task_id */
+      }
+
+# ============================================================
+# OFFSETOF - 成员偏移量
+# ============================================================
+
+offsetof_macro:
+  description: "offsetof - 获取成员在结构体中的偏移量"
+  header: "linux/stddef.h"
+  icon: "📏"
+
+  patterns:
+    offsetof:
+      pattern: 'offsetof\s*\(\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "获取成员在结构体中的字节偏移量"
+      prototype: "offsetof(type, member)"
+      can_sleep: false
+      context: "any"
+      return_type: "size_t"
+      notes:
+        - "编译时常量"
+        - "container_of 的基础"
+        - "用于计算结构体布局"
+
+    offsetofend:
+      pattern: 'offsetofend\s*\(\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "获取成员末尾的偏移量"
+      prototype: "offsetofend(type, member)"
+      can_sleep: false
+      context: "any"
+      expansion: "(offsetof(type, member) + sizeof(((type *)0)->member))"
+      notes:
+        - "返回成员结束位置的偏移量"
+        - "用于计算需要拷贝的字节数"
+
+  examples:
+    basic: |
+      struct example {
+          int a;      /* offset 0 */
+          char b;     /* offset 4 */
+          long c;     /* offset 8 (aligned) */
+      };
+      
+      /* 获取偏移量 */
+      size_t off_a = offsetof(struct example, a);  /* 0 */
+      size_t off_b = offsetof(struct example, b);  /* 4 */
+      size_t off_c = offsetof(struct example, c);  /* 8 */
+      
+      /* 获取成员末尾偏移 */
+      size_t end_b = offsetofend(struct example, b);  /* 5 */
+
+# ============================================================
+# TYPEOF - 类型获取
+# ============================================================
+
+typeof_macros:
+  description: "typeof and Type Utilities - 类型工具宏"
+  header: "linux/compiler.h"
+  icon: "🏷️"
+
+  patterns:
+    typeof:
+      pattern: 'typeof\s*\(\s*(?P<expr>[^)]+)\s*\)'
+      description: "获取表达式的类型（GCC 扩展）"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "编译时类型推导"
+        - "用于泛型宏定义"
+        - "不求值表达式"
+
+    __same_type:
+      pattern: '__same_type\s*\(\s*(?P<a>[^,]+)\s*,\s*(?P<b>[^)]+)\s*\)'
+      description: "编译时检查两个类型是否相同"
+      prototype: "__same_type(a, b)"
+      can_sleep: false
+      context: "any"
+      return_type: "int (1 相同，0 不同)"
+      notes:
+        - "用于编译时类型检查"
+        - "container_of 内部使用"
+
+    __must_be_array:
+      pattern: '__must_be_array\s*\(\s*(?P<a>[^)]+)\s*\)'
+      description: "确保参数是数组"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "如果不是数组，编译报错"
+        - "ARRAY_SIZE 内部使用"
+
+  examples:
+    typeof: |
+      /* 交换两个变量 */
+      #define swap(a, b) do {     \
+          typeof(a) __tmp = (a);  \
+          (a) = (b);              \
+          (b) = __tmp;            \
+      } while (0)
+
+    same_type: |
+      /* 类型检查 */
+      #define check_type(ptr, type, member)  \
+          BUILD_BUG_ON(!__same_type(*(ptr), ((type *)0)->member))
+
+# ============================================================
+# SIZEOF_FIELD - 成员大小
+# ============================================================
+
+sizeof_field:
+  description: "sizeof_field - 获取结构体成员的大小"
+  header: "linux/stddef.h"
+  icon: "📐"
+
+  patterns:
+    sizeof_field:
+      pattern: 'sizeof_field\s*\(\s*(?P<type>[\w\s]+)\s*,\s*(?P<member>\w+)\s*\)'
+      description: "获取结构体成员的字节大小"
+      prototype: "sizeof_field(type, member)"
+      can_sleep: false
+      context: "any"
+      expansion: "sizeof(((type *)0)->member)"
+      notes:
+        - "不需要结构体实例"
+        - "编译时常量"
+
+  examples:
+    basic: |
+      struct data {
+          int id;
+          char name[64];
+          long values[10];
+      };
+      
+      size_t name_size = sizeof_field(struct data, name);    /* 64 */
+      size_t values_size = sizeof_field(struct data, values); /* 80 */
+
+# ============================================================
+# BUILD_BUG - 编译时检查
+# ============================================================
+
+build_bug:
+  description: "Build Bug Macros - 编译时断言"
+  header: "linux/build_bug.h"
+  icon: "🔧"
+
+  patterns:
+    BUILD_BUG_ON:
+      pattern: 'BUILD_BUG_ON\s*\(\s*(?P<condition>[^)]+)\s*\)'
+      description: "编译时断言：条件为真时编译失败"
+      prototype: "BUILD_BUG_ON(condition)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "条件必须是编译时常量"
+        - "用于检查结构体大小、对齐等"
+
+    BUILD_BUG_ON_ZERO:
+      pattern: 'BUILD_BUG_ON_ZERO\s*\(\s*(?P<e>[^)]+)\s*\)'
+      description: "编译时断言，返回 0"
+      prototype: "BUILD_BUG_ON_ZERO(e)"
+      can_sleep: false
+      context: "any"
+      return_type: "int (always 0)"
+      notes:
+        - "可用于表达式中"
+        - "条件为真时编译失败，否则返回 0"
+
+    BUILD_BUG_ON_NULL:
+      pattern: 'BUILD_BUG_ON_NULL\s*\(\s*(?P<e>[^)]+)\s*\)'
+      description: "编译时断言，返回 (void *)0"
+      prototype: "BUILD_BUG_ON_NULL(e)"
+      can_sleep: false
+      context: "any"
+
+    BUILD_BUG_ON_MSG:
+      pattern: 'BUILD_BUG_ON_MSG\s*\(\s*(?P<cond>[^,]+)\s*,\s*(?P<msg>[^)]+)\s*\)'
+      description: "带自定义消息的编译时断言"
+      prototype: "BUILD_BUG_ON_MSG(cond, msg)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "条件为真时显示自定义错误消息"
+
+    static_assert:
+      pattern: 'static_assert\s*\(\s*(?P<expr>[^,]+)(?:\s*,\s*(?P<msg>[^)]+))?\s*\)'
+      description: "C11 标准静态断言"
+      prototype: "static_assert(expr, msg)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "C11 标准，可移植"
+        - "msg 参数可选（C23）"
+
+  examples:
+    size_check: |
+      /* 确保结构体大小不超过页面 */
+      BUILD_BUG_ON(sizeof(struct huge_struct) > PAGE_SIZE);
+      
+      /* 确保数组足够大 */
+      BUILD_BUG_ON(ARRAY_SIZE(buffer) < MAX_ITEMS);
+
+    alignment: |
+      /* 确保结构体对齐 */
+      BUILD_BUG_ON(__alignof__(struct my_data) < 8);
+
+    in_expression: |
+      /* 在表达式中使用 */
+      #define ARRAY_SIZE(arr) \
+          (sizeof(arr) / sizeof((arr)[0]) + BUILD_BUG_ON_ZERO(!__must_be_array(arr)))
+
+# ============================================================
+# ARRAY_SIZE - 数组大小
+# ============================================================
+
+array_size:
+  description: "ARRAY_SIZE - 获取数组元素个数"
+  header: "linux/kernel.h"
+  icon: "📊"
+
+  patterns:
+    ARRAY_SIZE:
+      pattern: 'ARRAY_SIZE\s*\(\s*(?P<arr>[\w\.\->]+)\s*\)'
+      description: "获取数组元素个数"
+      prototype: "ARRAY_SIZE(arr)"
+      can_sleep: false
+      context: "any"
+      return_type: "size_t"
+      notes:
+        - "只能用于真正的数组，不能用于指针"
+        - "编译时检查参数是否为数组"
+        - "返回数组元素个数"
+
+  examples:
+    basic: |
+      static const char *names[] = { "a", "b", "c" };
+      
+      for (int i = 0; i < ARRAY_SIZE(names); i++)
+          printk("%s\n", names[i]);
+
+# ============================================================
+# TYPE ALIGNMENT - 类型对齐
+# ============================================================
+
+alignment:
+  description: "Alignment Utilities - 对齐工具"
+  header: "linux/kernel.h"
+  icon: "📐"
+
+  patterns:
+    ALIGN:
+      pattern: 'ALIGN\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<a>[^)]+)\s*\)'
+      description: "向上对齐到指定边界"
+      prototype: "ALIGN(x, a)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "a 必须是 2 的幂"
+        - "返回 >= x 的最小 a 对齐值"
+
+    ALIGN_DOWN:
+      pattern: 'ALIGN_DOWN\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<a>[^)]+)\s*\)'
+      description: "向下对齐到指定边界"
+      prototype: "ALIGN_DOWN(x, a)"
+      can_sleep: false
+      context: "any"
+
+    IS_ALIGNED:
+      pattern: 'IS_ALIGNED\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<a>[^)]+)\s*\)'
+      description: "检查是否对齐"
+      prototype: "IS_ALIGNED(x, a)"
+      can_sleep: false
+      context: "any"
+      return_type: "bool"
+
+    __aligned:
+      pattern: '__aligned\s*\(\s*(?P<x>\d+)\s*\)'
+      description: "指定变量/结构体对齐"
+      notes:
+        - "编译器属性"
+        - "用于结构体或变量声明"
+
+  examples:
+    basic: |
+      /* 向上对齐到 4KB */
+      unsigned long aligned_addr = ALIGN(addr, PAGE_SIZE);
+      
+      /* 向下对齐 */
+      unsigned long page_start = ALIGN_DOWN(addr, PAGE_SIZE);
+      
+      /* 检查对齐 */
+      if (IS_ALIGNED(addr, PAGE_SIZE))
+          /* addr 是页对齐的 */
+
+    struct_align: |
+      struct __aligned(64) cache_line_data {
+          unsigned long data[8];
+      };
+
+# ============================================================
+# MIN/MAX - 安全比较
+# ============================================================
+
+min_max:
+  description: "Min/Max Macros - 类型安全的最小/最大值"
+  header: "linux/minmax.h"
+  icon: "↕️"
+
+  patterns:
+    min:
+      pattern: 'min\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<y>[^)]+)\s*\)'
+      description: "返回较小值（类型检查）"
+      prototype: "min(x, y)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "x 和 y 类型必须兼容"
+        - "避免宏展开多次求值"
+
+    max:
+      pattern: 'max\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<y>[^)]+)\s*\)'
+      description: "返回较大值（类型检查）"
+      prototype: "max(x, y)"
+      can_sleep: false
+      context: "any"
+
+    min_t:
+      pattern: 'min_t\s*\(\s*(?P<type>[\w\s]+)\s*,\s*(?P<x>[^,]+)\s*,\s*(?P<y>[^)]+)\s*\)'
+      description: "指定类型的最小值比较"
+      prototype: "min_t(type, x, y)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "将 x, y 强制转换为 type"
+        - "用于比较不同类型"
+
+    max_t:
+      pattern: 'max_t\s*\(\s*(?P<type>[\w\s]+)\s*,\s*(?P<x>[^,]+)\s*,\s*(?P<y>[^)]+)\s*\)'
+      description: "指定类型的最大值比较"
+      prototype: "max_t(type, x, y)"
+      can_sleep: false
+      context: "any"
+
+    clamp:
+      pattern: 'clamp\s*\(\s*(?P<val>[^,]+)\s*,\s*(?P<lo>[^,]+)\s*,\s*(?P<hi>[^)]+)\s*\)'
+      description: "将值限制在范围内"
+      prototype: "clamp(val, lo, hi)"
+      can_sleep: false
+      context: "any"
+      notes:
+        - "返回 val，但不小于 lo，不大于 hi"
+
+  examples:
+    basic: |
+      int a = 10, b = 20;
+      int smaller = min(a, b);  /* 10 */
+      int larger = max(a, b);   /* 20 */
+      
+      /* 不同类型需要 min_t */
+      size_t len = min_t(size_t, user_len, MAX_LEN);
+      
+      /* 限制范围 */
+      int value = clamp(input, 0, 100);
+
+# ============================================================
+# EXAMPLES - 完整示例
+# ============================================================
+
+examples:
+  - description: "container_of 在 WorkQueue 中的使用"
+    source: "drivers/usb/wusbcore/wa-xfer.c"
+    code: |
+      struct wahc {
+          struct work_struct xfer_enqueue_work;
+          struct work_struct xfer_error_work;
+          /* ... */
+      };
+      
+      static void wa_xfer_enqueue_work(struct work_struct *ws)
+      {
+          struct wahc *wa = container_of(ws, struct wahc, xfer_enqueue_work);
+          /* 使用 wa */
+      }
+      
+      static void wa_xfer_error_work(struct work_struct *ws)
+      {
+          struct wahc *wa = container_of(ws, struct wahc, xfer_error_work);
+          /* 处理错误 */
+      }
+
+  - description: "container_of 在链表中的使用"
+    code: |
+      struct task_info {
+          int id;
+          char name[32];
+          struct list_head list;
+      };
+      
+      void process_all_tasks(struct list_head *head)
+      {
+          struct task_info *task;
+          
+          list_for_each_entry(task, head, list) {
+              /* list_for_each_entry 内部使用 container_of */
+              printk("Task %d: %s\n", task->id, task->name);
+          }
+      }
+
+  - description: "BUILD_BUG_ON 在驱动中的使用"
+    source: "drivers/usb/serial/usb-serial.c"
+    code: |
+      static void find_endpoints(struct usb_serial *serial,
+                                 struct usb_serial_endpoints *epds)
+      {
+          /* 确保数组足够大 */
+          BUILD_BUG_ON(ARRAY_SIZE(epds->bulk_in) < USB_MAXENDPOINTS / 2);
+          BUILD_BUG_ON(ARRAY_SIZE(epds->bulk_out) < USB_MAXENDPOINTS / 2);
+          BUILD_BUG_ON(ARRAY_SIZE(epds->interrupt_in) < USB_MAXENDPOINTS / 2);
+          /* ... */
+      }
+
+# ============================================================
+# NOTES - 注意事项
+# ============================================================
+
+notes:
+  - "container_of 是零开销抽象，编译时计算"
+  - "container_of 的 ptr 不能为 NULL（除非使用 container_of_safe）"
+  - "offsetof 和 sizeof_field 是编译时常量"
+  - "BUILD_BUG_ON 的条件必须是编译时常量表达式"
+  - "ARRAY_SIZE 只能用于真正的数组，不能用于指针"
+  - "min/max 宏会检查类型，不同类型用 min_t/max_t"
+  - "这些宏是内核代码的基础设施，广泛使用"
+
+# ============================================================
+# RELATED APIs - 相关 API
+# ============================================================
+
+related_apis:
+  - name: "list_entry"
+    description: "container_of 的链表别名"
+    header: "linux/list.h"
+    
+  - name: "kref"
+    description: "引用计数，常与 container_of 配合"
+    header: "linux/kref.h"
+    
+  - name: "to_xxx"
+    description: "各子系统的 container_of 封装"
+    example: "to_usb_device(), to_platform_device()"

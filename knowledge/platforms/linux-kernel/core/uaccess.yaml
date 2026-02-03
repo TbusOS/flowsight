@@ -1,0 +1,244 @@
+# Linux Kernel - 用户空间访问 API
+# User Space Access API - Kernel/User Data Transfer
+
+metadata:
+  subsystem: "core"
+  description: "内核与用户空间数据传输 API"
+  header: "linux/uaccess.h"
+  kernel_version: "6.x"
+  category: "memory"
+
+copy_patterns:
+  - pattern: 'copy_from_user\s*\(\s*(?P<to>[^,]+)\s*,\s*(?P<from>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+    name: "copy_from_user"
+    description: "从用户空间复制数据到内核"
+    can_sleep: true
+    context: "process"
+    return: "未复制的字节数 (0 表示成功)"
+    security: "必须验证用户指针"
+    prototype: "unsigned long copy_from_user(void *to, const void __user *from, unsigned long n)"
+    
+  - pattern: 'copy_to_user\s*\(\s*(?P<to>[^,]+)\s*,\s*(?P<from>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+    name: "copy_to_user"
+    description: "从内核复制数据到用户空间"
+    can_sleep: true
+    context: "process"
+    return: "未复制的字节数 (0 表示成功)"
+    prototype: "unsigned long copy_to_user(void __user *to, const void *from, unsigned long n)"
+    
+  - pattern: '__copy_from_user\s*\(\s*(?P<to>[^,]+)\s*,\s*(?P<from>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+    name: "__copy_from_user"
+    description: "无访问检查版本 (已验证指针)"
+    can_sleep: true
+    context: "process"
+    note: "调用前必须已通过 access_ok() 验证"
+    
+  - pattern: '__copy_to_user\s*\(\s*(?P<to>[^,]+)\s*,\s*(?P<from>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+    name: "__copy_to_user"
+    description: "无访问检查版本 (已验证指针)"
+    can_sleep: true
+    context: "process"
+    note: "调用前必须已通过 access_ok() 验证"
+
+simple_patterns:
+  - pattern: 'get_user\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<ptr>[^)]+)\s*\)'
+    name: "get_user"
+    description: "从用户空间获取简单类型值"
+    can_sleep: true
+    context: "process"
+    return: "0 成功, -EFAULT 失败"
+    types: "char, short, int, long, long long"
+    prototype: "int get_user(x, ptr)"
+    
+  - pattern: 'put_user\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<ptr>[^)]+)\s*\)'
+    name: "put_user"
+    description: "写入简单类型值到用户空间"
+    can_sleep: true
+    context: "process"
+    return: "0 成功, -EFAULT 失败"
+    types: "char, short, int, long, long long"
+    prototype: "int put_user(x, ptr)"
+    
+  - pattern: '__get_user\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<ptr>[^)]+)\s*\)'
+    name: "__get_user"
+    description: "无访问检查版本的 get_user"
+    can_sleep: true
+    context: "process"
+    note: "调用前必须已通过 access_ok() 验证"
+    
+  - pattern: '__put_user\s*\(\s*(?P<x>[^,]+)\s*,\s*(?P<ptr>[^)]+)\s*\)'
+    name: "__put_user"
+    description: "无访问检查版本的 put_user"
+    can_sleep: true
+    context: "process"
+    note: "调用前必须已通过 access_ok() 验证"
+
+access_check:
+  - pattern: 'access_ok\s*\(\s*(?P<addr>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+    name: "access_ok"
+    description: "检查用户空间地址是否有效"
+    can_sleep: false
+    context: "any"
+    return: "true if access ok, false otherwise"
+    prototype: "bool access_ok(const void __user *addr, size_t size)"
+    note: "仅检查地址范围，不检查页是否已映射"
+
+string_patterns:
+  - pattern: 'strncpy_from_user\s*\(\s*(?P<dst>[^,]+)\s*,\s*(?P<src>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+    name: "strncpy_from_user"
+    description: "从用户空间复制字符串"
+    can_sleep: true
+    context: "process"
+    return: "复制的字节数 (不含 NULL), 或负错误码"
+    prototype: "long strncpy_from_user(char *dst, const char __user *src, long count)"
+    
+  - pattern: 'strnlen_user\s*\(\s*(?P<str>[^,]+)\s*,\s*(?P<count>[^)]+)\s*\)'
+    name: "strnlen_user"
+    description: "获取用户空间字符串长度"
+    can_sleep: true
+    context: "process"
+    return: "长度 (含 NULL), 或 0 表示错误"
+    prototype: "long strnlen_user(const char __user *str, long count)"
+
+clear_patterns:
+  - pattern: 'clear_user\s*\(\s*(?P<to>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+    name: "clear_user"
+    description: "清零用户空间内存"
+    can_sleep: true
+    context: "process"
+    return: "未清除的字节数 (0 表示成功)"
+    prototype: "unsigned long clear_user(void __user *to, unsigned long n)"
+    
+  - pattern: '__clear_user\s*\(\s*(?P<to>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+    name: "__clear_user"
+    description: "无访问检查版本的 clear_user"
+    can_sleep: true
+    context: "process"
+    note: "调用前必须已通过 access_ok() 验证"
+
+iterator_patterns:
+  - pattern: 'copy_from_iter\s*\('
+    name: "copy_from_iter"
+    description: "从 iov_iter 复制数据到内核"
+    can_sleep: true
+    context: "process"
+    header: "linux/uio.h"
+    
+  - pattern: 'copy_to_iter\s*\('
+    name: "copy_to_iter"
+    description: "从内核复制数据到 iov_iter"
+    can_sleep: true
+    context: "process"
+    header: "linux/uio.h"
+
+call_chains:
+  copy_from_user_path:
+    description: "copy_from_user 调用路径"
+    chain: |
+      copy_from_user()
+      └── _copy_from_user()
+          ├── access_ok() - 地址验证
+          └── raw_copy_from_user()
+              └── 架构相关实现 (arch/*/include/asm/uaccess.h)
+                  └── 页错误处理 (如果需要)
+                      └── do_page_fault()
+                          └── handle_mm_fault()
+
+  copy_to_user_path:
+    description: "copy_to_user 调用路径"
+    chain: |
+      copy_to_user()
+      └── _copy_to_user()
+          ├── access_ok() - 地址验证
+          └── raw_copy_to_user()
+              └── 架构相关实现
+
+error_handling:
+  common_errors:
+    - error: "EFAULT"
+      cause: "用户空间地址无效或不可访问"
+      handling: "返回 -EFAULT 给用户空间"
+      
+    - error: "部分复制"
+      cause: "页错误无法修复 (如 SIGKILL)"
+      handling: "返回未复制的字节数"
+
+  best_practices:
+    - "始终检查返回值"
+    - "copy_from_user 返回非零表示部分失败"
+    - "get_user/put_user 返回负值表示失败"
+
+security_notes:
+  critical:
+    - "永远不要在持有自旋锁时调用这些函数 (可能睡眠)"
+    - "必须在进程上下文中调用 (不能在中断/softirq 中)"
+    - "用户指针必须来自可信来源或已验证"
+    - "__xxx 版本跳过 access_ok()，使用前必须手动验证"
+    
+  vulnerabilities:
+    - type: "TOCTOU"
+      description: "检查时间与使用时间漏洞"
+      mitigation: "复制后使用内核副本，不要多次读取用户数据"
+      
+    - type: "信息泄露"
+      description: "未初始化的内核内存泄露到用户空间"
+      mitigation: "copy_to_user 前确保数据已初始化"
+      
+    - type: "越界写入"
+      description: "用户控制的长度导致内核缓冲区溢出"
+      mitigation: "验证长度参数，使用固定大小缓冲区"
+
+usage_examples:
+  copy_from_user_example:
+    description: "ioctl 中读取用户数据"
+    code: |
+      static long my_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+      {
+          struct my_data data;
+          
+          if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
+              return -EFAULT;
+          
+          /* 使用 data */
+          return 0;
+      }
+      
+  get_user_example:
+    description: "读取单个值"
+    code: |
+      int value;
+      if (get_user(value, (int __user *)arg))
+          return -EFAULT;
+
+  access_ok_example:
+    description: "批量操作前验证"
+    code: |
+      if (!access_ok(user_buf, len))
+          return -EFAULT;
+      
+      /* 现在可以安全使用 __copy_from_user */
+      if (__copy_from_user(kernel_buf, user_buf, len))
+          return -EFAULT;
+
+arch_specific:
+  arm:
+    implementation: "arch/arm/include/asm/uaccess.h"
+    notes: "使用 domain 切换进行访问控制"
+    
+  arm64:
+    implementation: "arch/arm64/include/asm/uaccess.h"
+    notes: "使用 PAN (Privileged Access Never) 保护"
+    
+  x86:
+    implementation: "arch/x86/include/asm/uaccess.h"
+    notes: "使用 SMAP (Supervisor Mode Access Prevention)"
+
+related_apis:
+  - name: "copy_page_from_iter"
+    description: "页级别的用户数据复制"
+    
+  - name: "probe_kernel_read"
+    description: "安全读取内核地址 (可能无效)"
+    
+  - name: "copy_from_user_nofault"
+    description: "不触发页错误的复制 (内核地址)"

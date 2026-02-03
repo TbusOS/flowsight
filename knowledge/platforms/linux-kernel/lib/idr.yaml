@@ -1,0 +1,287 @@
+# Linux Kernel - IDR/IDA API
+# IDR: 整数 ID 到指针的映射
+# IDA: 纯整数 ID 分配器 (不存储指针)
+
+idr_api:
+  description: "整数 ID 分配器 (ID to Pointer)"
+  header: "linux/idr.h"
+  source: "lib/idr.c"
+  notes: "IDR 底层使用 XArray 实现 (4.19+)"
+  
+  init_patterns:
+    - pattern: 'DEFINE_IDR\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态定义 IDR"
+      can_sleep: false
+      example: "DEFINE_IDR(my_idr)"
+      
+    - pattern: 'idr_init\s*\(\s*&?(?P<idr>[^)]+)\s*\)'
+      description: "动态初始化 IDR"
+      can_sleep: false
+      
+    - pattern: 'idr_init_base\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<base>\d+)\s*\)'
+      description: "初始化 IDR 并设置起始 ID"
+      can_sleep: false
+      notes: "常用于从 1 开始分配 (idr_init_base(&idr, 1))"
+      
+  alloc_patterns:
+    - pattern: 'idr_alloc\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<ptr>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配 ID 并关联指针"
+      can_sleep: "depends on GFP flags"
+      return: "分配的 ID (>= 0) 或负错误码"
+      errors:
+        -ENOMEM: "内存不足"
+        -ENOSPC: "无可用 ID (达到 end 限制)"
+      example: |
+        id = idr_alloc(&my_idr, ptr, 0, 0, GFP_KERNEL);
+        if (id < 0)
+            return id;
+      
+    - pattern: 'idr_alloc_u32\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<ptr>[^,]+)\s*,\s*(?P<nextid>[^,]+)\s*,\s*(?P<max>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配 ID (u32 版本)"
+      can_sleep: "depends on GFP flags"
+      notes: "nextid 是输入输出参数，输入为起始值，输出为分配的 ID"
+      
+    - pattern: 'idr_alloc_cyclic\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<ptr>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "循环分配 ID"
+      can_sleep: "depends on GFP flags"
+      notes: "从上次分配位置继续，避免频繁重用低 ID"
+      
+  find_patterns:
+    - pattern: 'idr_find\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "查找 ID 关联的指针"
+      can_sleep: false
+      return: "指针或 NULL"
+      rcu_safe: true
+      
+    - pattern: 'idr_for_each\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<fn>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+      description: "遍历所有条目并调用回调"
+      can_sleep: false
+      callback: "int (*fn)(int id, void *p, void *data)"
+      notes: "回调返回非 0 终止遍历"
+      
+    - pattern: 'idr_for_each_entry\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<entry>[^,]+)\s*,\s*(?P<id>\w+)\s*\)'
+      description: "遍历所有条目 (宏)"
+      can_sleep: false
+      example: |
+        idr_for_each_entry(&my_idr, entry, id) {
+            process(id, entry);
+        }
+      
+    - pattern: 'idr_for_each_entry_ul\s*\('
+      description: "遍历所有条目 (unsigned long ID)"
+      can_sleep: false
+      
+    - pattern: 'idr_for_each_entry_continue\s*\('
+      description: "从当前位置继续遍历"
+      can_sleep: false
+      
+    - pattern: 'idr_get_next\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<nextid>[^)]+)\s*\)'
+      description: "获取下一个条目"
+      can_sleep: false
+      return: "指针或 NULL"
+      notes: "nextid 是输入输出参数"
+      
+    - pattern: 'idr_get_next_ul\s*\('
+      description: "获取下一个条目 (unsigned long ID)"
+      can_sleep: false
+      
+  remove_patterns:
+    - pattern: 'idr_remove\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "移除 ID 关联"
+      can_sleep: false
+      return: "被移除的指针或 NULL"
+      
+    - pattern: 'idr_replace\s*\(\s*&?(?P<idr>[^,]+)\s*,\s*(?P<ptr>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "替换 ID 关联的指针"
+      can_sleep: false
+      return: "旧指针或 ERR_PTR"
+      errors:
+        -ENOENT: "ID 不存在"
+      
+  destroy_patterns:
+    - pattern: 'idr_destroy\s*\(\s*&?(?P<idr>[^)]+)\s*\)'
+      description: "销毁 IDR"
+      can_sleep: false
+      notes: "不释放关联的指针，需要先遍历释放"
+      
+  state_patterns:
+    - pattern: 'idr_is_empty\s*\(\s*&?(?P<idr>[^)]+)\s*\)'
+      description: "检查 IDR 是否为空"
+      can_sleep: false
+      return: "bool"
+
+  preload_patterns:
+    - pattern: 'idr_preload\s*\(\s*(?P<gfp>\w+)\s*\)'
+      description: "预分配内存 (允许原子上下文分配)"
+      can_sleep: "depends on GFP flags"
+      notes: "必须配对调用 idr_preload_end()"
+      example: |
+        idr_preload(GFP_KERNEL);
+        spin_lock(&lock);
+        id = idr_alloc(&idr, ptr, 0, 0, GFP_NOWAIT);
+        spin_unlock(&lock);
+        idr_preload_end();
+      
+    - pattern: 'idr_preload_end\s*\(\s*\)'
+      description: "结束预分配"
+      can_sleep: false
+
+ida_api:
+  description: "纯整数 ID 分配器 (不存储指针)"
+  header: "linux/idr.h"
+  source: "lib/idr.c"
+  notes: "比 IDR 更轻量，适合只需分配 ID 的场景"
+  
+  init_patterns:
+    - pattern: 'DEFINE_IDA\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "静态定义 IDA"
+      can_sleep: false
+      example: "DEFINE_IDA(my_ida)"
+      
+    - pattern: 'ida_init\s*\(\s*&?(?P<ida>[^)]+)\s*\)'
+      description: "动态初始化 IDA"
+      can_sleep: false
+      
+  alloc_patterns:
+    - pattern: 'ida_alloc\s*\(\s*&?(?P<ida>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配 ID (从 0 开始)"
+      can_sleep: "depends on GFP flags"
+      return: "分配的 ID (>= 0) 或负错误码"
+      example: |
+        id = ida_alloc(&my_ida, GFP_KERNEL);
+        if (id < 0)
+            return id;
+      
+    - pattern: 'ida_alloc_min\s*\(\s*&?(?P<ida>[^,]+)\s*,\s*(?P<min>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配不小于 min 的 ID"
+      can_sleep: "depends on GFP flags"
+      example: "ida_alloc_min(&ida, 1, GFP_KERNEL)  // 从 1 开始"
+      
+    - pattern: 'ida_alloc_max\s*\(\s*&?(?P<ida>[^,]+)\s*,\s*(?P<max>\w+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "分配不大于 max 的 ID"
+      can_sleep: "depends on GFP flags"
+      
+    - pattern: 'ida_alloc_range\s*\(\s*&?(?P<ida>[^,]+)\s*,\s*(?P<min>[^,]+)\s*,\s*(?P<max>[^,]+)\s*,\s*(?P<gfp>\w+)\s*\)'
+      description: "在 [min, max] 范围内分配 ID"
+      can_sleep: "depends on GFP flags"
+      errors:
+        -ENOMEM: "内存不足"
+        -ENOSPC: "范围内无可用 ID"
+      
+  free_patterns:
+    - pattern: 'ida_free\s*\(\s*&?(?P<ida>[^,]+)\s*,\s*(?P<id>[^)]+)\s*\)'
+      description: "释放 ID"
+      can_sleep: false
+      notes: "释放后 ID 可被重新分配"
+      
+  destroy_patterns:
+    - pattern: 'ida_destroy\s*\(\s*&?(?P<ida>[^)]+)\s*\)'
+      description: "销毁 IDA (释放所有资源)"
+      can_sleep: false
+      
+  state_patterns:
+    - pattern: 'ida_is_empty\s*\(\s*&?(?P<ida>[^)]+)\s*\)'
+      description: "检查 IDA 是否为空"
+      can_sleep: false
+      return: "bool"
+
+# 常见使用场景
+common_use_cases:
+  idr_device_minor:
+    description: "设备次设备号分配"
+    example: |
+      static DEFINE_IDR(my_idr);
+      
+      static int my_open(struct inode *inode, struct file *file)
+      {
+          struct my_dev *dev = idr_find(&my_idr, iminor(inode));
+          if (!dev)
+              return -ENODEV;
+          file->private_data = dev;
+          return 0;
+      }
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_dev *dev;
+          int id;
+          
+          dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+          
+          id = idr_alloc(&my_idr, dev, 0, 0, GFP_KERNEL);
+          if (id < 0)
+              return id;
+          
+          dev->minor = id;
+          return 0;
+      }
+      
+  ida_unique_id:
+    description: "唯一标识符分配"
+    example: |
+      static DEFINE_IDA(conn_ida);
+      
+      struct connection {
+          int id;
+          /* ... */
+      };
+      
+      struct connection *conn_create(void)
+      {
+          struct connection *conn;
+          int id;
+          
+          conn = kzalloc(sizeof(*conn), GFP_KERNEL);
+          if (!conn)
+              return ERR_PTR(-ENOMEM);
+          
+          id = ida_alloc(&conn_ida, GFP_KERNEL);
+          if (id < 0) {
+              kfree(conn);
+              return ERR_PTR(id);
+          }
+          
+          conn->id = id;
+          return conn;
+      }
+      
+      void conn_destroy(struct connection *conn)
+      {
+          ida_free(&conn_ida, conn->id);
+          kfree(conn);
+      }
+      
+  xarray_page_cache:
+    description: "页面缓存 (address_space)"
+    notes: "文件系统页面缓存使用 XArray 存储页面"
+    
+  xarray_object_registry:
+    description: "对象注册表"
+    example: |
+      static DEFINE_XARRAY_ALLOC(objects);
+      
+      int register_object(struct my_object *obj)
+      {
+          u32 id;
+          int ret;
+          
+          ret = xa_alloc(&objects, &id, obj, 
+                         XA_LIMIT(0, MAX_OBJECTS - 1), GFP_KERNEL);
+          if (ret < 0)
+              return ret;
+          
+          obj->id = id;
+          return 0;
+      }
+      
+      struct my_object *lookup_object(u32 id)
+      {
+          return xa_load(&objects, id);
+      }
+      
+      void unregister_object(struct my_object *obj)
+      {
+          xa_erase(&objects, obj->id);
+      }
