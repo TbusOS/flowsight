@@ -11,6 +11,7 @@ flowsight-core = { workspace = true }
 flowsight-parser = { workspace = true }
 flowsight-knowledge = { workspace = true }
 flowsight-llvm = { workspace = true }
+flowsight-index = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 regex = { workspace = true }
 serde = { workspace = true }

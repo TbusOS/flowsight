@@ -36,9 +36,11 @@ pub mod types;
 pub use cache::{AnalysisCache, CacheConfig, CacheStats, global_cache};
 
 use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};
+use flowsight_index::SymbolIndex;
 use flowsight_knowledge::KnowledgeBase;
 use flowsight_parser::ParseResult;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Analysis result
 #[derive(Debug, Default)]
@@ -62,6 +64,8 @@ pub struct Analyzer {
     funcptr_resolver: funcptr::FuncPtrResolver,
     /// 知识库，包含内核调用链等信息
     knowledge_base: KnowledgeBase,
+    /// 符号索引，用于跨文件函数查找
+    symbol_index: Option<Arc<SymbolIndex>>,
 }
 
 impl Analyzer {
@@ -71,6 +75,7 @@ impl Analyzer {
             async_tracker: async_tracker::AsyncTracker::new(),
             funcptr_resolver: funcptr::FuncPtrResolver::new(),
             knowledge_base: KnowledgeBase::builtin(),
+            symbol_index: None,
         }
     }
 
@@ -80,7 +85,19 @@ impl Analyzer {
             async_tracker: async_tracker::AsyncTracker::new(),
             funcptr_resolver: funcptr::FuncPtrResolver::new(),
             knowledge_base: kb,
+            symbol_index: None,
         }
+    }
+
+    /// Set symbol index for cross-file analysis
+    pub fn with_symbol_index(mut self, index: Arc<SymbolIndex>) -> Self {
+        self.symbol_index = Some(index);
+        self
+    }
+
+    /// Get the symbol index reference
+    pub fn symbol_index(&self) -> Option<&Arc<SymbolIndex>> {
+        self.symbol_index.as_ref()
     }
 
     /// Analyze parsed code
