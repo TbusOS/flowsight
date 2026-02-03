@@ -780,6 +780,7 @@ rtc_sysfs:
 # ADDITIONAL RTC EXAMPLES
 # ============================================================
 
+additional_examples:
   - description: "带电源管理的 RTC 驱动"
     kernel_version: "5.0+"
     code: |

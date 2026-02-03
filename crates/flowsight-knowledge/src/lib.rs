@@ -219,10 +219,9 @@ impl KnowledgeBase {
         kb
     }
 
-    /// Load all YAML files from the data directory
+    /// Load all YAML files from the data directory and knowledge base
     fn load_yaml_from_data_dir(&mut self) {
-        // Try to load netdev.yaml from the data directory
-        // First, try relative path from the crate
+        // 1. Load from crate's data directory (legacy)
         let data_paths: Vec<std::path::PathBuf> = vec![
             std::path::PathBuf::from("data/netdev.yaml"),
             std::path::PathBuf::from("../data/netdev.yaml"),
@@ -232,20 +231,143 @@ impl KnowledgeBase {
         for path in data_paths {
             if path.exists() {
                 if let Ok(netdev_kb) = Self::load_yaml(&path) {
-                    // Merge frameworks
-                    for (name, framework) in netdev_kb.frameworks {
-                        self.frameworks.entry(name).or_insert(framework);
+                    self.merge_knowledge_base(netdev_kb);
+                    break;
+                }
+            }
+        }
+
+        // 2. Load all YAML files from knowledge/platforms/linux-kernel/
+        self.load_linux_kernel_knowledge();
+    }
+
+    /// Merge another knowledge base into this one
+    fn merge_knowledge_base(&mut self, other: KnowledgeBase) {
+        for (name, framework) in other.frameworks {
+            self.frameworks.entry(name).or_insert(framework);
+        }
+        for (name, pattern) in other.async_patterns {
+            self.async_patterns.entry(name).or_insert(pattern);
+        }
+        for (name, api) in other.kernel_apis {
+            self.kernel_apis.entry(name).or_insert(api);
+        }
+    }
+
+    /// Load Linux kernel knowledge base from YAML files
+    fn load_linux_kernel_knowledge(&mut self) {
+        // Try multiple paths to find the knowledge directory
+        let knowledge_paths: Vec<std::path::PathBuf> = vec![
+            std::path::PathBuf::from("knowledge/platforms/linux-kernel"),
+            std::path::PathBuf::from("../knowledge/platforms/linux-kernel"),
+            std::path::PathBuf::from("../../knowledge/platforms/linux-kernel"),
+            std::path::PathBuf::from(CARGO_MANIFEST_DIR).join("../../knowledge/platforms/linux-kernel"),
+        ];
+
+        for base_path in knowledge_paths {
+            if base_path.exists() && base_path.is_dir() {
+                self.load_yaml_directory(&base_path);
+                return;
+            }
+        }
+    }
+
+    /// Recursively load all YAML files from a directory
+    fn load_yaml_directory(&mut self, dir: &Path) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    self.load_yaml_directory(&path);
+                } else if path.extension().map_or(false, |e| e == "yaml" || e == "yml") {
+                    self.load_yaml_knowledge_file(&path);
+                }
+            }
+        }
+    }
+
+    /// Load a single knowledge YAML file and extract patterns
+    fn load_yaml_knowledge_file(&mut self, path: &Path) {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            // Parse as generic YAML value
+            if let Ok(yaml) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
+                self.extract_patterns_from_yaml(&yaml, path);
+            }
+        }
+    }
+
+    /// Extract patterns from parsed YAML
+    fn extract_patterns_from_yaml(&mut self, yaml: &serde_yaml::Value, path: &Path) {
+        let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
+        
+        if let serde_yaml::Value::Mapping(map) = yaml {
+            for (key, value) in map {
+                if let serde_yaml::Value::String(key_str) = key {
+                    // Extract framework/subsystem info
+                    if let serde_yaml::Value::Mapping(subsystem) = value {
+                        let mut callbacks = HashMap::new();
+                        let mut description = String::new();
+                        let mut header = None;
+
+                        // Get description
+                        if let Some(serde_yaml::Value::String(desc)) = subsystem.get("description") {
+                            description = desc.clone();
+                        }
+
+                        // Get header
+                        if let Some(serde_yaml::Value::String(h)) = subsystem.get("header") {
+                            header = Some(h.clone());
+                        }
+
+                        // Extract callbacks
+                        if let Some(serde_yaml::Value::Mapping(cbs)) = subsystem.get("callbacks") {
+                            for (cb_name, cb_value) in cbs {
+                                if let (serde_yaml::Value::String(name), serde_yaml::Value::Mapping(cb_map)) = (cb_name, cb_value) {
+                                    let mut trigger = String::new();
+                                    let mut context = ExecutionContext::Unknown;
+                                    let mut sig = None;
+                                    let mut cb_desc = String::new();
+
+                                    if let Some(serde_yaml::Value::String(t)) = cb_map.get("trigger") {
+                                        trigger = t.clone();
+                                    }
+                                    if let Some(serde_yaml::Value::String(d)) = cb_map.get("description") {
+                                        cb_desc = d.clone();
+                                    }
+                                    if let Some(serde_yaml::Value::String(s)) = cb_map.get("signature") {
+                                        sig = Some(s.clone());
+                                    }
+                                    if let Some(serde_yaml::Value::String(ctx)) = cb_map.get("context") {
+                                        context = match ctx.as_str() {
+                                            "process" => ExecutionContext::Process,
+                                            "softirq" | "soft_irq" => ExecutionContext::SoftIrq,
+                                            "hardirq" | "hard_irq" | "interrupt" => ExecutionContext::HardIrq,
+                                            "user" => ExecutionContext::User,
+                                            _ => ExecutionContext::Unknown,
+                                        };
+                                    }
+
+                                    callbacks.insert(name.clone(), FrameworkCallback {
+                                        description: cb_desc,
+                                        trigger,
+                                        context,
+                                        signature: sig,
+                                        call_chain: None, // TODO: extract call_chain from YAML
+                                    });
+                                }
+                            }
+                        }
+
+                        // Only add if we found useful info
+                        if !callbacks.is_empty() || !description.is_empty() {
+                            let framework_name = format!("{}_{}", file_name, key_str);
+                            self.frameworks.entry(framework_name).or_insert(Framework {
+                                description,
+                                header,
+                                callbacks,
+                            });
+                        }
                     }
-                    // Merge async patterns
-                    for (name, pattern) in netdev_kb.async_patterns {
-                        self.async_patterns.entry(name).or_insert(pattern);
-                    }
-                    // Merge kernel APIs
-                    for (name, api) in netdev_kb.kernel_apis {
-                        self.kernel_apis.entry(name).or_insert(api);
-                    }
-                    // Merge callback patterns (if we had them in YAML)
-                    return;
                 }
             }
         }

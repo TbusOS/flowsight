@@ -804,6 +804,7 @@ reset_bulk_api:
 # ADDITIONAL RESET EXAMPLES
 # ============================================================
 
+additional_examples:
   - description: "批量复位消费者示例"
     kernel_version: "4.14+"
     code: |

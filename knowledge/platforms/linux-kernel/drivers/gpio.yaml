@@ -483,6 +483,7 @@ data_structures:
 # ADDITIONAL EXAMPLES
 # ============================================================
 
+additional_examples:
   - description: "GPIO Chip 驱动实现 (MMIO)"
     kernel_version: "5.0+"
     code: |

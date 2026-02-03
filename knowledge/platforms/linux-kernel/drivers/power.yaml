@@ -364,7 +364,7 @@ examples:
 # ADDITIONAL DATA STRUCTURES
 # ============================================================
 
-  power_supply_config:
+power_supply_config:
     pattern: 'struct power_supply_config\s*\{'
     description: "电源配置结构"
     file: "include/linux/power_supply.h"
@@ -382,17 +382,17 @@ examples:
         type: "size_t"
         description: "供电目标数量"
 
-  power_supply_propval:
-    pattern: 'union power_supply_propval\s*\{'
-    description: "属性值联合体"
-    file: "include/linux/power_supply.h"
-    fields:
-      - name: "intval"
-        type: "int"
-        description: "整数值"
-      - name: "strval"
-        type: "const char *"
-        description: "字符串值"
+power_supply_propval:
+  pattern: 'union power_supply_propval\s*\{'
+  description: "属性值联合体"
+  file: "include/linux/power_supply.h"
+  fields:
+    - name: "intval"
+      type: "int"
+      description: "整数值"
+    - name: "strval"
+      type: "const char *"
+      description: "字符串值"
 
 # ============================================================
 # PROPERTY ENUMS
@@ -435,6 +435,7 @@ property_enums:
 # ADDITIONAL CALL CHAINS
 # ============================================================
 
+additional_call_chains:
   sysfs_read:
     description: "Sysfs 属性读取流程"
     chain:

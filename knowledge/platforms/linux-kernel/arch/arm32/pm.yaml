@@ -412,6 +412,7 @@ data_structures:
 # ADDITIONAL EXAMPLES
 # ============================================================
 
+additional_examples:
   - description: "PSCI CPU 热插拔实现"
     kernel_version: "5.0+"
     code: |

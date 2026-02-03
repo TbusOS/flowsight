@@ -318,7 +318,7 @@ examples:
 # ADDITIONAL DATA STRUCTURES
 # ============================================================
 
-  backlight_ops:
+backlight_ops:
     pattern: 'struct backlight_ops\s*\{'
     description: "背光操作函数表"
     file: "include/linux/backlight.h"
@@ -340,6 +340,7 @@ examples:
 # ADDITIONAL CALL CHAINS
 # ============================================================
 
+additional_call_chains:
   backlight_suspend:
     description: "Backlight Suspend Flow"
     chain:

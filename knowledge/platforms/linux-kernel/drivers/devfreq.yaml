@@ -389,50 +389,50 @@ examples:
 # ADDITIONAL DATA STRUCTURES
 # ============================================================
 
-  devfreq_governor:
-    pattern: 'struct devfreq_governor\s*\{'
-    description: "devfreq 调频策略结构"
-    file: "include/linux/devfreq.h"
-    fields:
-      - name: "name"
-        type: "const char *"
-        description: "策略名称"
-      - name: "immutable"
-        type: "unsigned int"
-        description: "是否可更改"
-      - name: "get_target_freq"
-        type: "callback"
-        description: "计算目标频率回调"
-      - name: "event_handler"
-        type: "callback"
-        description: "事件处理回调"
+devfreq_governor_struct:
+  pattern: 'struct devfreq_governor\s*\{'
+  description: "devfreq 调频策略结构"
+  file: "include/linux/devfreq.h"
+  fields:
+    - name: "name"
+      type: "const char *"
+      description: "策略名称"
+    - name: "immutable"
+      type: "unsigned int"
+      description: "是否可更改"
+    - name: "get_target_freq"
+      type: "callback"
+      description: "计算目标频率回调"
+    - name: "event_handler"
+      type: "callback"
+      description: "事件处理回调"
 
-  devfreq_dev_status:
-    pattern: 'struct devfreq_dev_status\s*\{'
-    description: "设备状态结构"
-    file: "include/linux/devfreq.h"
-    fields:
-      - name: "total_time"
-        type: "unsigned long"
-        description: "总采样时间"
-      - name: "busy_time"
-        type: "unsigned long"
-        description: "忙碌时间"
-      - name: "current_frequency"
-        type: "unsigned long"
-        description: "当前频率"
+devfreq_dev_status:
+  pattern: 'struct devfreq_dev_status\s*\{'
+  description: "设备状态结构"
+  file: "include/linux/devfreq.h"
+  fields:
+    - name: "total_time"
+      type: "unsigned long"
+      description: "总采样时间"
+    - name: "busy_time"
+      type: "unsigned long"
+      description: "忙碌时间"
+    - name: "current_frequency"
+      type: "unsigned long"
+      description: "当前频率"
 
-  devfreq_simple_ondemand_data:
-    pattern: 'struct devfreq_simple_ondemand_data\s*\{'
-    description: "simple_ondemand 策略数据"
-    file: "include/linux/devfreq.h"
-    fields:
-      - name: "upthreshold"
-        type: "unsigned int"
-        description: "升频阈值 (0-100)"
-      - name: "downdifferential"
-        type: "unsigned int"
-        description: "降频差值"
+devfreq_simple_ondemand_data:
+  pattern: 'struct devfreq_simple_ondemand_data\s*\{'
+  description: "simple_ondemand 策略数据"
+  file: "include/linux/devfreq.h"
+  fields:
+    - name: "upthreshold"
+      type: "unsigned int"
+      description: "升频阈值 (0-100)"
+    - name: "downdifferential"
+      type: "unsigned int"
+      description: "降频差值"
 
 # ============================================================
 # OPP INTEGRATION
@@ -469,6 +469,7 @@ devfreq_cooling:
 # ADDITIONAL CALL CHAINS
 # ============================================================
 
+additional_call_chains:
   governor_event:
     description: "Governor 事件处理流程"
     chain:

@@ -604,6 +604,7 @@ data_structures:
 # ADDITIONAL EXAMPLES
 # ============================================================
 
+additional_examples:
   - description: "完整 USB 驱动 (批量传输)"
     kernel_version: "5.0+"
     code: |

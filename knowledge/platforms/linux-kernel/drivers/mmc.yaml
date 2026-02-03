@@ -400,7 +400,7 @@ examples:
 # ADDITIONAL DATA STRUCTURES
 # ============================================================
 
-  mmc_card:
+mmc_card:
     pattern: 'struct mmc_card\s*\{'
     description: "MMC/SD 卡结构"
     file: "include/linux/mmc/card.h"
@@ -424,77 +424,77 @@ examples:
         type: "u32"
         description: "操作条件寄存器"
 
-  mmc_command:
-    pattern: 'struct mmc_command\s*\{'
-    description: "MMC 命令结构"
-    file: "include/linux/mmc/core.h"
-    fields:
-      - name: "opcode"
-        type: "u32"
-        description: "命令码"
-      - name: "arg"
-        type: "u32"
-        description: "命令参数"
-      - name: "resp"
-        type: "u32[4]"
-        description: "响应（最多 128 位）"
-      - name: "flags"
-        type: "unsigned int"
-        description: "命令标志"
-      - name: "error"
-        type: "int"
-        description: "错误码"
+mmc_command:
+  pattern: 'struct mmc_command\s*\{'
+  description: "MMC 命令结构"
+  file: "include/linux/mmc/core.h"
+  fields:
+    - name: "opcode"
+      type: "u32"
+      description: "命令码"
+    - name: "arg"
+      type: "u32"
+      description: "命令参数"
+    - name: "resp"
+      type: "u32[4]"
+      description: "响应（最多 128 位）"
+    - name: "flags"
+      type: "unsigned int"
+      description: "命令标志"
+    - name: "error"
+      type: "int"
+      description: "错误码"
 
-  mmc_data:
-    pattern: 'struct mmc_data\s*\{'
-    description: "MMC 数据传输结构"
-    file: "include/linux/mmc/core.h"
-    fields:
-      - name: "blksz"
-        type: "unsigned int"
-        description: "块大小"
-      - name: "blocks"
-        type: "unsigned int"
-        description: "块数量"
-      - name: "error"
-        type: "int"
-        description: "错误码"
-      - name: "flags"
-        type: "unsigned int"
-        description: "传输标志"
-      - name: "bytes_xfered"
-        type: "unsigned int"
-        description: "已传输字节数"
-      - name: "sg"
-        type: "struct scatterlist *"
-        description: "散列表"
-      - name: "sg_len"
-        type: "unsigned int"
-        description: "散列表长度"
+mmc_data:
+  pattern: 'struct mmc_data\s*\{'
+  description: "MMC 数据传输结构"
+  file: "include/linux/mmc/core.h"
+  fields:
+    - name: "blksz"
+      type: "unsigned int"
+      description: "块大小"
+    - name: "blocks"
+      type: "unsigned int"
+      description: "块数量"
+    - name: "error"
+      type: "int"
+      description: "错误码"
+    - name: "flags"
+      type: "unsigned int"
+      description: "传输标志"
+    - name: "bytes_xfered"
+      type: "unsigned int"
+      description: "已传输字节数"
+    - name: "sg"
+      type: "struct scatterlist *"
+      description: "散列表"
+    - name: "sg_len"
+      type: "unsigned int"
+      description: "散列表长度"
 
-  mmc_ios:
-    pattern: 'struct mmc_ios\s*\{'
-    description: "MMC IO 设置"
-    file: "include/linux/mmc/host.h"
-    fields:
-      - name: "clock"
-        type: "unsigned int"
-        description: "时钟频率"
-      - name: "vdd"
-        type: "unsigned short"
-        description: "VDD 电压选择"
-      - name: "bus_mode"
-        type: "unsigned char"
-        description: "总线模式"
-      - name: "bus_width"
-        type: "unsigned char"
-        description: "总线宽度"
-      - name: "timing"
-        type: "unsigned char"
-        description: "时序模式"
-      - name: "signal_voltage"
-        type: "unsigned char"
-        description: "信号电压"
+mmc_ios:
+  pattern: 'struct mmc_ios\s*\{'
+  description: "MMC IO 设置"
+  file: "include/linux/mmc/host.h"
+  fields:
+    - name: "clock"
+      type: "unsigned int"
+      description: "时钟频率"
+    - name: "vdd"
+      type: "unsigned short"
+      description: "VDD 电压选择"
+    - name: "bus_mode"
+      type: "unsigned char"
+      description: "总线模式"
+    - name: "bus_width"
+      type: "unsigned char"
+      description: "总线宽度"
+    - name: "timing"
+      type: "unsigned char"
+      description: "时序模式"
+    - name: "signal_voltage"
+      type: "unsigned char"
+      description: "信号电压"
 
 # ============================================================
 # MMC CAPABILITIES
@@ -547,6 +547,7 @@ mmc_host_ops_extended:
 # ADDITIONAL CALL CHAINS
 # ============================================================
 
+additional_call_chains:
   mmc_suspend:
     description: "MMC Power Management Suspend"
     chain:

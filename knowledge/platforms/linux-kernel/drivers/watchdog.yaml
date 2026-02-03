@@ -888,6 +888,7 @@ hardware_heartbeat:
 # ADDITIONAL WATCHDOG EXAMPLES
 # ============================================================
 
+additional_examples:
   - description: "带硬件心跳限制的看门狗驱动"
     kernel_version: "4.5+"
     code: |

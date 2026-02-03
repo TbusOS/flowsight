@@ -453,7 +453,7 @@ examples:
 # ADDITIONAL DATA STRUCTURES
 # ============================================================
 
-  rpmsg_device:
+rpmsg_device:
     pattern: 'struct rpmsg_device\s*\{'
     description: "RPMSG 设备结构"
     file: "include/linux/rpmsg.h"
@@ -477,23 +477,23 @@ examples:
         type: "const struct rpmsg_device_ops *"
         description: "设备操作"
 
-  rpmsg_endpoint:
-    pattern: 'struct rpmsg_endpoint\s*\{'
-    description: "RPMSG 端点结构"
-    file: "include/linux/rpmsg.h"
-    fields:
-      - name: "rpdev"
-        type: "struct rpmsg_device *"
-        description: "关联设备"
-      - name: "cb"
-        type: "rpmsg_rx_cb_t"
-        description: "接收回调"
-      - name: "addr"
-        type: "u32"
-        description: "端点地址"
-      - name: "priv"
-        type: "void *"
-        description: "私有数据"
+rpmsg_endpoint:
+  pattern: 'struct rpmsg_endpoint\s*\{'
+  description: "RPMSG 端点结构"
+  file: "include/linux/rpmsg.h"
+  fields:
+    - name: "rpdev"
+      type: "struct rpmsg_device *"
+      description: "关联设备"
+    - name: "cb"
+      type: "rpmsg_rx_cb_t"
+      description: "接收回调"
+    - name: "addr"
+      type: "u32"
+      description: "端点地址"
+    - name: "priv"
+      type: "void *"
+      description: "私有数据"
 
 # ============================================================
 # RESOURCE TABLE
@@ -522,6 +522,7 @@ resource_table:
 # ADDITIONAL CALL CHAINS
 # ============================================================
 
+additional_call_chains:
   rproc_crash:
     description: "Remote Processor Crash Recovery"
     chain:

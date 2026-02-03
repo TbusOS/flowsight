@@ -405,7 +405,7 @@ examples:
 # ADDITIONAL DATA STRUCTURES
 # ============================================================
 
-  hwmon_channel_info:
+hwmon_channel_info_struct:
     pattern: 'struct hwmon_channel_info\s*\{'
     description: "hwmon 通道信息结构"
     file: "include/linux/hwmon.h"

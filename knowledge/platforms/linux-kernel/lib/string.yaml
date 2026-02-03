@@ -225,7 +225,7 @@ string_search:
 
   functions:
     strchr:
-      pattern: 'strchr\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<c>[\w\']+)\s*\)'
+      pattern: 'strchr\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<c>[\w'']+)\s*\)'
       description: "查找字符首次出现位置"
       prototype: "char *strchr(const char *s, int c)"
       return_type: "char * (指向找到的字符，或 NULL)"
@@ -234,19 +234,19 @@ string_search:
         - "strchr(s, '\\0') 返回字符串结尾"
 
     strrchr:
-      pattern: 'strrchr\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<c>[\w\']+)\s*\)'
+      pattern: 'strrchr\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<c>[\w'']+)\s*\)'
       description: "查找字符最后出现位置"
       prototype: "char *strrchr(const char *s, int c)"
       return_type: "char * (指向找到的字符，或 NULL)"
 
     strnchr:
-      pattern: 'strnchr\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<c>[\w\']+)\s*\)'
+      pattern: 'strnchr\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<c>[\w'']+)\s*\)'
       description: "在前 n 个字符中查找字符"
       prototype: "char *strnchr(const char *s, size_t count, int c)"
       return_type: "char *"
 
     strchrnul:
-      pattern: 'strchrnul\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<c>[\w\']+)\s*\)'
+      pattern: 'strchrnul\s*\(\s*(?P<s>[\w\.\->"]+)\s*,\s*(?P<c>[\w'']+)\s*\)'
       description: "查找字符，未找到返回字符串结尾"
       prototype: "char *strchrnul(const char *s, int c)"
       return_type: "char *"
@@ -367,7 +367,7 @@ memory_functions:
         - "比 memcpy 稍慢"
 
     memset:
-      pattern: 'memset\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<c>[\w\']+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
+      pattern: 'memset\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<c>[\w'']+)\s*,\s*(?P<count>[\w\+\-\*\/\(\)]+)\s*\)'
       description: "内存填充"
       prototype: "void *memset(void *s, int c, size_t count)"
       return_type: "void * (s)"
@@ -399,19 +399,19 @@ memory_functions:
           description: "s1 > s2"
 
     memchr:
-      pattern: 'memchr\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<c>[\w\']+)\s*,\s*(?P<n>[\w\+\-\*\/\(\)]+)\s*\)'
+      pattern: 'memchr\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<c>[\w'']+)\s*,\s*(?P<n>[\w\+\-\*\/\(\)]+)\s*\)'
       description: "在内存中查找字符"
       prototype: "void *memchr(const void *s, int c, size_t n)"
       return_type: "void * (指向找到的字符，或 NULL)"
 
     memrchr:
-      pattern: 'memrchr\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<c>[\w\']+)\s*,\s*(?P<n>[\w\+\-\*\/\(\)]+)\s*\)'
+      pattern: 'memrchr\s*\(\s*(?P<s>[\w\.\->]+)\s*,\s*(?P<c>[\w'']+)\s*,\s*(?P<n>[\w\+\-\*\/\(\)]+)\s*\)'
       description: "从后向前在内存中查找字符"
       prototype: "void *memrchr(const void *s, int c, size_t n)"
       return_type: "void *"
 
     memscan:
-      pattern: 'memscan\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<c>[\w\']+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
+      pattern: 'memscan\s*\(\s*(?P<addr>[\w\.\->]+)\s*,\s*(?P<c>[\w'']+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*\)'
       description: "扫描内存查找字符（不返回 NULL）"
       prototype: "void *memscan(void *addr, int c, size_t size)"
       return_type: "void *"
@@ -430,7 +430,7 @@ string_format:
 
   functions:
     sprintf:
-      pattern: 'sprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<fmt>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+      pattern: 'sprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<fmt>["''][^"'']*["''])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
       description: "格式化字符串（不安全）"
       prototype: "int sprintf(char *buf, const char *fmt, ...)"
       return_type: "int (写入的字符数)"
@@ -440,7 +440,7 @@ string_format:
       deprecated: true
 
     snprintf:
-      pattern: 'snprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<fmt>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+      pattern: 'snprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<fmt>["''][^"'']*["''])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
       description: "安全的格式化字符串"
       prototype: "int snprintf(char *buf, size_t size, const char *fmt, ...)"
       return_type: "int (如果缓冲区足够大，应写入的字符数)"
@@ -449,7 +449,7 @@ string_format:
         - "总是 NUL 终止（除非 size == 0）"
 
     scnprintf:
-      pattern: 'scnprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<fmt>["\'][^"\']*["\'])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
+      pattern: 'scnprintf\s*\(\s*(?P<buf>[\w\.\->]+)\s*,\s*(?P<size>[\w\+\-\*\/\(\)]+)\s*,\s*(?P<fmt>["''][^"'']*["''])\s*(?:,\s*(?P<args>[^)]+))?\s*\)'
       description: "安全格式化，返回实际写入长度"
       prototype: "int scnprintf(char *buf, size_t size, const char *fmt, ...)"
       return_type: "int (实际写入的字符数，不含 NUL)"

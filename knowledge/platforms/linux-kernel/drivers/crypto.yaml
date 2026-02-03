@@ -443,7 +443,7 @@ examples:
 # ADDITIONAL DATA STRUCTURES
 # ============================================================
 
-  ahash_alg:
+ahash_alg:
     pattern: 'struct ahash_alg\s*\{'
     description: "异步哈希算法结构"
     file: "include/crypto/hash.h"
@@ -470,52 +470,53 @@ examples:
         type: "struct hash_alg_common"
         description: "通用哈希算法信息"
 
-  aead_alg:
-    pattern: 'struct aead_alg\s*\{'
-    description: "AEAD 算法结构"
-    file: "include/crypto/aead.h"
-    fields:
-      - name: "setkey"
-        type: "int (*)(struct crypto_aead *, const u8 *, unsigned int)"
-        description: "设置密钥"
-      - name: "setauthsize"
-        type: "int (*)(struct crypto_aead *, unsigned int)"
-        description: "设置认证标签大小"
-      - name: "encrypt"
-        type: "int (*)(struct aead_request *)"
-        description: "加密操作"
-      - name: "decrypt"
-        type: "int (*)(struct aead_request *)"
-        description: "解密操作"
-      - name: "ivsize"
-        type: "unsigned int"
-        description: "IV 大小"
-      - name: "maxauthsize"
-        type: "unsigned int"
-        description: "最大认证标签大小"
+aead_alg:
+  pattern: 'struct aead_alg\s*\{'
+  description: "AEAD 算法结构"
+  file: "include/crypto/aead.h"
+  fields:
+    - name: "setkey"
+      type: "int (*)(struct crypto_aead *, const u8 *, unsigned int)"
+      description: "设置密钥"
+    - name: "setauthsize"
+      type: "int (*)(struct crypto_aead *, unsigned int)"
+      description: "设置认证标签大小"
+    - name: "encrypt"
+      type: "int (*)(struct aead_request *)"
+      description: "加密操作"
+    - name: "decrypt"
+      type: "int (*)(struct aead_request *)"
+      description: "解密操作"
+    - name: "ivsize"
+      type: "unsigned int"
+      description: "IV 大小"
+    - name: "maxauthsize"
+      type: "unsigned int"
+      description: "最大认证标签大小"
 
-  crypto_engine:
-    pattern: 'struct crypto_engine\s*\{'
-    description: "加密引擎结构"
-    file: "include/crypto/engine.h"
-    fields:
-      - name: "running"
-        type: "bool"
-        description: "引擎是否运行"
-      - name: "busy"
-        type: "bool"
-        description: "引擎是否忙碌"
-      - name: "queue"
-        type: "struct crypto_queue"
-        description: "请求队列"
-      - name: "do_batch_requests"
-        type: "int (*)(struct crypto_engine *)"
-        description: "批量处理请求"
+crypto_engine_struct:
+  pattern: 'struct crypto_engine\s*\{'
+  description: "加密引擎结构"
+  file: "include/crypto/engine.h"
+  fields:
+    - name: "running"
+      type: "bool"
+      description: "引擎是否运行"
+    - name: "busy"
+      type: "bool"
+      description: "引擎是否忙碌"
+    - name: "queue"
+      type: "struct crypto_queue"
+      description: "请求队列"
+    - name: "do_batch_requests"
+      type: "int (*)(struct crypto_engine *)"
+      description: "批量处理请求"
 
 # ============================================================
 # ADDITIONAL CALL CHAINS
 # ============================================================
 
+additional_call_chains:
   ahash_flow:
     description: "Async Hash Request Flow"
     chain:

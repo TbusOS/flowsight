@@ -531,7 +531,7 @@ kernel_version: "2.6.0+"
 # ADDITIONAL DATA STRUCTURES
 # ============================================================
 
-  Scsi_Host:
+Scsi_Host:
     pattern: 'struct Scsi_Host\s*\{'
     description: "SCSI 主机结构"
     file: "include/scsi/scsi_host.h"
@@ -567,31 +567,32 @@ kernel_version: "2.6.0+"
         type: "unsigned long[]"
         description: "私有数据"
 
-  scsi_target:
-    pattern: 'struct scsi_target\s*\{'
-    description: "SCSI 目标设备"
-    file: "include/scsi/scsi_device.h"
-    fields:
-      - name: "devices"
-        type: "struct list_head"
-        description: "设备列表"
-      - name: "dev"
-        type: "struct device"
-        description: "内嵌设备"
-      - name: "channel"
-        type: "unsigned int"
-        description: "通道号"
-      - name: "id"
-        type: "unsigned int"
-        description: "目标 ID"
-      - name: "state"
-        type: "enum scsi_target_state"
-        description: "目标状态"
+scsi_target:
+  pattern: 'struct scsi_target\s*\{'
+  description: "SCSI 目标设备"
+  file: "include/scsi/scsi_device.h"
+  fields:
+    - name: "devices"
+      type: "struct list_head"
+      description: "设备列表"
+    - name: "dev"
+      type: "struct device"
+      description: "内嵌设备"
+    - name: "channel"
+      type: "unsigned int"
+      description: "通道号"
+    - name: "id"
+      type: "unsigned int"
+      description: "目标 ID"
+    - name: "state"
+      type: "enum scsi_target_state"
+      description: "目标状态"
 
 # ============================================================
 # ADDITIONAL CALL CHAINS
 # ============================================================
 
+additional_call_chains:
   scsi_hotplug:
     description: "SCSI 热插拔流程"
     chain:

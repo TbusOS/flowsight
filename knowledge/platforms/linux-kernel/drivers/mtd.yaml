@@ -419,10 +419,10 @@ examples:
       module_platform_driver(my_nand_driver);
 
 # ============================================================
-# SPI NOR FLASH
+# SPI NOR FLASH SUBSYSTEM
 # ============================================================
 
-spi_nor:
+spi_nor_subsystem:
   description: "SPI NOR Flash 子系统"
   header: "linux/mtd/spi-nor.h"
   icon: "⚡"
@@ -506,6 +506,7 @@ mtd_partitions:
 # ADDITIONAL CALL CHAINS
 # ============================================================
 
+additional_call_chains:
   mtd_write:
     description: "MTD Write Operation"
     chain:

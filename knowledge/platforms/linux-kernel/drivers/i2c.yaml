@@ -471,6 +471,7 @@ data_structures:
 # ADDITIONAL EXAMPLES
 # ============================================================
 
+additional_examples:
   - description: "SMBus 操作示例"
     kernel_version: "5.0+"
     code: |

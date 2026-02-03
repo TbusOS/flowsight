@@ -383,7 +383,7 @@ examples:
 # ADDITIONAL DATA STRUCTURES
 # ============================================================
 
-  fw_upload:
+fw_upload:
     pattern: 'struct fw_upload\s*\{'
     description: "固件上传设备结构"
     file: "include/linux/firmware.h"
