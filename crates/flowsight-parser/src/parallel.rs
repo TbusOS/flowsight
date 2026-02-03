@@ -71,7 +71,12 @@ impl ParallelParser {
         let total = paths.len();
         let processed = AtomicUsize::new(0);
 
-        self.emit_progress(ProgressPhase::Parsing, 0, total, "Starting parallel parse...");
+        self.emit_progress(
+            ProgressPhase::Parsing,
+            0,
+            total,
+            "Starting parallel parse...",
+        );
 
         let results: Vec<_> = paths
             .par_iter()
@@ -97,7 +102,11 @@ impl ParallelParser {
     }
 
     /// Parse a directory recursively
-    pub fn parse_directory(&self, dir: &Path, extensions: &[&str]) -> Vec<(PathBuf, Result<ParseResult>)> {
+    pub fn parse_directory(
+        &self,
+        dir: &Path,
+        extensions: &[&str],
+    ) -> Vec<(PathBuf, Result<ParseResult>)> {
         // Scan phase
         self.emit_progress(ProgressPhase::Scanning, 0, 0, "Scanning directory...");
 
@@ -147,7 +156,11 @@ impl ParallelParser {
         // Cache result
         let mtime = std::fs::metadata(path)
             .and_then(|m| m.modified())
-            .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
+            .map(|t| {
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+            })
             .unwrap_or(0);
         self.cache.insert(path_buf, hash, mtime, result.clone());
 
@@ -169,7 +182,13 @@ impl ParallelParser {
         self.cache.stats()
     }
 
-    fn emit_progress<S: Into<String>>(&self, phase: ProgressPhase, current: usize, total: usize, message: S) {
+    fn emit_progress<S: Into<String>>(
+        &self,
+        phase: ProgressPhase,
+        current: usize,
+        total: usize,
+        message: S,
+    ) {
         if let Some(ref callback) = self.progress_callback {
             callback(ProgressEvent {
                 phase,

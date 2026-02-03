@@ -2,11 +2,11 @@
 //!
 //! Caches preprocessed results to avoid redundant preprocessing.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::clang::PreprocessOptions;
@@ -166,7 +166,9 @@ impl PreprocessorCache {
     /// Get cache statistics
     pub fn stats(&self) -> CacheStats {
         let total_entries = self.index.len();
-        let total_size: u64 = self.index.values()
+        let total_size: u64 = self
+            .index
+            .values()
             .filter_map(|e| fs::metadata(&e.cache_file).ok())
             .map(|m| m.len())
             .sum();
@@ -178,7 +180,12 @@ impl PreprocessorCache {
     }
 
     /// Check if a cache entry is still valid
-    fn is_valid(&self, source_path: &Path, entry: &CacheEntry, options: &PreprocessOptions) -> bool {
+    fn is_valid(
+        &self,
+        source_path: &Path,
+        entry: &CacheEntry,
+        options: &PreprocessOptions,
+    ) -> bool {
         // Check if cache file exists
         if !entry.cache_file.exists() {
             return false;
@@ -224,8 +231,8 @@ impl PreprocessorCache {
 
     /// Hash preprocess options
     fn hash_options(&self, options: &PreprocessOptions) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
 
@@ -253,8 +260,8 @@ impl PreprocessorCache {
 
     /// Hash bytes using a simple hash function
     fn hash_bytes(&self, bytes: &[u8]) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         bytes.hash(&mut hasher);

@@ -21,8 +21,8 @@
 //! ```
 
 use flowsight_core::{
-    AnalysisInfo, AsyncBinding, AsyncBoundary, AsyncMechanism, CallEdge, CallType,
-    ConfidenceLevel, ExecutionContext, ExecutionFlow, FlowNode, FlowNodeType,
+    AnalysisInfo, AsyncBinding, AsyncBoundary, AsyncMechanism, CallEdge, CallType, ConfidenceLevel,
+    ExecutionContext, ExecutionFlow, FlowNode, FlowNodeType,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -164,7 +164,10 @@ impl FlowFormatter {
                 _ => String::new(),
             };
 
-            output.push_str(&format!("    {} {}{} {}\n", edge.from, arrow, label, edge.to));
+            output.push_str(&format!(
+                "    {} {}{} {}\n",
+                edge.from, arrow, label, edge.to
+            ));
         }
 
         // 添加样式
@@ -262,7 +265,9 @@ impl FlowFormatter {
         match mechanism {
             AsyncMechanism::WorkQueue { delayed: true } => "delayed_work",
             AsyncMechanism::WorkQueue { .. } => "schedule_work",
-            AsyncMechanism::Timer { high_resolution: true } => "hrtimer",
+            AsyncMechanism::Timer {
+                high_resolution: true,
+            } => "hrtimer",
             AsyncMechanism::Timer { .. } => "mod_timer",
             AsyncMechanism::Interrupt { threaded: true } => "threaded_irq",
             AsyncMechanism::Interrupt { .. } => "IRQ",
@@ -387,10 +392,7 @@ impl FlowFormatter {
         output.push_str(&format!(
             "╔══════════════════════════════════════════════════════════════╗\n"
         ));
-        output.push_str(&format!(
-            "║  执行流分析: {:<47} ║\n",
-            flow.entry_function
-        ));
+        output.push_str(&format!("║  执行流分析: {:<47} ║\n", flow.entry_function));
         output.push_str(&format!(
             "╠══════════════════════════════════════════════════════════════╣\n"
         ));
@@ -504,10 +506,7 @@ impl FlowFormatter {
             _ => "",
         };
 
-        output.push_str(&format!(
-            "{}- {} {}\n",
-            indent, node.display_name, context
-        ));
+        output.push_str(&format!("{}- {} {}\n", indent, node.display_name, context));
 
         for child in &node.children {
             self.append_call_chain(child, output, depth + 1);
@@ -558,10 +557,7 @@ impl FlowFormatter {
             "普通函数"
         };
 
-        summary.push_str(&format!(
-            "`{}` 是一个{}",
-            flow.entry_function, entry_type
-        ));
+        summary.push_str(&format!("`{}` 是一个{}", flow.entry_function, entry_type));
 
         // 添加异步模式说明
         if !flow.async_boundaries.is_empty() {
@@ -592,10 +588,7 @@ impl FlowFormatter {
             name: node.name.clone(),
             display_name: node.display_name.clone(),
             node_type: format!("{:?}", node.node_type),
-            context: node
-                .execution_context
-                .as_ref()
-                .map(|c| format!("{:?}", c)),
+            context: node.execution_context.as_ref().map(|c| format!("{:?}", c)),
             can_sleep: node.can_sleep,
             description: node.description.clone(),
             depth,

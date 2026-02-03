@@ -398,13 +398,19 @@ fn extract_basic_blocks(func_body: &str) -> Vec<IrBasicBlock> {
     // Extract instructions between labels
     for (i, (name, _)) in labels.iter().enumerate() {
         let start = labels[i].1;
-        let end = labels.get(i + 1).map(|(_, p)| *p).unwrap_or(func_body.len());
+        let end = labels
+            .get(i + 1)
+            .map(|(_, p)| *p)
+            .unwrap_or(func_body.len());
 
         let block_content = &func_body[start..end];
         let instructions = extract_instructions(block_content);
 
         // Extract terminator before moving instructions
-        let terminator = instructions.last().filter(|i| is_terminator(&i.opcode)).cloned();
+        let terminator = instructions
+            .last()
+            .filter(|i| is_terminator(&i.opcode))
+            .cloned();
 
         // Find successors (branches)
         let successors = find_successors(block_content);
@@ -435,7 +441,8 @@ fn extract_instructions(block_content: &str) -> Vec<IrInstruction> {
     //   br label %dest              (branch without destination)
     let instr_re = regex::Regex::new(
         r"(?m)^\s+(?:%)?(\w+)\s*=\s*([\w.]+)([^;]*?)(;.*)?$|^\s+([\w.]+)([^;]*?)(;.*)?$",
-    ).unwrap();
+    )
+    .unwrap();
 
     for cap in instr_re.captures_iter(block_content) {
         // Check if we matched the first pattern (with destination)
@@ -496,8 +503,8 @@ fn find_successors(block_content: &str) -> Vec<String> {
     let mut successors: Vec<String> = Vec::new();
 
     // Look for br and switch instructions
-    let br_re = regex::Regex::new(r"br\s+(?:i1\s+\w+\s*,?\s*)?label\s+%" ).unwrap();
-    let switch_re = regex::Regex::new(r"switch\s+.*label\s+%" ).unwrap();
+    let br_re = regex::Regex::new(r"br\s+(?:i1\s+\w+\s*,?\s*)?label\s+%").unwrap();
+    let switch_re = regex::Regex::new(r"switch\s+.*label\s+%").unwrap();
 
     for cap in br_re.captures_iter(block_content) {
         let rest = cap.get(0).unwrap().as_str();
@@ -560,23 +567,23 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
     // Simpler pattern that matches return type more reliably
     let call_re_with_dest = regex::Regex::new(
         r"(?m)^\s+%(\w+)\s*=\s*(?:tail\s+|cold\s+)?call\s+.*?@([\w\.]+)\s*\(([^)]*)\)",
-    ).unwrap();
+    )
+    .unwrap();
 
     // Also match tail/call without destination
-    let call_re_tail_no_dest = regex::Regex::new(
-        r"(?m)^\s*(?:tail\s+)?call\s+.*?@([\w\.]+)\s*\(([^)]*)\)",
-    ).unwrap();
+    let call_re_tail_no_dest =
+        regex::Regex::new(r"(?m)^\s*(?:tail\s+)?call\s+.*?@([\w\.]+)\s*\(([^)]*)\)").unwrap();
 
     let call_re_no_dest = regex::Regex::new(
         r"(?m)^\s+(call|invoke)\s+(?:cold\s+)?(?:<[^>]*>\s*)?([^@]*?)@([\w\.]+)\s*\(([^)]*)\)",
-    ).unwrap();
+    )
+    .unwrap();
 
     // Handle indirect calls (function pointer calls): call void %8(i32 noundef %9)
     // Pattern: call [return_type] %register(args)
     // Captures: 1 = register, 2 = args
-    let call_re_indirect_no_dest = regex::Regex::new(
-        r"(?m)^\s*(?:tail\s+)?call\s+\S+\s+%(\w+)\s*\(([^)]*)\)",
-    ).unwrap();
+    let call_re_indirect_no_dest =
+        regex::Regex::new(r"(?m)^\s*(?:tail\s+)?call\s+\S+\s+%(\w+)\s*\(([^)]*)\)").unwrap();
 
     // Build function-to-block mapping
     let mut func_of_block: HashMap<String, String> = HashMap::new();
@@ -717,7 +724,10 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
         let is_indirect = callee.contains('$') || callee.contains("ptr");
 
         // Avoid duplicates
-        if !calls.iter().any(|c| c.caller_function == caller_function && c.callee == callee) {
+        if !calls
+            .iter()
+            .any(|c| c.caller_function == caller_function && c.callee == callee)
+        {
             calls.push(IrCall {
                 caller_block,
                 caller_function,
@@ -754,7 +764,10 @@ fn extract_calls(content: &str, _functions: &HashMap<String, IrFunction>) -> Vec
         let indirect_callee = format!("[function_ptr:{}]", callee);
 
         // Avoid duplicates
-        if !calls.iter().any(|c| c.caller_function == caller_function && c.callee == indirect_callee) {
+        if !calls
+            .iter()
+            .any(|c| c.caller_function == caller_function && c.callee == indirect_callee)
+        {
             calls.push(IrCall {
                 caller_block,
                 caller_function,
@@ -791,7 +804,11 @@ fn find_caller_block(content: &str, block_re: &regex::Regex, call_pos: usize) ->
 }
 
 /// Detect if a function is a callback
-fn detect_callback(name: &str, _params: &[IrParameter], kb: &KnowledgeBase) -> (bool, Option<String>) {
+fn detect_callback(
+    name: &str,
+    _params: &[IrParameter],
+    kb: &KnowledgeBase,
+) -> (bool, Option<String>) {
     for pattern in &kb.callback_patterns {
         let regex = regex::RegexBuilder::new(&pattern.pattern)
             .case_insensitive(true)
@@ -1072,10 +1089,16 @@ declare i32 @netif_rx(i8*)
 
         // Loop test should have multiple basic blocks
         let loop_func = result.functions.get("dummy_loop_test").unwrap();
-        assert!(loop_func.blocks.len() >= 2, "Loop should have entry and body blocks");
+        assert!(
+            loop_func.blocks.len() >= 2,
+            "Loop should have entry and body blocks"
+        );
 
         // Switch test should have multiple basic blocks
         let switch_func = result.functions.get("dummy_switch_test").unwrap();
-        assert!(switch_func.blocks.len() >= 2, "Switch should have multiple case blocks");
+        assert!(
+            switch_func.blocks.len() >= 2,
+            "Switch should have multiple case blocks"
+        );
     }
 }

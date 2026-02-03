@@ -34,15 +34,17 @@
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 
-pub mod model;
-pub mod translator;
 pub mod explainer;
 pub mod formatter;
+pub mod model;
+pub mod translator;
 
+pub use explainer::{BusinessExplainer, ExecutionContextAnnotator};
+pub use formatter::{
+    DisplayAsyncPattern, DisplayFlowData, DisplayNode, DisplayStats, FlowFormatter, OutputFormat,
+};
 pub use model::{LocalModel, ModelMetadata, ModelRepository};
 pub use translator::{ConditionTranslator, TranslationResult};
-pub use explainer::{BusinessExplainer, ExecutionContextAnnotator};
-pub use formatter::{FlowFormatter, DisplayFlowData, DisplayNode, DisplayAsyncPattern, DisplayStats, OutputFormat};
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -136,7 +138,7 @@ impl Default for AiConfig {
             model_size: "1.3B".into(),
             context_length: 4096,
             max_tokens: 1024,
-            temperature: 0.1,  // Low temperature for deterministic outputs
+            temperature: 0.1, // Low temperature for deterministic outputs
             top_p: 0.9,
             top_k: 10,
             batch_size: 1,
@@ -234,7 +236,9 @@ impl FlowSightAi {
 
     /// Run inference
     pub async fn infer(&mut self, task: AiTask) -> Result<AiResult, anyhow::Error> {
-        let model = self.model.as_ref()
+        let model = self
+            .model
+            .as_ref()
             .ok_or_else(|| anyhow::Error::msg("Model not initialized. Call initialize() first."))?;
 
         let prompt = self.build_prompt(&task);
@@ -257,8 +261,13 @@ impl FlowSightAi {
     /// Build prompt for the task
     fn build_prompt(&self, task: &AiTask) -> String {
         match task {
-            AiTask::TranslateCondition { code, constraint, function } => {
-                format!(r#"### Task: 翻译代码约束条件为业务语义
+            AiTask::TranslateCondition {
+                code,
+                constraint,
+                function,
+            } => {
+                format!(
+                    r#"### Task: 翻译代码约束条件为业务语义
 
 ### 代码:
 ```
@@ -281,10 +290,16 @@ impl FlowSightAi {
 }}
 ```
 
-### Response:"#)
+### Response:"#
+                )
             }
-            AiTask::ExplainBusiness { code, function_name, context } => {
-                format!(r#"### Task: 解释函数的业务语义
+            AiTask::ExplainBusiness {
+                code,
+                function_name,
+                context,
+            } => {
+                format!(
+                    r#"### Task: 解释函数的业务语义
 
 ### 代码:
 ```
@@ -308,10 +323,15 @@ impl FlowSightAi {
 }}
 ```
 
-### Response:"#)
+### Response:"#
+                )
             }
-            AiTask::AnnotateContext { mechanism, handler_code } => {
-                format!(r#"### Task: 标注异步执行上下文
+            AiTask::AnnotateContext {
+                mechanism,
+                handler_code,
+            } => {
+                format!(
+                    r#"### Task: 标注异步执行上下文
 
 ### 异步机制:
 {mechanism}
@@ -327,10 +347,12 @@ impl FlowSightAi {
 - 触发时机: 描述何时会调用这个 handler
 - 注意事项: 开发时需要注意的点
 
-### Response:"#)
+### Response:"#
+                )
             }
             AiTask::DescribeCallChain { nodes } => {
-                format!(r#"### Task: 描述调用链
+                format!(
+                    r#"### Task: 描述调用链
 
 ### 调用链节点:
 {}
@@ -339,10 +361,16 @@ impl FlowSightAi {
 请按时间顺序描述这个调用链，从触发源到最终用户代码。
 
 ### Response:"#,
-                    nodes.iter().map(|n| format!("- {}", n)).collect::<Vec<_>>().join("\n"))
+                    nodes
+                        .iter()
+                        .map(|n| format!("- {}", n))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
             }
             AiTask::AnswerQuestion { question, code } => {
-                format!(r#"### Question:
+                format!(
+                    r#"### Question:
 {question}
 
 ### Code:
@@ -350,7 +378,8 @@ impl FlowSightAi {
 {code}
 ```
 
-### Answer:"#)
+### Answer:"#
+                )
             }
         }
     }
@@ -358,12 +387,9 @@ impl FlowSightAi {
 
 /// Get default model path
 fn get_default_model_path() -> Result<PathBuf, anyhow::Error> {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))?;
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))?;
 
-    let model_dir = PathBuf::from(home)
-        .join(".flowsight")
-        .join("models");
+    let model_dir = PathBuf::from(home).join(".flowsight").join("models");
 
     Ok(model_dir.join("flowsight-linux-1.3b-q4_k_m.gguf"))
 }

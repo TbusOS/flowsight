@@ -82,7 +82,7 @@ impl FuncPtrResolver {
     pub fn load_from_knowledge_base(&mut self, kb: &KnowledgeBase) {
         for (framework_name, framework) in &kb.frameworks {
             let mut patterns = Vec::new();
-            
+
             for (callback_name, callback) in &framework.callbacks {
                 // ⭐ Prefer pattern from KB, fallback to generated pattern
                 let pattern = if let Some(ref kb_pattern) = callback.pattern {
@@ -92,7 +92,7 @@ impl FuncPtrResolver {
                     // Fallback: generate pattern from callback name
                     Self::create_callback_pattern(callback_name)
                 };
-                
+
                 let context = match callback.context {
                     flowsight_knowledge::ExecutionContext::Process => "process",
                     flowsight_knowledge::ExecutionContext::SoftIrq => "softirq",
@@ -100,7 +100,7 @@ impl FuncPtrResolver {
                     flowsight_knowledge::ExecutionContext::User => "user",
                     flowsight_knowledge::ExecutionContext::Unknown => "unknown",
                 };
-                
+
                 patterns.push(KbCallbackPattern {
                     field: callback_name.clone(),
                     pattern,
@@ -108,9 +108,10 @@ impl FuncPtrResolver {
                     context: context.to_string(),
                 });
             }
-            
+
             if !patterns.is_empty() {
-                self.kb_callback_patterns.insert(framework_name.clone(), patterns);
+                self.kb_callback_patterns
+                    .insert(framework_name.clone(), patterns);
             }
         }
     }
@@ -260,18 +261,18 @@ impl FuncPtrResolver {
                         }
                     }
                 }
-                
+
                 // Also check against knowledge base patterns
                 for (fw_name, kb_patterns) in &self.kb_callback_patterns {
                     // Check if struct type matches framework name pattern
-                    if struct_type.contains(&fw_name.replace("_", "")) 
+                    if struct_type.contains(&fw_name.replace("_", ""))
                         || fw_name.contains(struct_type)
                         || struct_type == *fw_name
                     {
                         for field_caps in field_assign_re.captures_iter(&body) {
                             let field = field_caps.get(1).map(|m| m.as_str()).unwrap_or("");
                             let func_name = field_caps.get(2).map(|m| m.as_str()).unwrap_or("");
-                            
+
                             // Check against KB patterns
                             for kb_pattern in kb_patterns {
                                 if kb_pattern.field == field && functions.contains_key(func_name) {
@@ -298,7 +299,7 @@ impl FuncPtrResolver {
         functions: &HashMap<String, FunctionDef>,
     ) -> Vec<FuncPtrBinding> {
         let mut bindings = Vec::new();
-        
+
         for (framework_name, kb_patterns) in &self.kb_callback_patterns {
             for kb_pattern in kb_patterns {
                 if let Some(ref pattern) = kb_pattern.pattern {
@@ -318,7 +319,7 @@ impl FuncPtrResolver {
                 }
             }
         }
-        
+
         bindings
     }
 

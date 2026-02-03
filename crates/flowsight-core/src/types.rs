@@ -223,7 +223,10 @@ pub enum FlowNodeType {
     /// Separator (time passes, context switch, etc.)
     Separator { text: String },
     /// Branch node
-    Branch { condition: String, branch_type: BranchType },
+    Branch {
+        condition: String,
+        branch_type: BranchType,
+    },
 }
 
 /// Branch type
@@ -266,16 +269,16 @@ pub enum BranchType {
 pub struct ExecutionFlow {
     /// 入口函数名
     pub entry_function: String,
-    
+
     /// 入口函数位置
     pub entry_location: Option<Location>,
-    
+
     /// 执行流根节点
     pub root: FlowNode,
-    
+
     /// 异步边界列表（schedule_work, add_timer 等调用点）
     pub async_boundaries: Vec<AsyncBoundary>,
-    
+
     /// 分析信息
     pub analysis_info: AnalysisInfo,
 }
@@ -285,22 +288,22 @@ pub struct ExecutionFlow {
 pub struct AsyncBoundary {
     /// 边界 ID
     pub id: String,
-    
+
     /// 异步机制类型
     pub mechanism: AsyncMechanism,
-    
+
     /// 触发调用（如 schedule_work）
     pub trigger_call: String,
-    
+
     /// 触发位置
     pub trigger_location: Option<Location>,
-    
+
     /// 处理函数名
     pub handler_function: String,
-    
+
     /// 处理函数在执行流中的节点 ID
     pub handler_node_id: Option<String>,
-    
+
     /// 执行上下文说明
     pub context_description: String,
 }
@@ -310,25 +313,25 @@ pub struct AsyncBoundary {
 pub struct AnalysisInfo {
     /// 分析时间
     pub analyzed_at: DateTime<Utc>,
-    
+
     /// 分析的文件路径
     pub source_file: Option<String>,
-    
+
     /// 使用的知识库版本
     pub knowledge_version: Option<String>,
-    
+
     /// 总节点数
     pub total_nodes: usize,
-    
+
     /// 直接调用数（100% 确定）
     pub direct_calls: usize,
-    
+
     /// 间接调用数（函数指针）
     pub indirect_calls: usize,
-    
+
     /// 异步调用数
     pub async_calls: usize,
-    
+
     /// 分析警告
     pub warnings: Vec<AnalysisWarning>,
 }
@@ -338,10 +341,10 @@ pub struct AnalysisInfo {
 pub struct AnalysisWarning {
     /// 警告类型
     pub kind: WarningKind,
-    
+
     /// 警告消息
     pub message: String,
-    
+
     /// 相关位置
     pub location: Option<Location>,
 }
@@ -351,16 +354,16 @@ pub struct AnalysisWarning {
 pub enum WarningKind {
     /// 未解析的函数指针
     UnresolvedFunctionPointer,
-    
+
     /// 未知的异步模式
     UnknownAsyncPattern,
-    
+
     /// 缺少知识库条目
     MissingKnowledge,
-    
+
     /// 递归调用检测
     RecursionDetected,
-    
+
     /// 分析深度限制
     DepthLimitReached,
 }
@@ -376,22 +379,22 @@ impl ExecutionFlow {
             analysis_info: AnalysisInfo::default(),
         }
     }
-    
+
     /// 添加异步边界
     pub fn add_async_boundary(&mut self, boundary: AsyncBoundary) {
         self.async_boundaries.push(boundary);
     }
-    
+
     /// 获取所有节点的迭代器（深度优先遍历）
     pub fn iter_nodes(&self) -> FlowNodeIterator<'_> {
         FlowNodeIterator::new(&self.root)
     }
-    
+
     /// 统计节点数量
     pub fn count_nodes(&self) -> usize {
         self.iter_nodes().count()
     }
-    
+
     /// 查找节点
     pub fn find_node(&self, id: &str) -> Option<&FlowNode> {
         self.iter_nodes().find(|n| n.id == id)
@@ -426,7 +429,7 @@ impl<'a> FlowNodeIterator<'a> {
 
 impl<'a> Iterator for FlowNodeIterator<'a> {
     type Item = &'a FlowNode;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         let node = self.stack.pop()?;
         // 逆序压栈，保证先访问第一个子节点

@@ -5,9 +5,9 @@
 //! - Which branches are taken based on conditions
 //! - Reachable vs unreachable code paths
 
-use std::collections::HashMap;
-use crate::evaluator::{Evaluator, EvalResult};
+use crate::evaluator::{EvalResult, Evaluator};
 use crate::scenario::SymbolicValue;
+use std::collections::HashMap;
 
 /// Result of evaluating a branch condition
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,8 +87,12 @@ impl ConstantPropagator {
             if let Some(var) = self.extract_var_from_check(cond, "==") {
                 if let Some(val) = self.vars.get(&var) {
                     match val {
-                        SymbolicValue::Pointer { is_null: true, .. } => return BranchResult::AlwaysTrue,
-                        SymbolicValue::Pointer { is_null: false, .. } => return BranchResult::AlwaysFalse,
+                        SymbolicValue::Pointer { is_null: true, .. } => {
+                            return BranchResult::AlwaysTrue
+                        }
+                        SymbolicValue::Pointer { is_null: false, .. } => {
+                            return BranchResult::AlwaysFalse
+                        }
                         SymbolicValue::Integer(0) => return BranchResult::AlwaysTrue,
                         SymbolicValue::Integer(_) => return BranchResult::AlwaysFalse,
                         _ => {}
@@ -101,8 +105,12 @@ impl ConstantPropagator {
             if let Some(var) = self.extract_var_from_check(cond, "!=") {
                 if let Some(val) = self.vars.get(&var) {
                     match val {
-                        SymbolicValue::Pointer { is_null: true, .. } => return BranchResult::AlwaysFalse,
-                        SymbolicValue::Pointer { is_null: false, .. } => return BranchResult::AlwaysTrue,
+                        SymbolicValue::Pointer { is_null: true, .. } => {
+                            return BranchResult::AlwaysFalse
+                        }
+                        SymbolicValue::Pointer { is_null: false, .. } => {
+                            return BranchResult::AlwaysTrue
+                        }
                         SymbolicValue::Integer(0) => return BranchResult::AlwaysFalse,
                         SymbolicValue::Integer(_) => return BranchResult::AlwaysTrue,
                         _ => {}
@@ -125,7 +133,11 @@ impl ConstantPropagator {
                             "!=" => *n != val,
                             _ => return BranchResult::Unknown,
                         };
-                        return if result { BranchResult::AlwaysTrue } else { BranchResult::AlwaysFalse };
+                        return if result {
+                            BranchResult::AlwaysTrue
+                        } else {
+                            BranchResult::AlwaysFalse
+                        };
                     }
                     SymbolicValue::Range { min, max } => {
                         return self.eval_range_comparison(*min, *max, &op, val);
@@ -171,34 +183,58 @@ impl ConstantPropagator {
     fn eval_range_comparison(&self, min: i64, max: i64, op: &str, val: i64) -> BranchResult {
         match op {
             "<" => {
-                if max < val { BranchResult::AlwaysTrue }
-                else if min >= val { BranchResult::AlwaysFalse }
-                else { BranchResult::Unknown }
+                if max < val {
+                    BranchResult::AlwaysTrue
+                } else if min >= val {
+                    BranchResult::AlwaysFalse
+                } else {
+                    BranchResult::Unknown
+                }
             }
             "<=" => {
-                if max <= val { BranchResult::AlwaysTrue }
-                else if min > val { BranchResult::AlwaysFalse }
-                else { BranchResult::Unknown }
+                if max <= val {
+                    BranchResult::AlwaysTrue
+                } else if min > val {
+                    BranchResult::AlwaysFalse
+                } else {
+                    BranchResult::Unknown
+                }
             }
             ">" => {
-                if min > val { BranchResult::AlwaysTrue }
-                else if max <= val { BranchResult::AlwaysFalse }
-                else { BranchResult::Unknown }
+                if min > val {
+                    BranchResult::AlwaysTrue
+                } else if max <= val {
+                    BranchResult::AlwaysFalse
+                } else {
+                    BranchResult::Unknown
+                }
             }
             ">=" => {
-                if min >= val { BranchResult::AlwaysTrue }
-                else if max < val { BranchResult::AlwaysFalse }
-                else { BranchResult::Unknown }
+                if min >= val {
+                    BranchResult::AlwaysTrue
+                } else if max < val {
+                    BranchResult::AlwaysFalse
+                } else {
+                    BranchResult::Unknown
+                }
             }
             "==" => {
-                if min == max && min == val { BranchResult::AlwaysTrue }
-                else if val < min || val > max { BranchResult::AlwaysFalse }
-                else { BranchResult::Unknown }
+                if min == max && min == val {
+                    BranchResult::AlwaysTrue
+                } else if val < min || val > max {
+                    BranchResult::AlwaysFalse
+                } else {
+                    BranchResult::Unknown
+                }
             }
             "!=" => {
-                if val < min || val > max { BranchResult::AlwaysTrue }
-                else if min == max && min == val { BranchResult::AlwaysFalse }
-                else { BranchResult::Unknown }
+                if val < min || val > max {
+                    BranchResult::AlwaysTrue
+                } else if min == max && min == val {
+                    BranchResult::AlwaysFalse
+                } else {
+                    BranchResult::Unknown
+                }
             }
             _ => BranchResult::Unknown,
         }
@@ -231,7 +267,10 @@ mod tests {
         let mut prop = ConstantPropagator::new();
         prop.set_var("x", SymbolicValue::Integer(42));
 
-        assert!(matches!(prop.get_var("x"), Some(SymbolicValue::Integer(42))));
+        assert!(matches!(
+            prop.get_var("x"),
+            Some(SymbolicValue::Integer(42))
+        ));
     }
 
     #[test]
@@ -247,10 +286,19 @@ mod tests {
     #[test]
     fn test_null_check() {
         let mut prop = ConstantPropagator::new();
-        prop.set_var("ptr", SymbolicValue::Pointer { is_null: true, size: None });
+        prop.set_var(
+            "ptr",
+            SymbolicValue::Pointer {
+                is_null: true,
+                size: None,
+            },
+        );
 
         assert_eq!(prop.eval_condition("ptr == NULL"), BranchResult::AlwaysTrue);
-        assert_eq!(prop.eval_condition("ptr != NULL"), BranchResult::AlwaysFalse);
+        assert_eq!(
+            prop.eval_condition("ptr != NULL"),
+            BranchResult::AlwaysFalse
+        );
     }
 
     #[test]

@@ -389,18 +389,12 @@ impl IrType {
 
     /// Check if type is a scalar
     pub fn is_scalar(&self) -> bool {
-        matches!(
-            self,
-            IrType::Integer(_) | IrType::Float(_)
-        )
+        matches!(self, IrType::Integer(_) | IrType::Float(_))
     }
 
     /// Check if type is an aggregate
     pub fn is_aggregate(&self) -> bool {
-        matches!(
-            self,
-            IrType::Array(_) | IrType::Struct(_)
-        )
+        matches!(self, IrType::Array(_) | IrType::Struct(_))
     }
 }
 
@@ -417,14 +411,32 @@ impl MemoryLayout {
     pub fn default_64bit() -> Self {
         Self {
             pointer_size: 8,
-            alignment: [("i1", 1), ("i8", 1), ("i16", 2), ("i32", 4), ("i64", 8), ("float", 4), ("double", 8), ("ptr", 8)]
-                .iter()
-                .map(|(k, v)| (k.to_string(), *v))
-                .collect(),
-            size_of: [("i1", 1), ("i8", 1), ("i16", 2), ("i32", 4), ("i64", 8), ("float", 4), ("double", 8), ("ptr", 8)]
-                .iter()
-                .map(|(k, v)| (k.to_string(), *v))
-                .collect(),
+            alignment: [
+                ("i1", 1),
+                ("i8", 1),
+                ("i16", 2),
+                ("i32", 4),
+                ("i64", 8),
+                ("float", 4),
+                ("double", 8),
+                ("ptr", 8),
+            ]
+            .iter()
+            .map(|(k, v)| (k.to_string(), *v))
+            .collect(),
+            size_of: [
+                ("i1", 1),
+                ("i8", 1),
+                ("i16", 2),
+                ("i32", 4),
+                ("i64", 8),
+                ("float", 4),
+                ("double", 8),
+                ("ptr", 8),
+            ]
+            .iter()
+            .map(|(k, v)| (k.to_string(), *v))
+            .collect(),
         }
     }
 
@@ -432,14 +444,32 @@ impl MemoryLayout {
     pub fn default_32bit() -> Self {
         Self {
             pointer_size: 4,
-            alignment: [("i1", 1), ("i8", 1), ("i16", 2), ("i32", 4), ("i64", 8), ("float", 4), ("double", 8), ("ptr", 4)]
-                .iter()
-                .map(|(k, v)| (k.to_string(), *v))
-                .collect(),
-            size_of: [("i1", 1), ("i8", 1), ("i16", 2), ("i32", 4), ("i64", 8), ("float", 4), ("double", 8), ("ptr", 4)]
-                .iter()
-                .map(|(k, v)| (k.to_string(), *v))
-                .collect(),
+            alignment: [
+                ("i1", 1),
+                ("i8", 1),
+                ("i16", 2),
+                ("i32", 4),
+                ("i64", 8),
+                ("float", 4),
+                ("double", 8),
+                ("ptr", 4),
+            ]
+            .iter()
+            .map(|(k, v)| (k.to_string(), *v))
+            .collect(),
+            size_of: [
+                ("i1", 1),
+                ("i8", 1),
+                ("i16", 2),
+                ("i32", 4),
+                ("i64", 8),
+                ("float", 4),
+                ("double", 8),
+                ("ptr", 4),
+            ]
+            .iter()
+            .map(|(k, v)| (k.to_string(), *v))
+            .collect(),
         }
     }
 }
@@ -450,9 +480,18 @@ mod tests {
 
     #[test]
     fn test_parse_integer_types() {
-        assert_eq!(IrType::parse_from_str("i32"), Some(IrType::Integer(IntegerType::I32)));
-        assert_eq!(IrType::parse_from_str("i64"), Some(IrType::Integer(IntegerType::I64)));
-        assert_eq!(IrType::parse_from_str("i1"), Some(IrType::Integer(IntegerType::I1)));
+        assert_eq!(
+            IrType::parse_from_str("i32"),
+            Some(IrType::Integer(IntegerType::I32))
+        );
+        assert_eq!(
+            IrType::parse_from_str("i64"),
+            Some(IrType::Integer(IntegerType::I64))
+        );
+        assert_eq!(
+            IrType::parse_from_str("i1"),
+            Some(IrType::Integer(IntegerType::I1))
+        );
     }
 
     #[test]

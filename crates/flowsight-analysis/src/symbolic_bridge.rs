@@ -5,8 +5,8 @@
 //! - Symbolic result parsing and integration
 //! - Constraint translation between modules
 
+use crate::path_tracing::{BranchInfo, BranchOutcome, ExecutionPath};
 use crate::scenario::{Scenario, SymbolicValue};
-use crate::path_tracing::{ExecutionPath, BranchInfo, BranchOutcome};
 use flowsight_core::FlowNode;
 use std::collections::{HashMap, HashSet};
 
@@ -109,14 +109,14 @@ pub struct SymbolicConstraint {
 /// Constraint operator
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ConstraintOperator {
-    Eq,   // ==
-    Ne,   // !=
-    Lt,   // <
-    Le,   // <=
-    Gt,   // >
-    Ge,   // >=
-    And,  // &&
-    Or,   // ||
+    Eq,  // ==
+    Ne,  // !=
+    Lt,  // <
+    Le,  // <=
+    Gt,  // >
+    Ge,  // >=
+    And, // &&
+    Or,  // ||
     InRange,
 }
 
@@ -163,7 +163,10 @@ impl SymbolicBridge {
 
     /// Check if KLEE is available
     pub fn is_klee_available(&self) -> bool {
-        self.klee_executor.as_ref().map(|e| e.is_available()).unwrap_or(false)
+        self.klee_executor
+            .as_ref()
+            .map(|e| e.is_available())
+            .unwrap_or(false)
     }
 
     /// Export path constraints to KLEE format
@@ -219,7 +222,11 @@ impl SymbolicBridge {
                 ConstraintType::Other,
             ),
             SymbolicValue::Pointer { is_null, .. } => (
-                if *is_null { ConstraintOperator::Eq } else { ConstraintOperator::Ne },
+                if *is_null {
+                    ConstraintOperator::Eq
+                } else {
+                    ConstraintOperator::Ne
+                },
                 "NULL".to_string(),
                 ConstraintType::NullCheck,
             ),
@@ -249,11 +256,7 @@ impl SymbolicBridge {
     }
 
     /// Analyze a flow tree symbolically
-    pub fn analyze_symbolically(
-        &self,
-        tree: &FlowNode,
-        scenario: &Scenario,
-    ) -> SymbolicResult {
+    pub fn analyze_symbolically(&self, tree: &FlowNode, scenario: &Scenario) -> SymbolicResult {
         let mut result = SymbolicResult::default();
 
         // Build constraint set from scenario
@@ -284,7 +287,13 @@ impl SymbolicBridge {
         let mut paths = Vec::new();
 
         // Generate a path for each branch combination
-        self.generate_paths_recursive(tree, scenario, base_constraints, &mut paths, &mut Vec::new());
+        self.generate_paths_recursive(
+            tree,
+            scenario,
+            base_constraints,
+            &mut paths,
+            &mut Vec::new(),
+        );
 
         paths
     }
@@ -365,7 +374,13 @@ impl SymbolicBridge {
 
         // Continue to children
         for child in &node.children {
-            self.generate_paths_recursive(child, scenario, base_constraints, paths, current_constraints);
+            self.generate_paths_recursive(
+                child,
+                scenario,
+                base_constraints,
+                paths,
+                current_constraints,
+            );
         }
     }
 
@@ -379,7 +394,10 @@ impl SymbolicBridge {
         let name = &node.name;
 
         if name.contains("_null") {
-            let var = name.replace("if_", "").replace("_null", "").replace("_check", "");
+            let var = name
+                .replace("if_", "")
+                .replace("_null", "")
+                .replace("_check", "");
             return Some(ExtractedCondition {
                 variable: var,
                 operator: ConstraintOperator::Eq,
@@ -388,7 +406,11 @@ impl SymbolicBridge {
         }
 
         if name.contains("_not_null") || name.contains("_valid") {
-            let var = name.replace("if_", "").replace("_not_null", "").replace("_valid", "").replace("_check", "");
+            let var = name
+                .replace("if_", "")
+                .replace("_not_null", "")
+                .replace("_valid", "")
+                .replace("_check", "");
             return Some(ExtractedCondition {
                 variable: var,
                 operator: ConstraintOperator::Ne,
@@ -468,7 +490,8 @@ impl SymbolicBridge {
 
     /// Cache constraints for a path
     pub fn cache_constraints(&mut self, path_id: &str, constraints: ConstraintSet) {
-        self.constraint_cache.insert(path_id.to_string(), constraints);
+        self.constraint_cache
+            .insert(path_id.to_string(), constraints);
     }
 
     /// Get cached constraints
@@ -488,6 +511,12 @@ struct ExtractedCondition {
 pub struct ConstraintTranslator {
     /// Known constant mappings
     constants: HashMap<String, i64>,
+}
+
+impl Default for ConstraintTranslator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConstraintTranslator {

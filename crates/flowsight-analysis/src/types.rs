@@ -7,9 +7,9 @@
 //!
 //! Builds a database of function pointer types and compatible functions.
 
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Parser as TSParser};
-use serde::{Deserialize, Serialize};
 
 /// A function pointer type definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,13 +141,22 @@ impl TypeDatabase {
         }
 
         // void* is compatible with any pointer
-        if (t1_norm == "void*" && t2_norm.ends_with('*')) ||
-           (t2_norm == "void*" && t1_norm.ends_with('*')) {
+        if (t1_norm == "void*" && t2_norm.ends_with('*'))
+            || (t2_norm == "void*" && t1_norm.ends_with('*'))
+        {
             return true;
         }
 
         // int/long/unsigned variations
-        let int_types = ["int", "long", "unsigned", "unsigned int", "unsigned long", "size_t", "ssize_t"];
+        let int_types = [
+            "int",
+            "long",
+            "unsigned",
+            "unsigned int",
+            "unsigned long",
+            "size_t",
+            "ssize_t",
+        ];
         if int_types.contains(&t1_norm.as_str()) && int_types.contains(&t2_norm.as_str()) {
             return true;
         }
@@ -214,7 +223,9 @@ impl TypeAnalyzer {
         if node.kind() == "type_definition" {
             let text = self.node_text(node, source);
             if text.contains("(*") {
-                if let Some(fp_type) = self.parse_funcptr_typedef(&text, node.start_position().row as u32 + 1) {
+                if let Some(fp_type) =
+                    self.parse_funcptr_typedef(&text, node.start_position().row as u32 + 1)
+                {
                     self.database.add_type(fp_type);
                 }
             }
@@ -235,13 +246,15 @@ impl TypeAnalyzer {
             let name = caps.get(2)?.as_str().to_string();
             let params_str = caps.get(3)?.as_str();
 
-            let param_types: Vec<String> = if params_str.trim().is_empty() || params_str.trim() == "void" {
-                Vec::new()
-            } else {
-                params_str.split(',')
-                    .map(|p| self.simplify_type(p.trim()))
-                    .collect()
-            };
+            let param_types: Vec<String> =
+                if params_str.trim().is_empty() || params_str.trim() == "void" {
+                    Vec::new()
+                } else {
+                    params_str
+                        .split(',')
+                        .map(|p| self.simplify_type(p.trim()))
+                        .collect()
+                };
 
             return Some(FuncPtrType {
                 name,
@@ -266,8 +279,11 @@ impl TypeAnalyzer {
         let parts: Vec<&str> = param.split_whitespace().collect();
         if parts.len() > 1 {
             let last = parts.last().unwrap();
-            if !last.contains('*') && !last.contains('&') && last.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                return parts[..parts.len()-1].join(" ");
+            if !last.contains('*')
+                && !last.contains('&')
+                && last.chars().all(|c| c.is_alphanumeric() || c == '_')
+            {
+                return parts[..parts.len() - 1].join(" ");
             }
         }
         param.to_string()
@@ -299,7 +315,11 @@ impl TypeAnalyzer {
         name.map(|n| (n, params))
     }
 
-    fn extract_pointer_func_declarator(&self, node: Node, source: &str) -> Option<(String, Vec<String>)> {
+    fn extract_pointer_func_declarator(
+        &self,
+        node: Node,
+        source: &str,
+    ) -> Option<(String, Vec<String>)> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "function_declarator" {
@@ -360,7 +380,10 @@ impl TypeAnalyzer {
                     type_parts.push(self.node_text(child, source));
                 }
                 "struct_specifier" => {
-                    type_parts.push(format!("struct {}", self.extract_struct_name(child, source).unwrap_or_default()));
+                    type_parts.push(format!(
+                        "struct {}",
+                        self.extract_struct_name(child, source).unwrap_or_default()
+                    ));
                 }
                 "pointer_declarator" | "abstract_pointer_declarator" => {
                     type_parts.push("*".to_string());
@@ -395,7 +418,9 @@ impl TypeAnalyzer {
     }
 
     fn extract_struct_funcptr_fields(&mut self, node: Node, source: &str) {
-        let struct_name = self.extract_struct_name(node, source).unwrap_or_else(|| "anonymous".to_string());
+        let struct_name = self
+            .extract_struct_name(node, source)
+            .unwrap_or_else(|| "anonymous".to_string());
 
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -412,7 +437,11 @@ impl TypeAnalyzer {
                 let text = self.node_text(child, source);
                 // Check if this looks like a function pointer field
                 if text.contains("(*") {
-                    if let Some(fp_type) = self.parse_funcptr_field(struct_name, &text, child.start_position().row as u32 + 1) {
+                    if let Some(fp_type) = self.parse_funcptr_field(
+                        struct_name,
+                        &text,
+                        child.start_position().row as u32 + 1,
+                    ) {
                         self.database.add_type(fp_type);
                     }
                 }
@@ -429,13 +458,15 @@ impl TypeAnalyzer {
             let field_name = caps.get(2)?.as_str().to_string();
             let params_str = caps.get(3)?.as_str();
 
-            let param_types: Vec<String> = if params_str.trim().is_empty() || params_str.trim() == "void" {
-                Vec::new()
-            } else {
-                params_str.split(',')
-                    .map(|p| self.simplify_type(p.trim()))
-                    .collect()
-            };
+            let param_types: Vec<String> =
+                if params_str.trim().is_empty() || params_str.trim() == "void" {
+                    Vec::new()
+                } else {
+                    params_str
+                        .split(',')
+                        .map(|p| self.simplify_type(p.trim()))
+                        .collect()
+                };
 
             return Some(FuncPtrType {
                 name: format!("{}.{}", struct_name, field_name),
@@ -496,7 +527,9 @@ impl TypeAnalyzer {
 
         for child in node.children(&mut cursor) {
             if child.kind() == "parameter_declaration" {
-                if let Some(fp_type) = self.try_extract_param_funcptr(func_name, param_index, child, source) {
+                if let Some(fp_type) =
+                    self.try_extract_param_funcptr(func_name, param_index, child, source)
+                {
                     self.database.add_type(fp_type);
                 }
                 param_index += 1;
@@ -504,7 +537,13 @@ impl TypeAnalyzer {
         }
     }
 
-    fn try_extract_param_funcptr(&self, func_name: &str, param_index: usize, node: Node, source: &str) -> Option<FuncPtrType> {
+    fn try_extract_param_funcptr(
+        &self,
+        func_name: &str,
+        param_index: usize,
+        node: Node,
+        source: &str,
+    ) -> Option<FuncPtrType> {
         let mut cursor = node.walk();
         let children: Vec<Node> = node.children(&mut cursor).collect();
 
@@ -524,7 +563,9 @@ impl TypeAnalyzer {
                     }
                 }
                 "pointer_declarator" => {
-                    if let Some((name, params)) = self.extract_pointer_func_declarator(*child, source) {
+                    if let Some((name, params)) =
+                        self.extract_pointer_func_declarator(*child, source)
+                    {
                         param_name = Some(name);
                         param_types = params;
                     }
@@ -628,8 +669,14 @@ typedef int (*compare_fn)(const void *, const void *);
         analyzer.analyze(source);
 
         let db = analyzer.database();
-        assert!(db.func_ptr_types.contains_key("callback_t"), "Should find callback_t typedef");
-        assert!(db.func_ptr_types.contains_key("compare_fn"), "Should find compare_fn typedef");
+        assert!(
+            db.func_ptr_types.contains_key("callback_t"),
+            "Should find callback_t typedef"
+        );
+        assert!(
+            db.func_ptr_types.contains_key("compare_fn"),
+            "Should find compare_fn typedef"
+        );
     }
 
     #[test]
@@ -645,9 +692,18 @@ struct file_operations {
         analyzer.analyze(source);
 
         let db = analyzer.database();
-        assert!(db.func_ptr_types.contains_key("file_operations.open"), "Should find open field");
-        assert!(db.func_ptr_types.contains_key("file_operations.read"), "Should find read field");
-        assert!(db.func_ptr_types.contains_key("file_operations.release"), "Should find release field");
+        assert!(
+            db.func_ptr_types.contains_key("file_operations.open"),
+            "Should find open field"
+        );
+        assert!(
+            db.func_ptr_types.contains_key("file_operations.read"),
+            "Should find read field"
+        );
+        assert!(
+            db.func_ptr_types.contains_key("file_operations.release"),
+            "Should find release field"
+        );
     }
 
     #[test]
@@ -667,13 +723,25 @@ void set_handler(int (*handler)(void *data), void *ctx) {
         let db = analyzer.database();
 
         // Should find function pointer parameters
-        let has_cb_param = db.func_ptr_types.keys()
+        let has_cb_param = db
+            .func_ptr_types
+            .keys()
             .any(|k| k.contains("register_callback") && k.contains("cb"));
-        let has_handler_param = db.func_ptr_types.keys()
+        let has_handler_param = db
+            .func_ptr_types
+            .keys()
             .any(|k| k.contains("set_handler") && k.contains("handler"));
 
-        assert!(has_cb_param, "Should find cb parameter: {:?}", db.func_ptr_types.keys().collect::<Vec<_>>());
-        assert!(has_handler_param, "Should find handler parameter: {:?}", db.func_ptr_types.keys().collect::<Vec<_>>());
+        assert!(
+            has_cb_param,
+            "Should find cb parameter: {:?}",
+            db.func_ptr_types.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            has_handler_param,
+            "Should find handler parameter: {:?}",
+            db.func_ptr_types.keys().collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -691,8 +759,14 @@ int my_compare(const void *a, const void *b) {
         analyzer.analyze(source);
 
         let db = analyzer.database();
-        assert!(db.function_sigs.contains_key("my_callback"), "Should find my_callback");
-        assert!(db.function_sigs.contains_key("my_compare"), "Should find my_compare");
+        assert!(
+            db.function_sigs.contains_key("my_callback"),
+            "Should find my_callback"
+        );
+        assert!(
+            db.function_sigs.contains_key("my_compare"),
+            "Should find my_compare"
+        );
 
         let cb_sig = db.function_sigs.get("my_callback").unwrap();
         assert_eq!(cb_sig.return_type, "void");
@@ -716,7 +790,10 @@ void wrong_params(void) {}
 
         // Check compatibility
         let compatible = db.get_compatible_functions("callback_t");
-        assert!(compatible.is_some(), "Should have compatible functions for callback_t");
+        assert!(
+            compatible.is_some(),
+            "Should have compatible functions for callback_t"
+        );
 
         let funcs = compatible.unwrap();
         assert!(funcs.contains("handler1"), "handler1 should be compatible");
@@ -745,11 +822,23 @@ static void my_disconnect(struct usb_interface *intf) {
         let db = analyzer.database();
 
         // Should find struct field types
-        assert!(db.func_ptr_types.contains_key("usb_driver.probe"), "Should find probe field");
-        assert!(db.func_ptr_types.contains_key("usb_driver.disconnect"), "Should find disconnect field");
+        assert!(
+            db.func_ptr_types.contains_key("usb_driver.probe"),
+            "Should find probe field"
+        );
+        assert!(
+            db.func_ptr_types.contains_key("usb_driver.disconnect"),
+            "Should find disconnect field"
+        );
 
         // Should find function signatures
-        assert!(db.function_sigs.contains_key("my_probe"), "Should find my_probe");
-        assert!(db.function_sigs.contains_key("my_disconnect"), "Should find my_disconnect");
+        assert!(
+            db.function_sigs.contains_key("my_probe"),
+            "Should find my_probe"
+        );
+        assert!(
+            db.function_sigs.contains_key("my_disconnect"),
+            "Should find my_disconnect"
+        );
     }
 }

@@ -181,11 +181,11 @@ fn test_parser_finds_all_expected_functions() {
     let mut parser = TreeSitterParser::new();
     let parse_result = parser.parse_source(GPIO_DRIVER, "gpio_driver.c").unwrap();
 
-    let found_functions: HashSet<&str> = parse_result.functions.keys()
-        .map(|s| s.as_str())
-        .collect();
+    let found_functions: HashSet<&str> =
+        parse_result.functions.keys().map(|s| s.as_str()).collect();
 
-    let missing: Vec<&str> = EXPECTED_FUNCTIONS.iter()
+    let missing: Vec<&str> = EXPECTED_FUNCTIONS
+        .iter()
         .filter(|f| !found_functions.contains(*f))
         .copied()
         .collect();
@@ -243,11 +243,7 @@ fn test_call_relationships_are_correct() {
 
     for (caller, callee) in EXPECTED_CALLS {
         let func = parse_result.functions.get(*caller);
-        assert!(
-            func.is_some(),
-            "调用者函数 {} 应该存在",
-            caller
-        );
+        assert!(func.is_some(), "调用者函数 {} 应该存在", caller);
 
         let func = func.unwrap();
         assert!(
@@ -270,7 +266,9 @@ fn test_async_callbacks_are_detected() {
     let result = analyzer.analyze(GPIO_DRIVER, &mut parse_result).unwrap();
 
     // 应该检测到 INIT_WORK 绑定
-    let has_work_binding = result.async_bindings.iter()
+    let has_work_binding = result
+        .async_bindings
+        .iter()
         .any(|b| b.handler == "my_gpio_irq_work");
 
     assert!(
@@ -289,13 +287,9 @@ fn test_entry_points_are_detected() {
     let result = analyzer.analyze(GPIO_DRIVER, &mut parse_result).unwrap();
 
     // probe 应该是入口点
-    let has_probe = result.entry_points.iter()
-        .any(|e| e.contains("probe"));
+    let has_probe = result.entry_points.iter().any(|e| e.contains("probe"));
 
-    assert!(
-        has_probe,
-        "my_gpio_probe 应该被识别为入口点"
-    );
+    assert!(has_probe, "my_gpio_probe 应该被识别为入口点");
 }
 
 /// 🔴 关键测试：回调函数应该被标记
@@ -337,7 +331,9 @@ fn test_flow_trees_are_not_empty() {
     );
 
     // 至少一个流树应该有子节点
-    let has_children = result.flow_trees.iter()
+    let has_children = result
+        .flow_trees
+        .iter()
         .any(|tree| !tree.children.is_empty());
 
     assert!(
@@ -356,13 +352,9 @@ fn test_probe_flow_has_multiple_nodes() {
     let result = analyzer.analyze(GPIO_DRIVER, &mut parse_result).unwrap();
 
     // 找到 probe 的流树
-    let probe_tree = result.flow_trees.iter()
-        .find(|t| t.name.contains("probe"));
+    let probe_tree = result.flow_trees.iter().find(|t| t.name.contains("probe"));
 
-    assert!(
-        probe_tree.is_some(),
-        "应该有 probe 函数的执行流树"
-    );
+    assert!(probe_tree.is_some(), "应该有 probe 函数的执行流树");
 
     let tree = probe_tree.unwrap();
 
@@ -389,7 +381,10 @@ fn test_parser_handles_empty_input() {
     let result = parser.parse_source("", "empty.c");
     assert!(result.is_ok(), "空文件不应该导致错误");
     let parse_result = result.unwrap();
-    assert!(parse_result.functions.is_empty(), "空文件应该返回空函数列表");
+    assert!(
+        parse_result.functions.is_empty(),
+        "空文件应该返回空函数列表"
+    );
 
     // 只有注释
     let result = parser.parse_source("// just a comment", "comment.c");

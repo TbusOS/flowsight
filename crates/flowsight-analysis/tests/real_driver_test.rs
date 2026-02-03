@@ -2,9 +2,9 @@
 //!
 //! Tests the analysis engine against realistic kernel driver code.
 
-use flowsight_analysis::Analyzer;
 use flowsight_analysis::callback::CallbackAnalyzer;
-use flowsight_analysis::scenario::{Scenario, SymbolicValue, ScenarioExecutor, ScenarioOptions};
+use flowsight_analysis::scenario::{Scenario, ScenarioExecutor, ScenarioOptions, SymbolicValue};
+use flowsight_analysis::Analyzer;
 use flowsight_parser::treesitter::TreeSitterParser;
 
 /// Realistic USB driver code (based on usb-skeleton.c pattern)
@@ -311,27 +311,49 @@ MODULE_LICENSE("GPL");
 #[test]
 fn test_usb_driver_analysis() {
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(USB_SKELETON_DRIVER, "usb_skeleton.c").unwrap();
+    let mut parse_result = parser
+        .parse_source(USB_SKELETON_DRIVER, "usb_skeleton.c")
+        .unwrap();
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(USB_SKELETON_DRIVER, &mut parse_result).unwrap();
+    let result = analyzer
+        .analyze(USB_SKELETON_DRIVER, &mut parse_result)
+        .unwrap();
 
     // Should detect async bindings
-    assert!(!result.async_bindings.is_empty(), "Should find async bindings in USB driver");
+    assert!(
+        !result.async_bindings.is_empty(),
+        "Should find async bindings in USB driver"
+    );
 
     // Should find INIT_WORK binding for skel_work_handler
-    let work_binding = result.async_bindings.iter()
+    let work_binding = result
+        .async_bindings
+        .iter()
         .find(|b| b.handler == "skel_work_handler");
-    assert!(work_binding.is_some(), "Should find skel_work_handler binding");
+    assert!(
+        work_binding.is_some(),
+        "Should find skel_work_handler binding"
+    );
 
     // Should mark callback functions
-    assert!(parse_result.functions.get("skel_work_handler")
-        .map(|f| f.is_callback)
-        .unwrap_or(false), "skel_work_handler should be marked as callback");
+    assert!(
+        parse_result
+            .functions
+            .get("skel_work_handler")
+            .map(|f| f.is_callback)
+            .unwrap_or(false),
+        "skel_work_handler should be marked as callback"
+    );
 
     // Should find entry points
-    assert!(result.entry_points.iter().any(|e| e.contains("probe") || e.contains("disconnect")),
-        "Should find probe/disconnect as entry points");
+    assert!(
+        result
+            .entry_points
+            .iter()
+            .any(|e| e.contains("probe") || e.contains("disconnect")),
+        "Should find probe/disconnect as entry points"
+    );
 }
 
 /// Test I2C driver analysis
@@ -344,17 +366,30 @@ fn test_i2c_driver_analysis() {
     let result = analyzer.analyze(I2C_DRIVER, &mut parse_result).unwrap();
 
     // Should detect async bindings
-    assert!(!result.async_bindings.is_empty(), "Should find async bindings in I2C driver");
+    assert!(
+        !result.async_bindings.is_empty(),
+        "Should find async bindings in I2C driver"
+    );
 
     // Should find INIT_WORK binding
-    let init_work = result.async_bindings.iter()
+    let init_work = result
+        .async_bindings
+        .iter()
         .find(|b| b.handler == "i2c_init_work_handler");
-    assert!(init_work.is_some(), "Should find i2c_init_work_handler binding");
+    assert!(
+        init_work.is_some(),
+        "Should find i2c_init_work_handler binding"
+    );
 
     // Should find INIT_DELAYED_WORK binding
-    let delayed_work = result.async_bindings.iter()
+    let delayed_work = result
+        .async_bindings
+        .iter()
         .find(|b| b.handler == "i2c_poll_work_handler");
-    assert!(delayed_work.is_some(), "Should find i2c_poll_work_handler binding");
+    assert!(
+        delayed_work.is_some(),
+        "Should find i2c_poll_work_handler binding"
+    );
 }
 
 /// Test callback pattern recognition on USB driver
@@ -373,9 +408,14 @@ fn test_usb_driver_callback_patterns() {
     let result = analyzer.analyze(USB_SKELETON_DRIVER);
 
     // Should detect queue patterns (schedule_work)
-    assert!(!result.queue_patterns.is_empty(), "Should find queue patterns");
+    assert!(
+        !result.queue_patterns.is_empty(),
+        "Should find queue patterns"
+    );
 
-    let schedule_work = result.queue_patterns.iter()
+    let schedule_work = result
+        .queue_patterns
+        .iter()
         .find(|p| p.enqueue_func == "schedule_work");
     assert!(schedule_work.is_some(), "Should find schedule_work pattern");
 }
@@ -384,28 +424,43 @@ fn test_usb_driver_callback_patterns() {
 #[test]
 fn test_usb_probe_scenario() {
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(USB_SKELETON_DRIVER, "usb_skeleton.c").unwrap();
+    let mut parse_result = parser
+        .parse_source(USB_SKELETON_DRIVER, "usb_skeleton.c")
+        .unwrap();
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(USB_SKELETON_DRIVER, &mut parse_result).unwrap();
+    let result = analyzer
+        .analyze(USB_SKELETON_DRIVER, &mut parse_result)
+        .unwrap();
 
     // Create a scenario for skel_probe
     let mut scenario = Scenario::new("probe_vendor_0x1234", "skel_probe");
     scenario
         .bind("id->idVendor", SymbolicValue::Integer(0x1234))
         .bind("id->idProduct", SymbolicValue::Integer(0x5678))
-        .bind("interface", SymbolicValue::Pointer { is_null: false, size: None });
+        .bind(
+            "interface",
+            SymbolicValue::Pointer {
+                is_null: false,
+                size: None,
+            },
+        );
 
     // Find the flow tree for skel_probe
-    let probe_tree = result.flow_trees.iter()
-        .find(|t| t.name == "skel_probe");
+    let probe_tree = result.flow_trees.iter().find(|t| t.name == "skel_probe");
 
     if let Some(tree) = probe_tree {
         let mut executor = ScenarioExecutor::new(ScenarioOptions::default());
         let exec_result = executor.execute(&scenario, tree);
 
-        assert!(exec_result.primary_path.completed, "Scenario execution should complete");
-        assert!(exec_result.primary_path.step_count > 0, "Should have execution steps");
+        assert!(
+            exec_result.primary_path.completed,
+            "Scenario execution should complete"
+        );
+        assert!(
+            exec_result.primary_path.step_count > 0,
+            "Should have execution steps"
+        );
     }
 }
 
@@ -413,17 +468,20 @@ fn test_usb_probe_scenario() {
 #[test]
 fn test_flow_tree_construction() {
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(USB_SKELETON_DRIVER, "usb_skeleton.c").unwrap();
+    let mut parse_result = parser
+        .parse_source(USB_SKELETON_DRIVER, "usb_skeleton.c")
+        .unwrap();
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(USB_SKELETON_DRIVER, &mut parse_result).unwrap();
+    let result = analyzer
+        .analyze(USB_SKELETON_DRIVER, &mut parse_result)
+        .unwrap();
 
     // Should have flow trees for entry points
     assert!(!result.flow_trees.is_empty(), "Should have flow trees");
 
     // Check that flow trees have children (call hierarchy)
-    let has_children = result.flow_trees.iter()
-        .any(|t| !t.children.is_empty());
+    let has_children = result.flow_trees.iter().any(|t| !t.children.is_empty());
     assert!(has_children, "At least one flow tree should have children");
 }
 
@@ -431,16 +489,22 @@ fn test_flow_tree_construction() {
 #[test]
 fn test_call_graph_edges() {
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(USB_SKELETON_DRIVER, "usb_skeleton.c").unwrap();
+    let mut parse_result = parser
+        .parse_source(USB_SKELETON_DRIVER, "usb_skeleton.c")
+        .unwrap();
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(USB_SKELETON_DRIVER, &mut parse_result).unwrap();
+    let result = analyzer
+        .analyze(USB_SKELETON_DRIVER, &mut parse_result)
+        .unwrap();
 
     // Should have call edges
     assert!(!result.call_edges.is_empty(), "Should have call edges");
 
     // skel_probe should call various functions
-    let probe_edges: Vec<_> = result.call_edges.iter()
+    let probe_edges: Vec<_> = result
+        .call_edges
+        .iter()
         .filter(|e| e.caller == "skel_probe")
         .collect();
 

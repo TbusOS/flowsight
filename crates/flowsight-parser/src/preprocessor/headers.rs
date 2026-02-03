@@ -115,7 +115,9 @@ impl HeaderResolver {
             "arch/x86/Kconfig",
         ];
 
-        kernel_markers.iter().any(|marker| self.root.join(marker).exists())
+        kernel_markers
+            .iter()
+            .any(|marker| self.root.join(marker).exists())
     }
 
     /// Detect the kernel version from source
@@ -181,7 +183,11 @@ mod tests {
         fs::create_dir_all(root.join("drivers/usb/core")).unwrap();
 
         fs::write(root.join("Kconfig"), "# Kernel config").unwrap();
-        fs::write(root.join("Makefile"), "VERSION = 6\nPATCHLEVEL = 1\nSUBLEVEL = 0\n").unwrap();
+        fs::write(
+            root.join("Makefile"),
+            "VERSION = 6\nPATCHLEVEL = 1\nSUBLEVEL = 0\n",
+        )
+        .unwrap();
         fs::write(root.join("include/linux/kernel.h"), "// kernel.h").unwrap();
         fs::write(root.join("arch/x86/include/asm/types.h"), "// types.h").unwrap();
 

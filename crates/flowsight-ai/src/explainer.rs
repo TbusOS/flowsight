@@ -2,7 +2,7 @@
 //!
 //! Provides business semantics explanations for functions and execution contexts.
 
-use super::{AiTask, FlowSightAi, AiConfig, AiResult};
+use super::{AiConfig, AiResult, AiTask, FlowSightAi};
 use serde::{Deserialize, Serialize};
 
 /// Business explanation result
@@ -74,7 +74,10 @@ impl BusinessExplainer {
     }
 
     /// Parse AI response into BusinessExplanation
-    fn parse_explanation_response(&self, response: &str) -> Result<BusinessExplanation, anyhow::Error> {
+    fn parse_explanation_response(
+        &self,
+        response: &str,
+    ) -> Result<BusinessExplanation, anyhow::Error> {
         // Try to extract JSON
         let json_start = response.find("{");
         let json_end = response.rfind("}");
@@ -165,7 +168,10 @@ impl ExecutionContextAnnotator {
     }
 
     /// Parse annotation response
-    fn parse_annotation_response(&self, response: &str) -> Result<ContextAnnotation, anyhow::Error> {
+    fn parse_annotation_response(
+        &self,
+        response: &str,
+    ) -> Result<ContextAnnotation, anyhow::Error> {
         // Simple parsing - look for keywords
         let context_type = if response.contains("进程") || response.contains("Process") {
             "进程上下文 (Process)"
@@ -177,13 +183,21 @@ impl ExecutionContextAnnotator {
             "未知上下文"
         };
 
-        let can_sleep = response.contains("可以睡眠") || response.contains("可睡眠") || response.contains("can sleep");
+        let can_sleep = response.contains("可以睡眠")
+            || response.contains("可睡眠")
+            || response.contains("can sleep");
 
         // Extract notes (lines starting with - or *)
         let notes: Vec<String> = response
             .lines()
             .filter(|l| l.trim_start().starts_with('-') || l.trim_start().starts_with('*'))
-            .map(|l| l.trim_start().trim_start_matches('-').trim_start_matches('*').trim().to_string())
+            .map(|l| {
+                l.trim_start()
+                    .trim_start_matches('-')
+                    .trim_start_matches('*')
+                    .trim()
+                    .to_string()
+            })
             .collect();
 
         Ok(ContextAnnotation {

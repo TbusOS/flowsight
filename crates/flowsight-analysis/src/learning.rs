@@ -269,7 +269,11 @@ impl<'a> CandidateFinder<'a> {
         score
     }
 
-    fn compute_signature_match(&self, expected: &(String, Vec<String>), func: &FunctionInfo) -> u32 {
+    fn compute_signature_match(
+        &self,
+        expected: &(String, Vec<String>),
+        func: &FunctionInfo,
+    ) -> u32 {
         let mut score = 0;
 
         // Return type match

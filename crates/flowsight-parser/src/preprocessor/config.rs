@@ -63,9 +63,7 @@ impl Architecture {
                 MacroDefinition::defined("__aarch64__"),
                 MacroDefinition::with_value("__LP64__", "1"),
             ],
-            Architecture::Arm => vec![
-                MacroDefinition::defined("__arm__"),
-            ],
+            Architecture::Arm => vec![MacroDefinition::defined("__arm__")],
             Architecture::Riscv64 => vec![
                 MacroDefinition::defined("__riscv"),
                 MacroDefinition::with_value("__riscv_xlen", "64"),
@@ -75,9 +73,7 @@ impl Architecture {
                 MacroDefinition::defined("__riscv"),
                 MacroDefinition::with_value("__riscv_xlen", "32"),
             ],
-            Architecture::Mips => vec![
-                MacroDefinition::defined("__mips__"),
-            ],
+            Architecture::Mips => vec![MacroDefinition::defined("__mips__")],
             Architecture::PowerPC => vec![
                 MacroDefinition::defined("__powerpc__"),
                 MacroDefinition::defined("__powerpc64__"),
@@ -191,10 +187,8 @@ impl ConfigExtractor {
                 if let Some(rest) = line.strip_prefix("# CONFIG_") {
                     if let Some(name) = rest.strip_suffix(" is not set") {
                         let macro_name = format!("CONFIG_{}", name);
-                        self.macros.insert(
-                            macro_name.clone(),
-                            MacroDefinition::undefined(&macro_name),
-                        );
+                        self.macros
+                            .insert(macro_name.clone(), MacroDefinition::undefined(&macro_name));
                     }
                 }
                 continue;
@@ -282,9 +276,7 @@ impl ConfigExtractor {
 
     /// Get a config value
     pub fn get_value(&self, name: &str) -> Option<&str> {
-        self.macros
-            .get(name)
-            .and_then(|m| m.value.as_deref())
+        self.macros.get(name).and_then(|m| m.value.as_deref())
     }
 }
 

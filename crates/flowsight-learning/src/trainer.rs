@@ -138,7 +138,10 @@ impl LocalTrainer {
     }
 
     /// Run training
-    pub async fn train(&mut self, samples: &[TrainingSample]) -> Result<TrainingRecord, TrainingError> {
+    pub async fn train(
+        &mut self,
+        samples: &[TrainingSample],
+    ) -> Result<TrainingRecord, TrainingError> {
         if samples.is_empty() {
             return Err(TrainingError::NoData);
         }
@@ -161,7 +164,11 @@ impl LocalTrainer {
     }
 
     /// Save training data to JSONL
-    fn save_training_data(&self, samples: &[TrainingSample], path: &PathBuf) -> Result<(), TrainingError> {
+    fn save_training_data(
+        &self,
+        samples: &[TrainingSample],
+        path: &PathBuf,
+    ) -> Result<(), TrainingError> {
         use std::io::Write;
 
         let mut file = std::fs::File::create(path)
@@ -170,8 +177,7 @@ impl LocalTrainer {
         for sample in samples {
             let json = serde_json::to_string(sample)
                 .map_err(|e| TrainingError::TrainingFailed(e.to_string()))?;
-            writeln!(file, "{}", json)
-                .map_err(|e| TrainingError::TrainingFailed(e.to_string()))?;
+            writeln!(file, "{}", json).map_err(|e| TrainingError::TrainingFailed(e.to_string()))?;
         }
 
         Ok(())

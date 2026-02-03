@@ -102,7 +102,8 @@ impl ClassifiedEdge {
 
     /// Create an edge with multiple possible targets
     pub fn possible(caller: &str, call_site: &str, targets: Vec<(&str, &str)>) -> Self {
-        let classified_targets: Vec<_> = targets.into_iter()
+        let classified_targets: Vec<_> = targets
+            .into_iter()
             .map(|(name, reason)| ClassifiedTarget {
                 name: name.to_string(),
                 confidence: Confidence::Possible,
@@ -309,7 +310,8 @@ impl ResultClassifier {
         }
 
         // Multiple targets - classified as Possible
-        let target_list: Vec<_> = targets.iter()
+        let target_list: Vec<_> = targets
+            .iter()
             .map(|t| (t.as_str(), "Possible function pointer target"))
             .collect();
 
@@ -343,14 +345,20 @@ impl ResultClassifier {
 
     /// Check for user annotation and apply it
     pub fn apply_annotation(&self, call_site: &str) -> Option<ClassifiedEdge> {
-        self.annotations.iter()
+        self.annotations
+            .iter()
             .find(|a| a.call_site == call_site)
             .map(|a| {
-                let targets: Vec<_> = a.targets.iter()
+                let targets: Vec<_> = a
+                    .targets
+                    .iter()
                     .map(|t| ClassifiedTarget {
                         name: t.clone(),
                         confidence: Confidence::Certain,
-                        reason: a.note.clone().unwrap_or_else(|| "User annotation".to_string()),
+                        reason: a
+                            .note
+                            .clone()
+                            .unwrap_or_else(|| "User annotation".to_string()),
                     })
                     .collect();
 
@@ -383,7 +391,11 @@ impl ResultClassifier {
             certain_count,
             possible_count,
             unknown_count,
-            certain_percentage: if total > 0 { certain_count * 100 / total } else { 0 },
+            certain_percentage: if total > 0 {
+                certain_count * 100 / total
+            } else {
+                0
+            },
         }
     }
 }

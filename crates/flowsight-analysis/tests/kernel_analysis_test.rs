@@ -33,7 +33,8 @@ fn test_usb_storage_driver_analysis() {
     };
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(&source, test_file)
+    let mut parse_result = parser
+        .parse_source(&source, test_file)
         .expect("Failed to parse file");
 
     println!("=== USB Storage Driver Analysis ===");
@@ -44,14 +45,22 @@ fn test_usb_storage_driver_analysis() {
     // Print function details
     println!("\n--- Functions ---");
     for (name, func) in &parse_result.functions {
-        println!("  - {} (line {})", name, func.location.as_ref().map(|l| l.line).unwrap_or(0));
+        println!(
+            "  - {} (line {})",
+            name,
+            func.location.as_ref().map(|l| l.line).unwrap_or(0)
+        );
         if !func.calls.is_empty() {
-            println!("    Calls: {:?}", func.calls.iter().take(5).collect::<Vec<_>>());
+            println!(
+                "    Calls: {:?}",
+                func.calls.iter().take(5).collect::<Vec<_>>()
+            );
         }
     }
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(&source, &mut parse_result)
+    let result = analyzer
+        .analyze(&source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n--- Analysis Results ---");
@@ -119,26 +128,34 @@ module_usb_driver(my_driver);
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "test_usb.c")
+    let mut parse_result = parser
+        .parse_source(source, "test_usb.c")
         .expect("Failed to parse");
 
     println!("\n=== Kernel Call Chain Injection Test ===");
     println!("Functions found: {}", parse_result.functions.len());
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n--- Results ---");
     println!("Entry points: {:?}", result.entry_points);
     println!("Async bindings:");
     for binding in &result.async_bindings {
-        let triggers = binding.trigger_locations.iter()
+        let triggers = binding
+            .trigger_locations
+            .iter()
             .map(|l| format!("line {}", l.line))
             .collect::<Vec<_>>();
-        println!("  - {} -> {} ({:?}) [triggers: {}]",
-                 binding.variable, binding.handler, binding.mechanism,
-                 triggers.join(", "));
+        println!(
+            "  - {} -> {} ({:?}) [triggers: {}]",
+            binding.variable,
+            binding.handler,
+            binding.mechanism,
+            triggers.join(", ")
+        );
     }
 
     // Verify callbacks are detected
@@ -147,10 +164,22 @@ module_usb_driver(my_driver);
     let probe = parse_result.functions.get("my_probe");
     let disconnect = parse_result.functions.get("my_disconnect");
 
-    assert!(work_handler.map(|f| f.is_callback).unwrap_or(false), "work_handler should be callback");
-    assert!(timer_fn.map(|f| f.is_callback).unwrap_or(false), "timer_fn should be callback");
-    assert!(probe.map(|f| f.is_callback).unwrap_or(false), "probe should be callback");
-    assert!(disconnect.map(|f| f.is_callback).unwrap_or(false), "disconnect should be callback");
+    assert!(
+        work_handler.map(|f| f.is_callback).unwrap_or(false),
+        "work_handler should be callback"
+    );
+    assert!(
+        timer_fn.map(|f| f.is_callback).unwrap_or(false),
+        "timer_fn should be callback"
+    );
+    assert!(
+        probe.map(|f| f.is_callback).unwrap_or(false),
+        "probe should be callback"
+    );
+    assert!(
+        disconnect.map(|f| f.is_callback).unwrap_or(false),
+        "disconnect should be callback"
+    );
 
     println!("\n✓ All callbacks correctly identified");
 }
@@ -197,11 +226,13 @@ module_platform_driver(my_driver);
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "simple_driver.c")
+    let mut parse_result = parser
+        .parse_source(source, "simple_driver.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Simple Driver Execution Flow Test ===");
@@ -327,11 +358,13 @@ module_exit(my_netdev_exit);
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "netdev.c")
+    let mut parse_result = parser
+        .parse_source(source, "netdev.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Network Device Driver Analysis ===");
@@ -347,10 +380,22 @@ module_exit(my_netdev_exit);
     let xmit_fn = parse_result.functions.get("my_start_xmit");
     let interrupt_fn = parse_result.functions.get("my_interrupt");
 
-    assert!(open_fn.map(|f| f.is_callback).unwrap_or(false), "my_open should be callback (ndo_open)");
-    assert!(stop_fn.map(|f| f.is_callback).unwrap_or(false), "my_stop should be callback (ndo_stop)");
-    assert!(xmit_fn.map(|f| f.is_callback).unwrap_or(false), "my_start_xmit should be callback (ndo_start_xmit)");
-    assert!(interrupt_fn.map(|f| f.is_callback).unwrap_or(false), "my_interrupt should be callback via request_irq");
+    assert!(
+        open_fn.map(|f| f.is_callback).unwrap_or(false),
+        "my_open should be callback (ndo_open)"
+    );
+    assert!(
+        stop_fn.map(|f| f.is_callback).unwrap_or(false),
+        "my_stop should be callback (ndo_stop)"
+    );
+    assert!(
+        xmit_fn.map(|f| f.is_callback).unwrap_or(false),
+        "my_start_xmit should be callback (ndo_start_xmit)"
+    );
+    assert!(
+        interrupt_fn.map(|f| f.is_callback).unwrap_or(false),
+        "my_interrupt should be callback via request_irq"
+    );
 
     // Verify entry points
     assert!(result.entry_points.contains(&"my_netdev_init".to_string()));
@@ -494,11 +539,13 @@ module_exit(my_blkdev_exit);
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "blkdev.c")
+    let mut parse_result = parser
+        .parse_source(source, "blkdev.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Block Device Driver Analysis ===");
@@ -512,8 +559,13 @@ module_exit(my_blkdev_exit);
     assert!(result.entry_points.contains(&"my_blkdev_exit".to_string()));
 
     // Verify call graph building
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_blkdev_request" && e.callee == "my_process_bio"),
-            "my_blkdev_request should call my_process_bio");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_blkdev_request" && e.callee == "my_process_bio"),
+        "my_blkdev_request should call my_process_bio"
+    );
 
     // Print callback details if any were detected
     println!("\n--- Block Device Callbacks ---");
@@ -718,11 +770,13 @@ module_exit(my_chardev_exit);
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "chardev.c")
+    let mut parse_result = parser
+        .parse_source(source, "chardev.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Character Device Driver Analysis ===");
@@ -736,10 +790,20 @@ module_exit(my_chardev_exit);
     assert!(result.entry_points.contains(&"my_chardev_exit".to_string()));
 
     // Verify call edges (read calls copy_to_user, write calls copy_from_user)
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_chardev_read" && e.callee == "copy_to_user"),
-            "my_chardev_read should call copy_to_user");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_chardev_write" && e.callee == "copy_from_user"),
-            "my_chardev_write should call copy_from_user");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_chardev_read" && e.callee == "copy_to_user"),
+        "my_chardev_read should call copy_to_user"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_chardev_write" && e.callee == "copy_from_user"),
+        "my_chardev_write should call copy_from_user"
+    );
 
     // Print callback details if any were detected
     println!("\n--- Character Device Callbacks ---");
@@ -886,11 +950,13 @@ module_exit(my_module_exit);
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "irq_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "irq_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== IRQ Handling Analysis ===");
@@ -904,10 +970,15 @@ module_exit(my_module_exit);
     // Focus on verifying async bindings and call graph are working correctly
 
     // Verify async bindings are detected (tasklet, workqueue, softirq, threaded irq)
-    assert!(result.async_bindings.len() > 0, "Should detect async bindings");
+    assert!(
+        result.async_bindings.len() > 0,
+        "Should detect async bindings"
+    );
 
     // Verify callback functions are marked correctly
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -918,13 +989,25 @@ module_exit(my_module_exit);
     }
 
     // Verify call edges for IRQ-related functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_device_open" && e.callee == "request_threaded_irq"),
-            "my_device_open should call request_threaded_irq");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_device_release" && e.callee == "free_irq"),
-            "my_device_release should call free_irq");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_device_open" && e.callee == "request_threaded_irq"),
+        "my_device_open should call request_threaded_irq"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_device_release" && e.callee == "free_irq"),
+        "my_device_release should call free_irq"
+    );
 
     // Verify async binding handlers are present
-    let handler_names: Vec<_> = result.async_bindings.iter()
+    let handler_names: Vec<_> = result
+        .async_bindings
+        .iter()
         .map(|b| b.handler.clone())
         .collect();
 
@@ -934,17 +1017,30 @@ module_exit(my_module_exit);
     }
 
     // Verify at least some expected handlers are present
-    assert!(handler_names.iter().any(|h| h == "my_tasklet_fn"), "Should detect tasklet handler");
-    assert!(handler_names.iter().any(|h| h == "my_bottom_half"), "Should detect workqueue handler");
+    assert!(
+        handler_names.iter().any(|h| h == "my_tasklet_fn"),
+        "Should detect tasklet handler"
+    );
+    assert!(
+        handler_names.iter().any(|h| h == "my_bottom_half"),
+        "Should detect workqueue handler"
+    );
 
     // Print async bindings with details
     println!("\n--- Async Bindings Details ---");
     for binding in &result.async_bindings {
-        println!("  - {} -> {} ({:?}) [{}]",
-                 binding.variable, binding.handler, binding.mechanism,
-                 binding.trigger_locations.iter()
-                    .map(|l| format!("line {}", l.line))
-                    .collect::<Vec<_>>().join(", "));
+        println!(
+            "  - {} -> {} ({:?}) [{}]",
+            binding.variable,
+            binding.handler,
+            binding.mechanism,
+            binding
+                .trigger_locations
+                .iter()
+                .map(|l| format!("line {}", l.line))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     println!("\n✓ IRQ handling analysis completed - async bindings working correctly");
@@ -1040,11 +1136,13 @@ MODULE_DESCRIPTION("Timer mechanism test driver");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "timer_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "timer_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Timer Mechanisms Analysis ===");
@@ -1054,10 +1152,15 @@ MODULE_DESCRIPTION("Timer mechanism test driver");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify async bindings are detected (timer and workqueue)
-    assert!(result.async_bindings.len() > 0, "Should detect async bindings");
+    assert!(
+        result.async_bindings.len() > 0,
+        "Should detect async bindings"
+    );
 
     // Verify callback functions are marked correctly
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -1068,22 +1171,48 @@ MODULE_DESCRIPTION("Timer mechanism test driver");
     }
 
     // Verify timer handlers are detected
-    assert!(callbacks.iter().any(|n| n == "my_basic_timer_fn"),
-            "Should detect basic timer callback");
-    assert!(callbacks.iter().any(|n| n == "my_hrtimer_handler"),
-            "Should detect hrtimer callback");
-    assert!(callbacks.iter().any(|n| n == "my_timer_work_handler"),
-            "Should detect workqueue callback");
+    assert!(
+        callbacks.iter().any(|n| n == "my_basic_timer_fn"),
+        "Should detect basic timer callback"
+    );
+    assert!(
+        callbacks.iter().any(|n| n == "my_hrtimer_handler"),
+        "Should detect hrtimer callback"
+    );
+    assert!(
+        callbacks.iter().any(|n| n == "my_timer_work_handler"),
+        "Should detect workqueue callback"
+    );
 
     // Verify call edges for timer functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_timer_init" && e.callee == "timer_setup"),
-            "my_timer_init should call timer_setup");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_timer_init" && e.callee == "hrtimer_init"),
-            "my_timer_init should call hrtimer_init");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_timer_init" && e.callee == "add_timer"),
-            "my_timer_init should call add_timer");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_timer_init" && e.callee == "hrtimer_start"),
-            "my_timer_init should call hrtimer_start");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_timer_init" && e.callee == "timer_setup"),
+        "my_timer_init should call timer_setup"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_timer_init" && e.callee == "hrtimer_init"),
+        "my_timer_init should call hrtimer_init"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_timer_init" && e.callee == "add_timer"),
+        "my_timer_init should call add_timer"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_timer_init" && e.callee == "hrtimer_start"),
+        "my_timer_init should call hrtimer_start"
+    );
 
     println!("\n✓ Timer mechanisms analysis completed");
 }
@@ -1206,11 +1335,13 @@ MODULE_DESCRIPTION("Kthread test driver");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "kthread_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "kthread_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Kthread Analysis ===");
@@ -1220,7 +1351,9 @@ MODULE_DESCRIPTION("Kthread test driver");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify kthread functions are detected
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -1231,21 +1364,45 @@ MODULE_DESCRIPTION("Kthread test driver");
     }
 
     // Verify kthread handlers are detected
-    assert!(callbacks.iter().any(|n| n == "my_worker_fn"),
-            "Should detect worker thread function");
-    assert!(callbacks.iter().any(|n| n == "my_io_thread_fn"),
-            "Should detect IO thread function");
+    assert!(
+        callbacks.iter().any(|n| n == "my_worker_fn"),
+        "Should detect worker thread function"
+    );
+    assert!(
+        callbacks.iter().any(|n| n == "my_io_thread_fn"),
+        "Should detect IO thread function"
+    );
 
     // Note: kthread_work handlers are detected via kthread_init_work pattern
     // Verify call edges for kthread functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_kthread_init" && e.callee == "kthread_run"),
-            "my_kthread_init should call kthread_run");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_kthread_init" && e.callee == "kthread_create"),
-            "my_kthread_init should call kthread_create");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_kthread_init" && e.callee == "wake_up_process"),
-            "my_kthread_init should call wake_up_process");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_kthread_exit" && e.callee == "kthread_stop"),
-            "my_kthread_exit should call kthread_stop");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_kthread_init" && e.callee == "kthread_run"),
+        "my_kthread_init should call kthread_run"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_kthread_init" && e.callee == "kthread_create"),
+        "my_kthread_init should call kthread_create"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_kthread_init" && e.callee == "wake_up_process"),
+        "my_kthread_init should call wake_up_process"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_kthread_exit" && e.callee == "kthread_stop"),
+        "my_kthread_exit should call kthread_stop"
+    );
 
     println!("\n✓ Kthread analysis completed");
 }
@@ -1382,11 +1539,13 @@ MODULE_DESCRIPTION("RCU test driver");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "rcu_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "rcu_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== RCU Analysis ===");
@@ -1396,7 +1555,9 @@ MODULE_DESCRIPTION("RCU test driver");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify RCU functions are detected
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -1407,22 +1568,49 @@ MODULE_DESCRIPTION("RCU test driver");
     }
 
     // Verify RCU callback is detected
-    assert!(callbacks.iter().any(|n| n == "my_rcu_callback"),
-            "Should detect RCU callback function");
+    assert!(
+        callbacks.iter().any(|n| n == "my_rcu_callback"),
+        "Should detect RCU callback function"
+    );
 
     // Verify call edges for RCU functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_rcu_remove" && e.callee == "call_rcu"),
-            "my_rcu_remove should call call_rcu");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_rcu_exit" && e.callee == "synchronize_rcu"),
-            "my_rcu_exit should call synchronize_rcu");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_rcu_exit" && e.callee == "kfree_rcu"),
-            "my_rcu_exit should call kfree_rcu");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_rcu_remove" && e.callee == "call_rcu"),
+        "my_rcu_remove should call call_rcu"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_rcu_exit" && e.callee == "synchronize_rcu"),
+        "my_rcu_exit should call synchronize_rcu"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_rcu_exit" && e.callee == "kfree_rcu"),
+        "my_rcu_exit should call kfree_rcu"
+    );
 
     // Verify rcu_read_lock/unlock pair is detected
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_rcu_read" && e.callee == "rcu_read_lock"),
-            "my_rcu_read should call rcu_read_lock");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_rcu_read" && e.callee == "rcu_read_unlock"),
-            "my_rcu_read should call rcu_read_unlock");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_rcu_read" && e.callee == "rcu_read_lock"),
+        "my_rcu_read should call rcu_read_lock"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_rcu_read" && e.callee == "rcu_read_unlock"),
+        "my_rcu_read should call rcu_read_unlock"
+    );
 
     println!("\n✓ RCU analysis completed");
 }
@@ -1548,11 +1736,13 @@ MODULE_DESCRIPTION("Platform driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "platform_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "platform_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Platform Driver Analysis ===");
@@ -1562,7 +1752,9 @@ MODULE_DESCRIPTION("Platform driver test");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify platform driver callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -1572,18 +1764,37 @@ MODULE_DESCRIPTION("Platform driver test");
         println!("  - {}", name);
     }
 
-    assert!(callbacks.iter().any(|n| n == "my_platform_probe"),
-            "Should detect platform probe callback");
-    assert!(callbacks.iter().any(|n| n == "my_platform_remove"),
-            "Should detect platform remove callback");
+    assert!(
+        callbacks.iter().any(|n| n == "my_platform_probe"),
+        "Should detect platform probe callback"
+    );
+    assert!(
+        callbacks.iter().any(|n| n == "my_platform_remove"),
+        "Should detect platform remove callback"
+    );
 
     // Verify call edges
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_platform_probe" && e.callee == "platform_get_resource"),
-            "probe should call platform_get_resource");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_platform_probe" && e.callee == "platform_get_irq"),
-            "probe should call platform_get_irq");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_platform_probe" && e.callee == "schedule_work"),
-            "probe should call schedule_work");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_platform_probe" && e.callee == "platform_get_resource"),
+        "probe should call platform_get_resource"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_platform_probe" && e.callee == "platform_get_irq"),
+        "probe should call platform_get_irq"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_platform_probe" && e.callee == "schedule_work"),
+        "probe should call schedule_work"
+    );
 
     println!("\n✓ Platform driver analysis completed");
 }
@@ -1740,11 +1951,13 @@ MODULE_DESCRIPTION("PCI driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "pci_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "pci_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== PCI Driver Analysis ===");
@@ -1755,7 +1968,9 @@ MODULE_DESCRIPTION("PCI driver test");
 
     // Verify PCI driver callbacks
     // Note: probe/remove callbacks are detected via driver registration patterns
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -1766,20 +1981,47 @@ MODULE_DESCRIPTION("PCI driver test");
     }
 
     // At minimum, the ISR should be detected
-    assert!(callbacks.iter().any(|n| n == "my_pci_isr"),
-            "Should detect PCI ISR callback");
+    assert!(
+        callbacks.iter().any(|n| n == "my_pci_isr"),
+        "Should detect PCI ISR callback"
+    );
 
     // Verify call edges - the key test is that PCI API functions are detected
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_pci_probe" && e.callee == "pci_enable_device"),
-            "probe should call pci_enable_device");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_pci_probe" && e.callee == "pci_request_regions"),
-            "probe should call pci_request_regions");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_pci_probe" && e.callee == "pci_iomap"),
-            "probe should call pci_iomap");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_pci_probe" && e.callee == "pci_enable_msi"),
-            "probe should call pci_enable_msi");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_pci_probe" && e.callee == "request_irq"),
-            "probe should call request_irq");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_pci_probe" && e.callee == "pci_enable_device"),
+        "probe should call pci_enable_device"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_pci_probe" && e.callee == "pci_request_regions"),
+        "probe should call pci_request_regions"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_pci_probe" && e.callee == "pci_iomap"),
+        "probe should call pci_iomap"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_pci_probe" && e.callee == "pci_enable_msi"),
+        "probe should call pci_enable_msi"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_pci_probe" && e.callee == "request_irq"),
+        "probe should call request_irq"
+    );
 
     println!("\n✓ PCI driver analysis completed");
 }
@@ -1896,11 +2138,13 @@ MODULE_DESCRIPTION("SPI driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "spi_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "spi_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== SPI Driver Analysis ===");
@@ -1911,7 +2155,9 @@ MODULE_DESCRIPTION("SPI driver test");
 
     // Verify SPI driver callbacks
     // Note: probe/remove callbacks are detected via driver registration patterns
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -1922,17 +2168,34 @@ MODULE_DESCRIPTION("SPI driver test");
     }
 
     // At minimum, the work handler should be detected
-    assert!(callbacks.iter().any(|n| n == "spi_work_handler"),
-            "Should detect SPI work handler callback");
+    assert!(
+        callbacks.iter().any(|n| n == "spi_work_handler"),
+        "Should detect SPI work handler callback"
+    );
 
     // Verify call edges - the key test is that SPI API functions are detected
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_spi_probe" && e.callee == "spi_setup"),
-            "probe should call spi_setup");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_spi_probe" && e.callee == "spi_setup"),
+        "probe should call spi_setup"
+    );
     // Note: spi_sync_transfer may be inlined or recognized as spi_transfer
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_spi_probe" && e.callee.contains("spi")),
-            "probe should call SPI functions");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_spi_probe" && e.callee == "spi_message_init"),
-            "probe should call spi_message_init");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_spi_probe" && e.callee.contains("spi")),
+        "probe should call SPI functions"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_spi_probe" && e.callee == "spi_message_init"),
+        "probe should call spi_message_init"
+    );
 
     println!("\n✓ SPI driver analysis completed");
 }
@@ -2013,11 +2276,13 @@ MODULE_DESCRIPTION("Completion primitive test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "completion_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "completion_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Completion Primitive Analysis ===");
@@ -2027,7 +2292,9 @@ MODULE_DESCRIPTION("Completion primitive test");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify completion work callback
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -2037,18 +2304,40 @@ MODULE_DESCRIPTION("Completion primitive test");
         println!("  - {}", name);
     }
 
-    assert!(callbacks.iter().any(|n| n == "completion_work_handler"),
-            "Should detect work handler callback");
+    assert!(
+        callbacks.iter().any(|n| n == "completion_work_handler"),
+        "Should detect work handler callback"
+    );
 
     // Verify call edges for completion functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_completion_init" && e.callee == "init_completion"),
-            "init should call init_completion");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_completion_init" && e.callee == "wait_for_completion_timeout"),
-            "init should call wait_for_completion_timeout");
-    assert!(result.call_edges.iter().any(|e| e.caller == "completion_work_handler" && e.callee == "complete"),
-            "work handler should call complete");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_completion_exit" && e.callee == "complete_all"),
-            "exit should call complete_all");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_completion_init" && e.callee == "init_completion"),
+        "init should call init_completion"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_completion_init" && e.callee == "wait_for_completion_timeout"),
+        "init should call wait_for_completion_timeout"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "completion_work_handler" && e.callee == "complete"),
+        "work handler should call complete"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_completion_exit" && e.callee == "complete_all"),
+        "exit should call complete_all"
+    );
 
     println!("\n✓ Completion primitive analysis completed");
 }
@@ -2145,11 +2434,13 @@ MODULE_DESCRIPTION("GPIO driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "gpio_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "gpio_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== GPIO Driver Analysis ===");
@@ -2159,7 +2450,9 @@ MODULE_DESCRIPTION("GPIO driver test");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -2170,20 +2463,47 @@ MODULE_DESCRIPTION("GPIO driver test");
     }
 
     // Verify GPIO IRQ handler is detected
-    assert!(callbacks.iter().any(|n| n == "button_irq_handler"),
-            "Should detect GPIO IRQ handler callback");
+    assert!(
+        callbacks.iter().any(|n| n == "button_irq_handler"),
+        "Should detect GPIO IRQ handler callback"
+    );
 
     // Verify call edges for GPIO functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_gpio_init" && e.callee == "gpio_request"),
-            "init should call gpio_request");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_gpio_init" && e.callee == "gpio_direction_output"),
-            "init should call gpio_direction_output");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_gpio_init" && e.callee == "gpio_direction_input"),
-            "init should call gpio_direction_input");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_gpio_init" && e.callee == "gpio_to_irq"),
-            "init should call gpio_to_irq");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_gpio_init" && e.callee == "request_irq"),
-            "init should call request_irq");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_gpio_init" && e.callee == "gpio_request"),
+        "init should call gpio_request"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_gpio_init" && e.callee == "gpio_direction_output"),
+        "init should call gpio_direction_output"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_gpio_init" && e.callee == "gpio_direction_input"),
+        "init should call gpio_direction_input"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_gpio_init" && e.callee == "gpio_to_irq"),
+        "init should call gpio_to_irq"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_gpio_init" && e.callee == "request_irq"),
+        "init should call request_irq"
+    );
 
     println!("\n✓ GPIO driver analysis completed");
 }
@@ -2264,11 +2584,13 @@ MODULE_DESCRIPTION("Clock driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "clk_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "clk_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Clock Driver Analysis ===");
@@ -2277,16 +2599,41 @@ MODULE_DESCRIPTION("Clock driver test");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify call edges for clock functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_clk_init" && e.callee == "clk_get"),
-            "init should call clk_get");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_clk_init" && e.callee == "clk_set_rate"),
-            "init should call clk_set_rate");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_clk_init" && e.callee == "clk_prepare_enable"),
-            "init should call clk_prepare_enable");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_clk_exit" && e.callee == "clk_disable_unprepare"),
-            "exit should call clk_disable_unprepare");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_clk_exit" && e.callee == "clk_put"),
-            "exit should call clk_put");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_clk_init" && e.callee == "clk_get"),
+        "init should call clk_get"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_clk_init" && e.callee == "clk_set_rate"),
+        "init should call clk_set_rate"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_clk_init" && e.callee == "clk_prepare_enable"),
+        "init should call clk_prepare_enable"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_clk_exit" && e.callee == "clk_disable_unprepare"),
+        "exit should call clk_disable_unprepare"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_clk_exit" && e.callee == "clk_put"),
+        "exit should call clk_put"
+    );
 
     println!("\n✓ Clock driver analysis completed");
 }
@@ -2368,11 +2715,13 @@ MODULE_DESCRIPTION("Regulator driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "regulator_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "regulator_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Regulator Driver Analysis ===");
@@ -2381,18 +2730,48 @@ MODULE_DESCRIPTION("Regulator driver test");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify call edges for regulator functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_get"),
-            "init should call regulator_get");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_set_voltage"),
-            "init should call regulator_set_voltage");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_enable"),
-            "init should call regulator_enable");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_is_enabled"),
-            "init should call regulator_is_enabled");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_disable"),
-            "init should call regulator_disable");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_regulator_exit" && e.callee == "regulator_put"),
-            "exit should call regulator_put");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_get"),
+        "init should call regulator_get"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_set_voltage"),
+        "init should call regulator_set_voltage"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_enable"),
+        "init should call regulator_enable"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_is_enabled"),
+        "init should call regulator_is_enabled"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_regulator_init" && e.callee == "regulator_disable"),
+        "init should call regulator_disable"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_regulator_exit" && e.callee == "regulator_put"),
+        "exit should call regulator_put"
+    );
 
     println!("\n✓ Regulator driver analysis completed");
 }
@@ -2481,11 +2860,13 @@ MODULE_DESCRIPTION("Input driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "input_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "input_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Input Driver Analysis ===");
@@ -2494,7 +2875,9 @@ MODULE_DESCRIPTION("Input driver test");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -2505,20 +2888,47 @@ MODULE_DESCRIPTION("Input driver test");
     }
 
     // Verify input IRQ handler is detected
-    assert!(callbacks.iter().any(|n| n == "button_irq_handler"),
-            "Should detect input IRQ handler callback");
+    assert!(
+        callbacks.iter().any(|n| n == "button_irq_handler"),
+        "Should detect input IRQ handler callback"
+    );
 
     // Verify call edges for input functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_input_init" && e.callee == "input_allocate_device"),
-            "init should call input_allocate_device");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_input_init" && e.callee == "input_register_device"),
-            "init should call input_register_device");
-    assert!(result.call_edges.iter().any(|e| e.caller == "button_irq_handler" && e.callee == "input_report_key"),
-            "irq handler should call input_report_key");
-    assert!(result.call_edges.iter().any(|e| e.caller == "button_irq_handler" && e.callee == "input_sync"),
-            "irq handler should call input_sync");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_input_exit" && e.callee == "input_unregister_device"),
-            "exit should call input_unregister_device");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_input_init" && e.callee == "input_allocate_device"),
+        "init should call input_allocate_device"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_input_init" && e.callee == "input_register_device"),
+        "init should call input_register_device"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "button_irq_handler" && e.callee == "input_report_key"),
+        "irq handler should call input_report_key"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "button_irq_handler" && e.callee == "input_sync"),
+        "irq handler should call input_sync"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_input_exit" && e.callee == "input_unregister_device"),
+        "exit should call input_unregister_device"
+    );
 
     println!("\n✓ Input driver analysis completed");
 }
@@ -2628,11 +3038,13 @@ MODULE_DESCRIPTION("DMA driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "dma_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "dma_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== DMA Driver Analysis ===");
@@ -2642,7 +3054,9 @@ MODULE_DESCRIPTION("DMA driver test");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify DMA callback is detected
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -2653,18 +3067,48 @@ MODULE_DESCRIPTION("DMA driver test");
     }
 
     // Verify call edges for DMA functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_dma_init" && e.callee == "dma_request_chan"),
-            "init should call dma_request_chan");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_dma_init" && e.callee == "dma_pool_create"),
-            "init should call dma_pool_create");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_dma_init" && e.callee == "dma_pool_alloc"),
-            "init should call dma_pool_alloc");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_dma_init" && e.callee == "dmaengine_prep_dma_memcpy"),
-            "init should call dmaengine_prep_dma_memcpy");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_dma_init" && e.callee == "dma_async_issue_pending"),
-            "init should call dma_async_issue_pending");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_dma_init" && e.callee == "dma_release_channel"),
-            "init should call dma_release_channel");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_dma_init" && e.callee == "dma_request_chan"),
+        "init should call dma_request_chan"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_dma_init" && e.callee == "dma_pool_create"),
+        "init should call dma_pool_create"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_dma_init" && e.callee == "dma_pool_alloc"),
+        "init should call dma_pool_alloc"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_dma_init" && e.callee == "dmaengine_prep_dma_memcpy"),
+        "init should call dmaengine_prep_dma_memcpy"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_dma_init" && e.callee == "dma_async_issue_pending"),
+        "init should call dma_async_issue_pending"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_dma_init" && e.callee == "dma_release_channel"),
+        "init should call dma_release_channel"
+    );
 
     println!("\n✓ DMA driver analysis completed");
 }
@@ -2766,11 +3210,13 @@ MODULE_DESCRIPTION("Block device driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "blkdev_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "blkdev_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Block Device Driver Analysis ===");
@@ -2779,7 +3225,9 @@ MODULE_DESCRIPTION("Block device driver test");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -2792,26 +3240,65 @@ MODULE_DESCRIPTION("Block device driver test");
     // Verify block device callbacks are detected (via block_device_operations)
     // Note: blk_init_queue request handler is not detected as callback
     // because analyzer only tracks struct member assignments
-    assert!(callbacks.iter().any(|n| n == "my_open"),
-            "Should detect open callback");
-    assert!(callbacks.iter().any(|n| n == "my_release"),
-            "Should detect release callback");
+    assert!(
+        callbacks.iter().any(|n| n == "my_open"),
+        "Should detect open callback"
+    );
+    assert!(
+        callbacks.iter().any(|n| n == "my_release"),
+        "Should detect release callback"
+    );
 
     // Verify call edges for block functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_blkdev_init" && e.callee == "blk_init_queue"),
-            "init should call blk_init_queue");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_blkdev_init" && e.callee == "blk_queue_max_hw_sectors"),
-            "init should call blk_queue_max_hw_sectors");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_blkdev_init" && e.callee == "alloc_disk"),
-            "init should call alloc_disk");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_blkdev_init" && e.callee == "set_capacity"),
-            "init should call set_capacity");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_blkdev_init" && e.callee == "add_disk"),
-            "init should call add_disk");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_blkdev_exit" && e.callee == "del_gendisk"),
-            "exit should call del_gendisk");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_blkdev_exit" && e.callee == "blk_cleanup_queue"),
-            "exit should call blk_cleanup_queue");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_blkdev_init" && e.callee == "blk_init_queue"),
+        "init should call blk_init_queue"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_blkdev_init" && e.callee == "blk_queue_max_hw_sectors"),
+        "init should call blk_queue_max_hw_sectors"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_blkdev_init" && e.callee == "alloc_disk"),
+        "init should call alloc_disk"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_blkdev_init" && e.callee == "set_capacity"),
+        "init should call set_capacity"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_blkdev_init" && e.callee == "add_disk"),
+        "init should call add_disk"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_blkdev_exit" && e.callee == "del_gendisk"),
+        "exit should call del_gendisk"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_blkdev_exit" && e.callee == "blk_cleanup_queue"),
+        "exit should call blk_cleanup_queue"
+    );
 
     println!("\n✓ Block device driver analysis completed");
 }
@@ -2901,11 +3388,13 @@ MODULE_DESCRIPTION("ASoC driver test");
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "asoc_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "asoc_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== ASoC Driver Analysis ===");
@@ -2914,7 +3403,9 @@ MODULE_DESCRIPTION("ASoC driver test");
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -2925,16 +3416,29 @@ MODULE_DESCRIPTION("ASoC driver test");
     }
 
     // Verify ASoC probe/remove callbacks are detected
-    assert!(callbacks.iter().any(|n| n == "my_probe"),
-            "Should detect ASoC probe callback");
-    assert!(callbacks.iter().any(|n| n == "my_remove"),
-            "Should detect ASoC remove callback");
+    assert!(
+        callbacks.iter().any(|n| n == "my_probe"),
+        "Should detect ASoC probe callback"
+    );
+    assert!(
+        callbacks.iter().any(|n| n == "my_remove"),
+        "Should detect ASoC remove callback"
+    );
 
     // Verify call edges for ASoC functions
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_probe" && e.callee == "devm_snd_soc_register_card"),
-            "probe should call devm_snd_soc_register_card");
-    assert!(result.call_edges.iter().any(|e| e.callee == "snd_soc_register_card" || e.callee == "devm_snd_soc_register_card"),
-            "Should detect ASoC card registration");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_probe" && e.callee == "devm_snd_soc_register_card"),
+        "probe should call devm_snd_soc_register_card"
+    );
+    assert!(
+        result.call_edges.iter().any(
+            |e| e.callee == "snd_soc_register_card" || e.callee == "devm_snd_soc_register_card"
+        ),
+        "Should detect ASoC card registration"
+    );
 
     println!("\n✓ ASoC driver analysis completed");
 }
@@ -2980,11 +3484,13 @@ static struct nvmem_driver my_nvmem = {
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "nvmem_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "nvmem_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== NVMEM Driver Analysis ===");
@@ -2993,7 +3499,9 @@ static struct nvmem_driver my_nvmem = {
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -3004,14 +3512,29 @@ static struct nvmem_driver my_nvmem = {
     }
 
     // Verify NVMEM driver structure is present (probe/remove patterns)
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_nvmem_probe"),
-            "Should have probe function");
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_nvmem_remove"),
-            "Should have remove function");
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_nvmem_probe"),
+        "Should have probe function"
+    );
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_nvmem_remove"),
+        "Should have remove function"
+    );
 
     // Verify call edges
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_nvmem_probe" && e.callee == "nvmem_device_read"),
-            "probe should call nvmem_device_read");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_nvmem_probe" && e.callee == "nvmem_device_read"),
+        "probe should call nvmem_device_read"
+    );
 
     println!("\n✓ NVMEM driver analysis completed");
 }
@@ -3068,11 +3591,13 @@ static void my_remove(struct iio_dev *indio_dev) {
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "iio_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "iio_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== IIO Driver Analysis ===");
@@ -3081,7 +3606,9 @@ static void my_remove(struct iio_dev *indio_dev) {
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -3092,16 +3619,33 @@ static void my_remove(struct iio_dev *indio_dev) {
     }
 
     // Verify IIO driver structure is present
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_sensor_read_raw"),
-            "Should have read_raw function");
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_probe"),
-            "Should have probe function");
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_sensor_read_raw"),
+        "Should have read_raw function"
+    );
+    assert!(
+        parse_result.functions.iter().any(|(n, _)| n == "my_probe"),
+        "Should have probe function"
+    );
 
     // Verify call edges
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_probe" && e.callee == "iio_device_register"),
-            "probe should call iio_device_register");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_remove" && e.callee == "iio_device_unregister"),
-            "remove should call iio_device_unregister");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_probe" && e.callee == "iio_device_register"),
+        "probe should call iio_device_register"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_remove" && e.callee == "iio_device_unregister"),
+        "remove should call iio_device_unregister"
+    );
 
     println!("\n✓ IIO driver analysis completed");
 }
@@ -3166,11 +3710,13 @@ static void __exit my_exit(void) {
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "watchdog_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "watchdog_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Watchdog Driver Analysis ===");
@@ -3179,7 +3725,9 @@ static void __exit my_exit(void) {
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -3190,18 +3738,43 @@ static void __exit my_exit(void) {
     }
 
     // Verify Watchdog driver structure is present (via watchdog_ops struct)
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_wdd_start"),
-            "Should have start function");
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_wdd_stop"),
-            "Should have stop function");
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_wdd_ping"),
-            "Should have ping function");
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_wdd_start"),
+        "Should have start function"
+    );
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_wdd_stop"),
+        "Should have stop function"
+    );
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_wdd_ping"),
+        "Should have ping function"
+    );
 
     // Verify call edges
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_init" && e.callee == "watchdog_register_device"),
-            "init should call watchdog_register_device");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_exit" && e.callee == "watchdog_unregister_device"),
-            "exit should call watchdog_unregister_device");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_init" && e.callee == "watchdog_register_device"),
+        "init should call watchdog_register_device"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_exit" && e.callee == "watchdog_unregister_device"),
+        "exit should call watchdog_unregister_device"
+    );
 
     println!("\n✓ Watchdog driver analysis completed");
 }
@@ -3267,11 +3840,13 @@ static void __exit my_exit(void) {
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "thermal_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "thermal_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Thermal Driver Analysis ===");
@@ -3280,7 +3855,9 @@ static void __exit my_exit(void) {
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -3291,16 +3868,36 @@ static void __exit my_exit(void) {
     }
 
     // Verify Thermal driver structure is present
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_get_temp"),
-            "Should have get_temp function");
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_get_trip_temp"),
-            "Should have get_trip_temp function");
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_get_temp"),
+        "Should have get_temp function"
+    );
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_get_trip_temp"),
+        "Should have get_trip_temp function"
+    );
 
     // Verify call edges
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_init" && e.callee == "thermal_zone_device_register"),
-            "init should call thermal_zone_device_register");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_init" && e.callee == "thermal_zone_bind_cooling_device"),
-            "init should call thermal_zone_bind_cooling_device");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_init" && e.callee == "thermal_zone_device_register"),
+        "init should call thermal_zone_device_register"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_init" && e.callee == "thermal_zone_bind_cooling_device"),
+        "init should call thermal_zone_bind_cooling_device"
+    );
 
     println!("\n✓ Thermal driver analysis completed");
 }
@@ -3365,11 +3962,13 @@ static int __exit my_phy_remove(struct platform_device *pdev) {
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "phy_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "phy_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== PHY Driver Analysis ===");
@@ -3378,7 +3977,9 @@ static int __exit my_phy_remove(struct platform_device *pdev) {
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -3389,16 +3990,36 @@ static int __exit my_phy_remove(struct platform_device *pdev) {
     }
 
     // Verify PHY driver structure is present (via phy_ops struct)
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_phy_init"),
-            "Should have init function");
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_phy_reset"),
-            "Should have reset function");
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_phy_init"),
+        "Should have init function"
+    );
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_phy_reset"),
+        "Should have reset function"
+    );
 
     // Verify call edges
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_phy_probe" && e.callee == "devm_phy_create"),
-            "probe should call devm_phy_create");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_phy_probe" && e.callee == "phy_power_on"),
-            "probe should call phy_power_on");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_phy_probe" && e.callee == "devm_phy_create"),
+        "probe should call devm_phy_create"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_phy_probe" && e.callee == "phy_power_on"),
+        "probe should call phy_power_on"
+    );
 
     println!("\n✓ PHY driver analysis completed");
 }
@@ -3466,11 +4087,13 @@ static void __exit my_exit(void) {
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "reset_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "reset_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== Reset Controller Driver Analysis ===");
@@ -3479,7 +4102,9 @@ static void __exit my_exit(void) {
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -3490,18 +4115,43 @@ static void __exit my_exit(void) {
     }
 
     // Verify Reset driver structure is present (via reset_control_ops struct)
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_reset_reset"),
-            "Should have reset function");
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_reset_assert"),
-            "Should have assert function");
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_reset_deassert"),
-            "Should have deassert function");
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_reset_reset"),
+        "Should have reset function"
+    );
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_reset_assert"),
+        "Should have assert function"
+    );
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_reset_deassert"),
+        "Should have deassert function"
+    );
 
     // Verify call edges
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_init" && e.callee == "reset_control_get"),
-            "init should call reset_control_get");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_init" && e.callee == "reset_controller_register"),
-            "init should call reset_controller_register");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_init" && e.callee == "reset_control_get"),
+        "init should call reset_control_get"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_init" && e.callee == "reset_controller_register"),
+        "init should call reset_controller_register"
+    );
 
     println!("\n✓ Reset controller driver analysis completed");
 }
@@ -3565,11 +4215,13 @@ static void __exit my_exit(void) {
 "#;
 
     let mut parser = TreeSitterParser::new();
-    let mut parse_result = parser.parse_source(source, "v4l2_test.c")
+    let mut parse_result = parser
+        .parse_source(source, "v4l2_test.c")
         .expect("Failed to parse");
 
     let mut analyzer = Analyzer::new();
-    let result = analyzer.analyze(source, &mut parse_result)
+    let result = analyzer
+        .analyze(source, &mut parse_result)
         .expect("Analysis failed");
 
     println!("\n=== V4L2 Driver Analysis ===");
@@ -3578,7 +4230,9 @@ static void __exit my_exit(void) {
     println!("Call edges: {}", result.call_edges.len());
 
     // Verify callbacks
-    let callbacks: Vec<_> = parse_result.functions.iter()
+    let callbacks: Vec<_> = parse_result
+        .functions
+        .iter()
         .filter(|(_, f)| f.is_callback)
         .map(|(n, _)| n.clone())
         .collect();
@@ -3589,16 +4243,36 @@ static void __exit my_exit(void) {
     }
 
     // Verify V4L2 driver structure is present (via v4l2_ioctl_ops struct)
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_querycap"),
-            "Should have querycap function");
-    assert!(parse_result.functions.iter().any(|(n, _)| n == "my_enum_fmt"),
-            "Should have enum_fmt function");
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_querycap"),
+        "Should have querycap function"
+    );
+    assert!(
+        parse_result
+            .functions
+            .iter()
+            .any(|(n, _)| n == "my_enum_fmt"),
+        "Should have enum_fmt function"
+    );
 
     // Verify call edges
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_init" && e.callee == "video_register_device"),
-            "init should call video_register_device");
-    assert!(result.call_edges.iter().any(|e| e.caller == "my_exit" && e.callee == "video_unregister_device"),
-            "exit should call video_unregister_device");
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_init" && e.callee == "video_register_device"),
+        "init should call video_register_device"
+    );
+    assert!(
+        result
+            .call_edges
+            .iter()
+            .any(|e| e.caller == "my_exit" && e.callee == "video_unregister_device"),
+        "exit should call video_unregister_device"
+    );
 
     println!("\n✓ V4L2 driver analysis completed");
 }

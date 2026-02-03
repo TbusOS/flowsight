@@ -104,11 +104,17 @@ impl AsyncTracker {
     fn infer_mechanism_from_name(name: &str) -> AsyncMechanism {
         let name_lower = name.to_lowercase();
         if name_lower.contains("work") || name_lower.contains("delayed_work") {
-            AsyncMechanism::WorkQueue { delayed: name_lower.contains("delayed") }
+            AsyncMechanism::WorkQueue {
+                delayed: name_lower.contains("delayed"),
+            }
         } else if name_lower.contains("timer") || name_lower.contains("hrtimer") {
-            AsyncMechanism::Timer { high_resolution: name_lower.contains("hr") }
+            AsyncMechanism::Timer {
+                high_resolution: name_lower.contains("hr"),
+            }
         } else if name_lower.contains("irq") || name_lower.contains("interrupt") {
-            AsyncMechanism::Interrupt { threaded: name_lower.contains("threaded") }
+            AsyncMechanism::Interrupt {
+                threaded: name_lower.contains("threaded"),
+            }
         } else if name_lower.contains("tasklet") {
             AsyncMechanism::Tasklet
         } else if name_lower.contains("kthread") || name_lower.contains("thread") {
@@ -326,14 +332,30 @@ impl AsyncTracker {
 
         // Analyze with hardcoded patterns
         for pattern in &self.patterns {
-            self.analyze_pattern(&lines, source, functions, &mut bindings, 
-                &pattern.mechanism, &pattern.context, &pattern.bind_patterns, &pattern.trigger_patterns);
+            self.analyze_pattern(
+                &lines,
+                source,
+                functions,
+                &mut bindings,
+                &pattern.mechanism,
+                &pattern.context,
+                &pattern.bind_patterns,
+                &pattern.trigger_patterns,
+            );
         }
 
         // Analyze with knowledge base patterns
         for kb_pattern in &self.kb_patterns {
-            self.analyze_pattern(&lines, source, functions, &mut bindings,
-                &kb_pattern.mechanism, &kb_pattern.context, &kb_pattern.bind_patterns, &kb_pattern.trigger_patterns);
+            self.analyze_pattern(
+                &lines,
+                source,
+                functions,
+                &mut bindings,
+                &kb_pattern.mechanism,
+                &kb_pattern.context,
+                &kb_pattern.bind_patterns,
+                &kb_pattern.trigger_patterns,
+            );
         }
 
         bindings
@@ -369,12 +391,13 @@ impl AsyncTracker {
                         String::new()
                     };
 
-                    if !handler.is_empty()
-                        && handler != "NULL"
-                        && functions.contains_key(&handler)
+                    if !handler.is_empty() && handler != "NULL" && functions.contains_key(&handler)
                     {
                         // Avoid duplicates
-                        if bindings.iter().any(|b| b.handler == handler && b.variable == variable) {
+                        if bindings
+                            .iter()
+                            .any(|b| b.handler == handler && b.variable == variable)
+                        {
                             continue;
                         }
 

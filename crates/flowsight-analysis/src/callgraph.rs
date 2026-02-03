@@ -5,8 +5,11 @@
 //! 当检测到入口点函数（如 probe, work handler）时，
 //! 自动注入完整的内核调用链，让用户看到真正的执行流程。
 
-use flowsight_core::{AsyncBinding, AsyncMechanism, CallEdge, CallType, FlowNode, FlowNodeType, CallConfidence, ConfidenceLevel};
-use flowsight_knowledge::{KnowledgeBase, CallChain};
+use flowsight_core::{
+    AsyncBinding, AsyncMechanism, CallConfidence, CallEdge, CallType, ConfidenceLevel, FlowNode,
+    FlowNodeType,
+};
+use flowsight_knowledge::{CallChain, KnowledgeBase};
 use flowsight_parser::ParseResult;
 use std::collections::HashSet;
 
@@ -251,7 +254,7 @@ pub fn build_flow_tree(
 }
 
 /// ⭐ 构建带完整内核调用链的执行流树
-/// 
+///
 /// 当检测到入口点函数时，自动在前面注入内核调用链，
 /// 让用户看到从触发源到用户代码的完整执行路径。
 pub fn build_full_flow_tree(
@@ -261,13 +264,13 @@ pub fn build_full_flow_tree(
     kb: &KnowledgeBase,
 ) -> Option<FlowNode> {
     let mut visited = HashSet::new();
-    
+
     // 首先构建用户代码的流树
     let user_tree = build_flow_tree(entry, parse_result, async_bindings, &mut visited, 0)?;
-    
+
     // 检查是否有关联的内核调用链
     let func = parse_result.functions.get(entry)?;
-    
+
     if let Some(ctx) = &func.callback_context {
         // 尝试查找对应的内核调用链
         if let Some(ref call_chain) = find_call_chain_for_context(ctx, kb) {
@@ -275,7 +278,7 @@ pub fn build_full_flow_tree(
             return Some(inject_kernel_chain(call_chain, user_tree));
         }
     }
-    
+
     // 检查是否是异步 handler
     for binding in async_bindings {
         if binding.handler == entry {
@@ -284,7 +287,7 @@ pub fn build_full_flow_tree(
             }
         }
     }
-    
+
     Some(user_tree)
 }
 
@@ -297,32 +300,28 @@ fn find_call_chain_for_context(ctx: &str, kb: &KnowledgeBase) -> Option<CallChai
             return Some(chain.clone());
         }
     }
-    
+
     // 常见模式匹配
     match ctx {
         "probe" | "usb_probe" | "usb_driver.probe" => {
             kb.get_callback_call_chain("usb_driver", "probe").cloned()
         }
-        "disconnect" | "usb_disconnect" | "usb_driver.disconnect" => {
-            kb.get_callback_call_chain("usb_driver", "disconnect").cloned()
-        }
-        "open" | "file_operations.open" => {
-            kb.get_callback_call_chain("file_operations", "open").cloned()
-        }
-        _ => None
+        "disconnect" | "usb_disconnect" | "usb_driver.disconnect" => kb
+            .get_callback_call_chain("usb_driver", "disconnect")
+            .cloned(),
+        "open" | "file_operations.open" => kb
+            .get_callback_call_chain("file_operations", "open")
+            .cloned(),
+        _ => None,
     }
 }
 
 /// 获取异步机制的 handler 调用链
 fn get_async_handler_chain(mechanism: &AsyncMechanism, kb: &KnowledgeBase) -> Option<CallChain> {
     match mechanism {
-        AsyncMechanism::WorkQueue { .. } => {
-            kb.get_async_handler_chain("work_struct").cloned()
-        }
-        AsyncMechanism::Timer { .. } => {
-            kb.get_async_handler_chain("timer_list").cloned()
-        }
-        _ => None
+        AsyncMechanism::WorkQueue { .. } => kb.get_async_handler_chain("work_struct").cloned(),
+        AsyncMechanism::Timer { .. } => kb.get_async_handler_chain("timer_list").cloned(),
+        _ => None,
     }
 }
 
@@ -355,7 +354,11 @@ fn inject_kernel_chain(call_chain: &CallChain, user_tree: FlowNode) -> FlowNode 
 }
 
 /// 递归构建内核调用链树
-fn build_kernel_chain_tree(nodes: &[flowsight_knowledge::CallChainNode], user_tree: FlowNode, idx: usize) -> FlowNode {
+fn build_kernel_chain_tree(
+    nodes: &[flowsight_knowledge::CallChainNode],
+    user_tree: FlowNode,
+    idx: usize,
+) -> FlowNode {
     if idx >= nodes.len() {
         // 所有内核节点都处理完了，返回用户树
         return user_tree;

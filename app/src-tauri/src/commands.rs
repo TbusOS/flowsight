@@ -1,7 +1,9 @@
 //! Tauri Commands
 
 use flowsight_ai;
-use flowsight_analysis::flow_builder::{BuildOptions, FlowBuilder, FunctionInfo as BuilderFunctionInfo};
+use flowsight_analysis::flow_builder::{
+    BuildOptions, FlowBuilder, FunctionInfo as BuilderFunctionInfo,
+};
 use flowsight_analysis::Analyzer;
 use flowsight_core::ExecutionFlow;
 use flowsight_index::SymbolIndex;
@@ -134,8 +136,8 @@ pub struct SearchResult {
     pub kind: String, // "function", "struct", "macro", "variable", "typedef"
     pub file_path: String,
     pub line: u32,
-    pub preview: String,       // Code snippet preview
-    pub match_score: u32,      // 0-100 match score
+    pub preview: String,  // Code snippet preview
+    pub match_score: u32, // 0-100 match score
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_callback: Option<bool>,
 }
@@ -169,7 +171,10 @@ fn default_max_results() -> usize {
 
 /// Open a project directory - returns immediately, indexing happens in background
 #[tauri::command]
-pub async fn open_project(path: String, app_handle: tauri::AppHandle) -> Result<ProjectInfo, String> {
+pub async fn open_project(
+    path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<ProjectInfo, String> {
     let project_path = PathBuf::from(&path);
 
     if !project_path.is_dir() {
@@ -204,47 +209,67 @@ pub async fn open_project(path: String, app_handle: tauri::AppHandle) -> Result<
 
 /// Background indexing function
 fn index_project_background(project_path: PathBuf, app_handle: tauri::AppHandle) {
-    let _ = app_handle.emit("index-progress", serde_json::json!({
-        "phase": "scanning",
-        "current": 0,
-        "total": 0,
-        "message": "Scanning files..."
-    }));
+    let _ = app_handle.emit(
+        "index-progress",
+        serde_json::json!({
+            "phase": "scanning",
+            "current": 0,
+            "total": 0,
+            "message": "Scanning files..."
+        }),
+    );
 
     // Scan files
     let mut c_files: Vec<PathBuf> = Vec::new();
-    for entry in WalkDir::new(&project_path).into_iter().filter_map(|e| e.ok()) {
-        if entry.path().extension().map(|ext| ext == "c" || ext == "h").unwrap_or(false) {
+    for entry in WalkDir::new(&project_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry
+            .path()
+            .extension()
+            .map(|ext| ext == "c" || ext == "h")
+            .unwrap_or(false)
+        {
             c_files.push(entry.path().to_path_buf());
             if c_files.len() % 2000 == 0 {
-                let _ = app_handle.emit("index-progress", serde_json::json!({
-                    "phase": "scanning",
-                    "current": c_files.len(),
-                    "total": 0,
-                    "message": format!("Found {} files...", c_files.len())
-                }));
+                let _ = app_handle.emit(
+                    "index-progress",
+                    serde_json::json!({
+                        "phase": "scanning",
+                        "current": c_files.len(),
+                        "total": 0,
+                        "message": format!("Found {} files...", c_files.len())
+                    }),
+                );
             }
         }
     }
 
     let total = c_files.len();
-    let _ = app_handle.emit("index-progress", serde_json::json!({
-        "phase": "parsing",
-        "current": 0,
-        "total": total,
-        "message": format!("Parsing {} files...", total)
-    }));
+    let _ = app_handle.emit(
+        "index-progress",
+        serde_json::json!({
+            "phase": "parsing",
+            "current": 0,
+            "total": total,
+            "message": format!("Parsing {} files...", total)
+        }),
+    );
 
     // Parse in parallel
     let parallel_parser = ParallelParser::new();
     let results = parallel_parser.parse_files(&c_files);
 
-    let _ = app_handle.emit("index-progress", serde_json::json!({
-        "phase": "indexing",
-        "current": 0,
-        "total": total,
-        "message": "Building index..."
-    }));
+    let _ = app_handle.emit(
+        "index-progress",
+        serde_json::json!({
+            "phase": "indexing",
+            "current": 0,
+            "total": total,
+            "message": "Building index..."
+        }),
+    );
 
     // Build index
     if let Ok(mut index) = INDEX.write() {
@@ -258,34 +283,40 @@ fn index_project_background(project_path: PathBuf, app_handle: tauri::AppHandle)
                 }
             }
             if i % 2000 == 0 && i > 0 {
-                let _ = app_handle.emit("index-progress", serde_json::json!({
-                    "phase": "indexing",
-                    "current": i,
-                    "total": total,
-                    "message": format!("Indexed {}/{}", i, total)
-                }));
+                let _ = app_handle.emit(
+                    "index-progress",
+                    serde_json::json!({
+                        "phase": "indexing",
+                        "current": i,
+                        "total": total,
+                        "message": format!("Indexed {}/{}", i, total)
+                    }),
+                );
             }
         }
 
         let stats = index.stats();
-        let _ = app_handle.emit("index-progress", serde_json::json!({
-            "phase": "done",
-            "current": total,
-            "total": total,
-            "files": total,
-            "functions": stats.total_functions,
-            "structs": stats.total_structs,
-            "message": format!("Done! {} files, {} functions", total, stats.total_functions)
-        }));
+        let _ = app_handle.emit(
+            "index-progress",
+            serde_json::json!({
+                "phase": "done",
+                "current": total,
+                "total": total,
+                "files": total,
+                "functions": stats.total_functions,
+                "structs": stats.total_structs,
+                "message": format!("Done! {} files, {} functions", total, stats.total_functions)
+            }),
+        );
     }
 }
 
 /// Search for symbols in the index
-/// 
+///
 /// Enhanced search with options:
 /// - `query`: Search query string
 /// - `options`: Optional search options (filters, max results)
-/// 
+///
 /// Returns results sorted by match score (highest first)
 #[tauri::command]
 pub async fn search_symbols(
@@ -295,8 +326,12 @@ pub async fn search_symbols(
     let index = INDEX.read().map_err(|e| e.to_string())?;
     let query_lower = query.to_lowercase();
     let opts = options.unwrap_or_default();
-    
-    let max_results = if opts.max_results == 0 { 50 } else { opts.max_results };
+
+    let max_results = if opts.max_results == 0 {
+        50
+    } else {
+        opts.max_results
+    };
 
     let mut results = Vec::new();
 
@@ -304,14 +339,16 @@ pub async fn search_symbols(
     if opts.include_functions {
         for (name, func) in &index.functions {
             if let Some(score) = calculate_match_score(name, &query, &query_lower) {
-                let file_path = func.location.as_ref()
+                let file_path = func
+                    .location
+                    .as_ref()
                     .map(|l| l.file.clone())
                     .unwrap_or_default();
                 let line = func.location.as_ref().map(|l| l.line).unwrap_or(0);
-                
+
                 // Generate preview: function signature
                 let preview = generate_function_preview(func);
-                
+
                 results.push(SearchResult {
                     name: name.clone(),
                     kind: "function".into(),
@@ -329,14 +366,16 @@ pub async fn search_symbols(
     if opts.include_structs {
         for (name, st) in &index.structs {
             if let Some(score) = calculate_match_score(name, &query, &query_lower) {
-                let file_path = st.location.as_ref()
+                let file_path = st
+                    .location
+                    .as_ref()
                     .map(|l| l.file.clone())
                     .unwrap_or_default();
                 let line = st.location.as_ref().map(|l| l.line).unwrap_or(0);
-                
+
                 // Generate preview: struct with field count
                 let preview = generate_struct_preview(st);
-                
+
                 results.push(SearchResult {
                     name: name.clone(),
                     kind: "struct".into(),
@@ -352,7 +391,8 @@ pub async fn search_symbols(
 
     // Sort by match score (highest first), then by name
     results.sort_by(|a, b| {
-        b.match_score.cmp(&a.match_score)
+        b.match_score
+            .cmp(&a.match_score)
             .then_with(|| a.name.len().cmp(&b.name.len()))
             .then_with(|| a.name.cmp(&b.name))
     });
@@ -367,45 +407,45 @@ pub async fn search_symbols(
 /// Returns None if no match
 fn calculate_match_score(name: &str, query: &str, query_lower: &str) -> Option<u32> {
     let name_lower = name.to_lowercase();
-    
+
     // Exact match = 100
     if name == query {
         return Some(100);
     }
-    
+
     // Case-insensitive exact match = 95
     if name_lower == *query_lower {
         return Some(95);
     }
-    
+
     // Starts with query = 90
     if name_lower.starts_with(query_lower) {
         return Some(90);
     }
-    
+
     // Ends with query = 80
     if name_lower.ends_with(query_lower) {
         return Some(80);
     }
-    
+
     // Contains query = 70 - penalty for distance from start
     if let Some(pos) = name_lower.find(query_lower) {
         let distance_penalty = (pos as u32).min(20);
         return Some(70 - distance_penalty);
     }
-    
+
     // Fuzzy match: all query chars appear in order
     if fuzzy_match(&name_lower, query_lower) {
         return Some(40);
     }
-    
+
     None
 }
 
 /// Check if all characters of query appear in name in order (fuzzy match)
 fn fuzzy_match(name: &str, query: &str) -> bool {
     let mut name_chars = name.chars().peekable();
-    
+
     for qc in query.chars() {
         loop {
             match name_chars.next() {
@@ -415,13 +455,14 @@ fn fuzzy_match(name: &str, query: &str) -> bool {
             }
         }
     }
-    
+
     true
 }
 
 /// Generate preview string for a function
 fn generate_function_preview(func: &flowsight_core::FunctionDef) -> String {
-    let params: Vec<String> = func.params
+    let params: Vec<String> = func
+        .params
         .iter()
         .map(|p| {
             if p.name.is_empty() {
@@ -431,7 +472,7 @@ fn generate_function_preview(func: &flowsight_core::FunctionDef) -> String {
             }
         })
         .collect();
-    
+
     let params_str = if params.is_empty() {
         "void".to_string()
     } else if params.len() > 3 {
@@ -439,18 +480,19 @@ fn generate_function_preview(func: &flowsight_core::FunctionDef) -> String {
     } else {
         params.join(", ")
     };
-    
+
     format!("{} {}({})", func.return_type, func.name, params_str)
 }
 
 /// Generate preview string for a struct
 fn generate_struct_preview(st: &flowsight_core::StructDef) -> String {
     let field_count = st.fields.len();
-    
+
     if field_count == 0 {
         format!("struct {} {{ }}", st.name)
     } else if field_count <= 2 {
-        let fields: Vec<String> = st.fields
+        let fields: Vec<String> = st
+            .fields
             .iter()
             .map(|f| format!("{} {}", f.type_name, f.name))
             .collect();
@@ -694,20 +736,21 @@ pub async fn export_flow_text(path: String, content: String) -> Result<(), Strin
 #[tauri::command]
 pub async fn create_file(path: String) -> Result<(), String> {
     let path = PathBuf::from(&path);
-    
+
     // Check if file already exists
     if path.exists() {
         return Err("File already exists".to_string());
     }
-    
+
     // Create parent directories if needed
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directories: {}", e))?;
     }
-    
+
     // Create empty file
     std::fs::File::create(&path).map_err(|e| format!("Failed to create file: {}", e))?;
-    
+
     Ok(())
 }
 
@@ -715,11 +758,11 @@ pub async fn create_file(path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn create_directory(path: String) -> Result<(), String> {
     let path = PathBuf::from(&path);
-    
+
     if path.exists() {
         return Err("Directory already exists".to_string());
     }
-    
+
     std::fs::create_dir_all(&path).map_err(|e| format!("Failed to create directory: {}", e))
 }
 
@@ -728,15 +771,15 @@ pub async fn create_directory(path: String) -> Result<(), String> {
 pub async fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
     let old_path = PathBuf::from(&old_path);
     let new_path = PathBuf::from(&new_path);
-    
+
     if !old_path.exists() {
         return Err("Source path does not exist".to_string());
     }
-    
+
     if new_path.exists() {
         return Err("Target path already exists".to_string());
     }
-    
+
     std::fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename: {}", e))
 }
 
@@ -744,11 +787,11 @@ pub async fn rename_file(old_path: String, new_path: String) -> Result<(), Strin
 #[tauri::command]
 pub async fn delete_file_or_dir(path: String) -> Result<(), String> {
     let path = PathBuf::from(&path);
-    
+
     if !path.exists() {
         return Err("Path does not exist".to_string());
     }
-    
+
     if path.is_dir() {
         std::fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete directory: {}", e))
     } else {
@@ -773,32 +816,32 @@ pub async fn get_function_callers(
     _project_path: Option<String>,
 ) -> Result<std::collections::HashMap<String, Vec<CallerInfo>>, String> {
     let index = INDEX.read().map_err(|e| e.to_string())?;
-    
+
     let mut callers = Vec::new();
-    
+
     // Search through all functions to find callers
     for (name, func) in &index.functions {
         // Check if this function calls the target
         if func.calls.contains(&function_name) {
-            let call_type = if func.is_callback {
-                "async"
-            } else {
-                "direct"
-            };
-            
+            let call_type = if func.is_callback { "async" } else { "direct" };
+
             callers.push(CallerInfo {
                 name: name.clone(),
-                file: func.location.as_ref().map(|l| l.file.clone()).unwrap_or_default(),
+                file: func
+                    .location
+                    .as_ref()
+                    .map(|l| l.file.clone())
+                    .unwrap_or_default(),
                 line: func.location.as_ref().map(|l| l.line).unwrap_or(0),
                 call_type: call_type.to_string(),
                 async_mechanism: func.callback_context.clone(),
             });
         }
     }
-    
+
     // Also check async bindings for indirect callers
     // This would require tracking async bindings in the index
-    
+
     let mut result = std::collections::HashMap::new();
     result.insert("callers".to_string(), callers);
     Ok(result)
@@ -850,44 +893,53 @@ pub async fn execute_scenario(
     file_path: String,
     scenario: ScenarioRequest,
 ) -> Result<ScenarioResult, String> {
-    use flowsight_analysis::scenario::{Scenario, ScenarioExecutor, ScenarioOptions, SymbolicValue, ValueBinding};
-    
+    use flowsight_analysis::scenario::{
+        Scenario, ScenarioExecutor, ScenarioOptions, SymbolicValue, ValueBinding,
+    };
+
     let path = PathBuf::from(&file_path);
-    
+
     // Parse file
     let parser = get_parser();
     let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
-    
+
     // Read source for analysis
     let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    
+
     // Run analysis to get flow trees
     let mut analyzer = Analyzer::new();
     let analysis = analyzer
         .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
-    
+
     // Find the flow tree for the entry function
-    let entry_tree = analysis.flow_trees.iter()
+    let entry_tree = analysis
+        .flow_trees
+        .iter()
         .find(|tree| tree.name == scenario.entry_function);
-    
+
     let Some(entry_tree) = entry_tree else {
         return Ok(ScenarioResult {
             success: false,
             path: vec![],
             annotated_flow_tree: None,
-            error: Some(format!("Entry function '{}' not found in flow trees", scenario.entry_function)),
+            error: Some(format!(
+                "Entry function '{}' not found in flow trees",
+                scenario.entry_function
+            )),
         });
     };
-    
+
     // Convert bindings
-    let bindings: Vec<ValueBinding> = scenario.bindings.iter()
+    let bindings: Vec<ValueBinding> = scenario
+        .bindings
+        .iter()
         .map(|b| ValueBinding {
             path: b.path.clone(),
             value: SymbolicValue::parse(&b.value, &b.value_type),
         })
         .collect();
-    
+
     // Build scenario
     let opts = scenario.options.as_ref();
     let options = ScenarioOptions {
@@ -912,7 +964,10 @@ pub async fn execute_scenario(
     let result = executor.execute(&scenario_config, entry_tree);
 
     // Convert path steps to states
-    let states: Vec<ScenarioState> = result.primary_path.steps.iter()
+    let states: Vec<ScenarioState> = result
+        .primary_path
+        .steps
+        .iter()
         .map(|s| ScenarioState {
             function: s.function.clone(),
             line: s.location.as_ref().map(|l| l.line).unwrap_or(0),
@@ -1002,11 +1057,11 @@ pub struct FlowAnalysisInfo {
 }
 
 /// Build an ExecutionFlow for a specific function
-/// 
+///
 /// This command uses the new FlowBuilder to construct a complete
 /// ExecutionFlow with async boundaries, confidence levels, and
 /// knowledge base injection.
-/// 
+///
 /// Returns a flattened structure suitable for ReactFlow visualization.
 #[tauri::command]
 pub async fn build_execution_flow(
@@ -1015,38 +1070,38 @@ pub async fn build_execution_flow(
     options: Option<ExecutionFlowOptions>,
 ) -> Result<FlatExecutionFlow, String> {
     let path = PathBuf::from(&file_path);
-    
+
     // Parse file
     let parser = get_parser();
     let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
-    
+
     // Read source for analysis
     let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    
+
     // Run analysis to get async bindings and function info
     let mut analyzer = Analyzer::new();
     let _analysis = analyzer
         .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
-    
+
     // Build FlowBuilder and register functions
     let mut builder = FlowBuilder::new();
-    
+
     // Extract async bindings from source
     builder.extract_async_bindings(&source);
-    
+
     // Register all parsed functions
     for (name, func) in &parse_result.functions {
         builder.register_function(BuilderFunctionInfo {
             name: name.clone(),
             location: func.location.clone(),
             calls: func.calls.clone(),
-            is_kernel: func.attributes.contains(&"__init".to_string()) 
+            is_kernel: func.attributes.contains(&"__init".to_string())
                 || func.attributes.contains(&"__exit".to_string())
                 || name.starts_with("__"),
         });
     }
-    
+
     // Build options
     let opts = options.as_ref();
     let build_opts = BuildOptions {
@@ -1054,16 +1109,16 @@ pub async fn build_execution_flow(
         include_kernel_chains: opts.and_then(|o| o.include_kernel_chains).unwrap_or(true),
         expand_async: opts.and_then(|o| o.expand_async).unwrap_or(true),
     };
-    
+
     // Build execution flow (tree structure)
     let mut flow = builder.build(&entry_function, &build_opts);
-    
+
     // Update source file in analysis info
     flow.analysis_info.source_file = Some(file_path);
-    
+
     // Convert to flat structure for frontend
     let flat_flow = flatten_execution_flow(&flow);
-    
+
     Ok(flat_flow)
 }
 
@@ -1072,16 +1127,25 @@ fn flatten_execution_flow(flow: &ExecutionFlow) -> FlatExecutionFlow {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut visited = std::collections::HashSet::new();
-    
+
     // Recursively flatten the tree
-    flatten_node(&flow.root, &mut nodes, &mut edges, &mut visited, None, false);
-    
+    flatten_node(
+        &flow.root,
+        &mut nodes,
+        &mut edges,
+        &mut visited,
+        None,
+        false,
+    );
+
     // Collect warnings as strings
-    let warnings: Vec<String> = flow.analysis_info.warnings
+    let warnings: Vec<String> = flow
+        .analysis_info
+        .warnings
         .iter()
         .map(|w| w.message.clone())
         .collect();
-    
+
     FlatExecutionFlow {
         entry_function: flow.entry_function.clone(),
         nodes,
@@ -1119,7 +1183,7 @@ fn flatten_node(
         return;
     }
     visited.insert(node.id.clone());
-    
+
     // Determine node type string
     let node_type = match &node.node_type {
         flowsight_core::FlowNodeType::EntryPoint => "entry",
@@ -1130,7 +1194,7 @@ fn flatten_node(
         flowsight_core::FlowNodeType::Separator { .. } => "separator",
         flowsight_core::FlowNodeType::Branch { .. } => "branch",
     };
-    
+
     // Determine execution context string
     let context = node.execution_context.as_ref().map(|ctx| {
         match ctx {
@@ -1138,9 +1202,10 @@ fn flatten_node(
             flowsight_core::ExecutionContext::SoftIrq => "SoftIRQ Context",
             flowsight_core::ExecutionContext::HardIrq => "HardIRQ Context",
             flowsight_core::ExecutionContext::Unknown => "Unknown Context",
-        }.to_string()
+        }
+        .to_string()
     });
-    
+
     // Create the node
     let graph_node = FlowGraphNode {
         id: node.id.clone(),
@@ -1153,7 +1218,7 @@ fn flatten_node(
         is_kernel: node.is_kernel_internal,
     };
     nodes.push(graph_node);
-    
+
     // Add edge from parent
     if let Some(parent) = parent_id {
         edges.push(FlowGraphEdge {
@@ -1163,12 +1228,15 @@ fn flatten_node(
             label: None,
         });
     }
-    
+
     // Process children
     let mut next_is_async = false;
     for child in &node.children {
         // Check if this is a separator indicating async boundary
-        if matches!(child.node_type, flowsight_core::FlowNodeType::Separator { .. }) {
+        if matches!(
+            child.node_type,
+            flowsight_core::FlowNodeType::Separator { .. }
+        ) {
             next_is_async = true;
             // Still add the separator node
             flatten_node(child, nodes, edges, visited, Some(&node.id), false);
@@ -1187,45 +1255,45 @@ pub async fn build_execution_flow_tree(
     options: Option<ExecutionFlowOptions>,
 ) -> Result<ExecutionFlow, String> {
     let path = PathBuf::from(&file_path);
-    
+
     // Parse file
     let parser = get_parser();
     let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
-    
+
     // Read source for analysis
     let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    
+
     // Run analysis
     let mut analyzer = Analyzer::new();
     let _analysis = analyzer
         .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
-    
+
     // Build FlowBuilder and register functions
     let mut builder = FlowBuilder::new();
     builder.extract_async_bindings(&source);
-    
+
     for (name, func) in &parse_result.functions {
         builder.register_function(BuilderFunctionInfo {
             name: name.clone(),
             location: func.location.clone(),
             calls: func.calls.clone(),
-            is_kernel: func.attributes.contains(&"__init".to_string()) 
+            is_kernel: func.attributes.contains(&"__init".to_string())
                 || func.attributes.contains(&"__exit".to_string())
                 || name.starts_with("__"),
         });
     }
-    
+
     let opts = options.as_ref();
     let build_opts = BuildOptions {
         max_depth: opts.and_then(|o| o.max_depth).unwrap_or(50),
         include_kernel_chains: opts.and_then(|o| o.include_kernel_chains).unwrap_or(true),
         expand_async: opts.and_then(|o| o.expand_async).unwrap_or(true),
     };
-    
+
     let mut flow = builder.build(&entry_function, &build_opts);
     flow.analysis_info.source_file = Some(file_path);
-    
+
     Ok(flow)
 }
 
@@ -1265,21 +1333,21 @@ pub async fn format_execution_flow(
     options: FormatOptions,
 ) -> Result<FormattedFlow, String> {
     use flowsight_ai::FlowFormatter;
-    
+
     // 先构建执行流
     let flow = build_execution_flow_tree(file_path, entry_function.clone(), None).await?;
-    
+
     // 创建格式化器
     let mut formatter = FlowFormatter::new();
-    
+
     if let Some(include) = options.include_kernel_internal {
         formatter = formatter.with_kernel_internal(include);
     }
-    
+
     if let Some(depth) = options.max_depth {
         formatter = formatter.with_max_depth(depth);
     }
-    
+
     // 根据格式生成输出
     let (content, summary) = match options.format.as_str() {
         "mermaid" => {
@@ -1299,15 +1367,14 @@ pub async fn format_execution_flow(
         }
         "json" => {
             let display = formatter.to_display_json(&flow);
-            let json = serde_json::to_string_pretty(&display)
-                .map_err(|e| e.to_string())?;
+            let json = serde_json::to_string_pretty(&display).map_err(|e| e.to_string())?;
             (json, display.summary)
         }
         _ => {
             return Err(format!("Unsupported format: {}", options.format));
         }
     };
-    
+
     Ok(FormattedFlow {
         format: options.format,
         content,
@@ -1323,14 +1390,14 @@ pub async fn get_flow_display_data(
     entry_function: String,
 ) -> Result<flowsight_ai::DisplayFlowData, String> {
     use flowsight_ai::FlowFormatter;
-    
+
     // 构建执行流
     let flow = build_execution_flow_tree(file_path, entry_function, None).await?;
-    
+
     // 生成展示数据
     let formatter = FlowFormatter::new();
     let display_data = formatter.to_display_json(&flow);
-    
+
     Ok(display_data)
 }
 
@@ -1338,22 +1405,23 @@ pub async fn get_flow_display_data(
 #[tauri::command]
 pub async fn get_entry_points(file_path: String) -> Result<Vec<EntryPointInfo>, String> {
     let path = PathBuf::from(&file_path);
-    
+
     // Parse file
     let parser = get_parser();
     let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
-    
+
     // Read source for analysis
     let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    
+
     // Run analysis
     let mut analyzer = Analyzer::new();
     let analysis = analyzer
         .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
-    
+
     // Build entry point info
-    let entry_points: Vec<EntryPointInfo> = analysis.entry_points
+    let entry_points: Vec<EntryPointInfo> = analysis
+        .entry_points
         .iter()
         .map(|name| {
             let func = parse_result.functions.get(name);
@@ -1372,11 +1440,13 @@ pub async fn get_entry_points(file_path: String) -> Result<Vec<EntryPointInfo>, 
                 } else {
                     "unknown".into()
                 },
-                line: func.and_then(|f| f.location.as_ref().map(|l| l.line)).unwrap_or(0),
+                line: func
+                    .and_then(|f| f.location.as_ref().map(|l| l.line))
+                    .unwrap_or(0),
             }
         })
         .collect();
-    
+
     Ok(entry_points)
 }
 
@@ -1391,22 +1461,23 @@ pub struct EntryPointInfo {
 #[tauri::command]
 pub async fn get_async_bindings(file_path: String) -> Result<Vec<AsyncBindingInfo>, String> {
     let path = PathBuf::from(&file_path);
-    
+
     // Parse file
     let parser = get_parser();
     let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
-    
+
     // Read source for analysis
     let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    
+
     // Run analysis
     let mut analyzer = Analyzer::new();
     let analysis = analyzer
         .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
-    
+
     // Convert async bindings
-    let bindings: Vec<AsyncBindingInfo> = analysis.async_bindings
+    let bindings: Vec<AsyncBindingInfo> = analysis
+        .async_bindings
         .iter()
         .map(|b| AsyncBindingInfo {
             variable: b.variable.clone(),
@@ -1417,7 +1488,7 @@ pub async fn get_async_bindings(file_path: String) -> Result<Vec<AsyncBindingInf
             trigger_lines: b.trigger_locations.iter().map(|l| l.line).collect(),
         })
         .collect();
-    
+
     Ok(bindings)
 }
 
@@ -1465,14 +1536,14 @@ pub async fn explain_function(
     if let Some(explanation) = common_explanations {
         return Ok(explanation);
     }
-    
+
     // Read source code
     let source = std::fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
-    
+
     // Find function in source
-    let function_code = extract_function_code(&source, &function_name)
-        .unwrap_or_else(|| source.clone());
-    
+    let function_code =
+        extract_function_code(&source, &function_name).unwrap_or_else(|| source.clone());
+
     // For now, return a template-based explanation
     // TODO: Integrate with actual AI model when available
     Ok(AiExplanationResult {
@@ -1480,10 +1551,7 @@ pub async fn explain_function(
         business_meaning: format!("函数 {} 执行其定义的操作", function_name),
         execution_result: "执行函数体中的代码逻辑".to_string(),
         related_functions: extract_called_functions(&function_code),
-        common_errors: vec![
-            "检查返回值".to_string(),
-            "注意错误处理".to_string(),
-        ],
+        common_errors: vec!["检查返回值".to_string(), "注意错误处理".to_string()],
         context_type: detect_context_type(&function_code),
         can_sleep: detect_can_sleep(&function_code),
     })
@@ -1541,10 +1609,7 @@ pub async fn get_context_annotation(
             "进程上下文 (Process)".to_string(),
             true,
             "由内核线程执行".to_string(),
-            vec![
-                "可以睡眠".to_string(),
-                "适合复杂的中断处理".to_string(),
-            ],
+            vec!["可以睡眠".to_string(), "适合复杂的中断处理".to_string()],
         ),
         _ => (
             "未知上下文".to_string(),
@@ -1553,7 +1618,7 @@ pub async fn get_context_annotation(
             vec!["请查阅相关文档".to_string()],
         ),
     };
-    
+
     Ok(AiContextAnnotation {
         context_type,
         can_sleep,
@@ -1571,19 +1636,20 @@ pub async fn translate_condition(
 ) -> Result<String, String> {
     // Simple template-based translation
     // TODO: Integrate with AI model for complex cases
-    
-    let translation = if constraint.contains("NULL") || constraint.contains("!") && constraint.contains("ptr") {
-        format!("检查 {} 中的指针是否有效", function_name)
-    } else if constraint.contains("< 0") || constraint.contains("ret") {
-        "检查操作是否成功（负值表示错误）".to_string()
-    } else if constraint.contains("== 0") {
-        "检查条件是否满足（零值通常表示成功或假）".to_string()
-    } else if constraint.contains("&&") || constraint.contains("||") {
-        "复合条件检查，需要同时满足多个条件".to_string()
-    } else {
-        format!("条件: {}", constraint)
-    };
-    
+
+    let translation =
+        if constraint.contains("NULL") || constraint.contains("!") && constraint.contains("ptr") {
+            format!("检查 {} 中的指针是否有效", function_name)
+        } else if constraint.contains("< 0") || constraint.contains("ret") {
+            "检查操作是否成功（负值表示错误）".to_string()
+        } else if constraint.contains("== 0") {
+            "检查条件是否满足（零值通常表示成功或假）".to_string()
+        } else if constraint.contains("&&") || constraint.contains("||") {
+            "复合条件检查，需要同时满足多个条件".to_string()
+        } else {
+            format!("条件: {}", constraint)
+        };
+
     Ok(translation)
 }
 
@@ -1610,34 +1676,25 @@ fn get_common_explanation(function_name: &str) -> Option<AiExplanationResult> {
             can_sleep: Some(true),
         });
     }
-    
+
     if function_name.ends_with("_remove") {
         return Some(AiExplanationResult {
             trigger_condition: "设备移除或驱动卸载时".to_string(),
             business_meaning: "驱动程序的设备移除函数，负责清理资源".to_string(),
             execution_result: "释放设备资源，注销设备".to_string(),
-            related_functions: vec![
-                "device_unregister".to_string(),
-                "free_irq".to_string(),
-            ],
-            common_errors: vec![
-                "资源释放顺序错误".to_string(),
-                "遗漏资源释放".to_string(),
-            ],
+            related_functions: vec!["device_unregister".to_string(), "free_irq".to_string()],
+            common_errors: vec!["资源释放顺序错误".to_string(), "遗漏资源释放".to_string()],
             context_type: Some("进程上下文 (Process)".to_string()),
             can_sleep: Some(true),
         });
     }
-    
+
     if function_name.contains("irq") || function_name.contains("interrupt") {
         return Some(AiExplanationResult {
             trigger_condition: "硬件中断发生时".to_string(),
             business_meaning: "中断处理函数，响应硬件事件".to_string(),
             execution_result: "处理中断，可能调度后续工作".to_string(),
-            related_functions: vec![
-                "schedule_work".to_string(),
-                "tasklet_schedule".to_string(),
-            ],
+            related_functions: vec!["schedule_work".to_string(), "tasklet_schedule".to_string()],
             common_errors: vec![
                 "处理时间过长".to_string(),
                 "调用了可能睡眠的函数".to_string(),
@@ -1646,38 +1703,35 @@ fn get_common_explanation(function_name: &str) -> Option<AiExplanationResult> {
             can_sleep: Some(false),
         });
     }
-    
+
     if function_name.contains("work") || function_name.ends_with("_fn") {
         return Some(AiExplanationResult {
             trigger_condition: "工作队列调度执行时".to_string(),
             business_meaning: "延迟执行的工作函数，处理复杂任务".to_string(),
             execution_result: "执行延迟处理的任务".to_string(),
-            related_functions: vec![
-                "schedule_work".to_string(),
-                "queue_work".to_string(),
-            ],
-            common_errors: vec![
-                "访问已释放的资源".to_string(),
-                "并发访问问题".to_string(),
-            ],
+            related_functions: vec!["schedule_work".to_string(), "queue_work".to_string()],
+            common_errors: vec!["访问已释放的资源".to_string(), "并发访问问题".to_string()],
             context_type: Some("进程上下文 (Process)".to_string()),
             can_sleep: Some(true),
         });
     }
-    
+
     None
 }
 
 fn extract_function_code(source: &str, function_name: &str) -> Option<String> {
     // Simple extraction - find function and extract until closing brace
-    let pattern = format!(r"(?s)(\w+\s+)?{}\s*\([^)]*\)\s*\{{", regex::escape(function_name));
+    let pattern = format!(
+        r"(?s)(\w+\s+)?{}\s*\([^)]*\)\s*\{{",
+        regex::escape(function_name)
+    );
     let re = regex::Regex::new(&pattern).ok()?;
-    
+
     if let Some(mat) = re.find(source) {
         let start = mat.start();
         let mut brace_count = 0;
         let mut end = start;
-        
+
         for (i, c) in source[start..].char_indices() {
             match c {
                 '{' => brace_count += 1,
@@ -1691,10 +1745,10 @@ fn extract_function_code(source: &str, function_name: &str) -> Option<String> {
                 _ => {}
             }
         }
-        
+
         return Some(source[start..end].to_string());
     }
-    
+
     None
 }
 
@@ -1704,9 +1758,11 @@ fn extract_called_functions(code: &str) -> Vec<String> {
     let mut functions: Vec<String> = re
         .captures_iter(code)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-        .filter(|name| !["if", "while", "for", "switch", "return", "sizeof"].contains(&name.as_str()))
+        .filter(|name| {
+            !["if", "while", "for", "switch", "return", "sizeof"].contains(&name.as_str())
+        })
         .collect();
-    
+
     functions.sort();
     functions.dedup();
     functions.truncate(10); // Limit to 10 functions
@@ -1809,7 +1865,7 @@ pub struct AsyncPatternInfo {
 }
 
 /// Get knowledge info for a symbol (function, API, callback)
-/// 
+///
 /// Looks up the symbol in the knowledge base and returns
 /// comprehensive information including execution context,
 /// call chains, and developer notes.
@@ -1818,11 +1874,11 @@ pub async fn get_knowledge_info(
     symbol: String,
     code_context: Option<String>,
 ) -> Result<Option<KnowledgeInfo>, String> {
-    use flowsight_knowledge::{KnowledgeBase, ExecutionContext};
-    
+    use flowsight_knowledge::{ExecutionContext, KnowledgeBase};
+
     let kb = KnowledgeBase::builtin();
     let code_ctx = code_context.unwrap_or_default();
-    
+
     // 1. Check if it's a kernel API
     if let Some(api) = kb.get_api(&symbol) {
         return Ok(Some(KnowledgeInfo {
@@ -1843,19 +1899,23 @@ pub async fn get_knowledge_info(
             },
         }));
     }
-    
+
     // 2. Try to identify as framework callback
     if let Some((fw_name, cb_name, callback)) = kb.identify_callback(&symbol, &code_ctx) {
         let call_chain = callback.call_chain.as_ref().map(|chain| {
-            chain.nodes.iter().map(|node| CallChainNodeInfo {
-                function: node.function.clone(),
-                file: node.file.clone(),
-                context: format!("{:?}", node.context),
-                description: node.description.clone(),
-                is_user_entry: node.is_user_entry,
-            }).collect()
+            chain
+                .nodes
+                .iter()
+                .map(|node| CallChainNodeInfo {
+                    function: node.function.clone(),
+                    file: node.file.clone(),
+                    context: format!("{:?}", node.context),
+                    description: node.description.clone(),
+                    is_user_entry: node.is_user_entry,
+                })
+                .collect()
         });
-        
+
         return Ok(Some(KnowledgeInfo {
             name: symbol.clone(),
             description: Some(callback.description.clone()),
@@ -1876,7 +1936,7 @@ pub async fn get_knowledge_info(
             notes: None,
         }));
     }
-    
+
     // 3. Check frameworks by common patterns
     let frameworks_to_check = [
         ("usb_driver", "probe"),
@@ -1888,20 +1948,24 @@ pub async fn get_knowledge_info(
         ("platform_driver", "probe"),
         ("platform_driver", "remove"),
     ];
-    
+
     for (fw_name, cb_name) in &frameworks_to_check {
         if symbol.contains(cb_name) {
             if let Some(callback) = kb.get_callback(fw_name, cb_name) {
                 let call_chain = callback.call_chain.as_ref().map(|chain| {
-                    chain.nodes.iter().map(|node| CallChainNodeInfo {
-                        function: node.function.clone(),
-                        file: node.file.clone(),
-                        context: format!("{:?}", node.context),
-                        description: node.description.clone(),
-                        is_user_entry: node.is_user_entry,
-                    }).collect()
+                    chain
+                        .nodes
+                        .iter()
+                        .map(|node| CallChainNodeInfo {
+                            function: node.function.clone(),
+                            file: node.file.clone(),
+                            context: format!("{:?}", node.context),
+                            description: node.description.clone(),
+                            is_user_entry: node.is_user_entry,
+                        })
+                        .collect()
                 });
-                
+
                 return Ok(Some(KnowledgeInfo {
                     name: symbol.clone(),
                     description: Some(callback.description.clone()),
@@ -1924,28 +1988,34 @@ pub async fn get_knowledge_info(
             }
         }
     }
-    
+
     Ok(None)
 }
 
 /// Get async pattern information
 #[tauri::command]
-pub async fn get_async_pattern_info(pattern_name: String) -> Result<Option<AsyncPatternInfo>, String> {
+pub async fn get_async_pattern_info(
+    pattern_name: String,
+) -> Result<Option<AsyncPatternInfo>, String> {
     use flowsight_knowledge::KnowledgeBase;
-    
+
     let kb = KnowledgeBase::builtin();
-    
+
     if let Some(pattern) = kb.get_async_pattern(&pattern_name) {
         let handler_call_chain = pattern.handler_call_chain.as_ref().map(|chain| {
-            chain.nodes.iter().map(|node| CallChainNodeInfo {
-                function: node.function.clone(),
-                file: node.file.clone(),
-                context: format!("{:?}", node.context),
-                description: node.description.clone(),
-                is_user_entry: node.is_user_entry,
-            }).collect()
+            chain
+                .nodes
+                .iter()
+                .map(|node| CallChainNodeInfo {
+                    function: node.function.clone(),
+                    file: node.file.clone(),
+                    context: format!("{:?}", node.context),
+                    description: node.description.clone(),
+                    is_user_entry: node.is_user_entry,
+                })
+                .collect()
         });
-        
+
         return Ok(Some(AsyncPatternInfo {
             name: pattern_name,
             description: pattern.description.clone(),
@@ -1957,7 +2027,7 @@ pub async fn get_async_pattern_info(pattern_name: String) -> Result<Option<Async
             handler_call_chain,
         }));
     }
-    
+
     Ok(None)
 }
 
@@ -1965,10 +2035,11 @@ pub async fn get_async_pattern_info(pattern_name: String) -> Result<Option<Async
 #[tauri::command]
 pub async fn list_frameworks() -> Result<Vec<FrameworkSummary>, String> {
     use flowsight_knowledge::KnowledgeBase;
-    
+
     let kb = KnowledgeBase::builtin();
-    
-    let frameworks: Vec<FrameworkSummary> = kb.frameworks
+
+    let frameworks: Vec<FrameworkSummary> = kb
+        .frameworks
         .iter()
         .map(|(name, fw)| FrameworkSummary {
             name: name.clone(),
@@ -1978,7 +2049,7 @@ pub async fn list_frameworks() -> Result<Vec<FrameworkSummary>, String> {
             callbacks: fw.callbacks.keys().cloned().collect(),
         })
         .collect();
-    
+
     Ok(frameworks)
 }
 
@@ -1995,10 +2066,11 @@ pub struct FrameworkSummary {
 #[tauri::command]
 pub async fn list_async_patterns() -> Result<Vec<AsyncPatternSummary>, String> {
     use flowsight_knowledge::KnowledgeBase;
-    
+
     let kb = KnowledgeBase::builtin();
-    
-    let patterns: Vec<AsyncPatternSummary> = kb.async_patterns
+
+    let patterns: Vec<AsyncPatternSummary> = kb
+        .async_patterns
         .iter()
         .map(|(name, pattern)| AsyncPatternSummary {
             name: name.clone(),
@@ -2007,7 +2079,7 @@ pub async fn list_async_patterns() -> Result<Vec<AsyncPatternSummary>, String> {
             can_sleep: pattern.context.can_sleep(),
         })
         .collect();
-    
+
     Ok(patterns)
 }
 
@@ -2024,7 +2096,7 @@ pub struct AsyncPatternSummary {
 // ============================================================
 
 /// Get detailed function information from file
-/// 
+///
 /// This command parses the file directly and extracts comprehensive
 /// function information including local variables, complexity, and doc comments.
 #[tauri::command]
@@ -2033,37 +2105,41 @@ pub async fn get_function_detail_from_file(
     function_name: String,
 ) -> Result<Option<FunctionDetailExt>, String> {
     let path = PathBuf::from(&file_path);
-    
+
     // Read source file
     let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    
+
     // Parse file
     let parser = get_parser();
     let mut parse_result = parser.parse_file(&path).map_err(|e| e.to_string())?;
-    
+
     // Run analysis to get async info
     let mut analyzer = Analyzer::new();
     let _ = analyzer
         .analyze(&source, &mut parse_result)
         .map_err(|e| e.to_string())?;
-    
+
     // Find the target function
     let func = match parse_result.functions.get(&function_name) {
         Some(f) => f,
         None => return Ok(None),
     };
-    
+
     // Extract function code for additional analysis
-    let (func_code, start_line, end_line) = extract_function_code_with_lines(&source, &function_name)
-        .unwrap_or((String::new(), func.location.as_ref().map(|l| l.line).unwrap_or(0), 0));
-    
+    let (func_code, start_line, end_line) =
+        extract_function_code_with_lines(&source, &function_name).unwrap_or((
+            String::new(),
+            func.location.as_ref().map(|l| l.line).unwrap_or(0),
+            0,
+        ));
+
     // Calculate end_line if not found
     let end_line = if end_line > 0 {
         end_line
     } else {
         start_line + count_lines(&func_code)
     };
-    
+
     // Find called_by - functions in this file that call our target function
     let called_by: Vec<String> = parse_result
         .functions
@@ -2071,16 +2147,16 @@ pub async fn get_function_detail_from_file(
         .filter(|(name, f)| *name != &function_name && f.calls.contains(&function_name))
         .map(|(name, _)| name.clone())
         .collect();
-    
+
     // Extract local variables from function body
     let local_variables = extract_local_variables(&func_code);
-    
+
     // Calculate cyclomatic complexity
     let complexity = calculate_complexity(&func_code);
-    
+
     // Extract doc comment
     let doc_comment = extract_doc_comment(&source, start_line);
-    
+
     Ok(Some(FunctionDetailExt {
         name: func.name.clone(),
         return_type: func.return_type.clone(),
@@ -2106,15 +2182,21 @@ pub async fn get_function_detail_from_file(
 }
 
 /// Extract function code with start and end line numbers
-fn extract_function_code_with_lines(source: &str, function_name: &str) -> Option<(String, u32, u32)> {
-    let pattern = format!(r"(?s)(\w+\s+)?{}\s*\([^)]*\)\s*\{{", regex::escape(function_name));
+fn extract_function_code_with_lines(
+    source: &str,
+    function_name: &str,
+) -> Option<(String, u32, u32)> {
+    let pattern = format!(
+        r"(?s)(\w+\s+)?{}\s*\([^)]*\)\s*\{{",
+        regex::escape(function_name)
+    );
     let re = regex::Regex::new(&pattern).ok()?;
-    
+
     if let Some(mat) = re.find(source) {
         let start = mat.start();
         let mut brace_count = 0;
         let mut end = start;
-        
+
         for (i, c) in source[start..].char_indices() {
             match c {
                 '{' => brace_count += 1,
@@ -2128,14 +2210,14 @@ fn extract_function_code_with_lines(source: &str, function_name: &str) -> Option
                 _ => {}
             }
         }
-        
+
         // Calculate line numbers
         let start_line = source[..start].lines().count() as u32 + 1;
         let end_line = source[..end].lines().count() as u32;
-        
+
         return Some((source[start..end].to_string(), start_line, end_line));
     }
-    
+
     None
 }
 
@@ -2147,27 +2229,33 @@ fn count_lines(s: &str) -> u32 {
 /// Extract local variables from function code
 fn extract_local_variables(func_code: &str) -> Vec<LocalVarInfo> {
     let mut vars = Vec::new();
-    
+
     // Pattern for common variable declarations
     // Matches: type name; or type name = ...; or type *name; etc.
     let re = regex::Regex::new(
         r"(?m)^\s*((?:const\s+|static\s+|volatile\s+|unsigned\s+|signed\s+|long\s+|short\s+)*(?:int|char|void|bool|size_t|ssize_t|u8|u16|u32|u64|s8|s16|s32|s64|__[a-z0-9_]+|struct\s+\w+))\s*(\**)(\w+)\s*(?:=|;|\[)"
     ).ok();
-    
+
     if let Some(re) = re {
         for cap in re.captures_iter(func_code) {
-            if let (Some(type_match), Some(ptr_match), Some(name_match)) = (cap.get(1), cap.get(2), cap.get(3)) {
+            if let (Some(type_match), Some(ptr_match), Some(name_match)) =
+                (cap.get(1), cap.get(2), cap.get(3))
+            {
                 let type_name = format!("{}{}", type_match.as_str().trim(), ptr_match.as_str());
                 let name = name_match.as_str().to_string();
-                
+
                 // Skip common non-variable patterns
-                if !["if", "while", "for", "switch", "return", "goto", "sizeof", "typeof"].contains(&name.as_str()) {
+                if ![
+                    "if", "while", "for", "switch", "return", "goto", "sizeof", "typeof",
+                ]
+                .contains(&name.as_str())
+                {
                     vars.push(LocalVarInfo { name, type_name });
                 }
             }
         }
     }
-    
+
     vars
 }
 
@@ -2175,31 +2263,31 @@ fn extract_local_variables(func_code: &str) -> Vec<LocalVarInfo> {
 /// Complexity = E - N + 2P = decision points + 1
 fn calculate_complexity(func_code: &str) -> u32 {
     let mut complexity: u32 = 1; // Base complexity
-    
+
     // Count decision points
     let decision_patterns = [
-        r"\bif\s*\(",      // if statements
-        r"\belse\s+if\b",  // else if (don't double count)
-        r"\bwhile\s*\(",   // while loops
-        r"\bfor\s*\(",     // for loops
-        r"\bcase\s+",      // case labels
-        r"\bdefault\s*:",  // default label
-        r"\bcatch\s*\(",   // catch blocks (if any)
-        r"\?\s*[^:]+:",    // ternary operators
-        r"\|\|",           // logical OR (short-circuit)
-        r"&&",             // logical AND (short-circuit)
+        r"\bif\s*\(",     // if statements
+        r"\belse\s+if\b", // else if (don't double count)
+        r"\bwhile\s*\(",  // while loops
+        r"\bfor\s*\(",    // for loops
+        r"\bcase\s+",     // case labels
+        r"\bdefault\s*:", // default label
+        r"\bcatch\s*\(",  // catch blocks (if any)
+        r"\?\s*[^:]+:",   // ternary operators
+        r"\|\|",          // logical OR (short-circuit)
+        r"&&",            // logical AND (short-circuit)
     ];
-    
+
     for pattern in &decision_patterns {
         if let Ok(re) = regex::Regex::new(pattern) {
             complexity += re.find_iter(func_code).count() as u32;
         }
     }
-    
+
     // Note: else if is already handled by the pattern list
-    // The "\belse\s+if\b" pattern counts it once, and "\bif\s*\(" 
+    // The "\belse\s+if\b" pattern counts it once, and "\bif\s*\("
     // doesn't match "else if" due to the word boundary
-    
+
     complexity
 }
 
@@ -2208,21 +2296,21 @@ fn extract_doc_comment(source: &str, func_start_line: u32) -> Option<String> {
     if func_start_line == 0 {
         return None;
     }
-    
+
     let lines: Vec<&str> = source.lines().collect();
     let start_idx = (func_start_line as usize).saturating_sub(1);
-    
+
     if start_idx == 0 {
         return None;
     }
-    
+
     let mut comment_lines = Vec::new();
     let mut in_block_comment = false;
-    
+
     // Scan backwards from function to find comment
     for i in (0..start_idx).rev() {
         let line = lines.get(i)?.trim();
-        
+
         // Check for end of block comment (scanning backwards)
         if line.ends_with("*/") {
             in_block_comment = true;
@@ -2232,52 +2320,55 @@ fn extract_doc_comment(source: &str, func_start_line: u32) -> Option<String> {
             }
             continue;
         }
-        
+
         if in_block_comment {
             // Check for start of block comment
             if line.starts_with("/*") || line.starts_with("/**") {
-                let content = line.trim_start_matches("/**").trim_start_matches("/*").trim();
+                let content = line
+                    .trim_start_matches("/**")
+                    .trim_start_matches("/*")
+                    .trim();
                 if !content.is_empty() {
                     comment_lines.push(content.to_string());
                 }
                 break;
             }
-            
+
             // Middle line of block comment
             let content = line.trim_start_matches('*').trim();
             comment_lines.push(content.to_string());
             continue;
         }
-        
+
         // Single line comment
         if line.starts_with("//") {
             let content = line.trim_start_matches('/').trim();
             comment_lines.push(content.to_string());
             continue;
         }
-        
+
         // Non-comment, non-empty line - stop scanning
         if !line.is_empty() {
             break;
         }
     }
-    
+
     if comment_lines.is_empty() {
         return None;
     }
-    
+
     // Reverse since we scanned backwards
     comment_lines.reverse();
-    
+
     // Filter out empty lines at start/end and join
     let result: Vec<&str> = comment_lines
         .iter()
         .map(|s| s.as_str())
         .skip_while(|s| s.is_empty())
         .collect();
-    
+
     let result: String = result.join("\n").trim().to_string();
-    
+
     if result.is_empty() {
         None
     } else {
@@ -2342,24 +2433,26 @@ pub struct LlvmIrResult {
 }
 
 /// Generate LLVM IR from a C source file using clang
-/// 
+///
 /// This command compiles a C file to LLVM IR using clang and returns the parsed result.
 /// Requires clang to be installed on the system.
 #[tauri::command]
 pub async fn generate_llvm_ir(file_path: String) -> Result<LlvmIrResult, String> {
     use std::process::Command;
-    
+
     let path = PathBuf::from(&file_path);
-    
+
     if !path.exists() {
         return Err(format!("File not found: {}", file_path));
     }
-    
+
     // Create temp file for IR output
     let temp_dir = std::env::temp_dir();
-    let ir_file = temp_dir.join(format!("{}.ll", 
-        path.file_stem().unwrap_or_default().to_string_lossy()));
-    
+    let ir_file = temp_dir.join(format!(
+        "{}.ll",
+        path.file_stem().unwrap_or_default().to_string_lossy()
+    ));
+
     // Find clang - try common paths
     let clang_paths = [
         "clang",
@@ -2368,65 +2461,78 @@ pub async fn generate_llvm_ir(file_path: String) -> Result<LlvmIrResult, String>
         "/opt/homebrew/bin/clang",
         "/opt/homebrew/opt/llvm/bin/clang",
     ];
-    
+
     let mut clang_found = None;
     for clang in &clang_paths {
-        if Command::new(clang)
-            .arg("--version")
-            .output()
-            .is_ok() 
-        {
+        if Command::new(clang).arg("--version").output().is_ok() {
             clang_found = Some(*clang);
             break;
         }
     }
-    
+
     let clang = clang_found.ok_or_else(|| {
         "clang not found. Please install LLVM/clang to enable LLVM IR generation.".to_string()
     })?;
-    
+
     // Compile to LLVM IR
     // Use -emit-llvm -S to get text IR (.ll file)
     // Note: Full kernel compilation requires kconfig, generated headers, etc.
     // We use minimal flags to extract function structure without full compilation.
     let kernel_base = "/Users/sky/linux-kernel/linux";
-    
+
     let output = Command::new(clang)
         .args([
             "-emit-llvm",
             "-S",
-            "-O0",          // No optimization to preserve structure
-            "-g",           // Debug info for source locations
-            "-fno-discard-value-names",  // Preserve variable names
-            "-Wno-everything",  // Suppress warnings for kernel code
-            "-nostdinc",    // Don't use standard includes
-            "-isystem", "/opt/homebrew/opt/llvm/lib/clang/19/include",  // Clang builtins only
+            "-O0",                      // No optimization to preserve structure
+            "-g",                       // Debug info for source locations
+            "-fno-discard-value-names", // Preserve variable names
+            "-Wno-everything",          // Suppress warnings for kernel code
+            "-nostdinc",                // Don't use standard includes
+            "-isystem",
+            "/opt/homebrew/opt/llvm/lib/clang/19/include", // Clang builtins only
             // Kernel include paths (order matters!)
-            "-I", &format!("{}/arch/x86/include", kernel_base),
-            "-I", &format!("{}/arch/x86/include/generated", kernel_base),
-            "-I", &format!("{}/include", kernel_base),
-            "-I", &format!("{}/arch/x86/include/uapi", kernel_base),
-            "-I", &format!("{}/include/uapi", kernel_base),
-            "-I", &format!("{}/include/generated/uapi", kernel_base),
+            "-I",
+            &format!("{}/arch/x86/include", kernel_base),
+            "-I",
+            &format!("{}/arch/x86/include/generated", kernel_base),
+            "-I",
+            &format!("{}/include", kernel_base),
+            "-I",
+            &format!("{}/arch/x86/include/uapi", kernel_base),
+            "-I",
+            &format!("{}/include/uapi", kernel_base),
+            "-I",
+            &format!("{}/include/generated/uapi", kernel_base),
             // Kernel defines
-            "-D", "__KERNEL__",
-            "-D", "MODULE",
-            "-D", "CONFIG_X86_64",
-            "-D", "__x86_64__",
+            "-D",
+            "__KERNEL__",
+            "-D",
+            "MODULE",
+            "-D",
+            "CONFIG_X86_64",
+            "-D",
+            "__x86_64__",
             // Output
-            "-o", ir_file.to_str().unwrap(),
+            "-o",
+            ir_file.to_str().unwrap(),
             file_path.as_str(),
         ])
         .output()
         .map_err(|e| format!("Failed to run clang: {}", e))?;
-    
+
     if !output.status.success() {
         // Return a mock result with error info when clang fails
         // This allows the UI to still function
         return Ok(LlvmIrResult {
-            module_name: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
-            functions: std::collections::HashMap::from([
-                ("__compilation_error__".to_string(), LlvmIrFunction {
+            module_name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            functions: std::collections::HashMap::from([(
+                "__compilation_error__".to_string(),
+                LlvmIrFunction {
                     name: "__compilation_error__".to_string(),
                     return_type: "void".to_string(),
                     parameters: vec![],
@@ -2436,10 +2542,10 @@ pub async fn generate_llvm_ir(file_path: String) -> Result<LlvmIrResult, String>
                             opcode: "error".to_string(),
                             dest: None,
                             type_str: "".to_string(),
-                            operands: vec![
-                                format!("Clang compilation failed:\n{}", 
-                                    String::from_utf8_lossy(&output.stderr))
-                            ],
+                            operands: vec![format!(
+                                "Clang compilation failed:\n{}",
+                                String::from_utf8_lossy(&output.stderr)
+                            )],
                             location: None,
                         }],
                         predecessors: vec![],
@@ -2448,64 +2554,81 @@ pub async fn generate_llvm_ir(file_path: String) -> Result<LlvmIrResult, String>
                     }],
                     is_callback: false,
                     callback_context: None,
-                }),
-            ]),
+                },
+            )]),
         });
     }
-    
+
     // Parse the generated IR file
     let parser = flowsight_llvm::LlvmParser::new();
-    let parse_result = parser.parse_file(&ir_file)
+    let parse_result = parser
+        .parse_file(&ir_file)
         .map_err(|e| format!("Failed to parse LLVM IR: {}", e))?;
-    
+
     // Convert to frontend format
     let frontend_result = flowsight_llvm::to_frontend_format(&parse_result);
-    
+
     // Clean up temp file
     let _ = std::fs::remove_file(&ir_file);
-    
+
     // Convert to our serializable types
-    let functions: std::collections::HashMap<String, LlvmIrFunction> = frontend_result.functions
+    let functions: std::collections::HashMap<String, LlvmIrFunction> = frontend_result
+        .functions
         .into_iter()
         .map(|(name, func)| {
-            (name, LlvmIrFunction {
-                name: func.name,
-                return_type: func.return_type,
-                parameters: func.parameters.into_iter().map(|p| LlvmIrParameter {
-                    name: p.name,
-                    type_str: p.type_str,
-                }).collect(),
-                blocks: func.blocks.into_iter().map(|b| LlvmIrBasicBlock {
-                    name: b.name,
-                    instructions: b.instructions.into_iter().map(|i| LlvmIrInstruction {
-                        opcode: i.opcode,
-                        dest: i.dest,
-                        type_str: i.type_str,
-                        operands: i.operands,
-                        location: i.location.map(|l| SourceLocation {
-                            file: l.file,
-                            line: l.line,
-                        }),
-                    }).collect(),
-                    predecessors: b.predecessors,
-                    successors: b.successors,
-                    terminator: b.terminator.map(|t| LlvmIrInstruction {
-                        opcode: t.opcode,
-                        dest: t.dest,
-                        type_str: t.type_str,
-                        operands: t.operands,
-                        location: t.location.map(|l| SourceLocation {
-                            file: l.file,
-                            line: l.line,
-                        }),
-                    }),
-                }).collect(),
-                is_callback: func.is_callback,
-                callback_context: func.callback_context,
-            })
+            (
+                name,
+                LlvmIrFunction {
+                    name: func.name,
+                    return_type: func.return_type,
+                    parameters: func
+                        .parameters
+                        .into_iter()
+                        .map(|p| LlvmIrParameter {
+                            name: p.name,
+                            type_str: p.type_str,
+                        })
+                        .collect(),
+                    blocks: func
+                        .blocks
+                        .into_iter()
+                        .map(|b| LlvmIrBasicBlock {
+                            name: b.name,
+                            instructions: b
+                                .instructions
+                                .into_iter()
+                                .map(|i| LlvmIrInstruction {
+                                    opcode: i.opcode,
+                                    dest: i.dest,
+                                    type_str: i.type_str,
+                                    operands: i.operands,
+                                    location: i.location.map(|l| SourceLocation {
+                                        file: l.file,
+                                        line: l.line,
+                                    }),
+                                })
+                                .collect(),
+                            predecessors: b.predecessors,
+                            successors: b.successors,
+                            terminator: b.terminator.map(|t| LlvmIrInstruction {
+                                opcode: t.opcode,
+                                dest: t.dest,
+                                type_str: t.type_str,
+                                operands: t.operands,
+                                location: t.location.map(|l| SourceLocation {
+                                    file: l.file,
+                                    line: l.line,
+                                }),
+                            }),
+                        })
+                        .collect(),
+                    is_callback: func.is_callback,
+                    callback_context: func.callback_context,
+                },
+            )
         })
         .collect();
-    
+
     Ok(LlvmIrResult {
         module_name: frontend_result.module_name,
         functions,
@@ -2516,59 +2639,76 @@ pub async fn generate_llvm_ir(file_path: String) -> Result<LlvmIrResult, String>
 #[tauri::command]
 pub async fn parse_llvm_ir_file(file_path: String) -> Result<LlvmIrResult, String> {
     let path = PathBuf::from(&file_path);
-    
+
     if !path.exists() {
         return Err(format!("File not found: {}", file_path));
     }
-    
+
     let parser = flowsight_llvm::LlvmParser::new();
-    let parse_result = parser.parse_file(&path)
+    let parse_result = parser
+        .parse_file(&path)
         .map_err(|e| format!("Failed to parse LLVM IR: {}", e))?;
-    
+
     let frontend_result = flowsight_llvm::to_frontend_format(&parse_result);
-    
+
     // Convert to our serializable types
-    let functions: std::collections::HashMap<String, LlvmIrFunction> = frontend_result.functions
+    let functions: std::collections::HashMap<String, LlvmIrFunction> = frontend_result
+        .functions
         .into_iter()
         .map(|(name, func)| {
-            (name, LlvmIrFunction {
-                name: func.name,
-                return_type: func.return_type,
-                parameters: func.parameters.into_iter().map(|p| LlvmIrParameter {
-                    name: p.name,
-                    type_str: p.type_str,
-                }).collect(),
-                blocks: func.blocks.into_iter().map(|b| LlvmIrBasicBlock {
-                    name: b.name,
-                    instructions: b.instructions.into_iter().map(|i| LlvmIrInstruction {
-                        opcode: i.opcode,
-                        dest: i.dest,
-                        type_str: i.type_str,
-                        operands: i.operands,
-                        location: i.location.map(|l| SourceLocation {
-                            file: l.file,
-                            line: l.line,
-                        }),
-                    }).collect(),
-                    predecessors: b.predecessors,
-                    successors: b.successors,
-                    terminator: b.terminator.map(|t| LlvmIrInstruction {
-                        opcode: t.opcode,
-                        dest: t.dest,
-                        type_str: t.type_str,
-                        operands: t.operands,
-                        location: t.location.map(|l| SourceLocation {
-                            file: l.file,
-                            line: l.line,
-                        }),
-                    }),
-                }).collect(),
-                is_callback: func.is_callback,
-                callback_context: func.callback_context,
-            })
+            (
+                name,
+                LlvmIrFunction {
+                    name: func.name,
+                    return_type: func.return_type,
+                    parameters: func
+                        .parameters
+                        .into_iter()
+                        .map(|p| LlvmIrParameter {
+                            name: p.name,
+                            type_str: p.type_str,
+                        })
+                        .collect(),
+                    blocks: func
+                        .blocks
+                        .into_iter()
+                        .map(|b| LlvmIrBasicBlock {
+                            name: b.name,
+                            instructions: b
+                                .instructions
+                                .into_iter()
+                                .map(|i| LlvmIrInstruction {
+                                    opcode: i.opcode,
+                                    dest: i.dest,
+                                    type_str: i.type_str,
+                                    operands: i.operands,
+                                    location: i.location.map(|l| SourceLocation {
+                                        file: l.file,
+                                        line: l.line,
+                                    }),
+                                })
+                                .collect(),
+                            predecessors: b.predecessors,
+                            successors: b.successors,
+                            terminator: b.terminator.map(|t| LlvmIrInstruction {
+                                opcode: t.opcode,
+                                dest: t.dest,
+                                type_str: t.type_str,
+                                operands: t.operands,
+                                location: t.location.map(|l| SourceLocation {
+                                    file: l.file,
+                                    line: l.line,
+                                }),
+                            }),
+                        })
+                        .collect(),
+                    is_callback: func.is_callback,
+                    callback_context: func.callback_context,
+                },
+            )
         })
         .collect();
-    
+
     Ok(LlvmIrResult {
         module_name: frontend_result.module_name,
         functions,

@@ -51,12 +51,14 @@
 //! ```
 
 pub mod feedback;
-pub mod trainer;
 pub mod knowledge_delta;
+pub mod trainer;
 
-pub use feedback::{FeedbackCollector, UserFeedback, FeedbackType, FeedbackContent, TrainingSample};
+pub use feedback::{
+    FeedbackCollector, FeedbackContent, FeedbackType, TrainingSample, UserFeedback,
+};
+pub use knowledge_delta::{AnonymizedKnowledge, KnowledgeDelta};
 pub use trainer::{LocalTrainer, TrainingConfig};
-pub use knowledge_delta::{KnowledgeDelta, AnonymizedKnowledge};
 
 /// Self-learning configuration
 #[derive(Debug, Clone)]
@@ -189,8 +191,11 @@ impl SelfLearning {
         // Check if we have enough feedback
         let count = self.feedback.count()?;
         if count < self.config.min_feedbacks {
-            tracing::info!("Not enough feedback for training: {}/{}",
-                count, self.config.min_feedbacks);
+            tracing::info!(
+                "Not enough feedback for training: {}/{}",
+                count,
+                self.config.min_feedbacks
+            );
             return Ok(());
         }
 

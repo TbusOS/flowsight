@@ -18,7 +18,7 @@ use flowsight_core::{
     FunctionDef,
 };
 use flowsight_llvm::{
-    LlvmFunction, LlvmIrParseResult, LlvmInstruction, LlvmParameter, LlvmBasicBlock,
+    LlvmBasicBlock, LlvmFunction, LlvmInstruction, LlvmIrParseResult, LlvmParameter,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -241,7 +241,10 @@ pub enum FlowNodeTypeDto {
     Separator { text: String },
     /// Branch node
     #[serde(rename = "Branch")]
-    Branch { condition: String, branch_type: String },
+    Branch {
+        condition: String,
+        branch_type: String,
+    },
 }
 
 /// Async mechanism DTO
@@ -316,9 +319,7 @@ pub enum AsyncMechanismDto {
     },
     /// Custom mechanism
     #[serde(rename = "Custom")]
-    Custom {
-        name: String,
-    },
+    Custom { name: String },
     /// Unknown mechanism
     #[serde(rename = "Unknown")]
     #[default]
@@ -533,20 +534,23 @@ impl NodeDetailService {
             let instrs: Vec<&LlvmInstruction> = func
                 .blocks
                 .iter()
-                .flat_map(|block| {
-                    block
-                        .instructions
-                        .iter()
-                        .chain(block.terminator.as_ref())
-                })
+                .flat_map(|block| block.instructions.iter().chain(block.terminator.as_ref()))
                 .collect();
             let instr_count = instrs.len() as u32;
             (instrs, instr_count, None)
         };
 
-        let page_size = if request.page_size == 0 { 50 } else { request.page_size };
+        let page_size = if request.page_size == 0 {
+            50
+        } else {
+            request.page_size
+        };
         let total_pages = (total_instrs as f64 / page_size as f64).ceil() as u32;
-        let page = if request.page >= total_pages { total_pages.saturating_sub(1) } else { request.page };
+        let page = if request.page >= total_pages {
+            total_pages.saturating_sub(1)
+        } else {
+            request.page
+        };
 
         let start = (page * page_size) as usize;
         let end = ((page + 1) * page_size) as usize;
@@ -589,7 +593,12 @@ impl NodeDetailService {
                     llvm_func.callback_context.clone(),
                 )
             } else {
-                (0, 0, func_def.is_callback, func_def.callback_context.clone())
+                (
+                    0,
+                    0,
+                    func_def.is_callback,
+                    func_def.callback_context.clone(),
+                )
             };
 
         Some(FunctionSummary {
@@ -636,10 +645,7 @@ impl NodeDetailService {
 
     /// Get callees of a function
     pub fn get_callees(&self, func_name: &str) -> Vec<String> {
-        self.call_graph
-            .get(func_name)
-            .cloned()
-            .unwrap_or_default()
+        self.call_graph.get(func_name).cloned().unwrap_or_default()
     }
 
     /// Build function detail response
@@ -675,14 +681,13 @@ impl NodeDetailService {
             Vec::new()
         };
 
-        let (llvm_ir, function_signature, structured_llvm_ir) =
-            if request.include_llvm_ir {
-                let (ir_lines, signature) = self.get_llvm_ir_data(func);
-                let structured = self.query_llvm_ir(&func.name);
-                (ir_lines, signature, structured)
-            } else {
-                (Vec::new(), None, None)
-            };
+        let (llvm_ir, function_signature, structured_llvm_ir) = if request.include_llvm_ir {
+            let (ir_lines, signature) = self.get_llvm_ir_data(func);
+            let structured = self.query_llvm_ir(&func.name);
+            (ir_lines, signature, structured)
+        } else {
+            (Vec::new(), None, None)
+        };
 
         NodeDetailResponse {
             name: func.name.clone(),
@@ -691,9 +696,7 @@ impl NodeDetailService {
                     mechanism: func
                         .callback_context
                         .as_ref()
-                        .map(|ctx| AsyncMechanismDto::Custom {
-                            name: ctx.clone(),
-                        })
+                        .map(|ctx| AsyncMechanismDto::Custom { name: ctx.clone() })
                         .unwrap_or(AsyncMechanismDto::Unknown),
                 }
             } else {
@@ -781,13 +784,13 @@ impl NodeDetailService {
                 if let Some(dest) = &instr.dest {
                     lines.push(format!(
                         "  %{} = {} {} {}",
-                        dest, instr.opcode, instr.type_str, instr.operands.join(", ")
+                        dest,
+                        instr.opcode,
+                        instr.type_str,
+                        instr.operands.join(", ")
                     ));
                 } else {
-                    lines.push(format!(
-                        "  {} {}",
-                        instr.opcode, instr.operands.join(", ")
-                    ));
+                    lines.push(format!("  {} {}", instr.opcode, instr.operands.join(", ")));
                 }
             }
 
@@ -796,7 +799,10 @@ impl NodeDetailService {
                 if let Some(dest) = &term.dest {
                     lines.push(format!(
                         "  %{} = {} {} {}",
-                        dest, term.opcode, term.type_str, term.operands.join(", ")
+                        dest,
+                        term.opcode,
+                        term.type_str,
+                        term.operands.join(", ")
                     ));
                 } else {
                     lines.push(format!("  {}", term.opcode));
@@ -895,7 +901,10 @@ fn convert_node_type(node_type: &FlowNodeType) -> FlowNodeTypeDto {
         FlowNodeType::KernelApi => FlowNodeTypeDto::KernelApi,
         FlowNodeType::External => FlowNodeTypeDto::External,
         FlowNodeType::Separator { text } => FlowNodeTypeDto::Separator { text: text.clone() },
-        FlowNodeType::Branch { condition, branch_type } => FlowNodeTypeDto::Branch {
+        FlowNodeType::Branch {
+            condition,
+            branch_type,
+        } => FlowNodeTypeDto::Branch {
             condition: condition.clone(),
             branch_type: format!("{:?}", branch_type),
         },
@@ -917,24 +926,14 @@ fn convert_async_mechanism(mechanism: &AsyncMechanism) -> AsyncMechanismDto {
             irq_name: None,
             flags: None,
         },
-        AsyncMechanism::Tasklet => AsyncMechanismDto::Tasklet {
-            tasklet_name: None,
-        },
-        AsyncMechanism::Softirq => AsyncMechanismDto::Softirq {
-            type_name: None,
-        },
-        AsyncMechanism::KThread => AsyncMechanismDto::Kthread {
-            kthread_name: None,
-        },
-        AsyncMechanism::RcuCallback => AsyncMechanismDto::Rcu {
-            rcu_type: None,
-        },
+        AsyncMechanism::Tasklet => AsyncMechanismDto::Tasklet { tasklet_name: None },
+        AsyncMechanism::Softirq => AsyncMechanismDto::Softirq { type_name: None },
+        AsyncMechanism::KThread => AsyncMechanismDto::Kthread { kthread_name: None },
+        AsyncMechanism::RcuCallback => AsyncMechanismDto::Rcu { rcu_type: None },
         AsyncMechanism::Notifier => AsyncMechanismDto::Custom {
             name: "Notifier".to_string(),
         },
-        AsyncMechanism::Custom(name) => AsyncMechanismDto::Custom {
-            name: name.clone(),
-        },
+        AsyncMechanism::Custom(name) => AsyncMechanismDto::Custom { name: name.clone() },
     }
 }
 
@@ -1177,13 +1176,25 @@ mod tests {
                     operands: vec![format!("%{}", i - 1), "1".to_string()],
                     location: None,
                 }],
-                predecessors: if i == 0 { vec![] } else { vec![format!("block_{}", i - 1)] },
-                successors: if i < 9 { vec![format!("block_{}", i + 1)] } else { vec![] },
+                predecessors: if i == 0 {
+                    vec![]
+                } else {
+                    vec![format!("block_{}", i - 1)]
+                },
+                successors: if i < 9 {
+                    vec![format!("block_{}", i + 1)]
+                } else {
+                    vec![]
+                },
                 terminator: Some(LlvmInstruction {
                     opcode: "br".to_string(),
                     dest: None,
                     type_str: "label".to_string(),
-                    operands: if i < 9 { vec![format!("label %block_{}", i + 1)] } else { vec![] },
+                    operands: if i < 9 {
+                        vec![format!("label %block_{}", i + 1)]
+                    } else {
+                        vec![]
+                    },
                     location: None,
                 }),
             });

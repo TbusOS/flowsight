@@ -238,7 +238,10 @@ static int driver_probe(struct platform_device *pdev)
     );
 
     for i in 0..50 {
-        code.push_str(&format!("    ret = complex_function_{i}(dev, {i}, {});\n", i * 2));
+        code.push_str(&format!(
+            "    ret = complex_function_{i}(dev, {i}, {});\n",
+            i * 2
+        ));
         code.push_str("    if (ret < 0) goto err;\n");
     }
 

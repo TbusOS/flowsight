@@ -56,11 +56,10 @@ impl LocalModel {
             return Err(ModelError::NotFound(path.display().to_string()));
         }
 
-        let file_size = std::fs::metadata(&path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let file_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
 
-        let name = path.file_stem()
+        let name = path
+            .file_stem()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
@@ -80,9 +79,7 @@ impl LocalModel {
 
         self.handle = Some(ModelHandle {
             path: self.path.clone(),
-            file_size: std::fs::metadata(&self.path)
-                .map(|m| m.len())
-                .unwrap_or(0),
+            file_size: std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0),
             is_loaded: true,
         });
 
@@ -137,9 +134,7 @@ impl LocalModel {
 
     /// Get model size in bytes
     pub fn file_size(&self) -> u64 {
-        self.handle.as_ref()
-            .map(|h| h.file_size)
-            .unwrap_or(0)
+        self.handle.as_ref().map(|h| h.file_size).unwrap_or(0)
     }
 }
 
@@ -164,20 +159,25 @@ impl ModelMetadata {
     /// Create from model
     pub fn from_model(model: &LocalModel) -> Self {
         let size_human = if model.file_size() > 1024 * 1024 * 1024 {
-            format!("{:.1} GB", model.file_size() as f64 / (1024.0 * 1024.0 * 1024.0))
+            format!(
+                "{:.1} GB",
+                model.file_size() as f64 / (1024.0 * 1024.0 * 1024.0)
+            )
         } else if model.file_size() > 1024 * 1024 {
             format!("{:.1} MB", model.file_size() as f64 / (1024.0 * 1024.0))
         } else {
             format!("{} KB", model.file_size() / 1024)
         };
 
-        let format = model.path()
+        let format = model
+            .path()
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("unknown")
             .to_string();
 
-        let quantization = model.name()
+        let quantization = model
+            .name()
             .split('-')
             .last()
             .unwrap_or("unknown")
@@ -220,13 +220,17 @@ impl ModelRepository {
                     if let Some(ext) = path.extension() {
                         if ext == "gguf" || ext == "bin" || ext == "model" {
                             if let Ok(metadata) = std::fs::metadata(&path) {
-                                let name = path.file_stem()
+                                let name = path
+                                    .file_stem()
                                     .and_then(|n| n.to_str())
                                     .unwrap_or("unknown")
                                     .to_string();
 
                                 let size_human = if metadata.len() > 1024 * 1024 * 1024 {
-                                    format!("{:.1} GB", metadata.len() as f64 / (1024.0 * 1024.0 * 1024.0))
+                                    format!(
+                                        "{:.1} GB",
+                                        metadata.len() as f64 / (1024.0 * 1024.0 * 1024.0)
+                                    )
                                 } else if metadata.len() > 1024 * 1024 {
                                     format!("{:.1} MB", metadata.len() as f64 / (1024.0 * 1024.0))
                                 } else {
@@ -269,13 +273,11 @@ impl ModelRepository {
         }
 
         // Return first gguf file
-        self.list_models()
-            .first()
-            .and_then(|m| {
-                self.model_dir
-                    .join(format!("{}.gguf", m.name))
-                    .exists()
-                    .then_some(self.model_dir.join(format!("{}.gguf", m.name)))
-            })
+        self.list_models().first().and_then(|m| {
+            self.model_dir
+                .join(format!("{}.gguf", m.name))
+                .exists()
+                .then_some(self.model_dir.join(format!("{}.gguf", m.name)))
+        })
     }
 }

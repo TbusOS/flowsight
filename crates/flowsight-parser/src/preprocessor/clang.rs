@@ -85,10 +85,7 @@ impl PreprocessOptions {
             defines,
             includes,
             system_includes: Vec::new(),
-            extra_args: vec![
-                "-nostdinc".to_string(),
-                "-fno-builtin".to_string(),
-            ],
+            extra_args: vec!["-nostdinc".to_string(), "-fno-builtin".to_string()],
             keep_comments: false,
             line_markers: true,
         }
@@ -132,7 +129,7 @@ impl ClangPreprocessor {
             "clang",
             "/usr/bin/clang",
             "/usr/local/bin/clang",
-            "/opt/homebrew/bin/clang",  // macOS ARM
+            "/opt/homebrew/bin/clang", // macOS ARM
             "/opt/homebrew/opt/llvm/bin/clang",
         ];
 
@@ -176,9 +173,10 @@ impl ClangPreprocessor {
         options: &PreprocessOptions,
     ) -> Result<PreprocessResult, PreprocessError> {
         if !source_path.exists() {
-            return Err(PreprocessError::InvalidSource(
-                format!("File not found: {:?}", source_path)
-            ));
+            return Err(PreprocessError::InvalidSource(format!(
+                "File not found: {:?}",
+                source_path
+            )));
         }
 
         let args = self.build_args(options);
@@ -218,8 +216,9 @@ impl ClangPreprocessor {
 
         let mut cmd = Command::new(&self.clang_path);
         cmd.args(&args)
-            .arg("-x").arg("c")  // Treat input as C
-            .arg("-")           // Read from stdin
+            .arg("-x")
+            .arg("c") // Treat input as C
+            .arg("-") // Read from stdin
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -256,7 +255,7 @@ impl ClangPreprocessor {
     /// Build clang command line arguments
     fn build_args(&self, options: &PreprocessOptions) -> Vec<String> {
         let mut args = vec![
-            "-E".to_string(),  // Preprocess only
+            "-E".to_string(), // Preprocess only
             format!("-target {}", options.target.target_triple()),
         ];
 

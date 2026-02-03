@@ -3,9 +3,9 @@
 //! Records the complete function call path and branch conditions
 //! for execution flow analysis and visualization.
 
-use std::collections::{HashMap, HashSet};
+use flowsight_core::{FlowNode, FlowNodeType, Location};
 use serde::{Deserialize, Serialize};
-use flowsight_core::{Location, FlowNode, FlowNodeType};
+use std::collections::{HashMap, HashSet};
 
 /// A recorded execution path step
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -404,12 +404,7 @@ impl ExecutionTracer {
         };
 
         // Add step for this node
-        current_path.add_step(
-            &node.name,
-            node.location.clone(),
-            call_type,
-            Vec::new(),
-        );
+        current_path.add_step(&node.name, node.location.clone(), call_type, Vec::new());
 
         // Process children - create new builder for each child
         if node.children.is_empty() {
@@ -434,7 +429,11 @@ impl Default for ExecutionTracer {
 /// Convert a value to PathValue
 impl PathValue {
     /// Create from concrete string value
-    pub fn from_concrete(name: impl Into<String>, value: impl Into<String>, value_type: ValueType) -> Self {
+    pub fn from_concrete(
+        name: impl Into<String>,
+        value: impl Into<String>,
+        value_type: ValueType,
+    ) -> Self {
         Self {
             name: name.into(),
             concrete: Some(value.into()),
@@ -444,7 +443,11 @@ impl PathValue {
     }
 
     /// Create from symbolic expression
-    pub fn from_symbolic(name: impl Into<String>, expression: impl Into<String>, value_type: ValueType) -> Self {
+    pub fn from_symbolic(
+        name: impl Into<String>,
+        expression: impl Into<String>,
+        value_type: ValueType,
+    ) -> Self {
         Self {
             name: name.into(),
             concrete: None,
@@ -500,8 +503,16 @@ mod tests {
 
         tracer.record_call("main", None, CallCategory::Direct, &[]);
         tracer.record_call("helper", None, CallCategory::Direct, &[]);
-        tracer.record_return(Some(PathValue::from_concrete("ret", "0", ValueType::Integer)));
-        tracer.record_return(Some(PathValue::from_concrete("result", "0", ValueType::Integer)));
+        tracer.record_return(Some(PathValue::from_concrete(
+            "ret",
+            "0",
+            ValueType::Integer,
+        )));
+        tracer.record_return(Some(PathValue::from_concrete(
+            "result",
+            "0",
+            ValueType::Integer,
+        )));
 
         tracer.finalize_path(true, None);
 

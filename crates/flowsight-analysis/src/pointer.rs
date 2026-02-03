@@ -15,8 +15,8 @@
 //!
 //! 3. Output: points-to set for each pointer variable
 
-use std::collections::{HashMap, HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// A variable or memory location in the analysis
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -51,25 +51,13 @@ impl Location {
 #[derive(Debug, Clone)]
 pub enum Constraint {
     /// p = &x: x is added to pts(p)
-    AddressOf {
-        pointer: Location,
-        target: Location,
-    },
+    AddressOf { pointer: Location, target: Location },
     /// p = q: pts(q) ⊆ pts(p)
-    Copy {
-        dest: Location,
-        src: Location,
-    },
+    Copy { dest: Location, src: Location },
     /// p = *q: for all o in pts(q), pts(o) ⊆ pts(p)
-    Load {
-        dest: Location,
-        src_ptr: Location,
-    },
+    Load { dest: Location, src_ptr: Location },
     /// *p = q: for all o in pts(p), pts(q) ⊆ pts(o)
-    Store {
-        dest_ptr: Location,
-        src: Location,
-    },
+    Store { dest_ptr: Location, src: Location },
     /// p = q->field: field-sensitive load
     FieldLoad {
         dest: Location,
@@ -83,15 +71,9 @@ pub enum Constraint {
         src: Location,
     },
     /// arr[i] = func: array element assignment
-    ArrayStore {
-        array: String,
-        src: Location,
-    },
+    ArrayStore { array: String, src: Location },
     /// p = arr[i]: array element load
-    ArrayLoad {
-        dest: Location,
-        array: String,
-    },
+    ArrayLoad { dest: Location, array: String },
 }
 
 /// Result of pointer analysis
@@ -174,10 +156,7 @@ impl AndersenSolver {
                 let ptr_key = Self::loc_key(pointer);
                 let tgt_key = Self::loc_key(target);
 
-                self.pts
-                    .entry(ptr_key.clone())
-                    .or_default()
-                    .insert(tgt_key);
+                self.pts.entry(ptr_key.clone()).or_default().insert(tgt_key);
 
                 self.worklist.push_back(ptr_key);
             }
@@ -257,7 +236,11 @@ impl AndersenSolver {
                             }
                         }
                     }
-                    Constraint::FieldLoad { dest, base_ptr, field } => {
+                    Constraint::FieldLoad {
+                        dest,
+                        base_ptr,
+                        field,
+                    } => {
                         let dest_key = Self::loc_key(&dest);
                         let base_ptr_key = Self::loc_key(&base_ptr);
 
@@ -269,7 +252,11 @@ impl AndersenSolver {
                             }
                         }
                     }
-                    Constraint::FieldStore { base_ptr, field, src } => {
+                    Constraint::FieldStore {
+                        base_ptr,
+                        field,
+                        src,
+                    } => {
                         let base_ptr_key = Self::loc_key(&base_ptr);
                         let src_key = Self::loc_key(&src);
 
@@ -315,7 +302,9 @@ impl AndersenSolver {
 
         // Build result
         let mut result = PointsToResult::default();
-        result.points_to = self.pts.iter()
+        result.points_to = self
+            .pts
+            .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
@@ -381,8 +370,12 @@ mod tests {
         let result = solver.solve();
 
         // Both fp and gp should point to func_a
-        assert!(result.get_function_targets("fp").contains(&"func_a".to_string()));
-        assert!(result.get_function_targets("gp").contains(&"func_a".to_string()));
+        assert!(result
+            .get_function_targets("fp")
+            .contains(&"func_a".to_string()));
+        assert!(result
+            .get_function_targets("gp")
+            .contains(&"func_a".to_string()));
     }
 
     #[test]
@@ -463,9 +456,15 @@ mod tests {
         let result = solver.solve();
 
         // All should point to func
-        assert!(result.get_function_targets("a").contains(&"func".to_string()));
-        assert!(result.get_function_targets("b").contains(&"func".to_string()));
-        assert!(result.get_function_targets("c").contains(&"func".to_string()));
+        assert!(result
+            .get_function_targets("a")
+            .contains(&"func".to_string()));
+        assert!(result
+            .get_function_targets("b")
+            .contains(&"func".to_string()));
+        assert!(result
+            .get_function_targets("c")
+            .contains(&"func".to_string()));
     }
 
     #[test]
@@ -523,10 +522,7 @@ void dispatch(int cmd) {
 }
 "#;
         let mut collector = ConstraintCollector::new();
-        collector.set_functions(vec![
-            "read_cmd".to_string(),
-            "write_cmd".to_string(),
-        ]);
+        collector.set_functions(vec!["read_cmd".to_string(), "write_cmd".to_string()]);
         let constraints = collector.collect(source);
 
         let mut solver = AndersenSolver::new();

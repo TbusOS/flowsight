@@ -3,11 +3,11 @@
 //! Contains framework patterns, API information, and **complete kernel call chains**.
 //!
 //! ## 核心理念
-//! 
+//!
 //! **执行流 = 代码真正怎么运行的完整调用链**
-//! 
+//!
 //! 不是简单的"触发描述"，而是完整的内核函数调用路径！
-//! 
+//!
 //! 例如 USB probe 的调用链：
 //! ```text
 //! [USB 设备插入]
@@ -109,7 +109,7 @@ impl ExecutionContext {
     pub fn can_sleep(&self) -> bool {
         matches!(self, ExecutionContext::Process | ExecutionContext::User)
     }
-    
+
     pub fn description(&self) -> &'static str {
         match self {
             ExecutionContext::Process => "进程上下文 (可睡眠)",
@@ -265,7 +265,8 @@ impl KnowledgeBase {
             std::path::PathBuf::from("knowledge/platforms/linux-kernel"),
             std::path::PathBuf::from("../knowledge/platforms/linux-kernel"),
             std::path::PathBuf::from("../../knowledge/platforms/linux-kernel"),
-            std::path::PathBuf::from(CARGO_MANIFEST_DIR).join("../../knowledge/platforms/linux-kernel"),
+            std::path::PathBuf::from(CARGO_MANIFEST_DIR)
+                .join("../../knowledge/platforms/linux-kernel"),
         ];
 
         for base_path in knowledge_paths {
@@ -283,7 +284,7 @@ impl KnowledgeBase {
                 let path = entry.path();
                 if path.is_dir() {
                     self.load_yaml_directory(&path);
-                } else if path.extension().map_or(false, |e| e == "yaml" || e == "yml") {
+                } else if path.extension().is_some_and(|e| e == "yaml" || e == "yml") {
                     self.load_yaml_knowledge_file(&path);
                 }
             }
@@ -302,8 +303,11 @@ impl KnowledgeBase {
 
     /// Extract patterns from parsed YAML
     fn extract_patterns_from_yaml(&mut self, yaml: &serde_yaml::Value, path: &Path) {
-        let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
-        
+        let file_name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+
         if let serde_yaml::Value::Mapping(map) = yaml {
             for (key, value) in map {
                 if let serde_yaml::Value::String(key_str) = key {
@@ -314,7 +318,8 @@ impl KnowledgeBase {
                         let mut header = None;
 
                         // Get description
-                        if let Some(serde_yaml::Value::String(desc)) = subsystem.get("description") {
+                        if let Some(serde_yaml::Value::String(desc)) = subsystem.get("description")
+                        {
                             description = desc.clone();
                         }
 
@@ -326,7 +331,11 @@ impl KnowledgeBase {
                         // Extract callbacks
                         if let Some(serde_yaml::Value::Mapping(cbs)) = subsystem.get("callbacks") {
                             for (cb_name, cb_value) in cbs {
-                                if let (serde_yaml::Value::String(name), serde_yaml::Value::Mapping(cb_map)) = (cb_name, cb_value) {
+                                if let (
+                                    serde_yaml::Value::String(name),
+                                    serde_yaml::Value::Mapping(cb_map),
+                                ) = (cb_name, cb_value)
+                                {
                                     let mut trigger = String::new();
                                     let mut context = ExecutionContext::Unknown;
                                     let mut sig = None;
@@ -334,42 +343,59 @@ impl KnowledgeBase {
                                     let mut pattern = None;
                                     let mut can_sleep = None;
 
-                                    if let Some(serde_yaml::Value::String(t)) = cb_map.get("trigger") {
+                                    if let Some(serde_yaml::Value::String(t)) =
+                                        cb_map.get("trigger")
+                                    {
                                         trigger = t.clone();
                                     }
-                                    if let Some(serde_yaml::Value::String(d)) = cb_map.get("description") {
+                                    if let Some(serde_yaml::Value::String(d)) =
+                                        cb_map.get("description")
+                                    {
                                         cb_desc = d.clone();
                                     }
-                                    if let Some(serde_yaml::Value::String(s)) = cb_map.get("signature") {
+                                    if let Some(serde_yaml::Value::String(s)) =
+                                        cb_map.get("signature")
+                                    {
                                         sig = Some(s.clone());
                                     }
                                     // ⭐ Extract pattern field
-                                    if let Some(serde_yaml::Value::String(p)) = cb_map.get("pattern") {
+                                    if let Some(serde_yaml::Value::String(p)) =
+                                        cb_map.get("pattern")
+                                    {
                                         pattern = Some(p.clone());
                                     }
                                     // ⭐ Extract can_sleep field
-                                    if let Some(serde_yaml::Value::Bool(cs)) = cb_map.get("can_sleep") {
+                                    if let Some(serde_yaml::Value::Bool(cs)) =
+                                        cb_map.get("can_sleep")
+                                    {
                                         can_sleep = Some(*cs);
                                     }
-                                    if let Some(serde_yaml::Value::String(ctx)) = cb_map.get("context") {
+                                    if let Some(serde_yaml::Value::String(ctx)) =
+                                        cb_map.get("context")
+                                    {
                                         context = match ctx.as_str() {
                                             "process" => ExecutionContext::Process,
                                             "softirq" | "soft_irq" => ExecutionContext::SoftIrq,
-                                            "hardirq" | "hard_irq" | "interrupt" => ExecutionContext::HardIrq,
+                                            "hardirq" | "hard_irq" | "interrupt" => {
+                                                ExecutionContext::HardIrq
+                                            }
                                             "user" => ExecutionContext::User,
                                             _ => ExecutionContext::Unknown,
                                         };
                                     }
 
-                                    callbacks.insert(name.clone(), FrameworkCallback {
-                                        description: cb_desc,
-                                        trigger,
-                                        context,
-                                        signature: sig,
-                                        call_chain: None, // TODO: extract call_chain from YAML
-                                        pattern,
-                                        can_sleep,
-                                    });
+                                    callbacks.insert(
+                                        name.clone(),
+                                        FrameworkCallback {
+                                            description: cb_desc,
+                                            trigger,
+                                            context,
+                                            signature: sig,
+                                            call_chain: None, // TODO: extract call_chain from YAML
+                                            pattern,
+                                            can_sleep,
+                                        },
+                                    );
                                 }
                             }
                         }
@@ -392,7 +418,7 @@ impl KnowledgeBase {
     fn load_builtin_frameworks(&mut self) {
         // USB driver framework - 带完整调用链
         let mut usb_callbacks = HashMap::new();
-        
+
         // USB probe 完整调用链
         let usb_probe_chain = CallChain {
             name: "USB probe 调用链".into(),
@@ -463,7 +489,7 @@ impl KnowledgeBase {
                 },
             ],
         };
-        
+
         usb_callbacks.insert(
             "probe".into(),
             FrameworkCallback {
@@ -478,7 +504,7 @@ impl KnowledgeBase {
                 can_sleep: Some(true),
             },
         );
-        
+
         // USB disconnect 调用链
         let usb_disconnect_chain = CallChain {
             name: "USB disconnect 调用链".into(),
@@ -528,7 +554,7 @@ impl KnowledgeBase {
                 },
             ],
         };
-        
+
         usb_callbacks.insert(
             "disconnect".into(),
             FrameworkCallback {
@@ -553,7 +579,7 @@ impl KnowledgeBase {
 
         // file_operations - 带调用链
         let mut fops_callbacks = HashMap::new();
-        
+
         let fops_open_chain = CallChain {
             name: "file open 调用链".into(),
             trigger_source: "用户空间 open() 系统调用".into(),
@@ -602,7 +628,7 @@ impl KnowledgeBase {
                 },
             ],
         };
-        
+
         fops_callbacks.insert(
             "open".into(),
             FrameworkCallback {
@@ -652,11 +678,11 @@ impl KnowledgeBase {
                 callbacks: fops_callbacks,
             },
         );
-        
+
         // ⭐ 添加 WorkQueue 异步调用链
         self.load_builtin_async_patterns();
     }
-    
+
     /// 加载内置的异步模式调用链
     fn load_builtin_async_patterns(&mut self) {
         // WorkQueue 调用链
@@ -701,7 +727,7 @@ impl KnowledgeBase {
                 },
             ],
         };
-        
+
         // WorkQueue 时间线
         let workqueue_timeline = AsyncTimeline {
             name: "中断 + WorkQueue 异步时间线".into(),
@@ -743,7 +769,7 @@ impl KnowledgeBase {
                 call_chain: workqueue_handler_chain.clone(),
             },
         };
-        
+
         self.async_patterns.insert(
             "work_struct".into(),
             AsyncPattern {
@@ -763,7 +789,7 @@ impl KnowledgeBase {
                 handler_call_chain: Some(workqueue_handler_chain),
             },
         );
-        
+
         // Timer 调用链
         let timer_handler_chain = CallChain {
             name: "Timer handler 调用链".into(),
@@ -806,7 +832,7 @@ impl KnowledgeBase {
                 },
             ],
         };
-        
+
         self.async_patterns.insert(
             "timer_list".into(),
             AsyncPattern {
@@ -816,10 +842,7 @@ impl KnowledgeBase {
                     r"timer_setup\s*\(\s*&?\s*(\w+(?:->\w+)*)\s*,\s*(\w+)\s*,".into(),
                     r"setup_timer\s*\(\s*&?\s*(\w+(?:->\w+)*)\s*,\s*(\w+)\s*,".into(),
                 ],
-                trigger_patterns: vec![
-                    r"mod_timer\s*\(".into(),
-                    r"add_timer\s*\(".into(),
-                ],
+                trigger_patterns: vec![r"mod_timer\s*\(".into(), r"add_timer\s*\(".into()],
                 handler_signature: Some("void (*)(struct timer_list *)".into()),
                 timeline: None,
                 handler_call_chain: Some(timer_handler_chain),
@@ -893,42 +916,76 @@ impl KnowledgeBase {
     pub fn get_api(&self, name: &str) -> Option<&KernelApi> {
         self.kernel_apis.get(name)
     }
-    
+
     /// ⭐ 获取框架回调的完整内核调用链
     pub fn get_callback_call_chain(&self, framework: &str, callback: &str) -> Option<&CallChain> {
         self.get_callback(framework, callback)?.call_chain.as_ref()
     }
-    
+
     /// ⭐ 获取异步模式的 handler 调用链
     pub fn get_async_handler_chain(&self, pattern_name: &str) -> Option<&CallChain> {
-        self.async_patterns.get(pattern_name)?.handler_call_chain.as_ref()
+        self.async_patterns
+            .get(pattern_name)?
+            .handler_call_chain
+            .as_ref()
     }
-    
+
     /// ⭐ 获取异步模式的时间线关系
     pub fn get_async_timeline(&self, pattern_name: &str) -> Option<&AsyncTimeline> {
         self.async_patterns.get(pattern_name)?.timeline.as_ref()
     }
-    
+
     /// ⭐ 根据函数名查找其所属的框架和回调类型
     /// 例如：my_probe 函数可能被识别为 usb_driver 的 probe 回调
-    pub fn identify_callback(&self, function_name: &str, code_context: &str) -> Option<(&str, &str, &FrameworkCallback)> {
-        // 检查代码上下文中是否有框架注册
+    pub fn identify_callback(
+        &self,
+        function_name: &str,
+        code_context: &str,
+    ) -> Option<(&str, &str, &FrameworkCallback)> {
+        // 第一优先级：检查代码上下文中是否有明确的框架结构体声明
+        // 例如：struct usb_driver my_driver = { .probe = my_probe }
+        for (fw_name, framework) in &self.frameworks {
+            // 检查代码中是否声明了此框架的结构体
+            let struct_pattern = format!(r"struct\s+{}\s+\w+\s*=", fw_name);
+            if let Ok(re) = regex::Regex::new(&struct_pattern) {
+                if re.is_match(code_context) {
+                    // 找到框架声明，检查回调赋值
+                    for (cb_name, callback) in &framework.callbacks {
+                        let pattern = format!(r"\.{}\s*=\s*{}", cb_name, function_name);
+                        if let Ok(re) = regex::Regex::new(&pattern) {
+                            if re.is_match(code_context) {
+                                return Some((fw_name, cb_name, callback));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 第二优先级：检查任意 ops 表赋值（无明确框架结构体声明）
         for (fw_name, framework) in &self.frameworks {
             for (cb_name, callback) in &framework.callbacks {
-                // 简单匹配：函数名包含回调名，或代码中有赋值
-                if function_name.contains(cb_name) {
-                    return Some((fw_name, cb_name, callback));
-                }
-                // 检查是否是 ops 表赋值
                 let pattern = format!(r"\.{}\s*=\s*{}", cb_name, function_name);
-                if regex::Regex::new(&pattern).ok()?.is_match(code_context) {
+                if let Ok(re) = regex::Regex::new(&pattern) {
+                    if re.is_match(code_context) {
+                        return Some((fw_name, cb_name, callback));
+                    }
+                }
+            }
+        }
+
+        // 第三优先级：函数名包含回调名（最不精确）
+        for (fw_name, framework) in &self.frameworks {
+            for (cb_name, callback) in &framework.callbacks {
+                if function_name.contains(cb_name) {
                     return Some((fw_name, cb_name, callback));
                 }
             }
         }
+
         None
     }
-    
+
     /// ⭐ 获取异步模式信息
     pub fn get_async_pattern(&self, name: &str) -> Option<&AsyncPattern> {
         self.async_patterns.get(name)

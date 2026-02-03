@@ -120,24 +120,24 @@ impl Evaluator {
         }
 
         // Try logical OR (lowest precedence)
-        if let Some(result) = self.try_binary_op(expr, "||", |a, b| {
-            match (a.is_truthy(), b.is_truthy()) {
+        if let Some(result) =
+            self.try_binary_op(expr, "||", |a, b| match (a.is_truthy(), b.is_truthy()) {
                 (Some(true), _) | (_, Some(true)) => EvalResult::Bool(true),
                 (Some(false), Some(false)) => EvalResult::Bool(false),
                 _ => EvalResult::Unknown,
-            }
-        }) {
+            })
+        {
             return result;
         }
 
         // Try logical AND
-        if let Some(result) = self.try_binary_op(expr, "&&", |a, b| {
-            match (a.is_truthy(), b.is_truthy()) {
+        if let Some(result) =
+            self.try_binary_op(expr, "&&", |a, b| match (a.is_truthy(), b.is_truthy()) {
                 (Some(false), _) | (_, Some(false)) => EvalResult::Bool(false),
                 (Some(true), Some(true)) => EvalResult::Bool(true),
                 _ => EvalResult::Unknown,
-            }
-        }) {
+            })
+        {
             return result;
         }
 
@@ -190,14 +190,14 @@ impl Evaluator {
         if let Some(result) = self.try_binary_int_op(expr, "*", |a, b| a * b) {
             return result;
         }
-        if let Some(result) = self.try_binary_int_op(expr, "/", |a, b| {
-            if b != 0 { a / b } else { 0 }
-        }) {
+        if let Some(result) =
+            self.try_binary_int_op(expr, "/", |a, b| if b != 0 { a / b } else { 0 })
+        {
             return result;
         }
-        if let Some(result) = self.try_binary_int_op(expr, "%", |a, b| {
-            if b != 0 { a % b } else { 0 }
-        }) {
+        if let Some(result) =
+            self.try_binary_int_op(expr, "%", |a, b| if b != 0 { a % b } else { 0 })
+        {
             return result;
         }
 
@@ -274,11 +274,9 @@ impl Evaluator {
     where
         F: Fn(i64, i64) -> i64,
     {
-        self.try_binary_op(expr, op, |a, b| {
-            match (a.to_i64(), b.to_i64()) {
-                (Some(a), Some(b)) => EvalResult::Integer(f(a, b)),
-                _ => EvalResult::Unknown,
-            }
+        self.try_binary_op(expr, op, |a, b| match (a.to_i64(), b.to_i64()) {
+            (Some(a), Some(b)) => EvalResult::Integer(f(a, b)),
+            _ => EvalResult::Unknown,
         })
     }
 
@@ -445,22 +443,21 @@ impl Evaluator {
             _ => {
                 // Handle pointer comparisons
                 match (&a, &b) {
-                    (EvalResult::Pointer { is_null: a_null }, EvalResult::Pointer { is_null: b_null }) => {
-                        match op {
-                            "==" => EvalResult::Bool(a_null == b_null),
-                            "!=" => EvalResult::Bool(a_null != b_null),
-                            _ => EvalResult::Unknown,
-                        }
-                    }
+                    (
+                        EvalResult::Pointer { is_null: a_null },
+                        EvalResult::Pointer { is_null: b_null },
+                    ) => match op {
+                        "==" => EvalResult::Bool(a_null == b_null),
+                        "!=" => EvalResult::Bool(a_null != b_null),
+                        _ => EvalResult::Unknown,
+                    },
                     // NULL pointer comparison with 0
                     (EvalResult::Pointer { is_null }, EvalResult::Integer(0))
-                    | (EvalResult::Integer(0), EvalResult::Pointer { is_null }) => {
-                        match op {
-                            "==" => EvalResult::Bool(*is_null),
-                            "!=" => EvalResult::Bool(!is_null),
-                            _ => EvalResult::Unknown,
-                        }
-                    }
+                    | (EvalResult::Integer(0), EvalResult::Pointer { is_null }) => match op {
+                        "==" => EvalResult::Bool(*is_null),
+                        "!=" => EvalResult::Bool(!is_null),
+                        _ => EvalResult::Unknown,
+                    },
                     _ => EvalResult::Unknown,
                 }
             }
@@ -676,8 +673,20 @@ mod tests {
     #[test]
     fn test_pointer() {
         let mut eval = Evaluator::new();
-        eval.set("ptr", SymbolicValue::Pointer { is_null: true, size: None });
-        eval.set("valid_ptr", SymbolicValue::Pointer { is_null: false, size: None });
+        eval.set(
+            "ptr",
+            SymbolicValue::Pointer {
+                is_null: true,
+                size: None,
+            },
+        );
+        eval.set(
+            "valid_ptr",
+            SymbolicValue::Pointer {
+                is_null: false,
+                size: None,
+            },
+        );
 
         assert_eq!(eval.eval("ptr == NULL").is_truthy(), Some(true));
         assert_eq!(eval.eval("valid_ptr != NULL").is_truthy(), Some(true));

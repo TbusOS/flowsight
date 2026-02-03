@@ -132,11 +132,7 @@ impl AnalysisCache {
     }
 
     /// 获取或计算解析结果
-    pub fn get_or_parse<F>(
-        &self,
-        content: &str,
-        parse_fn: F,
-    ) -> Result<Arc<ParseResult>>
+    pub fn get_or_parse<F>(&self, content: &str, parse_fn: F) -> Result<Arc<ParseResult>>
     where
         F: FnOnce(&str) -> Result<ParseResult>,
     {
@@ -166,12 +162,12 @@ impl AnalysisCache {
         // 存入缓存
         {
             let mut cache = self.parse_cache.write().unwrap();
-            
+
             // 检查是否需要清理
             if cache.len() >= self.config.max_parse_entries {
                 self.evict_oldest(&mut cache);
             }
-            
+
             cache.insert(hash, CacheEntry::new(Arc::clone(&arc_result)));
         }
 
@@ -215,12 +211,12 @@ impl AnalysisCache {
         // 存入缓存
         {
             let mut cache = self.flow_cache.write().unwrap();
-            
+
             // 检查是否需要清理
             if cache.len() >= self.config.max_flow_entries {
                 self.evict_oldest_flow(&mut cache);
             }
-            
+
             cache.insert(key, CacheEntry::new(Arc::clone(&arc_result)));
         }
 
@@ -228,11 +224,7 @@ impl AnalysisCache {
     }
 
     /// 获取或检测入口点
-    pub fn get_or_detect_entries<F>(
-        &self,
-        content: &str,
-        detect_fn: F,
-    ) -> Arc<Vec<String>>
+    pub fn get_or_detect_entries<F>(&self, content: &str, detect_fn: F) -> Arc<Vec<String>>
     where
         F: FnOnce() -> Vec<String>,
     {
@@ -278,10 +270,10 @@ impl AnalysisCache {
     /// 清除特定文件的缓存
     pub fn invalidate(&self, content: &str) {
         let hash = content_hash(content);
-        
+
         self.parse_cache.write().unwrap().remove(&hash);
         self.entry_cache.write().unwrap().remove(&hash);
-        
+
         // 清除该文件的所有执行流缓存
         let mut flow_cache = self.flow_cache.write().unwrap();
         flow_cache.retain(|(h, _), _| *h != hash);
@@ -304,17 +296,17 @@ impl AnalysisCache {
     /// 清理过期缓存
     pub fn cleanup_expired(&self) {
         let ttl = Duration::from_secs(self.config.ttl_seconds);
-        
+
         {
             let mut cache = self.parse_cache.write().unwrap();
             cache.retain(|_, entry| entry.age() < ttl);
         }
-        
+
         {
             let mut cache = self.flow_cache.write().unwrap();
             cache.retain(|_, entry| entry.age() < ttl);
         }
-        
+
         {
             let mut cache = self.entry_cache.write().unwrap();
             cache.retain(|_, entry| entry.age() < ttl);
@@ -324,10 +316,7 @@ impl AnalysisCache {
     /// 清理最旧的解析缓存条目
     fn evict_oldest<T>(&self, cache: &mut HashMap<u64, CacheEntry<T>>) {
         // 找到最旧的条目
-        if let Some((&oldest_key, _)) = cache
-            .iter()
-            .min_by_key(|(_, entry)| entry.created_at)
-        {
+        if let Some((&oldest_key, _)) = cache.iter().min_by_key(|(_, entry)| entry.created_at) {
             cache.remove(&oldest_key);
         }
     }
@@ -367,19 +356,17 @@ mod tests {
     fn test_cache_hit_miss() {
         let cache = AnalysisCache::new();
         let content = "int main() { return 0; }";
-        
+
         // 第一次应该是 miss
-        let entries1 = cache.get_or_detect_entries(content, || {
-            vec!["main".to_string()]
-        });
+        let entries1 = cache.get_or_detect_entries(content, || vec!["main".to_string()]);
         assert_eq!(*entries1, vec!["main".to_string()]);
-        
+
         // 第二次应该是 hit
         let entries2 = cache.get_or_detect_entries(content, || {
             panic!("Should not be called on cache hit");
         });
         assert_eq!(*entries2, vec!["main".to_string()]);
-        
+
         // 检查统计
         let stats = cache.stats();
         assert_eq!(stats.entry_hits, 1);
@@ -390,17 +377,17 @@ mod tests {
     fn test_cache_invalidation() {
         let cache = AnalysisCache::new();
         let content = "int foo() { return 1; }";
-        
+
         // 填充缓存
         let _ = cache.get_or_detect_entries(content, || vec!["foo".to_string()]);
-        
+
         // 确认缓存有数据
         let (_, _, entry_count) = cache.size();
         assert_eq!(entry_count, 1);
-        
+
         // 清除缓存
         cache.invalidate(content);
-        
+
         // 确认缓存为空
         let (_, _, entry_count) = cache.size();
         assert_eq!(entry_count, 0);
@@ -409,16 +396,16 @@ mod tests {
     #[test]
     fn test_different_content_different_cache() {
         let cache = AnalysisCache::new();
-        
+
         let content1 = "int foo() { return 1; }";
         let content2 = "int bar() { return 2; }";
-        
+
         let entries1 = cache.get_or_detect_entries(content1, || vec!["foo".to_string()]);
         let entries2 = cache.get_or_detect_entries(content2, || vec!["bar".to_string()]);
-        
+
         assert_eq!(*entries1, vec!["foo".to_string()]);
         assert_eq!(*entries2, vec!["bar".to_string()]);
-        
+
         // 两个不同的缓存条目
         let (_, _, entry_count) = cache.size();
         assert_eq!(entry_count, 2);
@@ -428,12 +415,12 @@ mod tests {
     fn test_hit_rate() {
         let cache = AnalysisCache::new();
         let content = "test content";
-        
+
         // 1 miss, 3 hits
         for _ in 0..4 {
             cache.get_or_detect_entries(content, || vec![]);
         }
-        
+
         let stats = cache.stats();
         assert_eq!(stats.entry_misses, 1);
         assert_eq!(stats.entry_hits, 3);

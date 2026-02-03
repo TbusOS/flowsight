@@ -188,7 +188,8 @@ impl KnowledgeDelta {
 
     /// Find matching entry
     pub fn find_matching(&self, code: &str) -> Option<&KnowledgeEntry> {
-        self.entries.values()
+        self.entries
+            .values()
             .find(|entry| code.contains(&entry.pattern))
             .map(|entry| {
                 // Increment usage count (clone for now)
@@ -212,7 +213,9 @@ impl KnowledgeDelta {
         let mut categories = HashMap::new();
         let mut total_confidence = 0.0f32;
 
-        let entries: Vec<_> = self.entries.values()
+        let entries: Vec<_> = self
+            .entries
+            .values()
             .map(|entry| {
                 // Update categories
                 *categories.entry(entry.category.clone()).or_insert(0) += 1;
@@ -272,8 +275,8 @@ impl KnowledgeDelta {
 mod tests {
     use super::*;
 
-    use tempfile::TempDir;
     use super::super::UserFeedback;
+    use tempfile::TempDir;
 
     #[test]
     fn test_knowledge_delta() {

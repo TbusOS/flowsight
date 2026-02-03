@@ -17,8 +17,8 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::propagation::{ConstantPropagator, BranchResult};
-use crate::path_tracing::{ExecutionTracer, BranchOutcome, CallCategory, PathValue, ValueType};
+use crate::path_tracing::{BranchOutcome, CallCategory, ExecutionTracer, PathValue, ValueType};
+use crate::propagation::{BranchResult, ConstantPropagator};
 
 /// User-defined scenario for analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,9 +73,18 @@ impl SymbolicValue {
         // Check for pointer types
         if type_hint == "pointer" {
             return match s.to_lowercase().as_str() {
-                "null" | "0" | "nullptr" => SymbolicValue::Pointer { is_null: true, size: None },
-                "valid" | "non-null" => SymbolicValue::Pointer { is_null: false, size: None },
-                _ => SymbolicValue::Pointer { is_null: false, size: None },
+                "null" | "0" | "nullptr" => SymbolicValue::Pointer {
+                    is_null: true,
+                    size: None,
+                },
+                "valid" | "non-null" => SymbolicValue::Pointer {
+                    is_null: false,
+                    size: None,
+                },
+                _ => SymbolicValue::Pointer {
+                    is_null: false,
+                    size: None,
+                },
             };
         }
 
@@ -153,9 +162,10 @@ impl SymbolicValue {
             SymbolicValue::Range { min, max } => format!("{}..{}", min, max),
             SymbolicValue::Bitfield { value, mask } => format!("0x{:x} & 0x{:x}", value, mask),
             SymbolicValue::Enum { value, name } => format!("{}({})", name, value),
-            SymbolicValue::Unknown { hint } => {
-                hint.as_ref().map(|h| format!("<?:{}>", h)).unwrap_or_else(|| "?".to_string())
-            }
+            SymbolicValue::Unknown { hint } => hint
+                .as_ref()
+                .map(|h| format!("<?:{}>", h))
+                .unwrap_or_else(|| "?".to_string()),
             SymbolicValue::Array { elements } => {
                 let elements_str: Vec<String> = elements.iter().map(|e| e.display()).collect();
                 format!("[{}]", elements_str.join(", "))
@@ -280,8 +290,7 @@ impl Scenario {
 
     /// Save scenario to a YAML file
     pub fn save_yaml<P: AsRef<Path>>(&self, path: P) -> Result<(), ScenarioError> {
-        let yaml = serde_yaml::to_string(self)
-            .map_err(|e| ScenarioError::Yaml(e.to_string()))?;
+        let yaml = serde_yaml::to_string(self).map_err(|e| ScenarioError::Yaml(e.to_string()))?;
         fs::write(path, yaml)?;
         Ok(())
     }
@@ -289,40 +298,38 @@ impl Scenario {
     /// Load scenario from a YAML file
     pub fn load_yaml<P: AsRef<Path>>(path: P) -> Result<Self, ScenarioError> {
         let content = fs::read_to_string(path)?;
-        let scenario = serde_yaml::from_str(&content)
-            .map_err(|e| ScenarioError::Yaml(e.to_string()))?;
+        let scenario =
+            serde_yaml::from_str(&content).map_err(|e| ScenarioError::Yaml(e.to_string()))?;
         Ok(scenario)
     }
 
     /// Load scenario from file, auto-detecting format by extension
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, ScenarioError> {
         let path = path.as_ref();
-        let ext = path.extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         match ext.to_lowercase().as_str() {
             "json" => Self::load_json(path),
             "yaml" | "yml" => Self::load_yaml(path),
-            _ => Err(ScenarioError::InvalidFormat(
-                format!("Unknown file extension: {}", ext)
-            )),
+            _ => Err(ScenarioError::InvalidFormat(format!(
+                "Unknown file extension: {}",
+                ext
+            ))),
         }
     }
 
     /// Save scenario to file, auto-detecting format by extension
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), ScenarioError> {
         let path = path.as_ref();
-        let ext = path.extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
         match ext.to_lowercase().as_str() {
             "json" => self.save_json(path),
             "yaml" | "yml" => self.save_yaml(path),
-            _ => Err(ScenarioError::InvalidFormat(
-                format!("Unknown file extension: {}", ext)
-            )),
+            _ => Err(ScenarioError::InvalidFormat(format!(
+                "Unknown file extension: {}",
+                ext
+            ))),
         }
     }
 }
@@ -570,7 +577,9 @@ impl ScenarioExecutor {
     /// Execute scenario on a flow tree
     pub fn execute(&mut self, scenario: &Scenario, flow_tree: &FlowNode) -> MultiPathResult {
         // Initialize propagator from scenario bindings
-        let bindings: Vec<_> = scenario.bindings.iter()
+        let bindings: Vec<_> = scenario
+            .bindings
+            .iter()
             .map(|b| (b.path.clone(), b.value.clone()))
             .collect();
         self.propagator.init_from_bindings(&bindings);
@@ -609,18 +618,22 @@ impl ScenarioExecutor {
         // Record entry point in tracer
         self.tracer.start_path(
             format!("path_{}", self.path_id),
-            format!("Path {}", self.path_id)
+            format!("Path {}", self.path_id),
         );
 
         // Start exploring from root
         self.explore_path(flow_tree, scenario, 0, true);
 
         // Build annotated tree with branch information
-        let annotated_tree = self.build_annotated_tree(flow_tree, scenario, 0, true, &HashSet::new());
+        let annotated_tree =
+            self.build_annotated_tree(flow_tree, scenario, 0, true, &HashSet::new());
 
         MultiPathResult {
-            primary_path: self.discovered_paths.first().cloned().unwrap_or_else(|| {
-                ExecutionPath {
+            primary_path: self
+                .discovered_paths
+                .first()
+                .cloned()
+                .unwrap_or_else(|| ExecutionPath {
                     id: "primary".to_string(),
                     name: "Primary Path".to_string(),
                     steps: Vec::new(),
@@ -630,9 +643,12 @@ impl ScenarioExecutor {
                     termination_reason: Some("No paths explored".to_string()),
                     max_depth: 0,
                     step_count: 0,
-                }
-            }),
-            alternative_paths: self.discovered_paths.get(1..).map(|s| s.to_vec()).unwrap_or_default(),
+                }),
+            alternative_paths: self
+                .discovered_paths
+                .get(1..)
+                .map(|s| s.to_vec())
+                .unwrap_or_default(),
             annotated_tree: Some(annotated_tree),
         }
     }
@@ -662,7 +678,12 @@ impl ScenarioExecutor {
 
         // Record this node in current path
         let args: Vec<PathValue> = self.extract_arguments_for_node(node, scenario);
-        self.tracer.record_call(&node.name, node.location.clone(), self.classify_call(node), &args);
+        self.tracer.record_call(
+            &node.name,
+            node.location.clone(),
+            self.classify_call(node),
+            &args,
+        );
 
         // Get current branch conditions from node
         let branch_conditions = self.extract_branch_conditions(node);
@@ -687,32 +708,51 @@ impl ScenarioExecutor {
                     BranchResult::AlwaysTrue => BranchOutcome::True,
                     BranchResult::AlwaysFalse => BranchOutcome::False,
                     BranchResult::Unknown => {
-                        if i == 0 { BranchOutcome::True } else { BranchOutcome::False }
+                        if i == 0 {
+                            BranchOutcome::True
+                        } else {
+                            BranchOutcome::False
+                        }
                     }
                 };
 
                 // Record branch decision
-                self.tracer.record_branch(node.location.clone(), condition, branch_taken);
+                self.tracer
+                    .record_branch(node.location.clone(), condition, branch_taken);
 
                 // Finalize current path and start new one for alternative
                 self.finalize_current_path(true, None);
                 self.path_id += 1;
                 self.tracer.start_path(
                     format!("path_{}", self.path_id),
-                    format!("Path {}", self.path_id)
+                    format!("Path {}", self.path_id),
                 );
                 // Re-record the call in new path
                 let args: Vec<PathValue> = self.extract_arguments_for_node(node, scenario);
-                self.tracer.record_call(&node.name, node.location.clone(), self.classify_call(node), &args);
+                self.tracer.record_call(
+                    &node.name,
+                    node.location.clone(),
+                    self.classify_call(node),
+                    &args,
+                );
 
                 // Explore this branch
-                let child_reachable = matches!(branch_taken, BranchOutcome::True | BranchOutcome::Fallthrough(_));
-                let children: Vec<_> = node.children.iter().filter(|c| {
-                    if !self.options.show_kernel_api && matches!(c.node_type, FlowNodeType::KernelApi) {
-                        return false;
-                    }
-                    true
-                }).collect();
+                let child_reachable = matches!(
+                    branch_taken,
+                    BranchOutcome::True | BranchOutcome::Fallthrough(_)
+                );
+                let children: Vec<_> = node
+                    .children
+                    .iter()
+                    .filter(|c| {
+                        if !self.options.show_kernel_api
+                            && matches!(c.node_type, FlowNodeType::KernelApi)
+                        {
+                            return false;
+                        }
+                        true
+                    })
+                    .collect();
 
                 if let Some(child) = children.get(i).or(children.first()) {
                     self.explore_path(child, scenario, depth + 1, child_reachable);
@@ -742,8 +782,10 @@ impl ScenarioExecutor {
 
     /// Convert program states to path steps
     fn convert_states_to_steps(&self) -> Vec<crate::path_tracing::PathStep> {
-        self.path.iter().enumerate().map(|(i, state)| {
-            crate::path_tracing::PathStep {
+        self.path
+            .iter()
+            .enumerate()
+            .map(|(i, state)| crate::path_tracing::PathStep {
                 step_id: i,
                 function: state.function.clone(),
                 location: Some(state.location.clone()),
@@ -752,13 +794,14 @@ impl ScenarioExecutor {
                 call_type: crate::path_tracing::CallCategory::Direct,
                 depth: state.depth,
                 sequence: i as u64,
-            }
-        }).collect()
+            })
+            .collect()
     }
 
     /// Extract branch information from visited nodes
     fn extract_branches(&self) -> Vec<crate::path_tracing::BranchInfo> {
-        self.path.iter()
+        self.path
+            .iter()
             .filter_map(|state| {
                 state.branch_condition.as_ref().map(|cond| {
                     crate::path_tracing::BranchInfo {
@@ -826,11 +869,18 @@ impl ScenarioExecutor {
     fn extract_condition_from_name(&self, name: &str) -> Option<String> {
         // Pattern: if_ptr_null -> ptr == NULL
         if name.contains("_null") {
-            let var = name.replace("if_", "").replace("_null", "").replace("_check", "");
+            let var = name
+                .replace("if_", "")
+                .replace("_null", "")
+                .replace("_check", "");
             return Some(format!("{} == NULL", var));
         }
         if name.contains("_valid") || name.contains("_not_null") {
-            let var = name.replace("if_", "").replace("_valid", "").replace("_not_null", "").replace("_check", "");
+            let var = name
+                .replace("if_", "")
+                .replace("_valid", "")
+                .replace("_not_null", "")
+                .replace("_check", "");
             return Some(format!("{} != NULL", var));
         }
         // Pattern: if_x_gt_0 -> x > 0
@@ -872,7 +922,9 @@ impl ScenarioExecutor {
 
     /// Extract arguments for a node from scenario bindings
     fn extract_arguments_for_node(&self, node: &FlowNode, scenario: &Scenario) -> Vec<PathValue> {
-        scenario.bindings.iter()
+        scenario
+            .bindings
+            .iter()
             .filter(|b| b.path.contains(&node.name) || b.path.contains("arg"))
             .map(|b| {
                 let value_type = match b.value {
@@ -890,7 +942,7 @@ impl ScenarioExecutor {
     fn build_annotated_tree(
         &mut self,
         node: &FlowNode,
-        scenario: &Scenario,
+        _scenario: &Scenario,
         depth: usize,
         reachable: bool,
         _visited: &HashSet<String>,
@@ -911,7 +963,9 @@ impl ScenarioExecutor {
 
         // Filter and process children
         let show_kernel_api = self.options.show_kernel_api;
-        let filtered_children: Vec<_> = node.children.iter()
+        let filtered_children: Vec<_> = node
+            .children
+            .iter()
             .filter(|child| {
                 if !show_kernel_api && matches!(child.node_type, FlowNodeType::KernelApi) {
                     return false;
@@ -920,9 +974,10 @@ impl ScenarioExecutor {
             })
             .collect();
 
-        let children: Vec<FlowNode> = filtered_children.into_iter()
+        let children: Vec<FlowNode> = filtered_children
+            .into_iter()
             .map(|child| {
-                self.build_annotated_tree(child, scenario, depth + 1, child_reachable, _visited)
+                self.build_annotated_tree(child, _scenario, depth + 1, child_reachable, _visited)
             })
             .collect();
 
@@ -989,20 +1044,14 @@ impl ScenarioExecutor {
 }
 
 /// Annotate a flow tree with scenario values
-pub fn annotate_flow_tree(
-    flow_tree: &FlowNode,
-    scenario: &Scenario,
-) -> FlowNode {
+pub fn annotate_flow_tree(flow_tree: &FlowNode, scenario: &Scenario) -> FlowNode {
     let mut executor = ScenarioExecutor::new(scenario.options.clone());
     let result = executor.execute(scenario, flow_tree);
     result.annotated_tree.unwrap_or_else(|| flow_tree.clone())
 }
 
 /// Execute scenario and return all paths
-pub fn execute_scenario(
-    scenario: &Scenario,
-    flow_tree: &FlowNode,
-) -> MultiPathResult {
+pub fn execute_scenario(scenario: &Scenario, flow_tree: &FlowNode) -> MultiPathResult {
     let mut executor = ScenarioExecutor::new(scenario.options.clone());
     executor.execute(scenario, flow_tree)
 }
@@ -1010,7 +1059,7 @@ pub fn execute_scenario(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flowsight_core::{FlowNodeType, ExecutionContext};
+    use flowsight_core::{ExecutionContext, FlowNodeType};
 
     #[test]
     fn test_parse_integer() {
@@ -1053,12 +1102,10 @@ mod tests {
         let scenario = Scenario {
             name: "test".to_string(),
             entry_function: "main".to_string(),
-            bindings: vec![
-                ValueBinding {
-                    path: "x".to_string(),
-                    value: SymbolicValue::Integer(42),
-                },
-            ],
+            bindings: vec![ValueBinding {
+                path: "x".to_string(),
+                value: SymbolicValue::Integer(42),
+            }],
             options: ScenarioOptions::default(),
         };
 
@@ -1152,12 +1199,13 @@ mod tests {
         let scenario = Scenario {
             name: "null_test".to_string(),
             entry_function: "check_ptr".to_string(),
-            bindings: vec![
-                ValueBinding {
-                    path: "ptr".to_string(),
-                    value: SymbolicValue::Pointer { is_null: true, size: None },
+            bindings: vec![ValueBinding {
+                path: "ptr".to_string(),
+                value: SymbolicValue::Pointer {
+                    is_null: true,
+                    size: None,
                 },
-            ],
+            }],
             options: ScenarioOptions::default(),
         };
 
@@ -1167,22 +1215,20 @@ mod tests {
             display_name: "check_ptr()".to_string(),
             location: Some(Location::new("test.c", 1, 0)),
             node_type: FlowNodeType::Function,
-            children: vec![
-                FlowNode {
-                    id: "2".to_string(),
-                    name: "if_ptr_null".to_string(),
-                    display_name: "if (ptr == NULL)".to_string(),
-                    location: Some(Location::new("test.c", 2, 0)),
-                    node_type: FlowNodeType::Function,
-                    children: vec![],
-                    description: None,
-                    confidence: None,
-                    execution_context: Some(ExecutionContext::Process),
-                    can_sleep: Some(true),
-                    source_file: None,
-                    is_kernel_internal: false,
-                },
-            ],
+            children: vec![FlowNode {
+                id: "2".to_string(),
+                name: "if_ptr_null".to_string(),
+                display_name: "if (ptr == NULL)".to_string(),
+                location: Some(Location::new("test.c", 2, 0)),
+                node_type: FlowNodeType::Function,
+                children: vec![],
+                description: None,
+                confidence: None,
+                execution_context: Some(ExecutionContext::Process),
+                can_sleep: Some(true),
+                source_file: None,
+                is_kernel_internal: false,
+            }],
             description: None,
             confidence: None,
             execution_context: Some(ExecutionContext::Process),
@@ -1206,7 +1252,13 @@ mod tests {
         scenario
             .bind("id->idVendor", SymbolicValue::Integer(0x1234))
             .bind("id->idProduct", SymbolicValue::Integer(0x5678))
-            .bind("interface", SymbolicValue::Pointer { is_null: false, size: None });
+            .bind(
+                "interface",
+                SymbolicValue::Pointer {
+                    is_null: false,
+                    size: None,
+                },
+            );
 
         assert_eq!(scenario.name, "usb_probe_test");
         assert_eq!(scenario.entry_function, "usb_probe");
@@ -1216,9 +1268,13 @@ mod tests {
     #[test]
     fn test_scenario_save_load_json() {
         let mut scenario = Scenario::new("test_scenario", "main");
-        scenario
-            .bind("x", SymbolicValue::Integer(42))
-            .bind("ptr", SymbolicValue::Pointer { is_null: false, size: None });
+        scenario.bind("x", SymbolicValue::Integer(42)).bind(
+            "ptr",
+            SymbolicValue::Pointer {
+                is_null: false,
+                size: None,
+            },
+        );
 
         // Save to a temp file
         let temp_path = std::env::temp_dir().join("test_scenario.json");
@@ -1284,7 +1340,13 @@ mod tests {
         scenario1.bind("id->idVendor", SymbolicValue::Integer(0x1234));
 
         let mut scenario2 = Scenario::new("null_interface", "usb_probe");
-        scenario2.bind("interface", SymbolicValue::Pointer { is_null: true, size: None });
+        scenario2.bind(
+            "interface",
+            SymbolicValue::Pointer {
+                is_null: true,
+                size: None,
+            },
+        );
 
         collection.add(scenario1);
         collection.add(scenario2);
@@ -1296,7 +1358,9 @@ mod tests {
 
         // Save and load collection
         let temp_path = std::env::temp_dir().join("test_collection.json");
-        collection.save(&temp_path).expect("Failed to save collection");
+        collection
+            .save(&temp_path)
+            .expect("Failed to save collection");
 
         let loaded = ScenarioCollection::load(&temp_path).expect("Failed to load collection");
         assert_eq!(loaded.name, "USB Driver Tests");
@@ -1305,4 +1369,3 @@ mod tests {
         let _ = fs::remove_file(&temp_path);
     }
 }
-

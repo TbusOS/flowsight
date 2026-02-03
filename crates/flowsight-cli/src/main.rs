@@ -43,7 +43,7 @@ enum Commands {
         #[arg(value_name = "FUNCTION")]
         function: String,
     },
-    
+
     /// Show execution flow in ftrace style
     Trace {
         /// Source file
@@ -53,12 +53,12 @@ enum Commands {
         /// Function name
         #[arg(value_name = "FUNCTION")]
         function: String,
-        
+
         /// Output format (ftrace, markdown, json)
         #[arg(short, long, default_value = "ftrace")]
         format: String,
     },
-    
+
     /// Show who calls a function
     Callers {
         /// Source file
@@ -69,7 +69,7 @@ enum Commands {
         #[arg(value_name = "FUNCTION")]
         function: String,
     },
-    
+
     /// Show what a function calls
     Callees {
         /// Source file
@@ -113,7 +113,11 @@ fn main() -> Result<()> {
         Commands::Flow { file, function } => {
             cmd_flow(&file, &function)?;
         }
-        Commands::Trace { file, function, format } => {
+        Commands::Trace {
+            file,
+            function,
+            format,
+        } => {
             cmd_trace(&file, &function, &format)?;
         }
         Commands::Callers { file, function } => {
@@ -301,7 +305,7 @@ fn cmd_trace(file: &PathBuf, function: &str, format: &str) -> Result<()> {
 
     // Find the flow tree for the specified function
     let tree = analysis.flow_trees.iter().find(|t| t.name == function);
-    
+
     match format {
         "ftrace" => {
             if let Some(tree) = tree {
@@ -333,10 +337,14 @@ fn cmd_trace(file: &PathBuf, function: &str, format: &str) -> Result<()> {
     Ok(())
 }
 
-fn print_ftrace_tree(node: &flowsight_core::FlowNode, depth: usize, functions: &std::collections::HashMap<String, flowsight_core::FunctionDef>) {
+fn print_ftrace_tree(
+    node: &flowsight_core::FlowNode,
+    depth: usize,
+    functions: &std::collections::HashMap<String, flowsight_core::FunctionDef>,
+) {
     let indent = "  ".repeat(depth);
     let cpu = " 0)";
-    
+
     // Get line number info
     let line_info = if let Some(loc) = &node.location {
         format!("L{:<4}", loc.line)
@@ -349,28 +357,32 @@ fn print_ftrace_tree(node: &flowsight_core::FlowNode, depth: usize, functions: &
     } else {
         "     ".to_string()
     };
-    
+
     // Get async info
     let async_tag = match &node.node_type {
-        flowsight_core::FlowNodeType::AsyncCallback { mechanism } => {
-            match mechanism {
-                flowsight_core::AsyncMechanism::WorkQueue { .. } => " [WQ]",
-                flowsight_core::AsyncMechanism::Timer { .. } => " [TM]",
-                flowsight_core::AsyncMechanism::Interrupt { .. } => " [IRQ]",
-                flowsight_core::AsyncMechanism::Tasklet => " [TL]",
-                flowsight_core::AsyncMechanism::KThread => " [KT]",
-                _ => " [A]",
-            }
-        }
+        flowsight_core::FlowNodeType::AsyncCallback { mechanism } => match mechanism {
+            flowsight_core::AsyncMechanism::WorkQueue { .. } => " [WQ]",
+            flowsight_core::AsyncMechanism::Timer { .. } => " [TM]",
+            flowsight_core::AsyncMechanism::Interrupt { .. } => " [IRQ]",
+            flowsight_core::AsyncMechanism::Tasklet => " [TL]",
+            flowsight_core::AsyncMechanism::KThread => " [KT]",
+            _ => " [A]",
+        },
         flowsight_core::FlowNodeType::KernelApi => " [K]",
         flowsight_core::FlowNodeType::External => " [E]",
         _ => "",
     };
-    
+
     if node.children.is_empty() {
-        println!("{}{} {} |{}{}();{}", cpu, line_info, indent, indent, node.name, async_tag);
+        println!(
+            "{}{} {} |{}{}();{}",
+            cpu, line_info, indent, indent, node.name, async_tag
+        );
     } else {
-        println!("{}{} {} |{}{}() {{{}", cpu, line_info, indent, indent, node.name, async_tag);
+        println!(
+            "{}{} {} |{}{}() {{{}",
+            cpu, line_info, indent, indent, node.name, async_tag
+        );
         for child in &node.children {
             print_ftrace_tree(child, depth + 1, functions);
         }
@@ -391,12 +403,14 @@ fn cmd_callers(file: &PathBuf, function: &str) -> Result<()> {
     println!();
 
     let mut found = false;
-    
+
     // Direct callers
     for (name, func) in &parse_result.functions {
         if func.calls.contains(&function.to_string()) {
             found = true;
-            let loc = func.location.as_ref()
+            let loc = func
+                .location
+                .as_ref()
                 .map(|l| format!("{}:{}", l.file.split('/').last().unwrap_or(&l.file), l.line))
                 .unwrap_or_default();
             println!("  → {}() [Direct]", name);
@@ -405,7 +419,7 @@ fn cmd_callers(file: &PathBuf, function: &str) -> Result<()> {
             }
         }
     }
-    
+
     // Async callers (via bindings)
     for binding in &analysis.async_bindings {
         if binding.handler == function {
@@ -440,14 +454,14 @@ fn cmd_callees(file: &PathBuf, function: &str) -> Result<()> {
             for (i, callee) in func.calls.iter().enumerate() {
                 let is_last = i == func.calls.len() - 1;
                 let prefix = if is_last { "└── " } else { "├── " };
-                
+
                 // Check if callee is known
                 let suffix = if parse_result.functions.contains_key(callee) {
                     ""
                 } else {
                     " [External]"
                 };
-                
+
                 println!("  {}{}(){}", prefix, callee, suffix);
             }
         }

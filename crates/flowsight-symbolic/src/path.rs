@@ -2,9 +2,9 @@
 //!
 //! Represents a single execution path discovered through symbolic execution.
 
+use flowsight_core::Location;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use flowsight_core::Location;
 
 /// Re-export SymbolicValue from constraint module
 pub use crate::constraint::SymbolicValue;

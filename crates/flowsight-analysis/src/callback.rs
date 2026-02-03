@@ -208,8 +208,15 @@ impl CallbackAnalyzer {
 
     fn is_register_function(&self, name: &str) -> bool {
         let patterns = [
-            "register", "subscribe", "connect", "bind", "attach",
-            "add_handler", "set_callback", "on_", "listen",
+            "register",
+            "subscribe",
+            "connect",
+            "bind",
+            "attach",
+            "add_handler",
+            "set_callback",
+            "on_",
+            "listen",
         ];
         let name_lower = name.to_lowercase();
         patterns.iter().any(|p| name_lower.contains(p))
@@ -455,10 +462,17 @@ impl CallbackAnalyzer {
 
     fn is_queue_function(&self, name: &str) -> bool {
         let patterns = [
-            "queue_work", "schedule_work", "schedule_delayed_work",
-            "enqueue", "push", "add_task", "submit",
-            "kthread_queue_work", "queue_delayed_work",
-            "tasklet_schedule", "tasklet_hi_schedule",
+            "queue_work",
+            "schedule_work",
+            "schedule_delayed_work",
+            "enqueue",
+            "push",
+            "add_task",
+            "submit",
+            "kthread_queue_work",
+            "queue_delayed_work",
+            "tasklet_schedule",
+            "tasklet_hi_schedule",
         ];
         let name_lower = name.to_lowercase();
         patterns.iter().any(|p| name_lower.contains(p))
@@ -528,19 +542,30 @@ impl CallbackAnalyzer {
 
     fn is_signal_connect_function(&self, name: &str) -> bool {
         let patterns = [
-            "connect", "signal_connect", "g_signal_connect",
-            "on", "bind", "subscribe", "attach_handler",
-            "add_signal_handler", "notify_register",
+            "connect",
+            "signal_connect",
+            "g_signal_connect",
+            "on",
+            "bind",
+            "subscribe",
+            "attach_handler",
+            "add_signal_handler",
+            "notify_register",
         ];
         let name_lower = name.to_lowercase();
         patterns.iter().any(|p| name_lower.contains(p))
     }
 
-    fn extract_signal_handler_args(&self, children: &[Node], source: &str) -> Option<(String, String)> {
+    fn extract_signal_handler_args(
+        &self,
+        children: &[Node],
+        source: &str,
+    ) -> Option<(String, String)> {
         for child in children {
             if child.kind() == "argument_list" {
                 let mut cursor = child.walk();
-                let args: Vec<Node> = child.children(&mut cursor)
+                let args: Vec<Node> = child
+                    .children(&mut cursor)
                     .filter(|n| n.kind() != "," && n.kind() != "(" && n.kind() != ")")
                     .collect();
 
@@ -650,7 +675,10 @@ void setup(void) {
         let result = analyzer.analyze(source);
 
         assert_eq!(result.registrations.len(), 1);
-        assert_eq!(result.registrations[0].register_func, "register_event_handler");
+        assert_eq!(
+            result.registrations[0].register_func,
+            "register_event_handler"
+        );
         assert_eq!(result.registrations[0].handler, "my_callback");
     }
 

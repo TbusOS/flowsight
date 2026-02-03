@@ -164,14 +164,20 @@ impl KernelStubManager {
             MemoryStub {
                 name: "kzalloc".to_string(),
                 return_type: "void*".to_string(),
-                params: vec![("size".to_string(), "size_t".to_string()), ("flags".to_string(), "gfp_t".to_string())],
+                params: vec![
+                    ("size".to_string(), "size_t".to_string()),
+                    ("flags".to_string(), "gfp_t".to_string()),
+                ],
                 can_fail: true,
                 can_sleep: true,
             },
             MemoryStub {
                 name: "kmalloc".to_string(),
                 return_type: "void*".to_string(),
-                params: vec![("size".to_string(), "size_t".to_string()), ("flags".to_string(), "gfp_t".to_string())],
+                params: vec![
+                    ("size".to_string(), "size_t".to_string()),
+                    ("flags".to_string(), "gfp_t".to_string()),
+                ],
                 can_fail: true,
                 can_sleep: true,
             },
@@ -199,14 +205,21 @@ impl KernelStubManager {
             MemoryStub {
                 name: "alloc_ordered_workqueue".to_string(),
                 return_type: "struct workqueue_struct*".to_string(),
-                params: vec![("name".to_string(), "const char*".to_string()), ("flags".to_string(), "unsigned int".to_string())],
+                params: vec![
+                    ("name".to_string(), "const char*".to_string()),
+                    ("flags".to_string(), "unsigned int".to_string()),
+                ],
                 can_fail: true,
                 can_sleep: true,
             },
             MemoryStub {
                 name: "devm_kzalloc".to_string(),
                 return_type: "void*".to_string(),
-                params: vec![("dev".to_string(), "struct device*".to_string()), ("size".to_string(), "size_t".to_string()), ("flags".to_string(), "gfp_t".to_string())],
+                params: vec![
+                    ("dev".to_string(), "struct device*".to_string()),
+                    ("size".to_string(), "size_t".to_string()),
+                    ("flags".to_string(), "gfp_t".to_string()),
+                ],
                 can_fail: false,
                 can_sleep: true,
             },
@@ -334,7 +347,12 @@ impl KernelStubManager {
         self.stubs_by_category
             .entry(ApiCategory::Print)
             .or_default()
-            .extend(vec!["printk".to_string(), "pr_debug".to_string(), "pr_info".to_string(), "pr_err".to_string()]);
+            .extend(vec![
+                "printk".to_string(),
+                "pr_debug".to_string(),
+                "pr_info".to_string(),
+                "pr_err".to_string(),
+            ]);
     }
 
     /// Register string operation stubs
@@ -342,7 +360,20 @@ impl KernelStubManager {
         self.stubs_by_category
             .entry(ApiCategory::String)
             .or_default()
-            .extend(vec!["strcpy".to_string(), "strncpy".to_string(), "strcat".to_string(), "strlen".to_string(), "strcmp".to_string(), "strncmp".to_string(), "strstr".to_string(), "strchr".to_string(), "strrchr".to_string(), "strdup".to_string(), "kstrdup".to_string(), "kasprintf".to_string()]);
+            .extend(vec![
+                "strcpy".to_string(),
+                "strncpy".to_string(),
+                "strcat".to_string(),
+                "strlen".to_string(),
+                "strcmp".to_string(),
+                "strncmp".to_string(),
+                "strstr".to_string(),
+                "strchr".to_string(),
+                "strrchr".to_string(),
+                "strdup".to_string(),
+                "kstrdup".to_string(),
+                "kasprintf".to_string(),
+            ]);
     }
 
     /// Register error handling stubs
@@ -350,7 +381,12 @@ impl KernelStubManager {
         self.stubs_by_category
             .entry(ApiCategory::Error)
             .or_default()
-            .extend(vec!["IS_ERR".to_string(), "PTR_ERR".to_string(), "ERR_PTR".to_string(), "IS_ERR_OR_NULL".to_string()]);
+            .extend(vec![
+                "IS_ERR".to_string(),
+                "PTR_ERR".to_string(),
+                "ERR_PTR".to_string(),
+                "IS_ERR_OR_NULL".to_string(),
+            ]);
     }
 
     /// Register network device stubs
@@ -360,7 +396,10 @@ impl KernelStubManager {
                 name: "netdev_alloc_skb".to_string(),
                 op_type: NetdevOpType::Alloc,
                 return_type: "struct sk_buff*".to_string(),
-                params: vec![("dev".to_string(), "struct net_device*".to_string()), ("size".to_string(), "unsigned int".to_string())],
+                params: vec![
+                    ("dev".to_string(), "struct net_device*".to_string()),
+                    ("size".to_string(), "unsigned int".to_string()),
+                ],
                 can_fail: true,
             },
             NetdevStub {
@@ -405,7 +444,10 @@ impl KernelStubManager {
                 params: vec![
                     ("dev".to_string(), "struct net_device*".to_string()),
                     ("napi".to_string(), "struct napi_struct*".to_string()),
-                    ("poll".to_string(), "int (*)(struct napi_struct*, int)".to_string()),
+                    (
+                        "poll".to_string(),
+                        "int (*)(struct napi_struct*, int)".to_string(),
+                    ),
                     ("weight".to_string(), "int".to_string()),
                 ],
                 can_fail: false,
@@ -459,28 +501,40 @@ impl KernelStubManager {
             MemoryStub {
                 name: "__get_free_pages".to_string(),
                 return_type: "unsigned long".to_string(),
-                params: vec![("gfp_mask".to_string(), "gfp_t".to_string()), ("order".to_string(), "unsigned int".to_string())],
+                params: vec![
+                    ("gfp_mask".to_string(), "gfp_t".to_string()),
+                    ("order".to_string(), "unsigned int".to_string()),
+                ],
                 can_fail: true,
                 can_sleep: true,
             },
             MemoryStub {
                 name: "free_pages".to_string(),
                 return_type: "void".to_string(),
-                params: vec![("addr".to_string(), "unsigned long".to_string()), ("order".to_string(), "unsigned int".to_string())],
+                params: vec![
+                    ("addr".to_string(), "unsigned long".to_string()),
+                    ("order".to_string(), "unsigned int".to_string()),
+                ],
                 can_fail: false,
                 can_sleep: true,
             },
             MemoryStub {
                 name: "kmem_cache_alloc".to_string(),
                 return_type: "void*".to_string(),
-                params: vec![("cachep".to_string(), "struct kmem_cache*".to_string()), ("flags".to_string(), "gfp_t".to_string())],
+                params: vec![
+                    ("cachep".to_string(), "struct kmem_cache*".to_string()),
+                    ("flags".to_string(), "gfp_t".to_string()),
+                ],
                 can_fail: true,
                 can_sleep: true,
             },
             MemoryStub {
                 name: "kmem_cache_free".to_string(),
                 return_type: "void".to_string(),
-                params: vec![("cachep".to_string(), "struct kmem_cache*".to_string()), ("objp".to_string(), "void*".to_string())],
+                params: vec![
+                    ("cachep".to_string(), "struct kmem_cache*".to_string()),
+                    ("objp".to_string(), "void*".to_string()),
+                ],
                 can_fail: false,
                 can_sleep: true,
             },
@@ -495,7 +549,8 @@ impl KernelStubManager {
     pub fn generate_header(&self) -> String {
         let mut code = String::new();
 
-        code.push_str(r#"// Kernel API Stubs for KLEE
+        code.push_str(
+            r#"// Kernel API Stubs for KLEE
 // Auto-generated stub implementations for symbolic execution
 
 #ifndef KLEE_KERNEL_STUBS_H
@@ -506,10 +561,13 @@ impl KernelStubManager {
 #include <stdint.h>
 
 // Memory allocation stubs
-"#);
+"#,
+        );
 
         for (name, stub) in &self.memory_stubs {
-            let params: Vec<String> = stub.params.iter()
+            let params: Vec<String> = stub
+                .params
+                .iter()
                 .map(|(n, t)| format!("{} {}", t, n))
                 .collect();
             let params_str = params.join(", ");
@@ -534,7 +592,9 @@ impl KernelStubManager {
         // Additional memory management stubs
         code.push_str("\n// Memory management stubs\n");
         for (name, stub) in &self.mm_stubs {
-            let params: Vec<String> = stub.params.iter()
+            let params: Vec<String> = stub
+                .params
+                .iter()
                 .map(|(n, t)| format!("{} {}", t, n))
                 .collect();
             let params_str = params.join(", ");
@@ -560,7 +620,9 @@ impl KernelStubManager {
         for (name, _stub) in &self.lock_stubs {
             code.push_str("static inline void ");
             code.push_str(name);
-            code.push_str("Stub(void) {\n    // Lock operation - stubbed for symbolic execution\n}\n\n");
+            code.push_str(
+                "Stub(void) {\n    // Lock operation - stubbed for symbolic execution\n}\n\n",
+            );
         }
 
         code.push_str("\n// Copy operation stubs\n");
@@ -588,7 +650,9 @@ impl KernelStubManager {
         // Network device stubs
         code.push_str("\n// Network device stubs\n");
         for (name, stub) in &self.netdev_stubs {
-            let params: Vec<String> = stub.params.iter()
+            let params: Vec<String> = stub
+                .params
+                .iter()
                 .map(|(n, t)| format!("{} {}", t, n))
                 .collect();
             let params_str = params.join(", ");
@@ -609,7 +673,8 @@ impl KernelStubManager {
             code.push_str("    return ret;\n}\n\n");
         }
 
-        code.push_str(r#"
+        code.push_str(
+            r#"
 // Print stubs
 #define printkStub(fmt, ...) printf("[KLEE] " fmt, ##__VA_ARGS__)
 #define pr_debugStub(fmt, ...) printf("[DEBUG] " fmt, ##__VA_ARGS__)
@@ -617,7 +682,8 @@ impl KernelStubManager {
 #define pr_errStub(fmt, ...) fprintf(stderr, "[ERROR] " fmt, ##__VA_ARGS__)
 
 #endif // KLEE_KERNEL_STUBS_H
-"#);
+"#,
+        );
 
         code
     }
@@ -626,7 +692,8 @@ impl KernelStubManager {
     pub fn generate_wrappers(&self) -> String {
         let mut code = String::new();
 
-        code.push_str(r#"// Kernel API Wrapper Definitions
+        code.push_str(
+            r#"// Kernel API Wrapper Definitions
 // These wrappers redirect kernel APIs to stub implementations
 
 #define kzalloc(size, flags) kzallocStub(size, flags)
@@ -674,7 +741,8 @@ impl KernelStubManager {
 #define pr_info(...) pr_infoStub(__VA_ARGS__)
 #define pr_err(...) pr_errStub(__VA_ARGS__)
 
-"#);
+"#,
+        );
 
         code
     }
@@ -729,7 +797,8 @@ impl KernelStubManager {
         let mut code = String::new();
 
         // Generate headers
-        code.push_str(r#"// Kernel API Stubs for KLEE
+        code.push_str(
+            r#"// Kernel API Stubs for KLEE
 // Auto-generated for detected API calls
 
 #ifndef KLEE_KERNEL_STUBS_H
@@ -739,7 +808,8 @@ impl KernelStubManager {
 #include <stddef.h>
 #include <stdint.h>
 
-"#);
+"#,
+        );
 
         // Generate stubs only for called APIs
         for call in calls {
@@ -762,12 +832,20 @@ impl KernelStubManager {
 
     /// Generate code for a memory stub
     fn generate_memory_stub_code(&self, code: &mut String, stub: &MemoryStub) {
-        let params: Vec<String> = stub.params.iter()
+        let params: Vec<String> = stub
+            .params
+            .iter()
             .map(|(n, t)| format!("{} {}", t, n))
             .collect();
         let params_str = params.join(", ");
-        code.push_str(&format!("static inline {} {}Stub({}) {{\n", stub.return_type, stub.name, params_str));
-        code.push_str(&format!("    {} ret;\n    klee_make_symbolic(&ret, sizeof(ret), \"{}\");\n", stub.return_type, stub.name));
+        code.push_str(&format!(
+            "static inline {} {}Stub({}) {{\n",
+            stub.return_type, stub.name, params_str
+        ));
+        code.push_str(&format!(
+            "    {} ret;\n    klee_make_symbolic(&ret, sizeof(ret), \"{}\");\n",
+            stub.return_type, stub.name
+        ));
         if stub.can_fail {
             code.push_str("    klee_assume(ret != 0);\n");
         }
@@ -776,13 +854,21 @@ impl KernelStubManager {
 
     /// Generate code for a lock stub
     fn generate_lock_stub_code(&self, code: &mut String, stub: &LockStub) {
-        code.push_str(&format!("static inline void {}Stub(void) {{}}\n\n", stub.name));
+        code.push_str(&format!(
+            "static inline void {}Stub(void) {{}}\n\n",
+            stub.name
+        ));
     }
 
     /// Generate code for a copy stub
     fn generate_copy_stub_code(&self, code: &mut String, stub: &CopyStub) {
-        code.push_str(&format!("static inline unsigned long {}Stub(void *to, const void *from, unsigned long n) {{\n", stub.name));
-        code.push_str("    unsigned long ret;\n    klee_make_symbolic(&ret, sizeof(ret), \"copy_result\");\n");
+        code.push_str(&format!(
+            "static inline unsigned long {}Stub(void *to, const void *from, unsigned long n) {{\n",
+            stub.name
+        ));
+        code.push_str(
+            "    unsigned long ret;\n    klee_make_symbolic(&ret, sizeof(ret), \"copy_result\");\n",
+        );
         if stub.can_fail {
             code.push_str("    klee_assume(ret == 0);\n");
         }
@@ -791,12 +877,20 @@ impl KernelStubManager {
 
     /// Generate code for a netdev stub
     fn generate_netdev_stub_code(&self, code: &mut String, stub: &NetdevStub) {
-        let params: Vec<String> = stub.params.iter()
+        let params: Vec<String> = stub
+            .params
+            .iter()
             .map(|(n, t)| format!("{} {}", t, n))
             .collect();
         let params_str = params.join(", ");
-        code.push_str(&format!("static inline {} {}Stub({}) {{\n", stub.return_type, stub.name, params_str));
-        code.push_str(&format!("    {} ret;\n    klee_make_symbolic(&ret, sizeof(ret), \"{}\");\n", stub.return_type, stub.name));
+        code.push_str(&format!(
+            "static inline {} {}Stub({}) {{\n",
+            stub.return_type, stub.name, params_str
+        ));
+        code.push_str(&format!(
+            "    {} ret;\n    klee_make_symbolic(&ret, sizeof(ret), \"{}\");\n",
+            stub.return_type, stub.name
+        ));
         if stub.can_fail {
             code.push_str("    klee_assume(ret != 0);\n");
         }

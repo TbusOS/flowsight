@@ -345,8 +345,9 @@ impl ConstraintCollector {
         }
 
         // Check for dereference: p = *q
-        if rhs.kind() == "pointer_expression" ||
-           (rhs.kind() == "unary_expression" && rhs_text.starts_with('*')) {
+        if rhs.kind() == "pointer_expression"
+            || (rhs.kind() == "unary_expression" && rhs_text.starts_with('*'))
+        {
             let inner = rhs_text.trim_start_matches('*').trim();
             self.constraints.push(Constraint::Load {
                 dest: self.parse_location(lhs),
@@ -508,11 +509,10 @@ impl ConstraintCollector {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "field_designator" => {
-                    field_name = self.extract_identifier(child, source)
-                        .or_else(|| {
-                            let text = self.node_text(child, source);
-                            Some(text.trim_start_matches('.').to_string())
-                        });
+                    field_name = self.extract_identifier(child, source).or_else(|| {
+                        let text = self.node_text(child, source);
+                        Some(text.trim_start_matches('.').to_string())
+                    });
                 }
                 "identifier" => {
                     if field_name.is_some() {
@@ -660,9 +660,10 @@ void init(void) {
         collector.set_functions(vec!["handler1".to_string(), "handler2".to_string()]);
         let constraints = collector.collect(source);
 
-        let array_stores: Vec<_> = constraints.iter().filter(|c| {
-            matches!(c, Constraint::ArrayStore { array, .. } if array == "handlers")
-        }).collect();
+        let array_stores: Vec<_> = constraints
+            .iter()
+            .filter(|c| matches!(c, Constraint::ArrayStore { array, .. } if array == "handlers"))
+            .collect();
 
         assert_eq!(array_stores.len(), 2);
     }
@@ -684,9 +685,10 @@ handler_t handlers[] = {func1, func2, func3};
         ]);
         let constraints = collector.collect(source);
 
-        let array_stores: Vec<_> = constraints.iter().filter(|c| {
-            matches!(c, Constraint::ArrayStore { array, .. } if array == "handlers")
-        }).collect();
+        let array_stores: Vec<_> = constraints
+            .iter()
+            .filter(|c| matches!(c, Constraint::ArrayStore { array, .. } if array == "handlers"))
+            .collect();
 
         assert_eq!(array_stores.len(), 3);
     }
@@ -701,9 +703,10 @@ void dispatch(int cmd) {
         let mut collector = ConstraintCollector::new();
         let constraints = collector.collect(source);
 
-        let array_loads: Vec<_> = constraints.iter().filter(|c| {
-            matches!(c, Constraint::ArrayLoad { array, .. } if array == "handlers")
-        }).collect();
+        let array_loads: Vec<_> = constraints
+            .iter()
+            .filter(|c| matches!(c, Constraint::ArrayLoad { array, .. } if array == "handlers"))
+            .collect();
 
         assert_eq!(array_loads.len(), 1);
     }
@@ -732,15 +735,17 @@ void dispatch(int cmd) {
         let constraints = collector.collect(source);
 
         // Should have 2 ArrayStore for assignments
-        let array_stores: Vec<_> = constraints.iter().filter(|c| {
-            matches!(c, Constraint::ArrayStore { array, .. } if array == "ops")
-        }).collect();
+        let array_stores: Vec<_> = constraints
+            .iter()
+            .filter(|c| matches!(c, Constraint::ArrayStore { array, .. } if array == "ops"))
+            .collect();
         assert_eq!(array_stores.len(), 2);
 
         // Should have 1 ArrayLoad for call
-        let array_loads: Vec<_> = constraints.iter().filter(|c| {
-            matches!(c, Constraint::ArrayLoad { array, .. } if array == "ops")
-        }).collect();
+        let array_loads: Vec<_> = constraints
+            .iter()
+            .filter(|c| matches!(c, Constraint::ArrayLoad { array, .. } if array == "ops"))
+            .collect();
         assert_eq!(array_loads.len(), 1);
     }
 }

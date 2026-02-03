@@ -33,7 +33,7 @@ pub mod symbolic_bridge;
 pub mod types;
 
 // Re-export cache types
-pub use cache::{AnalysisCache, CacheConfig, CacheStats, global_cache};
+pub use cache::{global_cache, AnalysisCache, CacheConfig, CacheStats};
 
 use flowsight_core::{AsyncBinding, CallEdge, FlowNode, FunctionDef, Result};
 use flowsight_index::SymbolIndex;
@@ -112,10 +112,11 @@ impl Analyzer {
         source: &str,
         parse_result: &mut ParseResult,
     ) -> Result<AnalysisResult> {
-        let mut result = AnalysisResult::default();
-
-        // Track async mechanisms
-        result.async_bindings = self.async_tracker.analyze(source, &parse_result.functions);
+        let async_bindings = self.async_tracker.analyze(source, &parse_result.functions);
+        let mut result = AnalysisResult {
+            async_bindings,
+            ..Default::default()
+        };
 
         // Mark async handlers as callbacks
         for binding in &result.async_bindings {
