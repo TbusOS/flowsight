@@ -835,6 +835,184 @@ irq_chip:
 
 
 # ============================================================
+# IRQ DATA (中断数据)
+# ============================================================
+
+irq_data:
+  description: "IRQ Data - 中断描述符的硬件相关数据"
+  header: "linux/irq.h"
+  icon: "📊"
+  kernel_version: "2.6.37+"
+
+  context:
+    type: "irq_disabled"
+    can_sleep: false
+    can_schedule: false
+    preemptible: false
+
+  data_structure:
+    irq_data:
+      pattern: 'struct irq_data\s*\{'
+      description: "IRQ 硬件数据结构"
+      file: "include/linux/irq.h"
+      fields:
+        - name: "mask"
+          type: "u32"
+          description: "chip 私有标志"
+        - name: "irq"
+          type: "unsigned int"
+          description: "Linux 虚拟中断号 (virq)"
+        - name: "hwirq"
+          type: "irq_hw_number_t"
+          description: "硬件中断号"
+        - name: "common"
+          type: "struct irq_common_data *"
+          description: "共享数据指针"
+        - name: "chip"
+          type: "struct irq_chip *"
+          description: "关联的 irq_chip"
+        - name: "domain"
+          type: "struct irq_domain *"
+          description: "所属的 IRQ domain"
+        - name: "parent_data"
+          type: "struct irq_data *"
+          description: "父级 irq_data (层级中断)"
+        - name: "chip_data"
+          type: "void *"
+          description: "芯片私有数据"
+
+    irq_common_data:
+      pattern: 'struct irq_common_data\s*\{'
+      description: "IRQ 共享数据"
+      file: "include/linux/irq.h"
+      fields:
+        - name: "state_use_accessors"
+          type: "unsigned int"
+          description: "IRQ 状态标志"
+        - name: "node"
+          type: "unsigned int"
+          description: "NUMA 节点"
+        - name: "handler_data"
+          type: "void *"
+          description: "高层 handler 数据"
+        - name: "affinity"
+          type: "struct cpumask"
+          description: "CPU 亲和性掩码"
+        - name: "effective_affinity"
+          type: "struct cpumask"
+          description: "实际生效的亲和性"
+
+  helper_functions:
+    # 获取 irq_chip 数据
+    - pattern: 'irq_data_get_irq_chip_data\s*\(\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "data"
+      description: "获取芯片私有数据"
+      return: "void *"
+      context: "irq_disabled"
+
+    # 获取 irq_chip
+    - pattern: 'irq_data_get_irq_chip\s*\(\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "data"
+      description: "获取关联的 irq_chip"
+      return: "struct irq_chip *"
+
+    # 获取 irq_domain
+    - pattern: 'irq_data_get_irq_domain\s*\(\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "data"
+      description: "获取所属的 irq_domain"
+      return: "struct irq_domain *"
+
+    # 获取硬件中断号
+    - pattern: 'irqd_to_hwirq\s*\(\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "data"
+      description: "获取硬件中断号"
+      return: "irq_hw_number_t"
+
+    # 设置芯片数据
+    - pattern: 'irq_data_set_irq_chip_data\s*\(\s*(?P<data>[^,]+)\s*,\s*(?P<chip_data>[^)]+)\s*\)'
+      variable_capture: "data"
+      description: "设置芯片私有数据"
+
+    # 获取有效亲和性
+    - pattern: 'irq_data_get_effective_affinity_mask\s*\(\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "data"
+      description: "获取实际生效的 CPU 亲和性"
+      return: "struct cpumask *"
+
+    # 更新有效亲和性
+    - pattern: 'irq_data_update_effective_affinity\s*\(\s*(?P<data>[^,]+)\s*,\s*(?P<mask>[^)]+)\s*\)'
+      variable_capture: "data"
+      description: "更新实际生效的亲和性"
+
+    # 获取父级数据
+    - pattern: 'irq_data_get_irq_handler_data\s*\(\s*(?P<data>[^)]+)\s*\)'
+      variable_capture: "data"
+      description: "获取 handler 数据"
+      return: "void *"
+
+  state_flags:
+    - name: "IRQD_TRIGGER_MASK"
+      value: "0x0f"
+      description: "触发类型掩码"
+    - name: "IRQD_SETAFFINITY_PENDING"
+      value: "0x100"
+      description: "亲和性设置待定"
+    - name: "IRQD_ACTIVATED"
+      value: "0x200"
+      description: "中断已激活"
+    - name: "IRQD_NO_BALANCING"
+      value: "0x400"
+      description: "禁止负载均衡"
+    - name: "IRQD_PER_CPU"
+      value: "0x800"
+      description: "Per-CPU 中断"
+    - name: "IRQD_AFFINITY_SET"
+      value: "0x1000"
+      description: "亲和性已设置"
+    - name: "IRQD_LEVEL"
+      value: "0x2000"
+      description: "电平触发"
+    - name: "IRQD_WAKEUP_STATE"
+      value: "0x4000"
+      description: "唤醒源状态"
+    - name: "IRQD_MOVE_PCNTXT"
+      value: "0x8000"
+      description: "在进程上下文中迁移"
+    - name: "IRQD_IRQ_DISABLED"
+      value: "0x10000"
+      description: "中断已禁用"
+    - name: "IRQD_IRQ_MASKED"
+      value: "0x20000"
+      description: "中断已屏蔽"
+    - name: "IRQD_IRQ_INPROGRESS"
+      value: "0x40000"
+      description: "中断处理中"
+    - name: "IRQD_WAKEUP_ARMED"
+      value: "0x100000"
+      description: "唤醒已准备"
+
+  state_check_functions:
+    - pattern: 'irqd_is_activated\s*\(\s*(?P<data>[^)]+)\s*\)'
+      description: "检查中断是否已激活"
+    - pattern: 'irqd_is_level_type\s*\(\s*(?P<data>[^)]+)\s*\)'
+      description: "检查是否电平触发"
+    - pattern: 'irqd_is_wakeup_set\s*\(\s*(?P<data>[^)]+)\s*\)'
+      description: "检查是否设置为唤醒源"
+    - pattern: 'irqd_irq_disabled\s*\(\s*(?P<data>[^)]+)\s*\)'
+      description: "检查中断是否禁用"
+    - pattern: 'irqd_irq_masked\s*\(\s*(?P<data>[^)]+)\s*\)'
+      description: "检查中断是否屏蔽"
+    - pattern: 'irqd_irq_inprogress\s*\(\s*(?P<data>[^)]+)\s*\)'
+      description: "检查中断是否正在处理"
+
+  notes:
+    - "irq_data 是 irq_chip 回调函数的参数"
+    - "通过 irq_data 可以访问硬件中断号和芯片数据"
+    - "每个 virq 对应一个 irq_desc，内含 irq_data"
+    - "层级中断使用 parent_data 链接父级"
+
+
+# ============================================================
 # IRQ AFFINITY (中断亲和性)
 # ============================================================
 

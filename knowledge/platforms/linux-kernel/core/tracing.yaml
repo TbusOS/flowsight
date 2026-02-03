@@ -1694,6 +1694,293 @@ bpf_tracing:
       description: "BPF 迭代器"
       kernel_version: "5.8+"
 
+  # BPF 注册模式
+  bind_patterns:
+    # 加载 BPF 程序
+    - pattern: 'bpf_prog_load\s*\(\s*(?P<type>\w+)\s*,'
+      variable_capture: "type"
+      description: "加载 BPF 程序"
+      context: "process"
+
+    # 附加 BPF 程序
+    - pattern: 'bpf_prog_attach\s*\(\s*(?P<prog_fd>[^,]+)\s*,\s*(?P<target_fd>[^,]+)\s*,'
+      variable_capture: "prog_fd"
+      description: "附加 BPF 程序"
+      context: "process"
+
+    # 创建 BPF Map
+    - pattern: 'bpf_map_create\s*\(\s*(?P<type>\w+)\s*,'
+      variable_capture: "type"
+      description: "创建 BPF Map"
+      context: "process"
+
+    # libbpf 程序打开
+    - pattern: 'bpf_object__open\s*\(\s*(?P<path>[^)]+)\s*\)'
+      variable_capture: "path"
+      description: "打开 BPF 对象文件"
+      context: "process"
+
+    # libbpf 加载
+    - pattern: 'bpf_object__load\s*\(\s*(?P<obj>[^)]+)\s*\)'
+      variable_capture: "obj"
+      description: "加载 BPF 对象"
+      context: "process"
+
+    # libbpf 附加
+    - pattern: 'bpf_program__attach\s*\(\s*(?P<prog>[^)]+)\s*\)'
+      variable_capture: "prog"
+      description: "附加 BPF 程序 (libbpf)"
+      context: "process"
+
+    # kprobe 附加
+    - pattern: 'bpf_program__attach_kprobe\s*\(\s*(?P<prog>[^,]+)\s*,\s*(?P<retprobe>[^,]+)\s*,\s*"(?P<func>\w+)"'
+      variable_capture: "func"
+      description: "附加到 kprobe"
+      context: "process"
+
+    # tracepoint 附加
+    - pattern: 'bpf_program__attach_tracepoint\s*\(\s*(?P<prog>[^,]+)\s*,\s*"(?P<category>\w+)"\s*,\s*"(?P<name>\w+)"'
+      variable_capture: "name"
+      description: "附加到 tracepoint"
+      context: "process"
+
+    # fentry/fexit 附加
+    - pattern: 'bpf_program__attach_trace\s*\(\s*(?P<prog>[^)]+)\s*\)'
+      variable_capture: "prog"
+      description: "附加 fentry/fexit"
+      context: "process"
+
+    # perf buffer 创建
+    - pattern: 'perf_buffer__new\s*\(\s*(?P<map_fd>[^,]+)\s*,'
+      variable_capture: "map_fd"
+      description: "创建 perf buffer"
+      context: "process"
+
+    # ring buffer 创建
+    - pattern: 'ring_buffer__new\s*\(\s*(?P<map_fd>[^,]+)\s*,'
+      variable_capture: "map_fd"
+      description: "创建 ring buffer"
+      context: "process"
+
+  # BPF 数据结构
+  data_structures:
+    bpf_prog:
+      pattern: 'struct bpf_prog\s*\{'
+      description: "BPF 程序结构"
+      file: "include/linux/filter.h"
+      fields:
+        - name: "pages"
+          type: "u16"
+          description: "分配的页数"
+        - name: "jited"
+          type: "u16"
+          description: "是否 JIT 编译"
+        - name: "jit_requested"
+          type: "u16"
+          description: "是否请求 JIT"
+        - name: "gpl_compatible"
+          type: "u16"
+          description: "是否 GPL 兼容"
+        - name: "type"
+          type: "enum bpf_prog_type"
+          description: "程序类型"
+        - name: "expected_attach_type"
+          type: "enum bpf_attach_type"
+          description: "期望的附加类型"
+        - name: "len"
+          type: "u32"
+          description: "指令数"
+        - name: "jited_len"
+          type: "u32"
+          description: "JIT 代码长度"
+        - name: "bpf_func"
+          type: "bpf_func_t"
+          description: "执行函数指针"
+        - name: "aux"
+          type: "struct bpf_prog_aux *"
+          description: "辅助数据"
+        - name: "insns"
+          type: "struct bpf_insn[]"
+          description: "BPF 指令数组"
+
+    bpf_map:
+      pattern: 'struct bpf_map\s*\{'
+      description: "BPF Map 结构"
+      file: "include/linux/bpf.h"
+      fields:
+        - name: "ops"
+          type: "const struct bpf_map_ops *"
+          description: "Map 操作"
+        - name: "inner_map_meta"
+          type: "struct bpf_map *"
+          description: "内部 map 元数据"
+        - name: "btf"
+          type: "struct btf *"
+          description: "BTF 信息"
+        - name: "map_type"
+          type: "enum bpf_map_type"
+          description: "Map 类型"
+        - name: "key_size"
+          type: "u32"
+          description: "键大小"
+        - name: "value_size"
+          type: "u32"
+          description: "值大小"
+        - name: "max_entries"
+          type: "u32"
+          description: "最大条目数"
+        - name: "map_flags"
+          type: "u32"
+          description: "Map 标志"
+        - name: "name"
+          type: "char[]"
+          description: "Map 名称"
+
+    bpf_link:
+      pattern: 'struct bpf_link\s*\{'
+      description: "BPF 链接结构"
+      file: "include/linux/bpf.h"
+      fields:
+        - name: "ops"
+          type: "const struct bpf_link_ops *"
+          description: "链接操作"
+        - name: "id"
+          type: "u32"
+          description: "链接 ID"
+        - name: "type"
+          type: "enum bpf_link_type"
+          description: "链接类型"
+        - name: "prog"
+          type: "struct bpf_prog *"
+          description: "关联的程序"
+
+    bpf_tramp_progs:
+      pattern: 'struct bpf_tramp_progs\s*\{'
+      description: "BPF Trampoline 程序"
+      file: "include/linux/bpf.h"
+      fields:
+        - name: "progs"
+          type: "struct bpf_prog *[]"
+          description: "程序数组"
+        - name: "nr_progs"
+          type: "int"
+          description: "程序数量"
+
+    bpf_raw_tracepoint_args:
+      pattern: 'struct bpf_raw_tracepoint_args\s*\{'
+      description: "Raw tracepoint 参数"
+      file: "include/linux/bpf.h"
+      fields:
+        - name: "args"
+          type: "__u64[]"
+          description: "参数数组"
+
+  # BPF 调用链
+  call_chains:
+    bpf_prog_load:
+      description: "BPF 程序加载路径"
+      trigger: "用户空间调用 bpf(BPF_PROG_LOAD)"
+      chain:
+        - function: "__sys_bpf"
+          file: "kernel/bpf/syscall.c"
+          description: "系统调用入口"
+          context: "process"
+        - function: "bpf_prog_load"
+          file: "kernel/bpf/syscall.c"
+          description: "加载程序"
+        - function: "bpf_prog_alloc"
+          file: "kernel/bpf/core.c"
+          description: "分配程序"
+        - function: "bpf_check"
+          file: "kernel/bpf/verifier.c"
+          description: "验证器检查"
+        - function: "bpf_prog_select_runtime"
+          file: "kernel/bpf/core.c"
+          description: "选择运行时 (JIT 或解释器)"
+        - function: "bpf_int_jit_compile"
+          file: "arch/x86/net/bpf_jit_comp.c"
+          description: "JIT 编译 (x86)"
+
+    bpf_prog_attach_kprobe:
+      description: "BPF 附加到 kprobe"
+      trigger: "附加到内核函数"
+      chain:
+        - function: "bpf_program__attach_kprobe"
+          file: "tools/lib/bpf/libbpf.c"
+          description: "libbpf 附加入口"
+        - function: "perf_event_open_probe"
+          file: "tools/lib/bpf/libbpf.c"
+          description: "打开 perf 事件"
+        - function: "syscall(SYS_perf_event_open)"
+          description: "系统调用"
+        - function: "perf_event_open"
+          file: "kernel/events/core.c"
+          description: "内核 perf 事件打开"
+        - function: "create_local_trace_kprobe"
+          file: "kernel/trace/trace_kprobe.c"
+          description: "创建 kprobe"
+        - function: "register_kprobe"
+          file: "kernel/kprobes.c"
+          description: "注册 kprobe"
+
+    bpf_prog_execution:
+      description: "BPF 程序执行路径"
+      trigger: "事件触发"
+      chain:
+        - function: "kprobe_handler"
+          file: "arch/x86/kernel/kprobes.c"
+          description: "kprobe 处理入口"
+          context: "hardirq"
+        - function: "kprobe_perf_func"
+          file: "kernel/trace/trace_kprobe.c"
+          description: "perf kprobe 函数"
+        - function: "trace_call_bpf"
+          file: "kernel/trace/bpf_trace.c"
+          description: "调用 BPF"
+        - function: "bpf_prog_run"
+          file: "include/linux/filter.h"
+          description: "运行 BPF 程序"
+        - function: "bpf_dispatcher_nop_func"
+          description: "JIT 代码入口"
+
+    bpf_perf_output:
+      description: "BPF perf 输出路径"
+      trigger: "bpf_perf_event_output 调用"
+      chain:
+        - function: "bpf_perf_event_output"
+          file: "kernel/trace/bpf_trace.c"
+          description: "输出到 perf"
+        - function: "perf_event_output"
+          file: "kernel/events/core.c"
+          description: "perf 事件输出"
+        - function: "perf_output_begin"
+          file: "kernel/events/ring_buffer.c"
+          description: "开始输出"
+        - function: "perf_output_copy"
+          file: "kernel/events/ring_buffer.c"
+          description: "复制数据"
+        - function: "perf_output_end"
+          file: "kernel/events/ring_buffer.c"
+          description: "结束输出"
+
+    bpf_ringbuf_output:
+      description: "BPF ringbuf 输出路径"
+      trigger: "bpf_ringbuf_output 调用"
+      chain:
+        - function: "bpf_ringbuf_output"
+          file: "kernel/bpf/ringbuf.c"
+          description: "输出到 ringbuf"
+        - function: "__bpf_ringbuf_reserve"
+          file: "kernel/bpf/ringbuf.c"
+          description: "预留空间"
+        - function: "memcpy"
+          description: "复制数据"
+        - function: "__bpf_ringbuf_submit"
+          file: "kernel/bpf/ringbuf.c"
+          description: "提交数据"
+        - function: "irq_work_queue"
+          description: "唤醒用户空间"
+
   helper_functions:
     tracing:
       - name: "bpf_probe_read"

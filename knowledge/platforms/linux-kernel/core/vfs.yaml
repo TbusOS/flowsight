@@ -1698,6 +1698,312 @@ block_integration:
 
 
 # ============================================================
+# FILESYSTEM FRAMEWORK (文件系统框架)
+# ============================================================
+
+filesystem_framework:
+  description: "Filesystem Framework - 文件系统类型注册与挂载框架"
+  header: "linux/fs.h"
+  icon: "🗂️"
+  kernel_version: "2.4+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  data_structure:
+    file_system_type:
+      pattern: 'struct file_system_type\s*\{'
+      description: "文件系统类型结构"
+      file: "include/linux/fs.h"
+      fields:
+        - name: "name"
+          type: "const char *"
+          description: "文件系统名称 (如 ext4, xfs)"
+        - name: "fs_flags"
+          type: "int"
+          description: "文件系统标志"
+        - name: "init_fs_context"
+          type: "int (*)(struct fs_context *)"
+          description: "初始化文件系统上下文 (5.1+)"
+        - name: "parameters"
+          type: "const struct fs_parameter_spec *"
+          description: "挂载参数描述"
+        - name: "mount"
+          type: "struct dentry *(*)(struct file_system_type *, int, const char *, void *)"
+          description: "挂载回调 (旧 API)"
+        - name: "kill_sb"
+          type: "void (*)(struct super_block *)"
+          description: "卸载时清理超级块"
+        - name: "owner"
+          type: "struct module *"
+          description: "模块所有者"
+        - name: "next"
+          type: "struct file_system_type *"
+          description: "文件系统类型链表"
+        - name: "fs_supers"
+          type: "struct hlist_head"
+          description: "该类型的所有超级块"
+
+    fs_context:
+      pattern: 'struct fs_context\s*\{'
+      description: "文件系统上下文 (新挂载 API)"
+      file: "include/linux/fs_context.h"
+      fields:
+        - name: "ops"
+          type: "const struct fs_context_operations *"
+          description: "上下文操作"
+        - name: "fs_type"
+          type: "struct file_system_type *"
+          description: "文件系统类型"
+        - name: "root"
+          type: "struct dentry *"
+          description: "根 dentry"
+        - name: "source"
+          type: "char *"
+          description: "数据源 (设备路径)"
+        - name: "fs_private"
+          type: "void *"
+          description: "私有数据"
+        - name: "sb_flags"
+          type: "unsigned int"
+          description: "超级块标志"
+
+  bind_patterns:
+    # register_filesystem - 注册文件系统
+    - pattern: 'register_filesystem\s*\(\s*(?P<fs>[^)]+)\s*\)'
+      variable_capture: "fs"
+      description: "注册文件系统类型"
+      context: "process"
+      can_sleep: true
+
+    # unregister_filesystem - 注销文件系统
+    - pattern: 'unregister_filesystem\s*\(\s*(?P<fs>[^)]+)\s*\)'
+      variable_capture: "fs"
+      description: "注销文件系统类型"
+      context: "process"
+      can_sleep: true
+
+    # get_fs_type - 获取文件系统类型
+    - pattern: 'get_fs_type\s*\(\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "name"
+      description: "通过名称获取文件系统类型"
+
+    # put_filesystem - 释放文件系统引用
+    - pattern: 'put_filesystem\s*\(\s*(?P<fs>[^)]+)\s*\)'
+      variable_capture: "fs"
+      description: "释放文件系统类型引用"
+
+  callbacks:
+    mount:
+      pattern: '\.mount\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "挂载文件系统 (旧 API)"
+      trigger: "mount 系统调用"
+      context: "process"
+      can_sleep: true
+      handler_signature: |
+        struct dentry *(*mount)(struct file_system_type *fs_type,
+                                int flags, const char *dev_name, void *data);
+
+    kill_sb:
+      pattern: '\.kill_sb\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "卸载时清理超级块"
+      trigger: "umount 系统调用"
+      context: "process"
+      can_sleep: true
+      handler_signature: |
+        void (*kill_sb)(struct super_block *sb);
+
+    init_fs_context:
+      pattern: '\.init_fs_context\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      description: "初始化文件系统上下文 (新 API, 5.1+)"
+      trigger: "mount 系统调用"
+      context: "process"
+      can_sleep: true
+      handler_signature: |
+        int (*init_fs_context)(struct fs_context *fc);
+
+  helper_functions:
+    # 挂载辅助函数
+    - pattern: 'mount_bdev\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<dev_name>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      variable_capture: "fs_type"
+      description: "挂载块设备文件系统"
+      context: "process"
+
+    - pattern: 'mount_single\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      variable_capture: "fs_type"
+      description: "挂载单实例文件系统 (如 debugfs)"
+      context: "process"
+
+    - pattern: 'mount_nodev\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      variable_capture: "fs_type"
+      description: "挂载无设备文件系统 (如 ramfs)"
+      context: "process"
+
+    - pattern: 'mount_pseudo\s*\(\s*(?P<fs_type>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,'
+      variable_capture: "fs_type"
+      description: "挂载伪文件系统 (如 pipefs)"
+      context: "process"
+
+    # kill_sb 辅助函数
+    - pattern: 'kill_block_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "销毁块设备超级块"
+      context: "process"
+
+    - pattern: 'kill_litter_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "销毁无设备超级块 (清理内容)"
+      context: "process"
+
+    - pattern: 'kill_anon_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+      variable_capture: "sb"
+      description: "销毁匿名超级块"
+      context: "process"
+
+    # 新挂载 API (5.1+)
+    - pattern: 'vfs_get_tree\s*\(\s*(?P<fc>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "获取文件系统树"
+      context: "process"
+
+    - pattern: 'vfs_create_mount\s*\(\s*(?P<fc>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "创建挂载点"
+      context: "process"
+
+    - pattern: 'get_tree_nodev\s*\(\s*(?P<fc>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "无设备获取树"
+      context: "process"
+
+    - pattern: 'get_tree_bdev\s*\(\s*(?P<fc>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "块设备获取树"
+      context: "process"
+
+    - pattern: 'get_tree_single\s*\(\s*(?P<fc>[^,]+)\s*,\s*(?P<fill_super>[^)]+)\s*\)'
+      variable_capture: "fc"
+      description: "单实例获取树"
+      context: "process"
+
+  fs_flags:
+    - name: "FS_REQUIRES_DEV"
+      value: "1"
+      description: "需要块设备"
+    - name: "FS_BINARY_MOUNTDATA"
+      value: "2"
+      description: "挂载数据是二进制"
+    - name: "FS_HAS_SUBTYPE"
+      value: "4"
+      description: "有子类型 (如 fuse)"
+    - name: "FS_USERNS_MOUNT"
+      value: "8"
+      description: "允许用户命名空间挂载"
+    - name: "FS_DISALLOW_NOTIFY_PERM"
+      value: "16"
+      description: "禁止 notify 权限"
+    - name: "FS_RENAME_DOES_D_MOVE"
+      value: "32768"
+      description: "rename 执行 d_move"
+
+  call_chains:
+    register_filesystem_path:
+      description: "文件系统注册路径"
+      trigger: "模块初始化"
+      chain:
+        - function: "module_init"
+          file: "用户代码"
+          description: "模块初始化入口"
+        - function: "register_filesystem"
+          file: "fs/filesystems.c"
+          description: "注册文件系统"
+          context: "process"
+        - function: "find_filesystem"
+          file: "fs/filesystems.c"
+          description: "检查是否已注册"
+        - function: "list_add"
+          description: "添加到文件系统列表"
+
+    mount_filesystem_path:
+      description: "文件系统挂载路径 (旧 API)"
+      trigger: "mount() 系统调用"
+      chain:
+        - function: "__x64_sys_mount"
+          file: "fs/namespace.c"
+          description: "系统调用入口"
+          context: "process"
+        - function: "path_mount"
+          file: "fs/namespace.c"
+          description: "路径挂载"
+        - function: "do_new_mount"
+          file: "fs/namespace.c"
+          description: "执行新挂载"
+        - function: "vfs_get_tree"
+          file: "fs/super.c"
+          description: "获取文件系统树"
+        - function: "legacy_get_tree"
+          file: "fs/fs_context.c"
+          description: "旧 API 适配"
+        - function: "fs_type->mount"
+          file: "用户代码"
+          description: "文件系统 mount 回调"
+          is_user_entry: true
+        - function: "fill_super"
+          file: "用户代码"
+          description: "填充超级块"
+          is_user_entry: true
+
+    mount_filesystem_new_api:
+      description: "文件系统挂载路径 (新 API, 5.1+)"
+      trigger: "mount() 系统调用"
+      chain:
+        - function: "__x64_sys_mount"
+          file: "fs/namespace.c"
+          description: "系统调用入口"
+        - function: "fs_context_for_mount"
+          file: "fs/fs_context.c"
+          description: "创建挂载上下文"
+        - function: "fs_type->init_fs_context"
+          file: "用户代码"
+          description: "初始化上下文回调"
+          is_user_entry: true
+        - function: "vfs_get_tree"
+          file: "fs/super.c"
+          description: "获取树"
+        - function: "fc->ops->get_tree"
+          file: "用户代码"
+          description: "获取树回调"
+          is_user_entry: true
+        - function: "vfs_create_mount"
+          file: "fs/namespace.c"
+          description: "创建挂载"
+
+    umount_filesystem_path:
+      description: "文件系统卸载路径"
+      trigger: "umount() 系统调用"
+      chain:
+        - function: "__x64_sys_umount"
+          file: "fs/namespace.c"
+          description: "系统调用入口"
+        - function: "do_umount"
+          file: "fs/namespace.c"
+          description: "执行卸载"
+        - function: "deactivate_super"
+          file: "fs/super.c"
+          description: "停用超级块"
+        - function: "fs_type->kill_sb"
+          file: "用户代码"
+          description: "kill_sb 回调"
+          is_user_entry: true
+
+
+# ============================================================
 # VFS EXAMPLES
 # ============================================================
 

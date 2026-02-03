@@ -147,3 +147,376 @@ call_chains:
       - caller: "scsi_error_handler"
         callee: "hostt->eh_device_reset_handler"
         description: "设备复位"
+
+
+# ============================================================
+# DATA STRUCTURES (数据结构)
+# ============================================================
+
+data_structures:
+  scsi_host_template:
+    pattern: 'struct scsi_host_template\s*\{'
+    description: "SCSI 主机模板"
+    file: "include/scsi/scsi_host.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "驱动名称"
+      - name: "proc_name"
+        type: "const char *"
+        description: "procfs 名称"
+      - name: "queuecommand"
+        type: "int (*)(struct Scsi_Host *, struct scsi_cmnd *)"
+        description: "队列命令回调"
+      - name: "eh_abort_handler"
+        type: "int (*)(struct scsi_cmnd *)"
+        description: "中止命令处理"
+      - name: "eh_device_reset_handler"
+        type: "int (*)(struct scsi_cmnd *)"
+        description: "设备复位处理"
+      - name: "slave_alloc"
+        type: "int (*)(struct scsi_device *)"
+        description: "分配设备"
+      - name: "slave_configure"
+        type: "int (*)(struct scsi_device *)"
+        description: "配置设备"
+      - name: "slave_destroy"
+        type: "void (*)(struct scsi_device *)"
+        description: "销毁设备"
+      - name: "can_queue"
+        type: "int"
+        description: "最大队列命令数"
+      - name: "this_id"
+        type: "int"
+        description: "主机 SCSI ID"
+      - name: "sg_tablesize"
+        type: "unsigned short"
+        description: "SG 表最大条目"
+      - name: "max_sectors"
+        type: "unsigned int"
+        description: "最大扇区数"
+      - name: "cmd_per_lun"
+        type: "int"
+        description: "每 LUN 命令数"
+
+  scsi_cmnd:
+    pattern: 'struct scsi_cmnd\s*\{'
+    description: "SCSI 命令结构"
+    file: "include/scsi/scsi_cmnd.h"
+    fields:
+      - name: "device"
+        type: "struct scsi_device *"
+        description: "目标设备"
+      - name: "cmnd"
+        type: "unsigned char *"
+        description: "CDB 命令字节"
+      - name: "cmd_len"
+        type: "unsigned short"
+        description: "CDB 长度"
+      - name: "sc_data_direction"
+        type: "int"
+        description: "数据方向"
+      - name: "sdb"
+        type: "struct scsi_data_buffer"
+        description: "数据缓冲区"
+      - name: "result"
+        type: "int"
+        description: "命令结果"
+      - name: "sense_buffer"
+        type: "unsigned char *"
+        description: "Sense 数据"
+      - name: "scsi_done"
+        type: "void (*)(struct scsi_cmnd *)"
+        description: "完成回调"
+
+  scsi_device:
+    pattern: 'struct scsi_device\s*\{'
+    description: "SCSI 设备"
+    file: "include/scsi/scsi_device.h"
+    fields:
+      - name: "host"
+        type: "struct Scsi_Host *"
+        description: "所属主机"
+      - name: "request_queue"
+        type: "struct request_queue *"
+        description: "请求队列"
+      - name: "id"
+        type: "unsigned int"
+        description: "目标 ID"
+      - name: "lun"
+        type: "u64"
+        description: "逻辑单元号"
+      - name: "channel"
+        type: "unsigned int"
+        description: "通道号"
+      - name: "vendor"
+        type: "char[]"
+        description: "厂商"
+      - name: "model"
+        type: "char[]"
+        description: "型号"
+      - name: "type"
+        type: "int"
+        description: "设备类型"
+      - name: "hostdata"
+        type: "unsigned long"
+        description: "驱动私有数据"
+
+
+# ============================================================
+# EXAMPLES (代码示例)
+# ============================================================
+
+examples:
+  - description: "基本 SCSI 主机适配器驱动示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/pci.h>
+      #include <scsi/scsi_host.h>
+      #include <scsi/scsi_device.h>
+      #include <scsi/scsi_cmnd.h>
+      
+      struct my_hba {
+          struct Scsi_Host *shost;
+          void __iomem *regs;
+          spinlock_t lock;
+          struct list_head cmd_queue;
+      };
+      
+      /* 队列 SCSI 命令 */
+      static int my_queuecommand(struct Scsi_Host *shost,
+                                  struct scsi_cmnd *sc)
+      {
+          struct my_hba *hba = shost_priv(shost);
+          unsigned long flags;
+          
+          spin_lock_irqsave(&hba->lock, flags);
+          
+          /* 提交命令到硬件 */
+          my_submit_cmd(hba, sc);
+          
+          spin_unlock_irqrestore(&hba->lock, flags);
+          return 0;
+      }
+      
+      /* 中止命令 */
+      static int my_abort_handler(struct scsi_cmnd *sc)
+      {
+          struct my_hba *hba = shost_priv(sc->device->host);
+          
+          dev_info(&sc->device->sdev_gendev, "Aborting command\n");
+          
+          /* 中止硬件命令 */
+          if (my_abort_hw_cmd(hba, sc) == 0)
+              return SUCCESS;
+          
+          return FAILED;
+      }
+      
+      /* 设备复位 */
+      static int my_device_reset_handler(struct scsi_cmnd *sc)
+      {
+          struct my_hba *hba = shost_priv(sc->device->host);
+          
+          dev_info(&sc->device->sdev_gendev, "Device reset\n");
+          
+          /* 复位设备 */
+          if (my_reset_device(hba, sc->device) == 0)
+              return SUCCESS;
+          
+          return FAILED;
+      }
+      
+      /* 配置 SCSI 设备 */
+      static int my_slave_configure(struct scsi_device *sdev)
+      {
+          /* 设置队列深度 */
+          scsi_change_queue_depth(sdev, 32);
+          return 0;
+      }
+      
+      static struct scsi_host_template my_sht = {
+          .module                 = THIS_MODULE,
+          .name                   = "My SCSI HBA",
+          .proc_name              = "my_hba",
+          .queuecommand           = my_queuecommand,
+          .eh_abort_handler       = my_abort_handler,
+          .eh_device_reset_handler = my_device_reset_handler,
+          .slave_configure        = my_slave_configure,
+          .can_queue              = 256,
+          .this_id                = -1,
+          .sg_tablesize           = SG_ALL,
+          .max_sectors            = 8192,
+          .cmd_per_lun            = 32,
+      };
+      
+      static int my_probe(struct pci_dev *pdev,
+                          const struct pci_device_id *id)
+      {
+          struct Scsi_Host *shost;
+          struct my_hba *hba;
+          int ret;
+          
+          /* 分配 SCSI 主机 */
+          shost = scsi_host_alloc(&my_sht, sizeof(*hba));
+          if (!shost)
+              return -ENOMEM;
+          
+          hba = shost_priv(shost);
+          hba->shost = shost;
+          spin_lock_init(&hba->lock);
+          INIT_LIST_HEAD(&hba->cmd_queue);
+          
+          /* PCI 初始化 */
+          ret = pci_enable_device(pdev);
+          if (ret)
+              goto err_host;
+          
+          hba->regs = pci_ioremap_bar(pdev, 0);
+          if (!hba->regs) {
+              ret = -ENOMEM;
+              goto err_pci;
+          }
+          
+          /* 添加 SCSI 主机 */
+          ret = scsi_add_host(shost, &pdev->dev);
+          if (ret)
+              goto err_unmap;
+          
+          /* 扫描设备 */
+          scsi_scan_host(shost);
+          
+          pci_set_drvdata(pdev, hba);
+          return 0;
+          
+      err_unmap:
+          iounmap(hba->regs);
+      err_pci:
+          pci_disable_device(pdev);
+      err_host:
+          scsi_host_put(shost);
+          return ret;
+      }
+
+  - description: "SCSI 命令完成处理示例"
+    kernel_version: "4.0+"
+    code: |
+      /* 命令完成中断处理 */
+      static irqreturn_t my_interrupt(int irq, void *dev_id)
+      {
+          struct my_hba *hba = dev_id;
+          u32 status;
+          
+          /* 读取中断状态 */
+          status = readl(hba->regs + INT_STATUS);
+          if (!status)
+              return IRQ_NONE;
+          
+          /* 清除中断 */
+          writel(status, hba->regs + INT_STATUS);
+          
+          /* 处理完成的命令 */
+          if (status & CMD_COMPLETE) {
+              struct scsi_cmnd *sc = my_get_completed_cmd(hba);
+              if (sc) {
+                  /* 设置结果 */
+                  sc->result = my_get_cmd_result(hba, sc);
+                  
+                  /* 处理 sense 数据 */
+                  if (status_byte(sc->result) == CHECK_CONDITION) {
+                      memcpy(sc->sense_buffer,
+                             my_get_sense_data(hba, sc),
+                             SCSI_SENSE_BUFFERSIZE);
+                  }
+                  
+                  /* 完成命令 */
+                  scsi_done(sc);
+              }
+          }
+          
+          return IRQ_HANDLED;
+      }
+      
+      /* DMA 映射和提交命令 */
+      static void my_submit_cmd(struct my_hba *hba, struct scsi_cmnd *sc)
+      {
+          struct scatterlist *sg;
+          int nseg, i;
+          
+          /* DMA 映射 */
+          nseg = scsi_dma_map(sc);
+          if (nseg < 0) {
+              sc->result = DID_ERROR << 16;
+              scsi_done(sc);
+              return;
+          }
+          
+          /* 构建 SG 列表 */
+          scsi_for_each_sg(sc, sg, nseg, i) {
+              my_add_sg_entry(hba,
+                              sg_dma_address(sg),
+                              sg_dma_len(sg));
+          }
+          
+          /* 设置 CDB */
+          memcpy(hba->cmd_cdb, sc->cmnd, sc->cmd_len);
+          
+          /* 提交到硬件 */
+          writel(CMD_START, hba->regs + CMD_REG);
+      }
+
+  - description: "SCSI 错误处理示例"
+    kernel_version: "4.0+"
+    code: |
+      /* 主机复位处理 */
+      static int my_host_reset_handler(struct scsi_cmnd *sc)
+      {
+          struct my_hba *hba = shost_priv(sc->device->host);
+          unsigned long flags;
+          int ret = FAILED;
+          
+          dev_info(&sc->device->host->shost_gendev,
+                   "Host reset requested\n");
+          
+          spin_lock_irqsave(&hba->lock, flags);
+          
+          /* 停止所有 I/O */
+          writel(0, hba->regs + INT_ENABLE);
+          
+          /* 复位控制器 */
+          writel(CTRL_RESET, hba->regs + CTRL_REG);
+          
+          spin_unlock_irqrestore(&hba->lock, flags);
+          
+          /* 等待复位完成 */
+          msleep(100);
+          
+          spin_lock_irqsave(&hba->lock, flags);
+          
+          /* 检查复位状态 */
+          if (readl(hba->regs + STATUS_REG) & STATUS_READY) {
+              /* 重新初始化 */
+              my_hw_init(hba);
+              ret = SUCCESS;
+          }
+          
+          spin_unlock_irqrestore(&hba->lock, flags);
+          return ret;
+      }
+      
+      /* 超时命令重试 */
+      static enum blk_eh_timer_return my_timeout(struct scsi_cmnd *sc)
+      {
+          struct my_hba *hba = shost_priv(sc->device->host);
+          
+          /* 检查命令是否真的超时 */
+          if (my_cmd_still_pending(hba, sc)) {
+              dev_warn(&sc->device->sdev_gendev,
+                       "Command timeout, requesting reset\n");
+              return BLK_EH_RESET_TIMER;
+          }
+          
+          /* 命令已完成，让错误处理器处理 */
+          return BLK_EH_DONE;
+      }

@@ -2000,6 +2000,220 @@ dl_scheduler:
     description: "总是选择截止时间最近的任务运行"
     priority: "比 RT 调度器更高优先级"
 
+  data_structures_extended:
+    dl_rq:
+      pattern: 'struct dl_rq\s*\{'
+      description: "Deadline 运行队列"
+      file: "kernel/sched/sched.h"
+      fields:
+        - name: "root"
+          type: "struct rb_root_cached"
+          description: "按 deadline 排序的红黑树"
+        - name: "dl_nr_running"
+          type: "unsigned int"
+          description: "运行中的 DL 任务数"
+        - name: "dl_nr_total"
+          type: "unsigned int"
+          description: "总 DL 任务数"
+        - name: "overloaded"
+          type: "int"
+          description: "是否超载"
+        - name: "pushable_dl_tasks_root"
+          type: "struct rb_root_cached"
+          description: "可推送任务树"
+        - name: "earliest_dl"
+          type: "struct dl_bw"
+          description: "最早 deadline"
+        - name: "running_bw"
+          type: "u64"
+          description: "运行中带宽"
+        - name: "this_bw"
+          type: "u64"
+          description: "本 RQ 带宽"
+        - name: "extra_bw"
+          type: "u64"
+          description: "额外带宽"
+
+    dl_bw:
+      pattern: 'struct dl_bw\s*\{'
+      description: "Deadline 带宽控制"
+      file: "kernel/sched/sched.h"
+      fields:
+        - name: "bw"
+          type: "u64"
+          description: "分配的带宽"
+        - name: "total_bw"
+          type: "u64"
+          description: "总带宽"
+        - name: "lock"
+          type: "raw_spinlock_t"
+          description: "保护锁"
+
+  key_functions:
+    enqueue_task_dl:
+      pattern: 'enqueue_task_dl\s*\(\s*(?P<rq>[^,]+)\s*,\s*(?P<p>[^,]+)\s*,'
+      variable_capture: "p"
+      description: "Deadline 任务入队"
+      context: "irq_disabled"
+      file: "kernel/sched/deadline.c"
+      typical_actions:
+        - "插入到按 deadline 排序的红黑树"
+        - "更新 dl_rq 统计"
+        - "检查带宽约束"
+
+    dequeue_task_dl:
+      pattern: 'dequeue_task_dl\s*\(\s*(?P<rq>[^,]+)\s*,\s*(?P<p>[^,]+)\s*,'
+      variable_capture: "p"
+      description: "Deadline 任务出队"
+      context: "irq_disabled"
+      file: "kernel/sched/deadline.c"
+
+    pick_next_task_dl:
+      pattern: 'pick_next_task_dl\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      variable_capture: "rq"
+      description: "选择下一个 Deadline 任务 (EDF)"
+      context: "irq_disabled"
+      file: "kernel/sched/deadline.c"
+      return_value:
+        success: "struct task_struct * (deadline 最近的任务)"
+        failure: "NULL"
+
+    check_preempt_curr_dl:
+      pattern: 'check_preempt_curr_dl\s*\(\s*(?P<rq>[^,]+)\s*,\s*(?P<p>[^,]+)\s*,'
+      variable_capture: "p"
+      description: "检查是否需要抢占当前任务"
+      context: "irq_disabled"
+      file: "kernel/sched/deadline.c"
+
+    task_tick_dl:
+      pattern: 'task_tick_dl\s*\(\s*(?P<rq>[^,]+)\s*,\s*(?P<curr>[^,]+)\s*,'
+      variable_capture: "curr"
+      description: "Deadline 任务时钟中断处理"
+      context: "hardirq"
+      file: "kernel/sched/deadline.c"
+      typical_actions:
+        - "更新 runtime"
+        - "检查是否用完 runtime"
+        - "检查是否超过 deadline"
+
+    update_curr_dl:
+      pattern: 'update_curr_dl\s*\(\s*(?P<rq>[^)]+)\s*\)'
+      variable_capture: "rq"
+      description: "更新当前 Deadline 任务运行时间"
+      context: "irq_disabled"
+      file: "kernel/sched/deadline.c"
+
+    start_dl_timer:
+      pattern: 'start_dl_timer\s*\(\s*(?P<p>[^)]+)\s*\)'
+      variable_capture: "p"
+      description: "启动 Deadline 定时器"
+      context: "irq_disabled"
+      file: "kernel/sched/deadline.c"
+
+    dl_task_timer:
+      pattern: 'dl_task_timer\s*\(\s*(?P<timer>[^)]+)\s*\)'
+      variable_capture: "timer"
+      description: "Deadline 定时器回调"
+      context: "softirq"
+      file: "kernel/sched/deadline.c"
+
+    replenish_dl_entity:
+      pattern: 'replenish_dl_entity\s*\(\s*(?P<dl_se>[^)]+)\s*\)'
+      variable_capture: "dl_se"
+      description: "补充 Deadline 实体的运行时间"
+      context: "irq_disabled"
+      file: "kernel/sched/deadline.c"
+
+    __dl_overflow:
+      pattern: '__dl_overflow\s*\(\s*(?P<dl_b>[^,]+)\s*,\s*(?P<cap>[^,]+)\s*,'
+      variable_capture: "dl_b"
+      description: "检查 Deadline 带宽是否溢出"
+      context: "process"
+      file: "kernel/sched/deadline.c"
+
+    dl_bw_alloc:
+      pattern: 'dl_bw_alloc\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<bw>[^)]+)\s*\)'
+      variable_capture: "cpu"
+      description: "分配 Deadline 带宽"
+      context: "process"
+      file: "kernel/sched/deadline.c"
+
+    dl_bw_free:
+      pattern: 'dl_bw_free\s*\(\s*(?P<cpu>[^,]+)\s*,\s*(?P<bw>[^)]+)\s*\)'
+      variable_capture: "cpu"
+      description: "释放 Deadline 带宽"
+      context: "process"
+      file: "kernel/sched/deadline.c"
+
+  call_chains:
+    enqueue_task_dl_path:
+      description: "Deadline 任务入队路径"
+      trigger: "新任务唤醒或设置为 SCHED_DEADLINE"
+      chain:
+        - function: "enqueue_task_dl"
+          file: "kernel/sched/deadline.c"
+          description: "DL 入队入口"
+        - function: "enqueue_dl_entity"
+          file: "kernel/sched/deadline.c"
+          description: "入队调度实体"
+        - function: "__enqueue_dl_entity"
+          file: "kernel/sched/deadline.c"
+          description: "内部入队"
+        - function: "rb_add_cached"
+          description: "插入红黑树"
+        - function: "inc_dl_tasks"
+          description: "增加 DL 任务计数"
+
+    pick_next_task_dl_path:
+      description: "选择下一个 Deadline 任务路径"
+      trigger: "schedule() 需要选择新任务"
+      chain:
+        - function: "pick_next_task_dl"
+          file: "kernel/sched/deadline.c"
+          description: "DL 选择入口"
+        - function: "pick_earliest_pushable_dl_task"
+          file: "kernel/sched/deadline.c"
+          description: "选择最早 deadline 任务"
+        - function: "rb_first_cached"
+          description: "获取红黑树最左节点"
+        - function: "dl_task_of"
+          description: "获取 task_struct"
+        - function: "set_next_task_dl"
+          description: "设置为下一个任务"
+
+    dl_throttle_path:
+      description: "Deadline 带宽限制路径"
+      trigger: "任务用完 runtime"
+      chain:
+        - function: "update_curr_dl"
+          file: "kernel/sched/deadline.c"
+          description: "更新运行时间"
+        - function: "dl_runtime_exceeded"
+          file: "kernel/sched/deadline.c"
+          description: "检查 runtime 是否用完"
+        - function: "throttle_dl"
+          file: "kernel/sched/deadline.c"
+          description: "Throttle 任务"
+        - function: "dequeue_task_dl"
+          description: "出队任务"
+        - function: "start_dl_timer"
+          description: "启动定时器等待补充"
+
+    dl_replenish_path:
+      description: "Deadline 补充路径"
+      trigger: "定时器到期或任务被唤醒"
+      chain:
+        - function: "dl_task_timer"
+          file: "kernel/sched/deadline.c"
+          description: "定时器回调"
+          context: "softirq"
+        - function: "replenish_dl_entity"
+          description: "补充 runtime"
+        - function: "start_dl_timer"
+          description: "重设定时器"
+        - function: "enqueue_task_dl"
+          description: "重新入队"
+
   examples:
     - description: "设置 Deadline 调度"
       code: |

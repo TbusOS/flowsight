@@ -52,6 +52,245 @@ lsm_framework:
       file: "security/loadpin/"
 
   # ========================================
+  # DATA STRUCTURES (数据结构)
+  # ========================================
+  data_structures:
+    security_hook_list:
+      pattern: 'struct security_hook_list\s*\{'
+      description: "LSM 钩子列表项"
+      file: "include/linux/lsm_hooks.h"
+      fields:
+        - name: "list"
+          type: "struct hlist_node"
+          description: "钩子链表节点"
+        - name: "head"
+          type: "struct hlist_head *"
+          description: "钩子头指针"
+        - name: "hook"
+          type: "union security_list_options"
+          description: "钩子函数联合体"
+        - name: "lsm"
+          type: "const char *"
+          description: "LSM 名称"
+
+    security_hook_heads:
+      pattern: 'struct security_hook_heads\s*\{'
+      description: "所有 LSM 钩子头集合"
+      file: "include/linux/lsm_hooks.h"
+      fields:
+        - name: "binder_set_context_mgr"
+          type: "struct hlist_head"
+          description: "Binder 钩子"
+        - name: "binder_transaction"
+          type: "struct hlist_head"
+          description: "Binder 事务钩子"
+        - name: "ptrace_access_check"
+          type: "struct hlist_head"
+          description: "ptrace 访问检查"
+        - name: "file_permission"
+          type: "struct hlist_head"
+          description: "文件权限检查"
+        - name: "inode_permission"
+          type: "struct hlist_head"
+          description: "inode 权限检查"
+        - name: "task_alloc"
+          type: "struct hlist_head"
+          description: "任务分配钩子"
+        - name: "socket_create"
+          type: "struct hlist_head"
+          description: "socket 创建钩子"
+
+    cred:
+      pattern: 'struct cred\s*\{'
+      description: "进程凭证结构"
+      file: "include/linux/cred.h"
+      fields:
+        - name: "usage"
+          type: "atomic_t"
+          description: "引用计数"
+        - name: "uid"
+          type: "kuid_t"
+          description: "真实用户 ID"
+        - name: "gid"
+          type: "kgid_t"
+          description: "真实组 ID"
+        - name: "euid"
+          type: "kuid_t"
+          description: "有效用户 ID"
+        - name: "egid"
+          type: "kgid_t"
+          description: "有效组 ID"
+        - name: "fsuid"
+          type: "kuid_t"
+          description: "文件系统用户 ID"
+        - name: "fsgid"
+          type: "kgid_t"
+          description: "文件系统组 ID"
+        - name: "cap_inheritable"
+          type: "kernel_cap_t"
+          description: "可继承能力集"
+        - name: "cap_permitted"
+          type: "kernel_cap_t"
+          description: "允许能力集"
+        - name: "cap_effective"
+          type: "kernel_cap_t"
+          description: "有效能力集"
+        - name: "cap_bset"
+          type: "kernel_cap_t"
+          description: "能力边界集"
+        - name: "cap_ambient"
+          type: "kernel_cap_t"
+          description: "环境能力集"
+        - name: "security"
+          type: "void *"
+          description: "LSM 安全 blob"
+
+    seccomp_filter:
+      pattern: 'struct seccomp_filter\s*\{'
+      description: "Seccomp BPF 过滤器"
+      file: "kernel/seccomp.c"
+      fields:
+        - name: "refs"
+          type: "refcount_t"
+          description: "引用计数"
+        - name: "users"
+          type: "refcount_t"
+          description: "用户计数"
+        - name: "log"
+          type: "bool"
+          description: "是否记录日志"
+        - name: "prev"
+          type: "struct seccomp_filter *"
+          description: "前一个过滤器"
+        - name: "prog"
+          type: "struct bpf_prog *"
+          description: "BPF 程序"
+        - name: "notif"
+          type: "struct seccomp_notif_filter *"
+          description: "通知过滤器"
+
+    audit_context:
+      pattern: 'struct audit_context\s*\{'
+      description: "审计上下文"
+      file: "kernel/audit.h"
+      fields:
+        - name: "dummy"
+          type: "int"
+          description: "是否为虚拟上下文"
+        - name: "state"
+          type: "enum audit_state"
+          description: "审计状态"
+        - name: "serial"
+          type: "unsigned int"
+          description: "审计序列号"
+        - name: "major"
+          type: "int"
+          description: "系统调用号"
+        - name: "ctime"
+          type: "struct timespec64"
+          description: "时间戳"
+        - name: "arch"
+          type: "int"
+          description: "架构"
+        - name: "return_code"
+          type: "long"
+          description: "返回值"
+        - name: "prio"
+          type: "int"
+          description: "优先级"
+        - name: "filterkey"
+          type: "char *"
+          description: "过滤器键"
+
+    lsm_blob_sizes:
+      pattern: 'struct lsm_blob_sizes\s*\{'
+      description: "LSM blob 大小配置"
+      file: "include/linux/lsm_hooks.h"
+      fields:
+        - name: "lbs_cred"
+          type: "int"
+          description: "凭证 blob 大小"
+        - name: "lbs_file"
+          type: "int"
+          description: "文件 blob 大小"
+        - name: "lbs_inode"
+          type: "int"
+          description: "inode blob 大小"
+        - name: "lbs_ipc"
+          type: "int"
+          description: "IPC blob 大小"
+        - name: "lbs_msg_msg"
+          type: "int"
+          description: "消息 blob 大小"
+        - name: "lbs_task"
+          type: "int"
+          description: "任务 blob 大小"
+
+  # ========================================
+  # HELPER FUNCTIONS (辅助函数)
+  # ========================================
+  helper_functions:
+    # 钩子调用辅助
+    - pattern: 'call_int_hook\s*\(\s*(?P<hook>\w+)\s*,'
+      variable_capture: "hook"
+      description: "调用返回 int 的 LSM 钩子"
+      context: "varies"
+
+    - pattern: 'call_void_hook\s*\(\s*(?P<hook>\w+)\s*,'
+      variable_capture: "hook"
+      description: "调用返回 void 的 LSM 钩子"
+      context: "varies"
+
+    # 凭证辅助
+    - pattern: 'current_cred\s*\(\s*\)'
+      description: "获取当前进程凭证"
+      return: "const struct cred *"
+      context: "any"
+
+    - pattern: 'current_security\s*\(\s*\)'
+      description: "获取当前进程安全上下文"
+      return: "void *"
+
+    - pattern: 'prepare_creds\s*\(\s*\)'
+      description: "准备新凭证"
+      return: "struct cred *"
+      context: "process"
+      can_sleep: true
+
+    - pattern: 'commit_creds\s*\(\s*(?P<cred>[^)]+)\s*\)'
+      variable_capture: "cred"
+      description: "提交新凭证"
+      context: "process"
+
+    - pattern: 'abort_creds\s*\(\s*(?P<cred>[^)]+)\s*\)'
+      variable_capture: "cred"
+      description: "放弃新凭证"
+      context: "process"
+
+    # 审计辅助
+    - pattern: 'audit_context\s*\(\s*\)'
+      description: "获取当前审计上下文"
+      return: "struct audit_context *"
+
+    - pattern: 'audit_getname\s*\(\s*(?P<name>[^)]+)\s*\)'
+      variable_capture: "name"
+      description: "获取审计名称"
+      context: "process"
+
+    - pattern: 'audit_log_name\s*\(\s*(?P<context>[^,]+)\s*,\s*(?P<n>[^)]+)\s*\)'
+      variable_capture: "context"
+      description: "记录审计名称"
+      context: "process"
+
+    # SELinux 辅助
+    - pattern: 'selinux_is_enabled\s*\(\s*\)'
+      description: "检查 SELinux 是否启用"
+      return: "bool"
+
+    - pattern: 'selinux_enabled_boot'
+      description: "启动时是否启用 SELinux"
+
+  # ========================================
   # FILE HOOKS (文件操作安全钩子)
   # ========================================
   file_hooks:

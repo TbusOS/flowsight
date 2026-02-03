@@ -264,3 +264,413 @@ drm_panel:
       pattern: '\.get_modes\s*=\s*(?P<handler>\w+)'
       description: "获取支持的显示模式"
       context: "process"
+
+
+# ============================================================
+# DATA STRUCTURES (数据结构)
+# ============================================================
+
+data_structures:
+  drm_device:
+    pattern: 'struct drm_device\s*\{'
+    description: "DRM 设备结构"
+    file: "include/drm/drm_device.h"
+    fields:
+      - name: "driver"
+        type: "const struct drm_driver *"
+        description: "驱动程序"
+      - name: "dev"
+        type: "struct device *"
+        description: "关联的设备"
+      - name: "primary"
+        type: "struct drm_minor *"
+        description: "主要设备节点"
+      - name: "render"
+        type: "struct drm_minor *"
+        description: "渲染节点"
+      - name: "mode_config"
+        type: "struct drm_mode_config"
+        description: "模式配置"
+      - name: "vblank"
+        type: "struct drm_vblank_crtc *"
+        description: "垂直消隐数组"
+
+  drm_crtc:
+    pattern: 'struct drm_crtc\s*\{'
+    description: "CRTC (CRT Controller)"
+    file: "include/drm/drm_crtc.h"
+    fields:
+      - name: "dev"
+        type: "struct drm_device *"
+        description: "所属 DRM 设备"
+      - name: "primary"
+        type: "struct drm_plane *"
+        description: "主平面"
+      - name: "cursor"
+        type: "struct drm_plane *"
+        description: "光标平面"
+      - name: "funcs"
+        type: "const struct drm_crtc_funcs *"
+        description: "CRTC 函数表"
+      - name: "helper_private"
+        type: "const struct drm_crtc_helper_funcs *"
+        description: "Helper 函数"
+      - name: "state"
+        type: "struct drm_crtc_state *"
+        description: "当前状态"
+      - name: "enabled"
+        type: "bool"
+        description: "是否启用"
+      - name: "mode"
+        type: "struct drm_display_mode"
+        description: "当前显示模式"
+
+  drm_connector:
+    pattern: 'struct drm_connector\s*\{'
+    description: "显示连接器"
+    file: "include/drm/drm_connector.h"
+    fields:
+      - name: "dev"
+        type: "struct drm_device *"
+        description: "所属 DRM 设备"
+      - name: "connector_type"
+        type: "int"
+        description: "连接器类型 (HDMI/DP/VGA)"
+      - name: "encoder"
+        type: "struct drm_encoder *"
+        description: "当前编码器"
+      - name: "funcs"
+        type: "const struct drm_connector_funcs *"
+        description: "连接器函数表"
+      - name: "helper_private"
+        type: "const struct drm_connector_helper_funcs *"
+        description: "Helper 函数"
+      - name: "state"
+        type: "struct drm_connector_state *"
+        description: "当前状态"
+      - name: "status"
+        type: "enum drm_connector_status"
+        description: "连接状态"
+      - name: "edid"
+        type: "struct drm_edid *"
+        description: "EDID 数据"
+
+  drm_framebuffer:
+    pattern: 'struct drm_framebuffer\s*\{'
+    description: "帧缓冲"
+    file: "include/drm/drm_framebuffer.h"
+    fields:
+      - name: "dev"
+        type: "struct drm_device *"
+        description: "所属设备"
+      - name: "format"
+        type: "const struct drm_format_info *"
+        description: "像素格式"
+      - name: "width"
+        type: "unsigned int"
+        description: "宽度"
+      - name: "height"
+        type: "unsigned int"
+        description: "高度"
+      - name: "pitches"
+        type: "unsigned int[]"
+        description: "行距"
+      - name: "offsets"
+        type: "unsigned int[]"
+        description: "平面偏移"
+      - name: "modifier"
+        type: "uint64_t"
+        description: "格式修饰符"
+      - name: "funcs"
+        type: "const struct drm_framebuffer_funcs *"
+        description: "函数表"
+
+
+# ============================================================
+# CALL CHAINS (调用链)
+# ============================================================
+
+call_chains:
+  drm_probe_path:
+    description: "DRM 设备探测路径"
+    trigger: "平台/PCI 设备匹配"
+    chain:
+      - function: "my_drm_probe"
+        file: "driver"
+        description: "驱动 probe 入口"
+        context: "process"
+      - function: "drm_dev_alloc"
+        file: "drivers/gpu/drm/drm_drv.c"
+        description: "分配 DRM 设备"
+      - function: "drm_dev_init"
+        file: "drivers/gpu/drm/drm_drv.c"
+        description: "初始化 DRM 设备"
+      - function: "drm_mode_config_init"
+        file: "drivers/gpu/drm/drm_mode_config.c"
+        description: "初始化模式配置"
+      - function: "my_kms_init"
+        file: "driver"
+        description: "初始化 KMS (CRTC/Connector/Encoder)"
+        is_user_entry: true
+      - function: "drm_dev_register"
+        file: "drivers/gpu/drm/drm_drv.c"
+        description: "注册 DRM 设备"
+
+  atomic_commit_path:
+    description: "原子提交路径"
+    trigger: "用户空间 drmModeAtomicCommit"
+    chain:
+      - function: "drm_mode_atomic_ioctl"
+        file: "drivers/gpu/drm/drm_atomic_uapi.c"
+        description: "ioctl 入口"
+        context: "process"
+      - function: "drm_atomic_commit"
+        file: "drivers/gpu/drm/drm_atomic.c"
+        description: "原子提交"
+      - function: "drm_atomic_helper_check"
+        file: "drivers/gpu/drm/drm_atomic_helper.c"
+        description: "检查状态"
+      - function: "drm_atomic_helper_commit"
+        file: "drivers/gpu/drm/drm_atomic_helper.c"
+        description: "执行提交"
+      - function: "drm_atomic_helper_commit_tail"
+        file: "drivers/gpu/drm/drm_atomic_helper.c"
+        description: "提交尾部"
+      - function: "drm_atomic_helper_commit_planes"
+        file: "drivers/gpu/drm/drm_atomic_helper.c"
+        description: "提交平面"
+      - function: "plane->funcs->atomic_update"
+        file: "driver"
+        description: "平面更新回调"
+        is_user_entry: true
+
+  vblank_path:
+    description: "垂直消隐中断路径"
+    trigger: "显示刷新"
+    chain:
+      - function: "vblank_interrupt"
+        file: "driver"
+        description: "中断处理入口"
+        context: "hardirq"
+      - function: "drm_crtc_handle_vblank"
+        file: "drivers/gpu/drm/drm_vblank.c"
+        description: "处理 vblank"
+      - function: "drm_crtc_vblank_count_and_time"
+        file: "drivers/gpu/drm/drm_vblank.c"
+        description: "获取计数和时间"
+      - function: "drm_crtc_send_vblank_event"
+        file: "drivers/gpu/drm/drm_vblank.c"
+        description: "发送 vblank 事件"
+      - function: "wake_up"
+        description: "唤醒等待者"
+
+  page_flip_path:
+    description: "页面翻转路径"
+    trigger: "drmModePageFlip"
+    chain:
+      - function: "drm_mode_page_flip_ioctl"
+        file: "drivers/gpu/drm/drm_crtc.c"
+        description: "ioctl 入口"
+        context: "process"
+      - function: "crtc->funcs->page_flip"
+        file: "driver"
+        description: "页面翻转回调"
+        is_user_entry: true
+      - function: "drm_crtc_vblank_get"
+        file: "drivers/gpu/drm/drm_vblank.c"
+        description: "获取 vblank 引用"
+      - function: "schedule_work"
+        description: "调度工作"
+      - function: "vblank_interrupt"
+        description: "等待 vblank"
+        context: "hardirq"
+      - function: "drm_crtc_send_vblank_event"
+        description: "发送翻转完成事件"
+
+
+# ============================================================
+# EXAMPLES (代码示例)
+# ============================================================
+
+examples:
+  - description: "基本 DRM 驱动注册示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <drm/drm_drv.h>
+      #include <drm/drm_gem_cma_helper.h>
+      
+      DEFINE_DRM_GEM_CMA_FOPS(my_fops);
+      
+      static const struct drm_driver my_drm_driver = {
+          .driver_features    = DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
+          .fops               = &my_fops,
+          .name               = "my_drm",
+          .desc               = "My DRM Driver",
+          .date               = "20240101",
+          .major              = 1,
+          .minor              = 0,
+          .patchlevel         = 0,
+          DRM_GEM_CMA_DRIVER_OPS,
+      };
+      
+      static int my_drm_probe(struct platform_device *pdev)
+      {
+          struct drm_device *drm;
+          int ret;
+          
+          /* 分配 DRM 设备 */
+          drm = drm_dev_alloc(&my_drm_driver, &pdev->dev);
+          if (IS_ERR(drm))
+              return PTR_ERR(drm);
+          
+          /* 初始化模式配置 */
+          ret = drmm_mode_config_init(drm);
+          if (ret)
+              goto err_free;
+          
+          /* 初始化 CRTC/Connector/Encoder... */
+          ret = my_kms_init(drm);
+          if (ret)
+              goto err_free;
+          
+          /* 注册设备 */
+          ret = drm_dev_register(drm, 0);
+          if (ret)
+              goto err_free;
+          
+          drm_fbdev_generic_setup(drm, 32);
+          platform_set_drvdata(pdev, drm);
+          return 0;
+          
+      err_free:
+          drm_dev_put(drm);
+          return ret;
+      }
+
+  - description: "CRTC 和 Plane 初始化示例"
+    kernel_version: "5.0+"
+    code: |
+      static const struct drm_crtc_funcs my_crtc_funcs = {
+          .reset              = drm_atomic_helper_crtc_reset,
+          .destroy            = drm_crtc_cleanup,
+          .set_config         = drm_atomic_helper_set_config,
+          .page_flip          = drm_atomic_helper_page_flip,
+          .atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
+          .atomic_destroy_state   = drm_atomic_helper_crtc_destroy_state,
+          .enable_vblank      = my_enable_vblank,
+          .disable_vblank     = my_disable_vblank,
+      };
+      
+      static const struct drm_crtc_helper_funcs my_crtc_helper_funcs = {
+          .atomic_enable      = my_crtc_atomic_enable,
+          .atomic_disable     = my_crtc_atomic_disable,
+          .atomic_check       = my_crtc_atomic_check,
+      };
+      
+      static const struct drm_plane_funcs my_plane_funcs = {
+          .update_plane       = drm_atomic_helper_update_plane,
+          .disable_plane      = drm_atomic_helper_disable_plane,
+          .reset              = drm_atomic_helper_plane_reset,
+          .destroy            = drm_plane_cleanup,
+          .atomic_duplicate_state = drm_atomic_helper_plane_duplicate_state,
+          .atomic_destroy_state   = drm_atomic_helper_plane_destroy_state,
+      };
+      
+      static const struct drm_plane_helper_funcs my_plane_helper_funcs = {
+          .atomic_check       = my_plane_atomic_check,
+          .atomic_update      = my_plane_atomic_update,
+          .atomic_disable     = my_plane_atomic_disable,
+      };
+      
+      static int my_kms_init(struct drm_device *drm)
+      {
+          struct my_priv *priv = drm->dev_private;
+          struct drm_plane *primary;
+          struct drm_crtc *crtc;
+          int ret;
+          
+          /* 初始化主平面 */
+          primary = &priv->primary;
+          ret = drm_universal_plane_init(drm, primary, 0,
+                                         &my_plane_funcs,
+                                         my_formats, ARRAY_SIZE(my_formats),
+                                         NULL, DRM_PLANE_TYPE_PRIMARY, NULL);
+          if (ret)
+              return ret;
+          
+          drm_plane_helper_add(primary, &my_plane_helper_funcs);
+          
+          /* 初始化 CRTC */
+          crtc = &priv->crtc;
+          ret = drm_crtc_init_with_planes(drm, crtc, primary, NULL,
+                                          &my_crtc_funcs, NULL);
+          if (ret)
+              return ret;
+          
+          drm_crtc_helper_add(crtc, &my_crtc_helper_funcs);
+          
+          return 0;
+      }
+
+  - description: "GEM 对象管理示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <drm/drm_gem.h>
+      #include <drm/drm_prime.h>
+      
+      struct my_gem_object {
+          struct drm_gem_object base;
+          struct sg_table *sgt;
+          void *vaddr;
+          dma_addr_t dma_addr;
+      };
+      
+      static void my_gem_free(struct drm_gem_object *obj)
+      {
+          struct my_gem_object *my_obj = to_my_gem_obj(obj);
+          
+          if (my_obj->vaddr)
+              dma_free_wc(obj->dev->dev, obj->size,
+                          my_obj->vaddr, my_obj->dma_addr);
+          
+          drm_gem_object_release(obj);
+          kfree(my_obj);
+      }
+      
+      static const struct drm_gem_object_funcs my_gem_funcs = {
+          .free       = my_gem_free,
+          .export     = drm_gem_prime_export,
+          .vmap       = my_gem_vmap,
+          .vunmap     = my_gem_vunmap,
+          .mmap       = drm_gem_mmap,
+      };
+      
+      struct drm_gem_object *my_gem_create(struct drm_device *drm, size_t size)
+      {
+          struct my_gem_object *my_obj;
+          int ret;
+          
+          my_obj = kzalloc(sizeof(*my_obj), GFP_KERNEL);
+          if (!my_obj)
+              return ERR_PTR(-ENOMEM);
+          
+          my_obj->base.funcs = &my_gem_funcs;
+          
+          /* 分配 DMA 内存 */
+          my_obj->vaddr = dma_alloc_wc(drm->dev, size,
+                                        &my_obj->dma_addr, GFP_KERNEL);
+          if (!my_obj->vaddr) {
+              kfree(my_obj);
+              return ERR_PTR(-ENOMEM);
+          }
+          
+          /* 初始化 GEM 对象 */
+          ret = drm_gem_object_init(drm, &my_obj->base, size);
+          if (ret) {
+              dma_free_wc(drm->dev, size, my_obj->vaddr, my_obj->dma_addr);
+              kfree(my_obj);
+              return ERR_PTR(ret);
+          }
+          
+          return &my_obj->base;
+      }

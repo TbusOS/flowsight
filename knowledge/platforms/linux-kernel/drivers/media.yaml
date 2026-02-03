@@ -247,3 +247,369 @@ call_chains:
       - caller: "vb2_streamon"
         callee: "ops->start_streaming"
         description: "启动硬件流"
+
+
+# ============================================================
+# DATA STRUCTURES (数据结构)
+# ============================================================
+
+data_structures:
+  video_device:
+    pattern: 'struct video_device\s*\{'
+    description: "V4L2 视频设备结构"
+    file: "include/media/v4l2-dev.h"
+    fields:
+      - name: "name"
+        type: "char[]"
+        description: "设备名称"
+      - name: "vfl_type"
+        type: "int"
+        description: "设备类型 (VFL_TYPE_VIDEO等)"
+      - name: "fops"
+        type: "const struct v4l2_file_operations *"
+        description: "文件操作"
+      - name: "ioctl_ops"
+        type: "const struct v4l2_ioctl_ops *"
+        description: "IOCTL 操作"
+      - name: "release"
+        type: "void (*)(struct video_device *)"
+        description: "释放回调"
+      - name: "v4l2_dev"
+        type: "struct v4l2_device *"
+        description: "关联的 V4L2 设备"
+      - name: "queue"
+        type: "struct vb2_queue *"
+        description: "VB2 队列"
+      - name: "lock"
+        type: "struct mutex *"
+        description: "序列化锁"
+      - name: "minor"
+        type: "int"
+        description: "次设备号"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+
+  vb2_queue:
+    pattern: 'struct vb2_queue\s*\{'
+    description: "Videobuf2 队列"
+    file: "include/media/videobuf2-core.h"
+    fields:
+      - name: "type"
+        type: "enum v4l2_buf_type"
+        description: "缓冲区类型"
+      - name: "io_modes"
+        type: "unsigned int"
+        description: "支持的 I/O 模式"
+      - name: "dev"
+        type: "struct device *"
+        description: "用于 DMA 的设备"
+      - name: "ops"
+        type: "const struct vb2_ops *"
+        description: "队列操作"
+      - name: "mem_ops"
+        type: "const struct vb2_mem_ops *"
+        description: "内存操作"
+      - name: "buf_struct_size"
+        type: "unsigned int"
+        description: "驱动缓冲区结构大小"
+      - name: "timestamp_flags"
+        type: "u32"
+        description: "时间戳标志"
+      - name: "gfp_flags"
+        type: "gfp_t"
+        description: "分配标志"
+      - name: "min_buffers_needed"
+        type: "unsigned int"
+        description: "启动流所需最小缓冲区"
+      - name: "lock"
+        type: "struct mutex *"
+        description: "队列锁"
+      - name: "drv_priv"
+        type: "void *"
+        description: "驱动私有数据"
+
+  vb2_buffer:
+    pattern: 'struct vb2_buffer\s*\{'
+    description: "Videobuf2 缓冲区"
+    file: "include/media/videobuf2-core.h"
+    fields:
+      - name: "vb2_queue"
+        type: "struct vb2_queue *"
+        description: "所属队列"
+      - name: "index"
+        type: "unsigned int"
+        description: "缓冲区索引"
+      - name: "type"
+        type: "unsigned int"
+        description: "缓冲区类型"
+      - name: "memory"
+        type: "unsigned int"
+        description: "内存类型"
+      - name: "num_planes"
+        type: "unsigned int"
+        description: "平面数"
+      - name: "timestamp"
+        type: "u64"
+        description: "时间戳"
+      - name: "state"
+        type: "enum vb2_buffer_state"
+        description: "缓冲区状态"
+
+  v4l2_subdev:
+    pattern: 'struct v4l2_subdev\s*\{'
+    description: "V4L2 子设备"
+    file: "include/media/v4l2-subdev.h"
+    fields:
+      - name: "name"
+        type: "char[]"
+        description: "子设备名称"
+      - name: "v4l2_dev"
+        type: "struct v4l2_device *"
+        description: "关联的 V4L2 设备"
+      - name: "ops"
+        type: "const struct v4l2_subdev_ops *"
+        description: "操作函数表"
+      - name: "ctrl_handler"
+        type: "struct v4l2_ctrl_handler *"
+        description: "控制处理器"
+      - name: "entity"
+        type: "struct media_entity"
+        description: "媒体实体"
+      - name: "pads"
+        type: "struct media_pad *"
+        description: "媒体 pad"
+      - name: "host_priv"
+        type: "void *"
+        description: "主机私有数据"
+
+
+# ============================================================
+# EXAMPLES (代码示例)
+# ============================================================
+
+examples:
+  - description: "基本 V4L2 捕获驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <media/v4l2-device.h>
+      #include <media/v4l2-ioctl.h>
+      #include <media/videobuf2-dma-contig.h>
+      
+      struct my_capture {
+          struct v4l2_device v4l2_dev;
+          struct video_device vdev;
+          struct vb2_queue queue;
+          struct mutex lock;
+          void __iomem *regs;
+          
+          /* 当前格式 */
+          struct v4l2_pix_format pix;
+          
+          /* 活动缓冲区 */
+          struct list_head active;
+          spinlock_t slock;
+      };
+      
+      struct my_buffer {
+          struct vb2_v4l2_buffer vb;
+          struct list_head list;
+      };
+      
+      /* 查询设备能力 */
+      static int my_querycap(struct file *file, void *priv,
+                             struct v4l2_capability *cap)
+      {
+          strscpy(cap->driver, "my_capture", sizeof(cap->driver));
+          strscpy(cap->card, "My Capture Device", sizeof(cap->card));
+          cap->capabilities = V4L2_CAP_VIDEO_CAPTURE |
+                              V4L2_CAP_STREAMING |
+                              V4L2_CAP_DEVICE_CAPS;
+          return 0;
+      }
+      
+      /* 获取格式 */
+      static int my_g_fmt(struct file *file, void *priv,
+                          struct v4l2_format *f)
+      {
+          struct my_capture *cap = video_drvdata(file);
+          f->fmt.pix = cap->pix;
+          return 0;
+      }
+      
+      /* 设置格式 */
+      static int my_s_fmt(struct file *file, void *priv,
+                          struct v4l2_format *f)
+      {
+          struct my_capture *cap = video_drvdata(file);
+          
+          /* 验证格式 */
+          f->fmt.pix.width = clamp(f->fmt.pix.width, 320U, 1920U);
+          f->fmt.pix.height = clamp(f->fmt.pix.height, 240U, 1080U);
+          f->fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+          f->fmt.pix.bytesperline = f->fmt.pix.width * 2;
+          f->fmt.pix.sizeimage = f->fmt.pix.bytesperline *
+                                 f->fmt.pix.height;
+          f->fmt.pix.field = V4L2_FIELD_NONE;
+          
+          cap->pix = f->fmt.pix;
+          return 0;
+      }
+      
+      static const struct v4l2_ioctl_ops my_ioctl_ops = {
+          .vidioc_querycap        = my_querycap,
+          .vidioc_g_fmt_vid_cap   = my_g_fmt,
+          .vidioc_s_fmt_vid_cap   = my_s_fmt,
+          .vidioc_try_fmt_vid_cap = my_try_fmt,
+          .vidioc_reqbufs         = vb2_ioctl_reqbufs,
+          .vidioc_querybuf        = vb2_ioctl_querybuf,
+          .vidioc_qbuf            = vb2_ioctl_qbuf,
+          .vidioc_dqbuf           = vb2_ioctl_dqbuf,
+          .vidioc_streamon        = vb2_ioctl_streamon,
+          .vidioc_streamoff       = vb2_ioctl_streamoff,
+      };
+
+  - description: "Videobuf2 操作示例"
+    kernel_version: "5.0+"
+    code: |
+      /* 队列设置 */
+      static int my_queue_setup(struct vb2_queue *vq,
+                                unsigned int *nbuffers,
+                                unsigned int *nplanes,
+                                unsigned int sizes[],
+                                struct device *alloc_devs[])
+      {
+          struct my_capture *cap = vb2_get_drv_priv(vq);
+          
+          if (*nplanes) {
+              if (sizes[0] < cap->pix.sizeimage)
+                  return -EINVAL;
+          } else {
+              *nplanes = 1;
+              sizes[0] = cap->pix.sizeimage;
+          }
+          
+          /* 至少需要 2 个缓冲区 */
+          if (*nbuffers < 2)
+              *nbuffers = 2;
+          
+          return 0;
+      }
+      
+      /* 缓冲区入队 */
+      static void my_buf_queue(struct vb2_buffer *vb)
+      {
+          struct my_capture *cap = vb2_get_drv_priv(vb->vb2_queue);
+          struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+          struct my_buffer *buf = container_of(vbuf,
+                                               struct my_buffer, vb);
+          unsigned long flags;
+          
+          spin_lock_irqsave(&cap->slock, flags);
+          list_add_tail(&buf->list, &cap->active);
+          spin_unlock_irqrestore(&cap->slock, flags);
+      }
+      
+      /* 开始流 */
+      static int my_start_streaming(struct vb2_queue *vq,
+                                    unsigned int count)
+      {
+          struct my_capture *cap = vb2_get_drv_priv(vq);
+          
+          /* 配置硬件 */
+          writel(cap->pix.width, cap->regs + REG_WIDTH);
+          writel(cap->pix.height, cap->regs + REG_HEIGHT);
+          
+          /* 启动 DMA */
+          writel(CTRL_START, cap->regs + REG_CTRL);
+          
+          return 0;
+      }
+      
+      /* 停止流 */
+      static void my_stop_streaming(struct vb2_queue *vq)
+      {
+          struct my_capture *cap = vb2_get_drv_priv(vq);
+          struct my_buffer *buf, *tmp;
+          unsigned long flags;
+          
+          /* 停止硬件 */
+          writel(CTRL_STOP, cap->regs + REG_CTRL);
+          
+          /* 返回所有缓冲区 */
+          spin_lock_irqsave(&cap->slock, flags);
+          list_for_each_entry_safe(buf, tmp, &cap->active, list) {
+              list_del(&buf->list);
+              vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
+          }
+          spin_unlock_irqrestore(&cap->slock, flags);
+      }
+      
+      static const struct vb2_ops my_vb2_ops = {
+          .queue_setup     = my_queue_setup,
+          .buf_queue       = my_buf_queue,
+          .start_streaming = my_start_streaming,
+          .stop_streaming  = my_stop_streaming,
+          .wait_prepare    = vb2_ops_wait_prepare,
+          .wait_finish     = vb2_ops_wait_finish,
+      };
+
+  - description: "V4L2 中断处理示例"
+    kernel_version: "5.0+"
+    code: |
+      /* 帧完成中断 */
+      static irqreturn_t my_irq_handler(int irq, void *dev_id)
+      {
+          struct my_capture *cap = dev_id;
+          struct my_buffer *buf;
+          unsigned long flags;
+          u32 status;
+          
+          /* 读取中断状态 */
+          status = readl(cap->regs + REG_INT_STATUS);
+          if (!(status & INT_FRAME_DONE))
+              return IRQ_NONE;
+          
+          /* 清除中断 */
+          writel(status, cap->regs + REG_INT_STATUS);
+          
+          spin_lock_irqsave(&cap->slock, flags);
+          
+          if (!list_empty(&cap->active)) {
+              /* 获取完成的缓冲区 */
+              buf = list_first_entry(&cap->active,
+                                     struct my_buffer, list);
+              list_del(&buf->list);
+              
+              /* 设置时间戳 */
+              buf->vb.vb2_buf.timestamp = ktime_get_ns();
+              buf->vb.sequence = cap->sequence++;
+              buf->vb.field = V4L2_FIELD_NONE;
+              
+              /* 标记完成 */
+              vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
+              
+              /* 处理下一个缓冲区 */
+              if (!list_empty(&cap->active)) {
+                  buf = list_first_entry(&cap->active,
+                                         struct my_buffer, list);
+                  my_set_next_buffer(cap, buf);
+              }
+          }
+          
+          spin_unlock_irqrestore(&cap->slock, flags);
+          return IRQ_HANDLED;
+      }
+      
+      /* 设置下一个 DMA 缓冲区 */
+      static void my_set_next_buffer(struct my_capture *cap,
+                                     struct my_buffer *buf)
+      {
+          dma_addr_t addr;
+          
+          addr = vb2_dma_contig_plane_dma_addr(&buf->vb.vb2_buf, 0);
+          writel(lower_32_bits(addr), cap->regs + REG_DMA_ADDR_L);
+          writel(upper_32_bits(addr), cap->regs + REG_DMA_ADDR_H);
+      }

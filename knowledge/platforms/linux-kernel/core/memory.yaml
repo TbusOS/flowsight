@@ -1717,6 +1717,132 @@ numa_support:
     - pattern: 'NUMA_NO_NODE'
       description: "表示不指定 NUMA 节点"
 
+    # Zone 相关函数
+    # zone_watermark_ok - 检查 zone 水位
+    - pattern: 'zone_watermark_ok\s*\(\s*(?P<zone>[^,]+)\s*,\s*(?P<order>[^,]+)\s*,\s*(?P<mark>[^,]+)\s*,'
+      variable_capture: "zone"
+      description: "检查 zone 水位是否满足分配要求"
+
+    # zone_watermark_fast - 快速水位检查
+    - pattern: 'zone_watermark_fast\s*\(\s*(?P<zone>[^,]+)\s*,'
+      variable_capture: "zone"
+      description: "快速检查 zone 水位"
+
+    # zone_page_state - 获取 zone 页状态
+    - pattern: 'zone_page_state\s*\(\s*(?P<zone>[^,]+)\s*,\s*(?P<item>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "获取 zone 页状态统计"
+
+    # mod_zone_page_state - 修改 zone 页状态
+    - pattern: 'mod_zone_page_state\s*\(\s*(?P<zone>[^,]+)\s*,\s*(?P<item>[^,]+)\s*,\s*(?P<delta>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "修改 zone 页状态统计"
+
+    # for_each_zone - 遍历所有 zone
+    - pattern: 'for_each_zone\s*\(\s*(?P<zone>\w+)\s*\)'
+      variable_capture: "zone"
+      description: "遍历所有内存 zone"
+
+    # for_each_populated_zone - 遍历有页的 zone
+    - pattern: 'for_each_populated_zone\s*\(\s*(?P<zone>\w+)\s*\)'
+      variable_capture: "zone"
+      description: "遍历有页的 zone"
+
+    # for_each_zone_zonelist - 遍历 zonelist
+    - pattern: 'for_each_zone_zonelist\s*\(\s*(?P<zone>\w+)\s*,\s*(?P<z>\w+)\s*,\s*(?P<zonelist>[^,]+)\s*,\s*(?P<highest_zoneidx>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "遍历 zonelist 中的 zone"
+
+    # first_zones_zonelist - 获取第一个 zone
+    - pattern: 'first_zones_zonelist\s*\(\s*(?P<zonelist>[^,]+)\s*,\s*(?P<highest_zoneidx>[^,]+)\s*,\s*(?P<nodes>[^)]+)\s*\)'
+      variable_capture: "zonelist"
+      description: "获取 zonelist 中第一个可用 zone"
+
+    # wakeup_kswapd - 唤醒 kswapd
+    - pattern: 'wakeup_kswapd\s*\(\s*(?P<zone>[^,]+)\s*,\s*(?P<gfp_flags>[^,]+)\s*,\s*(?P<order>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "唤醒 zone 的 kswapd 进行回收"
+
+    # zone_allows_reclaim - 允许回收
+    - pattern: 'zone_allows_reclaim\s*\(\s*(?P<local_zone>[^,]+)\s*,\s*(?P<zone>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "检查是否允许从该 zone 回收"
+
+    # zone_idx - 获取 zone 索引
+    - pattern: 'zone_idx\s*\(\s*(?P<zone>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "获取 zone 在 pgdat 中的索引"
+
+    # zone_is_empty - zone 是否为空
+    - pattern: 'zone_is_empty\s*\(\s*(?P<zone>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "检查 zone 是否没有页"
+
+    # populated_zone - zone 是否有页
+    - pattern: 'populated_zone\s*\(\s*(?P<zone>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "检查 zone 是否有页"
+
+    # managed_zone - zone 是否被管理
+    - pattern: 'managed_zone\s*\(\s*(?P<zone>[^)]+)\s*\)'
+      variable_capture: "zone"
+      description: "检查 zone 是否被内存管理"
+
+  data_structures:
+    zone:
+      pattern: 'struct zone\s*\{'
+      description: "内存 zone 结构体"
+      file: "include/linux/mmzone.h"
+      fields:
+        - name: "watermark"
+          type: "unsigned long[]"
+          description: "水位线 (min/low/high)"
+        - name: "nr_reserved_highatomic"
+          type: "unsigned long"
+          description: "高优先级原子预留页数"
+        - name: "lowmem_reserve"
+          type: "long[]"
+          description: "低端内存预留"
+        - name: "node"
+          type: "int"
+          description: "所属 NUMA 节点"
+        - name: "zone_pgdat"
+          type: "struct pglist_data *"
+          description: "所属 pgdat"
+        - name: "free_area"
+          type: "struct free_area[]"
+          description: "伙伴系统空闲区域"
+        - name: "flags"
+          type: "unsigned long"
+          description: "zone 标志"
+        - name: "lock"
+          type: "spinlock_t"
+          description: "zone 自旋锁"
+        - name: "name"
+          type: "const char *"
+          description: "zone 名称 (DMA/Normal/HighMem)"
+
+    zonelist:
+      pattern: 'struct zonelist\s*\{'
+      description: "zone 列表结构"
+      file: "include/linux/mmzone.h"
+      fields:
+        - name: "_zonerefs"
+          type: "struct zoneref[]"
+          description: "zone 引用数组"
+
+    zoneref:
+      pattern: 'struct zoneref\s*\{'
+      description: "zone 引用"
+      file: "include/linux/mmzone.h"
+      fields:
+        - name: "zone"
+          type: "struct zone *"
+          description: "zone 指针"
+        - name: "zone_idx"
+          type: "int"
+          description: "zone 索引"
+
   call_chains:
     numa_alloc:
       description: "NUMA 感知分配路径"

@@ -193,3 +193,482 @@ nvme_target:
     remove_port:
       pattern: '\.remove_port\s*=\s*(?P<handler>\w+)'
       description: "移除端口"
+
+
+# ============================================================
+# DATA STRUCTURES (数据结构)
+# ============================================================
+
+nvme_structures:
+  description: "NVMe 核心数据结构"
+  icon: "📊"
+
+  nvme_ctrl:
+    pattern: 'struct nvme_ctrl\s*\{'
+    description: "NVMe 控制器结构"
+    file: "include/linux/nvme.h"
+    fields:
+      - name: "state"
+        type: "enum nvme_ctrl_state"
+        description: "控制器状态"
+      - name: "spinlock"
+        type: "spinlock_t"
+        description: "控制器锁"
+      - name: "ops"
+        type: "const struct nvme_ctrl_ops *"
+        description: "控制器操作回调"
+      - name: "device"
+        type: "struct device *"
+        description: "关联设备"
+      - name: "admin_q"
+        type: "struct request_queue *"
+        description: "管理队列"
+      - name: "tagset"
+        type: "struct blk_mq_tag_set *"
+        description: "IO 标签集"
+      - name: "admin_tagset"
+        type: "struct blk_mq_tag_set *"
+        description: "管理标签集"
+      - name: "namespaces"
+        type: "struct list_head"
+        description: "命名空间列表"
+      - name: "subsys"
+        type: "struct nvme_subsystem *"
+        description: "所属子系统"
+      - name: "ctrl_config"
+        type: "u32"
+        description: "控制器配置"
+      - name: "cap"
+        type: "u64"
+        description: "控制器能力"
+      - name: "max_hw_sectors"
+        type: "u32"
+        description: "最大硬件扇区数"
+      - name: "max_segments"
+        type: "u16"
+        description: "最大 SG 段数"
+      - name: "sqsize"
+        type: "u16"
+        description: "提交队列大小"
+      - name: "cqes"
+        type: "u8"
+        description: "完成队列条目大小"
+      - name: "sqes"
+        type: "u8"
+        description: "提交队列条目大小"
+
+  nvme_ns:
+    pattern: 'struct nvme_ns\s*\{'
+    description: "NVMe 命名空间"
+    file: "drivers/nvme/host/nvme.h"
+    fields:
+      - name: "list"
+        type: "struct list_head"
+        description: "命名空间链表"
+      - name: "ctrl"
+        type: "struct nvme_ctrl *"
+        description: "所属控制器"
+      - name: "queue"
+        type: "struct request_queue *"
+        description: "请求队列"
+      - name: "disk"
+        type: "struct gendisk *"
+        description: "通用磁盘"
+      - name: "ns_id"
+        type: "unsigned"
+        description: "命名空间 ID"
+      - name: "lba_shift"
+        type: "u8"
+        description: "LBA 移位"
+      - name: "ms"
+        type: "u16"
+        description: "元数据大小"
+      - name: "ext"
+        type: "bool"
+        description: "扩展 LBA"
+      - name: "pi_type"
+        type: "u8"
+        description: "保护信息类型"
+
+  nvme_queue:
+    pattern: 'struct nvme_queue\s*\{'
+    description: "NVMe 队列"
+    file: "drivers/nvme/host/pci.c"
+    fields:
+      - name: "dev"
+        type: "struct nvme_dev *"
+        description: "NVMe 设备"
+      - name: "cq_head"
+        type: "u16"
+        description: "完成队列头"
+      - name: "sq_tail"
+        type: "u16"
+        description: "提交队列尾"
+      - name: "q_db"
+        type: "u32 __iomem *"
+        description: "门铃寄存器"
+      - name: "q_depth"
+        type: "u16"
+        description: "队列深度"
+      - name: "qid"
+        type: "u16"
+        description: "队列 ID"
+      - name: "sq_cmds"
+        type: "struct nvme_command *"
+        description: "提交队列命令"
+      - name: "cqes"
+        type: "volatile struct nvme_completion *"
+        description: "完成队列条目"
+      - name: "sq_dma_addr"
+        type: "dma_addr_t"
+        description: "SQ DMA 地址"
+      - name: "cq_dma_addr"
+        type: "dma_addr_t"
+        description: "CQ DMA 地址"
+
+  nvme_command:
+    pattern: 'struct nvme_command\s*\{'
+    description: "NVMe 命令结构"
+    file: "include/linux/nvme.h"
+    fields:
+      - name: "opcode"
+        type: "u8"
+        description: "操作码"
+      - name: "flags"
+        type: "u8"
+        description: "标志"
+      - name: "command_id"
+        type: "u16"
+        description: "命令 ID"
+      - name: "nsid"
+        type: "__le32"
+        description: "命名空间 ID"
+      - name: "cdw10"
+        type: "__le32"
+        description: "命令双字 10"
+      - name: "prp1"
+        type: "__le64"
+        description: "PRP1 (数据指针)"
+      - name: "prp2"
+        type: "__le64"
+        description: "PRP2 (数据指针)"
+
+  nvme_completion:
+    pattern: 'struct nvme_completion\s*\{'
+    description: "NVMe 完成队列条目"
+    file: "include/linux/nvme.h"
+    fields:
+      - name: "result"
+        type: "union nvme_result"
+        description: "命令结果"
+      - name: "sq_head"
+        type: "__le16"
+        description: "提交队列头"
+      - name: "sq_id"
+        type: "__le16"
+        description: "提交队列 ID"
+      - name: "command_id"
+        type: "u16"
+        description: "命令 ID"
+      - name: "status"
+        type: "__le16"
+        description: "状态 (包含相位位)"
+
+
+# ============================================================
+# CALL CHAINS (调用链)
+# ============================================================
+
+nvme_call_chains:
+  description: "NVMe 调用链"
+  icon: "🔗"
+
+  probe_path:
+    description: "NVMe PCIe 探测路径"
+    trigger: "PCI 设备匹配时"
+    chain:
+      - function: "nvme_probe"
+        file: "drivers/nvme/host/pci.c"
+        description: "PCIe probe 入口"
+        context: "process"
+      - function: "nvme_dev_map"
+        file: "drivers/nvme/host/pci.c"
+        description: "映射 BAR 空间"
+      - function: "nvme_setup_prp_pools"
+        file: "drivers/nvme/host/pci.c"
+        description: "设置 PRP 池"
+      - function: "nvme_pci_alloc_ctrl"
+        file: "drivers/nvme/host/pci.c"
+        description: "分配控制器"
+      - function: "nvme_init_ctrl"
+        file: "drivers/nvme/host/core.c"
+        description: "初始化控制器"
+      - function: "nvme_pci_configure_admin_queue"
+        file: "drivers/nvme/host/pci.c"
+        description: "配置管理队列"
+      - function: "nvme_reset_ctrl"
+        file: "drivers/nvme/host/core.c"
+        description: "重置控制器"
+
+  command_submit_path:
+    description: "NVMe 命令提交路径"
+    trigger: "提交 IO 或管理命令"
+    chain:
+      - function: "nvme_queue_rq"
+        file: "drivers/nvme/host/pci.c"
+        description: "blk-mq 队列请求回调"
+        context: "process/softirq"
+      - function: "nvme_setup_cmd"
+        file: "drivers/nvme/host/core.c"
+        description: "设置命令"
+      - function: "nvme_map_data"
+        file: "drivers/nvme/host/pci.c"
+        description: "映射数据缓冲区"
+      - function: "nvme_submit_cmd"
+        file: "drivers/nvme/host/pci.c"
+        description: "提交到硬件队列"
+      - function: "writel"
+        description: "写门铃寄存器触发硬件"
+
+  completion_path:
+    description: "NVMe 完成路径"
+    trigger: "硬件中断或轮询"
+    chain:
+      - function: "nvme_irq"
+        file: "drivers/nvme/host/pci.c"
+        description: "中断处理入口"
+        context: "hardirq"
+      - function: "nvme_irq_check"
+        file: "drivers/nvme/host/pci.c"
+        description: "检查完成队列"
+      - function: "nvme_process_cq"
+        file: "drivers/nvme/host/pci.c"
+        description: "处理完成队列"
+      - function: "nvme_handle_cqe"
+        file: "drivers/nvme/host/pci.c"
+        description: "处理单个完成"
+      - function: "nvme_end_req"
+        file: "drivers/nvme/host/pci.c"
+        description: "结束请求"
+      - function: "blk_mq_complete_request"
+        file: "block/blk-mq.c"
+        description: "完成块请求"
+
+  admin_cmd_path:
+    description: "NVMe 管理命令路径"
+    trigger: "发送管理命令 (Identify, Get/Set Features)"
+    chain:
+      - function: "nvme_submit_sync_cmd"
+        file: "drivers/nvme/host/core.c"
+        description: "同步提交命令"
+        context: "process"
+      - function: "__nvme_submit_sync_cmd"
+        file: "drivers/nvme/host/core.c"
+        description: "内部同步提交"
+      - function: "blk_execute_rq"
+        file: "block/blk-mq.c"
+        description: "执行块请求"
+      - function: "wait_for_completion_io"
+        description: "等待完成"
+
+  namespace_scan_path:
+    description: "命名空间扫描路径"
+    trigger: "控制器初始化或 AEN"
+    chain:
+      - function: "nvme_scan_ns_list"
+        file: "drivers/nvme/host/core.c"
+        description: "扫描命名空间列表"
+        context: "process"
+      - function: "nvme_identify_ns"
+        file: "drivers/nvme/host/core.c"
+        description: "Identify 命名空间"
+      - function: "nvme_alloc_ns"
+        file: "drivers/nvme/host/core.c"
+        description: "分配命名空间"
+      - function: "nvme_mpath_add_disk"
+        file: "drivers/nvme/host/multipath.c"
+        description: "添加多路径磁盘"
+      - function: "device_add_disk"
+        file: "block/genhd.c"
+        description: "添加到块层"
+
+
+# ============================================================
+# EXAMPLES (代码示例)
+# ============================================================
+
+examples:
+  - description: "基本 NVMe 控制器操作示例"
+    kernel_version: "4.4+"
+    code: |
+      static const struct nvme_ctrl_ops my_ctrl_ops = {
+          .name                   = "my_nvme",
+          .module                 = THIS_MODULE,
+          .flags                  = 0,
+          .reg_read32             = my_reg_read32,
+          .reg_write32            = my_reg_write32,
+          .reg_read64             = my_reg_read64,
+          .free_ctrl              = my_free_ctrl,
+          .submit_async_event     = my_submit_async_event,
+          .get_address            = my_get_address,
+      };
+      
+      static int my_reg_read32(struct nvme_ctrl *ctrl, u32 off, u32 *val)
+      {
+          struct my_dev *dev = to_my_dev(ctrl);
+          *val = readl(dev->bar + off);
+          return 0;
+      }
+      
+      static int my_reg_write32(struct nvme_ctrl *ctrl, u32 off, u32 val)
+      {
+          struct my_dev *dev = to_my_dev(ctrl);
+          writel(val, dev->bar + off);
+          return 0;
+      }
+
+  - description: "NVMe PCIe 驱动注册示例"
+    kernel_version: "4.4+"
+    code: |
+      static struct pci_driver nvme_driver = {
+          .name           = "nvme",
+          .id_table       = nvme_id_table,
+          .probe          = nvme_probe,
+          .remove         = nvme_remove,
+          .shutdown       = nvme_shutdown,
+          .driver = {
+              .pm         = &nvme_dev_pm_ops,
+          },
+      };
+      
+      static int __init nvme_init(void)
+      {
+          return pci_register_driver(&nvme_driver);
+      }
+      
+      static void __exit nvme_exit(void)
+      {
+          pci_unregister_driver(&nvme_driver);
+      }
+      
+      module_init(nvme_init);
+      module_exit(nvme_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "NVMe 命令提交示例"
+    kernel_version: "4.4+"
+    code: |
+      /* 发送 Identify Controller 命令 */
+      static int nvme_identify_ctrl(struct nvme_ctrl *ctrl,
+                                    struct nvme_id_ctrl **id)
+      {
+          struct nvme_command c = { };
+          int ret;
+          
+          /* 分配 DMA 缓冲区 */
+          *id = kzalloc(sizeof(**id), GFP_KERNEL);
+          if (!*id)
+              return -ENOMEM;
+          
+          /* 构造 Identify 命令 */
+          c.identify.opcode = nvme_admin_identify;
+          c.identify.cns = NVME_ID_CNS_CTRL;
+          
+          /* 同步提交命令 */
+          ret = nvme_submit_sync_cmd(ctrl->admin_q, &c, *id,
+                                     sizeof(**id));
+          if (ret) {
+              kfree(*id);
+              *id = NULL;
+          }
+          return ret;
+      }
+
+  - description: "NVMe 中断处理示例"
+    kernel_version: "4.4+"
+    code: |
+      static irqreturn_t nvme_irq(int irq, void *data)
+      {
+          struct nvme_queue *nvmeq = data;
+          
+          /* 检查是否有完成的命令 */
+          if (nvme_cqe_pending(nvmeq))
+              return IRQ_WAKE_THREAD;
+          
+          return IRQ_NONE;
+      }
+      
+      static irqreturn_t nvme_irq_thread(int irq, void *data)
+      {
+          struct nvme_queue *nvmeq = data;
+          
+          /* 处理完成队列 */
+          nvme_process_cq(nvmeq);
+          return IRQ_HANDLED;
+      }
+      
+      static void nvme_process_cq(struct nvme_queue *nvmeq)
+      {
+          u16 head = nvmeq->cq_head;
+          u16 phase = nvmeq->cq_phase;
+          struct nvme_completion *cqe;
+          
+          while ((cqe = nvme_cqe_pending(nvmeq))) {
+              nvme_handle_cqe(nvmeq, cqe);
+              
+              if (++head == nvmeq->q_depth) {
+                  head = 0;
+                  phase = !phase;
+              }
+          }
+          
+          /* 更新完成队列头 */
+          nvmeq->cq_head = head;
+          nvmeq->cq_phase = phase;
+          nvme_ring_cq_doorbell(nvmeq);
+      }
+
+  - description: "NVMe 多队列初始化示例"
+    kernel_version: "4.4+"
+    code: |
+      static int nvme_setup_io_queues(struct nvme_dev *dev)
+      {
+          struct nvme_ctrl *ctrl = &dev->ctrl;
+          int nr_io_queues, result;
+          
+          /* 确定 IO 队列数量 */
+          nr_io_queues = num_present_cpus();
+          result = nvme_set_queue_count(ctrl, &nr_io_queues);
+          if (result)
+              return result;
+          
+          /* 分配 IO 队列 */
+          dev->queues = kcalloc_node(nr_io_queues + 1,
+                                     sizeof(struct nvme_queue *),
+                                     GFP_KERNEL, ctrl->numa_node);
+          if (!dev->queues)
+              return -ENOMEM;
+          
+          /* 创建每个 IO 队列 */
+          for (int i = 1; i <= nr_io_queues; i++) {
+              result = nvme_alloc_queue(dev, i,
+                                        ctrl->sqsize + 1);
+              if (result)
+                  goto free_queues;
+          }
+          
+          /* 配置 blk-mq */
+          dev->tagset.ops = &nvme_mq_ops;
+          dev->tagset.nr_hw_queues = nr_io_queues;
+          dev->tagset.queue_depth = ctrl->sqsize + 1;
+          dev->tagset.numa_node = ctrl->numa_node;
+          dev->tagset.cmd_size = sizeof(struct nvme_iod);
+          dev->tagset.flags = BLK_MQ_F_SHOULD_MERGE;
+          dev->tagset.driver_data = dev;
+          
+          return blk_mq_alloc_tag_set(&dev->tagset);
+          
+      free_queues:
+          nvme_free_queues(dev, i);
+          return result;
+      }
