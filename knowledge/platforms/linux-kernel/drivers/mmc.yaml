@@ -8,6 +8,7 @@ mmc_host:
   description: "MMC/SD Host Controller Driver"
   header: "linux/mmc/host.h"
   icon: "💾"
+  kernel_version: "2.6.20+"
   registration:
     - pattern: 'mmc_add_host\s*\(\s*(?P<host>\w+)\s*\)'
       description: "注册 MMC 主机控制器"
@@ -167,3 +168,230 @@ call_chains:
         callee: "mmc_rescan"
         async: true
         mechanism: "delayed_work"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  mmc_host:
+    pattern: 'struct mmc_host\s*\{'
+    description: "MMC 主机控制器结构"
+    file: "include/linux/mmc/host.h"
+    fields:
+      - name: "ops"
+        type: "const struct mmc_host_ops *"
+        description: "操作函数表"
+      - name: "class_dev"
+        type: "struct device"
+        description: "类设备"
+      - name: "parent"
+        type: "struct device *"
+        description: "父设备"
+      - name: "f_min"
+        type: "unsigned int"
+        description: "最小频率"
+      - name: "f_max"
+        type: "unsigned int"
+        description: "最大频率"
+      - name: "ocr_avail"
+        type: "u32"
+        description: "可用电压范围"
+      - name: "caps"
+        type: "u32"
+        description: "主机能力"
+      - name: "caps2"
+        type: "u32"
+        description: "扩展能力"
+      - name: "ios"
+        type: "struct mmc_ios"
+        description: "当前 IO 设置"
+      - name: "card"
+        type: "struct mmc_card *"
+        description: "当前卡"
+
+  mmc_request:
+    pattern: 'struct mmc_request\s*\{'
+    description: "MMC 请求结构"
+    file: "include/linux/mmc/core.h"
+    fields:
+      - name: "sbc"
+        type: "struct mmc_command *"
+        description: "设置块计数命令"
+      - name: "cmd"
+        type: "struct mmc_command *"
+        description: "主命令"
+      - name: "data"
+        type: "struct mmc_data *"
+        description: "数据传输"
+      - name: "stop"
+        type: "struct mmc_command *"
+        description: "停止命令"
+      - name: "done"
+        type: "void (*)(struct mmc_request *)"
+        description: "完成回调"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 MMC 主机控制器驱动"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/mmc/host.h>
+      #include <linux/platform_device.h>
+      
+      struct my_mmc_host {
+          struct mmc_host *mmc;
+          void __iomem *regs;
+          struct clk *clk;
+          int irq;
+      };
+      
+      static void my_mmc_request(struct mmc_host *mmc,
+                                  struct mmc_request *mrq)
+      {
+          struct my_mmc_host *host = mmc_priv(mmc);
+          struct mmc_command *cmd = mrq->cmd;
+          
+          /* 设置命令 */
+          writel(cmd->arg, host->regs + CMD_ARG);
+          writel(cmd->opcode | CMD_START, host->regs + CMD_REG);
+          
+          /* 启动 DMA 如果有数据 */
+          if (mrq->data) {
+              my_mmc_setup_dma(host, mrq->data);
+          }
+      }
+      
+      static void my_mmc_set_ios(struct mmc_host *mmc,
+                                  struct mmc_ios *ios)
+      {
+          struct my_mmc_host *host = mmc_priv(mmc);
+          
+          /* 设置时钟 */
+          if (ios->clock) {
+              clk_set_rate(host->clk, ios->clock);
+              writel(CLK_ENABLE, host->regs + CLK_REG);
+          } else {
+              writel(0, host->regs + CLK_REG);
+          }
+          
+          /* 设置总线宽度 */
+          switch (ios->bus_width) {
+          case MMC_BUS_WIDTH_4:
+              writel(BUS_4BIT, host->regs + BUS_REG);
+              break;
+          case MMC_BUS_WIDTH_8:
+              writel(BUS_8BIT, host->regs + BUS_REG);
+              break;
+          default:
+              writel(BUS_1BIT, host->regs + BUS_REG);
+              break;
+          }
+          
+          /* 设置电源 */
+          if (ios->power_mode == MMC_POWER_UP) {
+              writel(PWR_ON, host->regs + PWR_REG);
+          } else if (ios->power_mode == MMC_POWER_OFF) {
+              writel(0, host->regs + PWR_REG);
+          }
+      }
+      
+      static int my_mmc_get_cd(struct mmc_host *mmc)
+      {
+          struct my_mmc_host *host = mmc_priv(mmc);
+          return !(readl(host->regs + STATUS_REG) & CARD_ABSENT);
+      }
+      
+      static const struct mmc_host_ops my_mmc_ops = {
+          .request    = my_mmc_request,
+          .set_ios    = my_mmc_set_ios,
+          .get_cd     = my_mmc_get_cd,
+      };
+      
+      static irqreturn_t my_mmc_irq(int irq, void *data)
+      {
+          struct my_mmc_host *host = data;
+          u32 status = readl(host->regs + INT_STATUS);
+          struct mmc_request *mrq = host->mmc->ongoing_mrq;
+          
+          if (status & CMD_DONE) {
+              struct mmc_command *cmd = mrq->cmd;
+              cmd->resp[0] = readl(host->regs + RESP0);
+              cmd->error = 0;
+          }
+          
+          if (status & DATA_DONE || status & CMD_DONE) {
+              writel(status, host->regs + INT_CLEAR);
+              mmc_request_done(host->mmc, mrq);
+          }
+          
+          return IRQ_HANDLED;
+      }
+      
+      static int my_mmc_probe(struct platform_device *pdev)
+      {
+          struct my_mmc_host *host;
+          struct mmc_host *mmc;
+          int ret;
+          
+          mmc = mmc_alloc_host(sizeof(*host), &pdev->dev);
+          if (!mmc)
+              return -ENOMEM;
+          
+          host = mmc_priv(mmc);
+          host->mmc = mmc;
+          
+          host->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(host->regs)) {
+              ret = PTR_ERR(host->regs);
+              goto free_host;
+          }
+          
+          host->irq = platform_get_irq(pdev, 0);
+          ret = devm_request_irq(&pdev->dev, host->irq, my_mmc_irq,
+                                  0, "my-mmc", host);
+          if (ret)
+              goto free_host;
+          
+          mmc->ops = &my_mmc_ops;
+          mmc->f_min = 400000;
+          mmc->f_max = 50000000;
+          mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
+          mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SD_HIGHSPEED;
+          
+          platform_set_drvdata(pdev, host);
+          
+          ret = mmc_add_host(mmc);
+          if (ret)
+              goto free_host;
+          
+          return 0;
+          
+      free_host:
+          mmc_free_host(mmc);
+          return ret;
+      }
+      
+      static int my_mmc_remove(struct platform_device *pdev)
+      {
+          struct my_mmc_host *host = platform_get_drvdata(pdev);
+          
+          mmc_remove_host(host->mmc);
+          mmc_free_host(host->mmc);
+          return 0;
+      }
+      
+      static struct platform_driver my_mmc_driver = {
+          .probe  = my_mmc_probe,
+          .remove = my_mmc_remove,
+          .driver = {
+              .name = "my-mmc",
+          },
+      };
+      module_platform_driver(my_mmc_driver);

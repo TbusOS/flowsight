@@ -8,6 +8,7 @@ mbox_controller:
   description: "Mailbox Controller Driver"
   header: "linux/mailbox_controller.h"
   icon: "📬"
+  kernel_version: "3.18+"
   registration:
     - pattern: 'devm_mbox_controller_register\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<mbox>\w+)\s*\)'
       description: "托管注册邮箱控制器"
@@ -118,3 +119,225 @@ call_chains:
       - caller: "mbox_chan_received_data"
         callee: "client->rx_callback"
         description: "调用客户端接收回调"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  mbox_controller:
+    pattern: 'struct mbox_controller\s*\{'
+    description: "邮箱控制器结构"
+    file: "include/linux/mailbox_controller.h"
+    fields:
+      - name: "dev"
+        type: "struct device *"
+        description: "关联设备"
+      - name: "ops"
+        type: "const struct mbox_chan_ops *"
+        description: "通道操作"
+      - name: "chans"
+        type: "struct mbox_chan *"
+        description: "通道数组"
+      - name: "num_chans"
+        type: "int"
+        description: "通道数量"
+      - name: "txdone_irq"
+        type: "bool"
+        description: "中断通知发送完成"
+      - name: "txdone_poll"
+        type: "bool"
+        description: "轮询发送完成"
+      - name: "txpoll_period"
+        type: "unsigned int"
+        description: "轮询周期"
+      - name: "of_xlate"
+        type: "callback"
+        description: "DT 解析回调"
+
+  mbox_chan:
+    pattern: 'struct mbox_chan\s*\{'
+    description: "邮箱通道结构"
+    file: "include/linux/mailbox_controller.h"
+    fields:
+      - name: "mbox"
+        type: "struct mbox_controller *"
+        description: "所属控制器"
+      - name: "txdone_method"
+        type: "unsigned int"
+        description: "完成通知方式"
+      - name: "cl"
+        type: "struct mbox_client *"
+        description: "关联客户端"
+      - name: "active_req"
+        type: "void *"
+        description: "当前请求"
+      - name: "msg_count"
+        type: "unsigned int"
+        description: "待处理消息数"
+      - name: "msg_free"
+        type: "unsigned int"
+        description: "空闲槽数"
+      - name: "con_priv"
+        type: "void *"
+        description: "控制器私有数据"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "邮箱控制器驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/mailbox_controller.h>
+      #include <linux/platform_device.h>
+      
+      #define MBOX_NUM_CHANS  4
+      
+      struct my_mbox {
+          struct mbox_controller mbox;
+          struct mbox_chan chans[MBOX_NUM_CHANS];
+          void __iomem *regs;
+      };
+      
+      static int my_mbox_send_data(struct mbox_chan *chan, void *data)
+      {
+          struct my_mbox *mbox = container_of(chan->mbox,
+                                               struct my_mbox, mbox);
+          u32 *msg = data;
+          
+          /* 写入硬件寄存器 */
+          writel(*msg, mbox->regs + MBOX_TX_REG(chan->con_priv));
+          
+          return 0;
+      }
+      
+      static int my_mbox_startup(struct mbox_chan *chan)
+      {
+          /* 启用通道中断 */
+          return 0;
+      }
+      
+      static void my_mbox_shutdown(struct mbox_chan *chan)
+      {
+          /* 禁用通道中断 */
+      }
+      
+      static bool my_mbox_last_tx_done(struct mbox_chan *chan)
+      {
+          struct my_mbox *mbox = container_of(chan->mbox,
+                                               struct my_mbox, mbox);
+          return !(readl(mbox->regs + MBOX_STATUS) & TX_BUSY);
+      }
+      
+      static const struct mbox_chan_ops my_mbox_ops = {
+          .send_data    = my_mbox_send_data,
+          .startup      = my_mbox_startup,
+          .shutdown     = my_mbox_shutdown,
+          .last_tx_done = my_mbox_last_tx_done,
+      };
+      
+      static irqreturn_t my_mbox_irq(int irq, void *data)
+      {
+          struct my_mbox *mbox = data;
+          u32 status = readl(mbox->regs + MBOX_INT_STATUS);
+          int i;
+          
+          for (i = 0; i < MBOX_NUM_CHANS; i++) {
+              if (status & RX_PENDING(i)) {
+                  u32 msg = readl(mbox->regs + MBOX_RX_REG(i));
+                  mbox_chan_received_data(&mbox->chans[i], &msg);
+              }
+              if (status & TX_DONE(i)) {
+                  mbox_chan_txdone(&mbox->chans[i], 0);
+              }
+          }
+          
+          writel(status, mbox->regs + MBOX_INT_CLEAR);
+          return IRQ_HANDLED;
+      }
+      
+      static int my_mbox_probe(struct platform_device *pdev)
+      {
+          struct my_mbox *mbox;
+          int i, ret;
+          
+          mbox = devm_kzalloc(&pdev->dev, sizeof(*mbox), GFP_KERNEL);
+          if (!mbox)
+              return -ENOMEM;
+          
+          mbox->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(mbox->regs))
+              return PTR_ERR(mbox->regs);
+          
+          for (i = 0; i < MBOX_NUM_CHANS; i++)
+              mbox->chans[i].con_priv = (void *)(uintptr_t)i;
+          
+          mbox->mbox.dev = &pdev->dev;
+          mbox->mbox.ops = &my_mbox_ops;
+          mbox->mbox.chans = mbox->chans;
+          mbox->mbox.num_chans = MBOX_NUM_CHANS;
+          mbox->mbox.txdone_irq = true;
+          
+          ret = devm_mbox_controller_register(&pdev->dev, &mbox->mbox);
+          if (ret)
+              return ret;
+          
+          return devm_request_irq(&pdev->dev, platform_get_irq(pdev, 0),
+                                  my_mbox_irq, 0, "my-mbox", mbox);
+      }
+
+  - description: "邮箱客户端示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/mailbox_client.h>
+      
+      struct my_client {
+          struct mbox_client cl;
+          struct mbox_chan *chan;
+          struct completion done;
+      };
+      
+      static void my_rx_callback(struct mbox_client *cl, void *data)
+      {
+          struct my_client *priv = container_of(cl, struct my_client, cl);
+          u32 *msg = data;
+          
+          pr_info("Received: 0x%08x\n", *msg);
+          complete(&priv->done);
+      }
+      
+      static int my_client_probe(struct platform_device *pdev)
+      {
+          struct my_client *priv;
+          u32 msg = 0x12345678;
+          
+          priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
+          if (!priv)
+              return -ENOMEM;
+          
+          init_completion(&priv->done);
+          
+          priv->cl.dev = &pdev->dev;
+          priv->cl.rx_callback = my_rx_callback;
+          priv->cl.tx_block = true;
+          priv->cl.tx_tout = 500;
+          priv->cl.knows_txdone = false;
+          
+          priv->chan = mbox_request_channel(&priv->cl, 0);
+          if (IS_ERR(priv->chan))
+              return PTR_ERR(priv->chan);
+          
+          /* 发送消息 */
+          mbox_send_message(priv->chan, &msg);
+          
+          /* 等待响应 */
+          wait_for_completion_timeout(&priv->done, msecs_to_jiffies(1000));
+          
+          platform_set_drvdata(pdev, priv);
+          return 0;
+      }

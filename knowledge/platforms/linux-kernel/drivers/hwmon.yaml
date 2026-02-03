@@ -8,6 +8,7 @@ hwmon_device:
   description: "Hardware Monitoring Device"
   header: "linux/hwmon.h"
   icon: "🌡️"
+  kernel_version: "2.6.18+"
   registration:
     - pattern: 'hwmon_device_register_with_info\s*\(\s*(?P<dev>\w+)\s*,'
       description: "注册 hwmon 设备（推荐）"
@@ -129,3 +130,219 @@ call_chains:
       - caller: "hwmon_attr_show"
         callee: "ops->read"
         description: "调用驱动读取函数"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  hwmon_device:
+    pattern: 'struct hwmon_device\s*\{'
+    description: "hwmon 设备结构"
+    file: "drivers/hwmon/hwmon.c"
+    fields:
+      - name: "id"
+        type: "int"
+        description: "设备 ID"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+      - name: "chip"
+        type: "const struct hwmon_chip_info *"
+        description: "芯片信息"
+
+  hwmon_chip_info:
+    pattern: 'struct hwmon_chip_info\s*\{'
+    description: "hwmon 芯片信息"
+    file: "include/linux/hwmon.h"
+    fields:
+      - name: "ops"
+        type: "const struct hwmon_ops *"
+        description: "操作函数表"
+      - name: "info"
+        type: "const struct hwmon_channel_info **"
+        description: "通道信息数组"
+
+  hwmon_ops:
+    pattern: 'struct hwmon_ops\s*\{'
+    description: "hwmon 操作结构"
+    file: "include/linux/hwmon.h"
+    fields:
+      - name: "is_visible"
+        type: "umode_t (*)(const void *, enum hwmon_sensor_types, u32, int)"
+        description: "属性可见性回调"
+      - name: "read"
+        type: "int (*)(struct device *, enum hwmon_sensor_types, u32, int, long *)"
+        description: "读取属性回调"
+      - name: "read_string"
+        type: "int (*)(struct device *, enum hwmon_sensor_types, u32, int, const char **)"
+        description: "读取字符串属性"
+      - name: "write"
+        type: "int (*)(struct device *, enum hwmon_sensor_types, u32, int, long)"
+        description: "写入属性回调"
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+helpers:
+  - pattern: 'hwmon_device_register_with_info\s*\('
+    description: "注册 hwmon 设备（推荐 API）"
+    context: "process"
+    can_sleep: true
+
+  - pattern: 'devm_hwmon_device_register_with_info\s*\('
+    description: "托管注册 hwmon 设备"
+    context: "process"
+    can_sleep: true
+
+  - pattern: 'hwmon_notify_event\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<attr>\w+)\s*,\s*(?P<channel>\w+)\s*\)'
+    variable_capture: "dev"
+    description: "通知 hwmon 事件"
+    context: "any"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 hwmon 驱动示例 (新 API)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/hwmon.h>
+      #include <linux/i2c.h>
+      
+      struct my_sensor {
+          struct i2c_client *client;
+          struct mutex lock;
+      };
+      
+      static umode_t my_hwmon_is_visible(const void *data,
+                                          enum hwmon_sensor_types type,
+                                          u32 attr, int channel)
+      {
+          switch (type) {
+          case hwmon_temp:
+              switch (attr) {
+              case hwmon_temp_input:
+              case hwmon_temp_max:
+                  return 0444;
+              case hwmon_temp_max_alarm:
+                  return 0444;
+              }
+              break;
+          case hwmon_in:
+              if (attr == hwmon_in_input)
+                  return 0444;
+              break;
+          default:
+              break;
+          }
+          return 0;
+      }
+      
+      static int my_hwmon_read(struct device *dev,
+                               enum hwmon_sensor_types type,
+                               u32 attr, int channel, long *val)
+      {
+          struct my_sensor *sensor = dev_get_drvdata(dev);
+          int ret;
+          
+          mutex_lock(&sensor->lock);
+          
+          switch (type) {
+          case hwmon_temp:
+              switch (attr) {
+              case hwmon_temp_input:
+                  ret = i2c_smbus_read_word_data(sensor->client,
+                                                  TEMP_REG);
+                  if (ret < 0)
+                      goto unlock;
+                  /* 转换为毫摄氏度 */
+                  *val = ((s16)ret * 1000) >> 8;
+                  break;
+              case hwmon_temp_max:
+                  ret = i2c_smbus_read_word_data(sensor->client,
+                                                  TEMP_MAX_REG);
+                  if (ret < 0)
+                      goto unlock;
+                  *val = ((s16)ret * 1000) >> 8;
+                  break;
+              default:
+                  ret = -EOPNOTSUPP;
+                  goto unlock;
+              }
+              break;
+          case hwmon_in:
+              ret = i2c_smbus_read_word_data(sensor->client,
+                                              VOLTAGE_REG);
+              if (ret < 0)
+                  goto unlock;
+              /* 转换为毫伏 */
+              *val = ret * 2;
+              break;
+          default:
+              ret = -EOPNOTSUPP;
+              goto unlock;
+          }
+          ret = 0;
+          
+      unlock:
+          mutex_unlock(&sensor->lock);
+          return ret;
+      }
+      
+      static const struct hwmon_channel_info *my_hwmon_info[] = {
+          HWMON_CHANNEL_INFO(temp,
+                             HWMON_T_INPUT | HWMON_T_MAX | HWMON_T_MAX_ALARM),
+          HWMON_CHANNEL_INFO(in, HWMON_I_INPUT),
+          NULL
+      };
+      
+      static const struct hwmon_ops my_hwmon_ops = {
+          .is_visible = my_hwmon_is_visible,
+          .read       = my_hwmon_read,
+      };
+      
+      static const struct hwmon_chip_info my_chip_info = {
+          .ops  = &my_hwmon_ops,
+          .info = my_hwmon_info,
+      };
+      
+      static int my_sensor_probe(struct i2c_client *client)
+      {
+          struct my_sensor *sensor;
+          struct device *hwmon_dev;
+          
+          sensor = devm_kzalloc(&client->dev, sizeof(*sensor), GFP_KERNEL);
+          if (!sensor)
+              return -ENOMEM;
+          
+          sensor->client = client;
+          mutex_init(&sensor->lock);
+          
+          hwmon_dev = devm_hwmon_device_register_with_info(
+                          &client->dev, "my_sensor", sensor,
+                          &my_chip_info, NULL);
+          
+          return PTR_ERR_OR_ZERO(hwmon_dev);
+      }
+      
+      static const struct i2c_device_id my_sensor_id[] = {
+          { "my_sensor", 0 },
+          { }
+      };
+      MODULE_DEVICE_TABLE(i2c, my_sensor_id);
+      
+      static struct i2c_driver my_sensor_driver = {
+          .driver = {
+              .name = "my_sensor",
+          },
+          .probe    = my_sensor_probe,
+          .id_table = my_sensor_id,
+      };
+      module_i2c_driver(my_sensor_driver);

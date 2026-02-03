@@ -8,6 +8,7 @@ power_supply:
   description: "Power Supply Class Driver"
   header: "linux/power_supply.h"
   icon: "🔋"
+  kernel_version: "2.6.24+"
   registration:
     - pattern: 'power_supply_register\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<desc>\w+)\s*,\s*(?P<cfg>\w+)\s*\)'
       description: "注册电源设备"
@@ -115,3 +116,151 @@ call_chains:
       - caller: "power_supply_changed_work"
         callee: "kobject_uevent"
         description: "发送 uevent 到用户空间"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  power_supply:
+    pattern: 'struct power_supply\s*\{'
+    description: "电源设备结构"
+    file: "include/linux/power_supply.h"
+    fields:
+      - name: "desc"
+        type: "const struct power_supply_desc *"
+        description: "设备描述"
+      - name: "supplied_to"
+        type: "char **"
+        description: "供电目标列表"
+      - name: "num_supplicants"
+        type: "size_t"
+        description: "供电目标数量"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+      - name: "drv_data"
+        type: "void *"
+        description: "驱动私有数据"
+
+  power_supply_desc:
+    pattern: 'struct power_supply_desc\s*\{'
+    description: "电源描述结构"
+    file: "include/linux/power_supply.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "电源名称"
+      - name: "type"
+        type: "enum power_supply_type"
+        description: "电源类型"
+      - name: "properties"
+        type: "enum power_supply_property *"
+        description: "支持的属性数组"
+      - name: "num_properties"
+        type: "size_t"
+        description: "属性数量"
+      - name: "get_property"
+        type: "callback"
+        description: "获取属性回调"
+      - name: "set_property"
+        type: "callback"
+        description: "设置属性回调"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本电源驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/power_supply.h>
+      #include <linux/platform_device.h>
+      
+      struct my_battery {
+          struct power_supply *psy;
+          int capacity;
+          int voltage;
+          int status;
+      };
+      
+      static enum power_supply_property my_battery_props[] = {
+          POWER_SUPPLY_PROP_STATUS,
+          POWER_SUPPLY_PROP_PRESENT,
+          POWER_SUPPLY_PROP_VOLTAGE_NOW,
+          POWER_SUPPLY_PROP_CAPACITY,
+          POWER_SUPPLY_PROP_HEALTH,
+      };
+      
+      static int my_battery_get_property(struct power_supply *psy,
+                                         enum power_supply_property psp,
+                                         union power_supply_propval *val)
+      {
+          struct my_battery *bat = power_supply_get_drvdata(psy);
+          
+          switch (psp) {
+          case POWER_SUPPLY_PROP_STATUS:
+              val->intval = bat->status;
+              break;
+          case POWER_SUPPLY_PROP_PRESENT:
+              val->intval = 1;
+              break;
+          case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+              val->intval = bat->voltage;
+              break;
+          case POWER_SUPPLY_PROP_CAPACITY:
+              val->intval = bat->capacity;
+              break;
+          case POWER_SUPPLY_PROP_HEALTH:
+              val->intval = POWER_SUPPLY_HEALTH_GOOD;
+              break;
+          default:
+              return -EINVAL;
+          }
+          return 0;
+      }
+      
+      static const struct power_supply_desc my_battery_desc = {
+          .name           = "my-battery",
+          .type           = POWER_SUPPLY_TYPE_BATTERY,
+          .properties     = my_battery_props,
+          .num_properties = ARRAY_SIZE(my_battery_props),
+          .get_property   = my_battery_get_property,
+      };
+      
+      static int my_battery_probe(struct platform_device *pdev)
+      {
+          struct my_battery *bat;
+          struct power_supply_config cfg = {};
+          
+          bat = devm_kzalloc(&pdev->dev, sizeof(*bat), GFP_KERNEL);
+          if (!bat)
+              return -ENOMEM;
+          
+          bat->capacity = 100;
+          bat->voltage = 4200000; /* 4.2V in uV */
+          bat->status = POWER_SUPPLY_STATUS_FULL;
+          
+          cfg.drv_data = bat;
+          cfg.of_node = pdev->dev.of_node;
+          
+          bat->psy = devm_power_supply_register(&pdev->dev,
+                                                 &my_battery_desc, &cfg);
+          if (IS_ERR(bat->psy))
+              return PTR_ERR(bat->psy);
+          
+          platform_set_drvdata(pdev, bat);
+          return 0;
+      }
+      
+      static struct platform_driver my_battery_driver = {
+          .probe  = my_battery_probe,
+          .driver = {
+              .name = "my-battery",
+          },
+      };
+      module_platform_driver(my_battery_driver);

@@ -10,6 +10,7 @@ nvmem_core:
   description: "NVMEM Core - 非易失性存储核心"
   header: "linux/nvmem.h"
   icon: "💾"
+  kernel_version: "4.2+"
 
   context:
     type: "process"
@@ -149,47 +150,286 @@ nvmem_device_id:
 
 
 # ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  nvmem_device:
+    pattern: 'struct nvmem_device\s*\{'
+    description: "NVMEM 设备结构"
+    file: "include/linux/nvmem-provider.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "设备名称"
+      - name: "id"
+        type: "int"
+        description: "设备 ID"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+      - name: "stride"
+        type: "unsigned int"
+        description: "最小访问粒度"
+      - name: "word_size"
+        type: "unsigned int"
+        description: "字大小"
+      - name: "size"
+        type: "size_t"
+        description: "总大小"
+      - name: "read_only"
+        type: "bool"
+        description: "是否只读"
+      - name: "cells"
+        type: "struct list_head"
+        description: "单元列表"
+
+  nvmem_config:
+    pattern: 'struct nvmem_config\s*\{'
+    description: "NVMEM 配置结构"
+    file: "include/linux/nvmem-provider.h"
+    fields:
+      - name: "dev"
+        type: "struct device *"
+        description: "父设备"
+      - name: "name"
+        type: "const char *"
+        description: "设备名称"
+      - name: "id"
+        type: "int"
+        description: "设备 ID"
+      - name: "owner"
+        type: "struct module *"
+        description: "所属模块"
+      - name: "cells"
+        type: "const struct nvmem_cell_info *"
+        description: "单元信息"
+      - name: "ncells"
+        type: "int"
+        description: "单元数量"
+      - name: "type"
+        type: "enum nvmem_type"
+        description: "NVMEM 类型"
+      - name: "read_only"
+        type: "bool"
+        description: "是否只读"
+      - name: "size"
+        type: "size_t"
+        description: "设备大小"
+      - name: "reg_read"
+        type: "callback"
+        description: "读取回调"
+      - name: "reg_write"
+        type: "callback"
+        description: "写入回调"
+      - name: "priv"
+        type: "void *"
+        description: "私有数据"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  nvmem_register:
+    description: "NVMEM 设备注册流程"
+    chain:
+      - caller: "driver probe"
+        callee: "nvmem_register / devm_nvmem_register"
+        description: "注册 NVMEM 设备"
+      - caller: "nvmem_register"
+        callee: "device_register"
+        description: "注册到设备模型"
+      - caller: "nvmem_register"
+        callee: "nvmem_add_cells"
+        description: "添加 NVMEM 单元"
+
+  nvmem_cell_read:
+    description: "NVMEM 单元读取流程"
+    chain:
+      - caller: "consumer driver"
+        callee: "nvmem_cell_get"
+        description: "获取 NVMEM 单元"
+      - caller: "consumer driver"
+        callee: "nvmem_cell_read"
+        description: "读取单元数据"
+      - caller: "nvmem_cell_read"
+        callee: "nvmem->reg_read"
+        description: "调用底层读取"
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+helpers:
+  - pattern: 'nvmem_device_read\s*\(\s*(?P<nvmem>\w+)\s*,\s*(?P<offset>\w+)\s*,\s*(?P<bytes>\w+)\s*,\s*(?P<buf>\w+)\s*\)'
+    variable_capture: "nvmem"
+    description: "从 NVMEM 设备读取数据"
+    context: "process"
+    can_sleep: true
+
+  - pattern: 'nvmem_device_write\s*\(\s*(?P<nvmem>\w+)\s*,\s*(?P<offset>\w+)\s*,\s*(?P<bytes>\w+)\s*,\s*(?P<buf>\w+)\s*\)'
+    variable_capture: "nvmem"
+    description: "向 NVMEM 设备写入数据"
+    context: "process"
+    can_sleep: true
+
+  - pattern: 'of_nvmem_cell_get\s*\(\s*(?P<np>\w+)\s*,\s*(?P<id>[^)]+)\s*\)'
+    variable_capture: "np"
+    description: "从设备树获取 NVMEM 单元"
+
+
+# ============================================================
 # NVMEM EXAMPLES
 # ============================================================
 
 examples:
-  - description: "NVMEM 设备驱动"
+  - description: "NVMEM Provider 驱动示例（完整）"
+    kernel_version: "5.0+"
     code: |
-      static int my_nvmem_probe(struct nvmem_device *dev,
-                                const struct nvmem_device_id *id) {
-          struct device *nvmem_dev = &dev->dev;
-          void *buf;
-          size_t size;
-
-          size = nvmem_dev.size;
-          buf = kzalloc(size, GFP_KERNEL);
-          if (!buf)
+      #include <linux/module.h>
+      #include <linux/nvmem-provider.h>
+      #include <linux/platform_device.h>
+      #include <linux/i2c.h>
+      
+      #define EEPROM_SIZE  256
+      
+      struct my_eeprom {
+          struct i2c_client *client;
+          struct nvmem_device *nvmem;
+          struct mutex lock;
+      };
+      
+      static int my_eeprom_read(void *priv, unsigned int off,
+                                 void *val, size_t count)
+      {
+          struct my_eeprom *eeprom = priv;
+          int ret;
+          
+          mutex_lock(&eeprom->lock);
+          
+          ret = i2c_smbus_read_i2c_block_data(eeprom->client,
+                                               off, count, val);
+          
+          mutex_unlock(&eeprom->lock);
+          
+          return ret < 0 ? ret : 0;
+      }
+      
+      static int my_eeprom_write(void *priv, unsigned int off,
+                                  void *val, size_t count)
+      {
+          struct my_eeprom *eeprom = priv;
+          int ret;
+          
+          mutex_lock(&eeprom->lock);
+          
+          ret = i2c_smbus_write_i2c_block_data(eeprom->client,
+                                                off, count, val);
+          
+          /* EEPROM 写入需要等待 */
+          if (ret == 0)
+              msleep(10);
+          
+          mutex_unlock(&eeprom->lock);
+          
+          return ret;
+      }
+      
+      static const struct nvmem_cell_info my_cells[] = {
+          { .name = "mac-address", .offset = 0, .bytes = 6 },
+          { .name = "serial-number", .offset = 6, .bytes = 16 },
+          { .name = "board-revision", .offset = 22, .bytes = 2 },
+      };
+      
+      static int my_eeprom_probe(struct i2c_client *client)
+      {
+          struct my_eeprom *eeprom;
+          struct nvmem_config config = {};
+          
+          eeprom = devm_kzalloc(&client->dev, sizeof(*eeprom),
+                                 GFP_KERNEL);
+          if (!eeprom)
               return -ENOMEM;
-
-          /* 读取数据 */
-          nvmem_device_read(dev, 0, size, buf);
-
-          /* 解析数据 */
-          ...
-
-          nvmem_device_put(dev);
+          
+          eeprom->client = client;
+          mutex_init(&eeprom->lock);
+          
+          config.dev = &client->dev;
+          config.name = "my-eeprom";
+          config.id = NVMEM_DEVID_NONE;
+          config.owner = THIS_MODULE;
+          config.type = NVMEM_TYPE_EEPROM;
+          config.read_only = false;
+          config.root_only = false;
+          config.size = EEPROM_SIZE;
+          config.stride = 1;
+          config.word_size = 1;
+          config.reg_read = my_eeprom_read;
+          config.reg_write = my_eeprom_write;
+          config.cells = my_cells;
+          config.ncells = ARRAY_SIZE(my_cells);
+          config.priv = eeprom;
+          
+          eeprom->nvmem = devm_nvmem_register(&client->dev, &config);
+          if (IS_ERR(eeprom->nvmem))
+              return PTR_ERR(eeprom->nvmem);
+          
+          i2c_set_clientdata(client, eeprom);
+          
+          dev_info(&client->dev, "EEPROM registered (%d bytes)\n",
+                   EEPROM_SIZE);
           return 0;
       }
-
-      static void my_nvmem_remove(struct nvmem_device *dev) {
-      }
-
-      static struct nvmem_device_id my_nvmem_id[] = {
-          { "my-nvmem", 0 },
-          { },
+      
+      static const struct i2c_device_id my_eeprom_id[] = {
+          { "my-eeprom", 0 },
+          { }
       };
-
-      static struct nvmem_driver my_nvmem = {
+      MODULE_DEVICE_TABLE(i2c, my_eeprom_id);
+      
+      static struct i2c_driver my_eeprom_driver = {
           .driver = {
-              .name = "my-nvmem",
+              .name = "my-eeprom",
           },
-          .probe = my_nvmem_probe,
-          .remove = my_nvmem_remove,
-          .id_table = my_nvmem_id,
+          .probe    = my_eeprom_probe,
+          .id_table = my_eeprom_id,
       };
-      nvmem_register(&my_nvmem);
+      module_i2c_driver(my_eeprom_driver);
+
+  - description: "NVMEM Consumer 使用示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/nvmem-consumer.h>
+      
+      static int my_driver_probe(struct platform_device *pdev)
+      {
+          struct nvmem_cell *cell;
+          size_t len;
+          u8 *mac;
+          
+          /* 获取 MAC 地址单元 */
+          cell = nvmem_cell_get(&pdev->dev, "mac-address");
+          if (IS_ERR(cell))
+              return PTR_ERR(cell);
+          
+          /* 读取 MAC 地址 */
+          mac = nvmem_cell_read(cell, &len);
+          nvmem_cell_put(cell);
+          
+          if (IS_ERR(mac))
+              return PTR_ERR(mac);
+          
+          if (len != 6) {
+              kfree(mac);
+              return -EINVAL;
+          }
+          
+          /* 使用 MAC 地址 */
+          dev_info(&pdev->dev, "MAC: %pM\n", mac);
+          
+          kfree(mac);
+          return 0;
+      }

@@ -8,6 +8,7 @@ firmware:
   description: "Firmware Loading API"
   header: "linux/firmware.h"
   icon: "📦"
+  kernel_version: "2.6+"
   sync_loading:
     - pattern: 'request_firmware\s*\(\s*&(?P<fw>\w+)\s*,\s*"(?P<name>[^"]+)"\s*,\s*(?P<dev>\w+)\s*\)'
       description: "同步请求固件"
@@ -122,3 +123,149 @@ call_chains:
       - caller: "request_firmware_work_func"
         callee: "cont callback"
         description: "调用完成回调"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  firmware:
+    pattern: 'struct firmware\s*\{'
+    description: "固件结构"
+    file: "include/linux/firmware.h"
+    fields:
+      - name: "size"
+        type: "size_t"
+        description: "固件大小"
+      - name: "data"
+        type: "const u8 *"
+        description: "固件数据"
+      - name: "priv"
+        type: "void *"
+        description: "私有数据"
+
+  fw_upload_ops:
+    pattern: 'struct fw_upload_ops\s*\{'
+    description: "固件上传操作结构"
+    file: "include/linux/firmware.h"
+    fields:
+      - name: "prepare"
+        type: "callback"
+        description: "准备上传"
+      - name: "write"
+        type: "callback"
+        description: "写入数据"
+      - name: "poll_complete"
+        type: "callback"
+        description: "轮询完成"
+      - name: "cancel"
+        type: "callback"
+        description: "取消上传"
+      - name: "cleanup"
+        type: "callback"
+        description: "清理资源"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "同步固件加载示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/firmware.h>
+      #include <linux/platform_device.h>
+      
+      static int my_load_firmware(struct device *dev)
+      {
+          const struct firmware *fw;
+          int ret;
+          
+          ret = request_firmware(&fw, "my_device.fw", dev);
+          if (ret) {
+              dev_err(dev, "Failed to load firmware: %d\n", ret);
+              return ret;
+          }
+          
+          dev_info(dev, "Loaded firmware: %zu bytes\n", fw->size);
+          
+          /* 使用固件数据 */
+          ret = my_program_device(dev, fw->data, fw->size);
+          
+          release_firmware(fw);
+          return ret;
+      }
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          return my_load_firmware(&pdev->dev);
+      }
+
+  - description: "异步固件加载示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/firmware.h>
+      
+      struct my_device {
+          struct device *dev;
+          struct completion fw_done;
+          int fw_status;
+      };
+      
+      static void my_fw_callback(const struct firmware *fw, void *context)
+      {
+          struct my_device *mydev = context;
+          
+          if (!fw) {
+              dev_err(mydev->dev, "Firmware not available\n");
+              mydev->fw_status = -ENOENT;
+              goto out;
+          }
+          
+          dev_info(mydev->dev, "Async firmware: %zu bytes\n", fw->size);
+          
+          /* 使用固件 */
+          mydev->fw_status = my_program_device(mydev->dev,
+                                                fw->data, fw->size);
+          release_firmware(fw);
+          
+      out:
+          complete(&mydev->fw_done);
+      }
+      
+      static int my_async_probe(struct platform_device *pdev)
+      {
+          struct my_device *mydev;
+          int ret;
+          
+          mydev = devm_kzalloc(&pdev->dev, sizeof(*mydev), GFP_KERNEL);
+          if (!mydev)
+              return -ENOMEM;
+          
+          mydev->dev = &pdev->dev;
+          init_completion(&mydev->fw_done);
+          
+          ret = request_firmware_nowait(THIS_MODULE, true,
+                                        "my_device.fw",
+                                        &pdev->dev, GFP_KERNEL,
+                                        mydev, my_fw_callback);
+          if (ret) {
+              dev_err(&pdev->dev, "Failed to request firmware\n");
+              return ret;
+          }
+          
+          platform_set_drvdata(pdev, mydev);
+          return 0;
+      }
+      
+      static int my_async_remove(struct platform_device *pdev)
+      {
+          struct my_device *mydev = platform_get_drvdata(pdev);
+          
+          /* 等待固件加载完成 */
+          wait_for_completion(&mydev->fw_done);
+          return mydev->fw_status;
+      }

@@ -8,6 +8,7 @@ crypto_alg:
   description: "Cryptographic Algorithm Driver"
   header: "linux/crypto.h"
   icon: "🔐"
+  kernel_version: "2.6.17+"
   registration:
     - pattern: 'crypto_register_alg\s*\(\s*&(?P<alg>\w+)\s*\)'
       description: "注册加密算法"
@@ -174,3 +175,194 @@ call_chains:
       - caller: "engine->do_one_request"
         callee: "crypto_finalize_*_request"
         description: "完成请求"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  crypto_alg:
+    pattern: 'struct crypto_alg\s*\{'
+    description: "加密算法基础结构"
+    file: "include/linux/crypto.h"
+    fields:
+      - name: "cra_name"
+        type: "char []"
+        description: "算法名称"
+      - name: "cra_driver_name"
+        type: "char []"
+        description: "驱动名称"
+      - name: "cra_priority"
+        type: "int"
+        description: "算法优先级"
+      - name: "cra_flags"
+        type: "u32"
+        description: "算法标志"
+      - name: "cra_blocksize"
+        type: "unsigned int"
+        description: "块大小"
+      - name: "cra_ctxsize"
+        type: "unsigned int"
+        description: "上下文大小"
+      - name: "cra_module"
+        type: "struct module *"
+        description: "所属模块"
+
+  skcipher_alg:
+    pattern: 'struct skcipher_alg\s*\{'
+    description: "对称加密算法结构"
+    file: "include/crypto/skcipher.h"
+    fields:
+      - name: "min_keysize"
+        type: "unsigned int"
+        description: "最小密钥长度"
+      - name: "max_keysize"
+        type: "unsigned int"
+        description: "最大密钥长度"
+      - name: "ivsize"
+        type: "unsigned int"
+        description: "IV 大小"
+      - name: "chunksize"
+        type: "unsigned int"
+        description: "块大小"
+      - name: "setkey"
+        type: "callback"
+        description: "设置密钥"
+      - name: "encrypt"
+        type: "callback"
+        description: "加密"
+      - name: "decrypt"
+        type: "callback"
+        description: "解密"
+      - name: "base"
+        type: "struct crypto_alg"
+        description: "基础算法"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 skcipher 算法驱动"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <crypto/internal/skcipher.h>
+      #include <linux/scatterlist.h>
+      
+      #define AES_BLOCK_SIZE 16
+      #define AES_MIN_KEY_SIZE 16
+      #define AES_MAX_KEY_SIZE 32
+      
+      struct my_aes_ctx {
+          u32 key_enc[60];
+          u32 key_dec[60];
+          u32 key_length;
+      };
+      
+      static int my_aes_setkey(struct crypto_skcipher *tfm,
+                               const u8 *key, unsigned int keylen)
+      {
+          struct my_aes_ctx *ctx = crypto_skcipher_ctx(tfm);
+          
+          if (keylen != AES_MIN_KEY_SIZE &&
+              keylen != 24 &&
+              keylen != AES_MAX_KEY_SIZE)
+              return -EINVAL;
+          
+          ctx->key_length = keylen;
+          
+          /* 扩展密钥 */
+          my_aes_expand_key(ctx->key_enc, key, keylen);
+          my_aes_invert_key(ctx->key_dec, ctx->key_enc, keylen);
+          
+          return 0;
+      }
+      
+      static int my_aes_encrypt(struct skcipher_request *req)
+      {
+          struct crypto_skcipher *tfm = crypto_skcipher_reqtfm(req);
+          struct my_aes_ctx *ctx = crypto_skcipher_ctx(tfm);
+          struct skcipher_walk walk;
+          int err;
+          
+          err = skcipher_walk_virt(&walk, req, false);
+          
+          while (walk.nbytes) {
+              unsigned int nbytes = walk.nbytes;
+              
+              if (nbytes < AES_BLOCK_SIZE)
+                  break;
+              
+              nbytes = round_down(nbytes, AES_BLOCK_SIZE);
+              
+              my_aes_cbc_encrypt(walk.dst.virt.addr,
+                                  walk.src.virt.addr,
+                                  ctx->key_enc, ctx->key_length,
+                                  nbytes, walk.iv);
+              
+              err = skcipher_walk_done(&walk, walk.nbytes - nbytes);
+          }
+          
+          return err;
+      }
+      
+      static int my_aes_decrypt(struct skcipher_request *req)
+      {
+          struct crypto_skcipher *tfm = crypto_skcipher_reqtfm(req);
+          struct my_aes_ctx *ctx = crypto_skcipher_ctx(tfm);
+          struct skcipher_walk walk;
+          int err;
+          
+          err = skcipher_walk_virt(&walk, req, false);
+          
+          while (walk.nbytes) {
+              unsigned int nbytes = walk.nbytes;
+              
+              if (nbytes < AES_BLOCK_SIZE)
+                  break;
+              
+              nbytes = round_down(nbytes, AES_BLOCK_SIZE);
+              
+              my_aes_cbc_decrypt(walk.dst.virt.addr,
+                                  walk.src.virt.addr,
+                                  ctx->key_dec, ctx->key_length,
+                                  nbytes, walk.iv);
+              
+              err = skcipher_walk_done(&walk, walk.nbytes - nbytes);
+          }
+          
+          return err;
+      }
+      
+      static struct skcipher_alg my_aes_alg = {
+          .base = {
+              .cra_name         = "cbc(aes)",
+              .cra_driver_name  = "my-aes-cbc",
+              .cra_priority     = 300,
+              .cra_flags        = CRYPTO_ALG_ASYNC,
+              .cra_blocksize    = AES_BLOCK_SIZE,
+              .cra_ctxsize      = sizeof(struct my_aes_ctx),
+              .cra_module       = THIS_MODULE,
+          },
+          .min_keysize = AES_MIN_KEY_SIZE,
+          .max_keysize = AES_MAX_KEY_SIZE,
+          .ivsize      = AES_BLOCK_SIZE,
+          .setkey      = my_aes_setkey,
+          .encrypt     = my_aes_encrypt,
+          .decrypt     = my_aes_decrypt,
+      };
+      
+      static int __init my_aes_init(void)
+      {
+          return crypto_register_skcipher(&my_aes_alg);
+      }
+      
+      static void __exit my_aes_exit(void)
+      {
+          crypto_unregister_skcipher(&my_aes_alg);
+      }
+      module_init(my_aes_init);
+      module_exit(my_aes_exit);

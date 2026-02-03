@@ -8,6 +8,7 @@ backlight_device:
   description: "Backlight Device Driver"
   header: "linux/backlight.h"
   icon: "💡"
+  kernel_version: "2.6.25+"
   registration:
     - pattern: 'backlight_device_register\s*\(\s*"(?P<name>[^"]+)"\s*,\s*(?P<dev>\w+)\s*,\s*(?P<devdata>\w+)\s*,\s*&(?P<ops>\w+)\s*,\s*&(?P<props>\w+)\s*\)'
       description: "注册背光设备"
@@ -101,3 +102,128 @@ call_chains:
       - caller: "backlight_update_status"
         callee: "bd->ops->update_status"
         description: "调用驱动更新"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  backlight_device:
+    pattern: 'struct backlight_device\s*\{'
+    description: "背光设备结构"
+    file: "include/linux/backlight.h"
+    fields:
+      - name: "props"
+        type: "struct backlight_properties"
+        description: "背光属性"
+      - name: "ops"
+        type: "const struct backlight_ops *"
+        description: "操作函数表"
+      - name: "fb_bl_on"
+        type: "struct list_head[]"
+        description: "关联的 framebuffer"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+
+  backlight_properties:
+    pattern: 'struct backlight_properties\s*\{'
+    description: "背光属性结构"
+    file: "include/linux/backlight.h"
+    fields:
+      - name: "brightness"
+        type: "int"
+        description: "当前亮度"
+      - name: "max_brightness"
+        type: "int"
+        description: "最大亮度"
+      - name: "power"
+        type: "int"
+        description: "电源状态"
+      - name: "type"
+        type: "enum backlight_type"
+        description: "背光类型"
+      - name: "state"
+        type: "unsigned int"
+        description: "状态标志"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本背光驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/backlight.h>
+      #include <linux/platform_device.h>
+      
+      struct my_bl_data {
+          struct backlight_device *bd;
+          int current_brightness;
+      };
+      
+      static int my_bl_update_status(struct backlight_device *bd)
+      {
+          struct my_bl_data *data = bl_get_data(bd);
+          int brightness = bd->props.brightness;
+          
+          if (bd->props.power != FB_BLANK_UNBLANK ||
+              bd->props.state & BL_CORE_SUSPENDED)
+              brightness = 0;
+          
+          /* 设置硬件亮度 */
+          data->current_brightness = brightness;
+          my_hw_set_brightness(brightness);
+          
+          return 0;
+      }
+      
+      static int my_bl_get_brightness(struct backlight_device *bd)
+      {
+          struct my_bl_data *data = bl_get_data(bd);
+          return data->current_brightness;
+      }
+      
+      static const struct backlight_ops my_bl_ops = {
+          .update_status  = my_bl_update_status,
+          .get_brightness = my_bl_get_brightness,
+      };
+      
+      static int my_bl_probe(struct platform_device *pdev)
+      {
+          struct my_bl_data *data;
+          struct backlight_properties props;
+          
+          data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
+          if (!data)
+              return -ENOMEM;
+          
+          memset(&props, 0, sizeof(props));
+          props.type = BACKLIGHT_RAW;
+          props.max_brightness = 255;
+          props.brightness = 128;
+          
+          data->bd = devm_backlight_device_register(&pdev->dev,
+                                                     "my-backlight",
+                                                     &pdev->dev, data,
+                                                     &my_bl_ops, &props);
+          if (IS_ERR(data->bd))
+              return PTR_ERR(data->bd);
+          
+          platform_set_drvdata(pdev, data);
+          backlight_update_status(data->bd);
+          
+          return 0;
+      }
+      
+      static struct platform_driver my_bl_driver = {
+          .probe  = my_bl_probe,
+          .driver = {
+              .name = "my-backlight",
+          },
+      };
+      module_platform_driver(my_bl_driver);

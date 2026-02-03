@@ -8,6 +8,7 @@ remoteproc:
   description: "Remote Processor Driver"
   header: "linux/remoteproc.h"
   icon: "🤖"
+  kernel_version: "3.4+"
   registration:
     - pattern: 'rproc_alloc\s*\(\s*(?P<dev>\w+)\s*,\s*"(?P<name>[^"]+)"\s*,\s*&(?P<ops>\w+)\s*,'
       description: "分配远程处理器"
@@ -155,3 +156,236 @@ call_chains:
       - caller: "virtqueue"
         callee: "rproc_ops->kick"
         description: "触发远程处理器"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  rproc:
+    pattern: 'struct rproc\s*\{'
+    description: "远程处理器结构"
+    file: "include/linux/remoteproc.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "处理器名称"
+      - name: "firmware"
+        type: "char *"
+        description: "固件名称"
+      - name: "priv"
+        type: "void *"
+        description: "驱动私有数据"
+      - name: "ops"
+        type: "const struct rproc_ops *"
+        description: "操作函数表"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+      - name: "state"
+        type: "atomic_t"
+        description: "处理器状态"
+      - name: "power"
+        type: "unsigned int"
+        description: "引用计数"
+      - name: "cached_table"
+        type: "struct resource_table *"
+        description: "缓存的资源表"
+      - name: "table_ptr"
+        type: "struct resource_table *"
+        description: "资源表指针"
+      - name: "max_notifyid"
+        type: "int"
+        description: "最大通知 ID"
+      - name: "rvdevs"
+        type: "struct list_head"
+        description: "virtio 设备列表"
+      - name: "subdevs"
+        type: "struct list_head"
+        description: "子设备列表"
+      - name: "boot_work"
+        type: "struct work_struct"
+        description: "启动工作队列"
+
+  rproc_ops:
+    pattern: 'struct rproc_ops\s*\{'
+    description: "远程处理器操作"
+    file: "include/linux/remoteproc.h"
+    fields:
+      - name: "prepare"
+        type: "callback"
+        description: "准备启动"
+      - name: "unprepare"
+        type: "callback"
+        description: "停止后清理"
+      - name: "start"
+        type: "callback"
+        description: "启动处理器"
+      - name: "stop"
+        type: "callback"
+        description: "停止处理器"
+      - name: "kick"
+        type: "callback"
+        description: "触发处理器"
+      - name: "da_to_va"
+        type: "callback"
+        description: "地址转换"
+      - name: "load"
+        type: "callback"
+        description: "加载固件"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 remoteproc 驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/remoteproc.h>
+      #include <linux/platform_device.h>
+      
+      struct my_rproc {
+          struct rproc *rproc;
+          void __iomem *regs;
+          int irq;
+      };
+      
+      static int my_rproc_prepare(struct rproc *rproc)
+      {
+          struct my_rproc *priv = rproc->priv;
+          
+          /* 准备工作，如时钟、电源 */
+          clk_prepare_enable(priv->clk);
+          return 0;
+      }
+      
+      static int my_rproc_unprepare(struct rproc *rproc)
+      {
+          struct my_rproc *priv = rproc->priv;
+          
+          clk_disable_unprepare(priv->clk);
+          return 0;
+      }
+      
+      static int my_rproc_start(struct rproc *rproc)
+      {
+          struct my_rproc *priv = rproc->priv;
+          
+          /* 解除复位，启动远程处理器 */
+          writel(1, priv->regs + BOOT_REG);
+          return 0;
+      }
+      
+      static int my_rproc_stop(struct rproc *rproc)
+      {
+          struct my_rproc *priv = rproc->priv;
+          
+          /* 复位远程处理器 */
+          writel(0, priv->regs + BOOT_REG);
+          return 0;
+      }
+      
+      static void my_rproc_kick(struct rproc *rproc, int vqid)
+      {
+          struct my_rproc *priv = rproc->priv;
+          
+          /* 通知远程处理器有新消息 */
+          writel(1 << vqid, priv->regs + KICK_REG);
+      }
+      
+      static void *my_rproc_da_to_va(struct rproc *rproc,
+                                      u64 da, size_t len, bool *is_iomem)
+      {
+          /* 设备地址转虚拟地址 */
+          /* 实现取决于具体硬件 */
+          return NULL;
+      }
+      
+      static const struct rproc_ops my_rproc_ops = {
+          .prepare    = my_rproc_prepare,
+          .unprepare  = my_rproc_unprepare,
+          .start      = my_rproc_start,
+          .stop       = my_rproc_stop,
+          .kick       = my_rproc_kick,
+          .da_to_va   = my_rproc_da_to_va,
+      };
+      
+      static irqreturn_t my_rproc_irq(int irq, void *data)
+      {
+          struct rproc *rproc = data;
+          struct my_rproc *priv = rproc->priv;
+          u32 status;
+          
+          status = readl(priv->regs + INT_STATUS);
+          
+          /* 处理 virtqueue 中断 */
+          if (status & VRING_IRQ_MASK) {
+              rproc_vq_interrupt(rproc, 0);
+              rproc_vq_interrupt(rproc, 1);
+          }
+          
+          writel(status, priv->regs + INT_CLEAR);
+          return IRQ_HANDLED;
+      }
+      
+      static int my_rproc_probe(struct platform_device *pdev)
+      {
+          struct my_rproc *priv;
+          struct rproc *rproc;
+          int ret;
+          
+          rproc = rproc_alloc(&pdev->dev, "my-rproc",
+                              &my_rproc_ops, "my_firmware.elf",
+                              sizeof(*priv));
+          if (!rproc)
+              return -ENOMEM;
+          
+          priv = rproc->priv;
+          priv->rproc = rproc;
+          
+          priv->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(priv->regs)) {
+              ret = PTR_ERR(priv->regs);
+              goto free_rproc;
+          }
+          
+          priv->irq = platform_get_irq(pdev, 0);
+          ret = devm_request_irq(&pdev->dev, priv->irq,
+                                  my_rproc_irq, 0, "my-rproc", rproc);
+          if (ret)
+              goto free_rproc;
+          
+          platform_set_drvdata(pdev, priv);
+          
+          ret = rproc_add(rproc);
+          if (ret)
+              goto free_rproc;
+          
+          return 0;
+          
+      free_rproc:
+          rproc_free(rproc);
+          return ret;
+      }
+      
+      static int my_rproc_remove(struct platform_device *pdev)
+      {
+          struct my_rproc *priv = platform_get_drvdata(pdev);
+          
+          rproc_del(priv->rproc);
+          rproc_free(priv->rproc);
+          return 0;
+      }
+      
+      static struct platform_driver my_rproc_driver = {
+          .probe  = my_rproc_probe,
+          .remove = my_rproc_remove,
+          .driver = {
+              .name = "my-rproc",
+          },
+      };
+      module_platform_driver(my_rproc_driver);

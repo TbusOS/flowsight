@@ -8,6 +8,7 @@ led_classdev:
   description: "LED Class Device"
   header: "linux/leds.h"
   icon: "💡"
+  kernel_version: "2.6.17+"
   registration:
     - pattern: 'led_classdev_register\s*\(\s*(?P<parent>\w+)\s*,\s*&(?P<led>\w+)\s*\)'
       description: "注册 LED 设备"
@@ -138,3 +139,188 @@ call_chains:
       - caller: "subsystem event"
         callee: "led_trigger_event"
         description: "触发 LED 事件"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  led_classdev:
+    pattern: 'struct led_classdev\s*\{'
+    description: "LED 类设备结构"
+    file: "include/linux/leds.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "LED 名称"
+      - name: "brightness"
+        type: "enum led_brightness"
+        description: "当前亮度"
+      - name: "max_brightness"
+        type: "enum led_brightness"
+        description: "最大亮度"
+      - name: "flags"
+        type: "int"
+        description: "LED 标志"
+      - name: "brightness_set"
+        type: "callback"
+        description: "设置亮度（原子）"
+      - name: "brightness_set_blocking"
+        type: "callback"
+        description: "设置亮度（可睡眠）"
+      - name: "brightness_get"
+        type: "callback"
+        description: "获取亮度"
+      - name: "trigger"
+        type: "struct led_trigger *"
+        description: "当前触发器"
+      - name: "default_trigger"
+        type: "const char *"
+        description: "默认触发器"
+
+  led_trigger:
+    pattern: 'struct led_trigger\s*\{'
+    description: "LED 触发器结构"
+    file: "include/linux/leds.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "触发器名称"
+      - name: "activate"
+        type: "callback"
+        description: "激活回调"
+      - name: "deactivate"
+        type: "callback"
+        description: "停用回调"
+      - name: "led_cdevs"
+        type: "struct list_head"
+        description: "关联的 LED"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 LED 驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/leds.h>
+      #include <linux/platform_device.h>
+      #include <linux/gpio/consumer.h>
+      
+      struct my_led {
+          struct led_classdev cdev;
+          struct gpio_desc *gpio;
+      };
+      
+      static int my_led_brightness_set(struct led_classdev *cdev,
+                                        enum led_brightness brightness)
+      {
+          struct my_led *led = container_of(cdev, struct my_led, cdev);
+          
+          gpiod_set_value(led->gpio, brightness ? 1 : 0);
+          return 0;
+      }
+      
+      static int my_led_probe(struct platform_device *pdev)
+      {
+          struct my_led *led;
+          int ret;
+          
+          led = devm_kzalloc(&pdev->dev, sizeof(*led), GFP_KERNEL);
+          if (!led)
+              return -ENOMEM;
+          
+          led->gpio = devm_gpiod_get(&pdev->dev, "led", GPIOD_OUT_LOW);
+          if (IS_ERR(led->gpio))
+              return PTR_ERR(led->gpio);
+          
+          led->cdev.name = "my-led";
+          led->cdev.brightness = LED_OFF;
+          led->cdev.max_brightness = LED_ON;
+          led->cdev.brightness_set_blocking = my_led_brightness_set;
+          led->cdev.default_trigger = "heartbeat";
+          
+          ret = devm_led_classdev_register(&pdev->dev, &led->cdev);
+          if (ret)
+              return ret;
+          
+          platform_set_drvdata(pdev, led);
+          return 0;
+      }
+      
+      static struct platform_driver my_led_driver = {
+          .probe  = my_led_probe,
+          .driver = {
+              .name = "my-led",
+          },
+      };
+      module_platform_driver(my_led_driver);
+
+  - description: "LED 触发器示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/leds.h>
+      
+      struct my_trigger_data {
+          struct led_classdev *led_cdev;
+          struct timer_list timer;
+          unsigned long delay;
+      };
+      
+      static void my_trigger_timer(struct timer_list *t)
+      {
+          struct my_trigger_data *data = from_timer(data, t, timer);
+          
+          led_set_brightness(data->led_cdev,
+              data->led_cdev->brightness ? LED_OFF : LED_ON);
+          
+          mod_timer(&data->timer, jiffies + data->delay);
+      }
+      
+      static int my_trigger_activate(struct led_classdev *led_cdev)
+      {
+          struct my_trigger_data *data;
+          
+          data = kzalloc(sizeof(*data), GFP_KERNEL);
+          if (!data)
+              return -ENOMEM;
+          
+          data->led_cdev = led_cdev;
+          data->delay = msecs_to_jiffies(500);
+          
+          timer_setup(&data->timer, my_trigger_timer, 0);
+          led_set_trigger_data(led_cdev, data);
+          
+          mod_timer(&data->timer, jiffies + data->delay);
+          return 0;
+      }
+      
+      static void my_trigger_deactivate(struct led_classdev *led_cdev)
+      {
+          struct my_trigger_data *data = led_get_trigger_data(led_cdev);
+          
+          del_timer_sync(&data->timer);
+          kfree(data);
+      }
+      
+      static struct led_trigger my_trigger = {
+          .name       = "my-blink",
+          .activate   = my_trigger_activate,
+          .deactivate = my_trigger_deactivate,
+      };
+      
+      static int __init my_trigger_init(void)
+      {
+          return led_trigger_register(&my_trigger);
+      }
+      
+      static void __exit my_trigger_exit(void)
+      {
+          led_trigger_unregister(&my_trigger);
+      }
+      module_init(my_trigger_init);
+      module_exit(my_trigger_exit);

@@ -9,6 +9,7 @@ device_tree:
   description: "Device Tree Framework"
   header: "linux/of.h"
   icon: "🌳"
+  kernel_version: "2.6.26+"
 
   concepts:
     - name: "node"
@@ -261,3 +262,254 @@ dt_bindings:
     - "dt-schema"
     - "YAML bindings"
     - "make dt_binding_check"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  device_node:
+    pattern: 'struct device_node\s*\{'
+    description: "设备树节点结构"
+    file: "include/linux/of.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "节点名称"
+      - name: "phandle"
+        type: "phandle"
+        description: "节点句柄"
+      - name: "full_name"
+        type: "const char *"
+        description: "完整路径名"
+      - name: "properties"
+        type: "struct property *"
+        description: "属性链表"
+      - name: "parent"
+        type: "struct device_node *"
+        description: "父节点"
+      - name: "child"
+        type: "struct device_node *"
+        description: "子节点"
+      - name: "sibling"
+        type: "struct device_node *"
+        description: "兄弟节点"
+
+  property:
+    pattern: 'struct property\s*\{'
+    description: "设备树属性结构"
+    file: "include/linux/of.h"
+    fields:
+      - name: "name"
+        type: "char *"
+        description: "属性名"
+      - name: "length"
+        type: "int"
+        description: "值长度"
+      - name: "value"
+        type: "void *"
+        description: "属性值"
+      - name: "next"
+        type: "struct property *"
+        description: "下一属性"
+
+  of_device_id:
+    pattern: 'struct of_device_id\s*\{'
+    description: "OF 设备匹配结构"
+    file: "include/linux/mod_devicetable.h"
+    fields:
+      - name: "compatible"
+        type: "char []"
+        description: "兼容性字符串"
+      - name: "type"
+        type: "char []"
+        description: "设备类型"
+      - name: "name"
+        type: "char []"
+        description: "设备名"
+      - name: "data"
+        type: "const void *"
+        description: "匹配数据"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  of_platform_populate:
+    description: "设备树设备创建流程"
+    chain:
+      - caller: "board init / of_platform_default_populate_init"
+        callee: "of_platform_populate"
+        description: "从设备树创建设备"
+      - caller: "of_platform_populate"
+        callee: "of_platform_bus_create"
+        description: "创建总线设备"
+      - caller: "of_platform_bus_create"
+        callee: "of_platform_device_create_pdata"
+        description: "创建平台设备"
+      - caller: "of_platform_device_create_pdata"
+        callee: "device_add"
+        description: "添加到设备模型"
+
+  of_driver_match:
+    description: "设备树驱动匹配流程"
+    chain:
+      - caller: "platform_match"
+        callee: "of_driver_match_device"
+        description: "设备树匹配"
+      - caller: "of_driver_match_device"
+        callee: "of_match_device"
+        description: "检查匹配表"
+      - caller: "of_match_device"
+        callee: "__of_match_node"
+        description: "匹配 compatible"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "平台驱动 OF 匹配示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/of.h>
+      #include <linux/of_device.h>
+      
+      struct my_driver_data {
+          int variant;
+          const char *name;
+      };
+      
+      static const struct my_driver_data variant_a = {
+          .variant = 1,
+          .name = "variant-a",
+      };
+      
+      static const struct my_driver_data variant_b = {
+          .variant = 2,
+          .name = "variant-b",
+      };
+      
+      static const struct of_device_id my_of_match[] = {
+          { .compatible = "vendor,my-device-a", .data = &variant_a },
+          { .compatible = "vendor,my-device-b", .data = &variant_b },
+          { /* sentinel */ }
+      };
+      MODULE_DEVICE_TABLE(of, my_of_match);
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          const struct my_driver_data *data;
+          struct device_node *np = pdev->dev.of_node;
+          struct resource *res;
+          void __iomem *regs;
+          u32 value;
+          int irq, ret;
+          
+          /* 获取匹配数据 */
+          data = of_device_get_match_data(&pdev->dev);
+          if (!data)
+              return -ENODEV;
+          
+          dev_info(&pdev->dev, "Probing %s (variant %d)\n",
+                   data->name, data->variant);
+          
+          /* 获取寄存器资源 */
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          regs = devm_ioremap_resource(&pdev->dev, res);
+          if (IS_ERR(regs))
+              return PTR_ERR(regs);
+          
+          /* 获取中断 */
+          irq = platform_get_irq(pdev, 0);
+          if (irq < 0)
+              return irq;
+          
+          /* 读取设备树属性 */
+          ret = of_property_read_u32(np, "my-property", &value);
+          if (ret) {
+              dev_warn(&pdev->dev, "Using default value\n");
+              value = 100;
+          }
+          
+          /* 检查布尔属性 */
+          if (of_property_read_bool(np, "my-flag")) {
+              dev_info(&pdev->dev, "Flag is set\n");
+          }
+          
+          /* 读取字符串数组 */
+          const char *str;
+          int i = 0;
+          while (of_property_read_string_index(np, "my-strings",
+                                                i, &str) == 0) {
+              dev_info(&pdev->dev, "String %d: %s\n", i, str);
+              i++;
+          }
+          
+          return 0;
+      }
+      
+      static int my_remove(struct platform_device *pdev)
+      {
+          return 0;
+      }
+      
+      static struct platform_driver my_driver = {
+          .probe  = my_probe,
+          .remove = my_remove,
+          .driver = {
+              .name = "my-driver",
+              .of_match_table = my_of_match,
+          },
+      };
+      module_platform_driver(my_driver);
+
+  - description: "设备树遍历示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/of.h>
+      
+      /* 遍历所有子节点 */
+      static void iterate_children(struct device_node *parent)
+      {
+          struct device_node *child;
+          
+          for_each_child_of_node(parent, child) {
+              const char *name;
+              u32 reg;
+              
+              name = child->name;
+              if (of_property_read_u32(child, "reg", &reg) == 0) {
+                  pr_info("Child: %s @ 0x%x\n", name, reg);
+              }
+              
+              /* 递归处理子节点 */
+              iterate_children(child);
+          }
+      }
+      
+      /* 按 compatible 查找节点 */
+      static void find_by_compatible(void)
+      {
+          struct device_node *np = NULL;
+          
+          while ((np = of_find_compatible_node(np, NULL,
+                                                "vendor,my-device"))) {
+              const char *status;
+              
+              if (of_property_read_string(np, "status", &status) == 0) {
+                  if (strcmp(status, "disabled") == 0) {
+                      pr_info("Node %pOF is disabled\n", np);
+                      continue;
+                  }
+              }
+              
+              pr_info("Found: %pOF\n", np);
+          }
+      }

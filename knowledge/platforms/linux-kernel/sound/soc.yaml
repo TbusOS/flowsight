@@ -10,6 +10,7 @@ asoc_core:
   description: "ASoC Core - ALSA SoC 核心"
   header: "sound/soc.h"
   icon: "🔊"
+  kernel_version: "2.6.26+"
 
   context:
     type: "process"

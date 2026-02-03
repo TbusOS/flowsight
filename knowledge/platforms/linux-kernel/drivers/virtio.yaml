@@ -9,6 +9,7 @@ virtio_driver:
   description: "Virtio Device Driver Framework"
   header: "linux/virtio.h"
   icon: "🖧"
+  kernel_version: "2.6.25+"
 
   registration:
     - pattern: 'register_virtio_driver\s*\(\s*&(?P<driver>\w+)\s*\)'
@@ -225,3 +226,231 @@ vhost:
     - "VHOST_SET_VRING_ADDR"
     - "VHOST_SET_VRING_KICK"
     - "VHOST_SET_VRING_CALL"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  virtio_device:
+    pattern: 'struct virtio_device\s*\{'
+    description: "Virtio 设备结构"
+    file: "include/linux/virtio.h"
+    fields:
+      - name: "id"
+        type: "struct virtio_device_id"
+        description: "设备 ID"
+      - name: "config"
+        type: "const struct virtio_config_ops *"
+        description: "配置操作"
+      - name: "vqs"
+        type: "struct list_head"
+        description: "virtqueue 列表"
+      - name: "features"
+        type: "u64"
+        description: "协商后的特性"
+      - name: "priv"
+        type: "void *"
+        description: "驱动私有数据"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+
+  virtqueue:
+    pattern: 'struct virtqueue\s*\{'
+    description: "Virtqueue 结构"
+    file: "include/linux/virtio.h"
+    fields:
+      - name: "callback"
+        type: "void (*)(struct virtqueue *)"
+        description: "完成回调"
+      - name: "name"
+        type: "const char *"
+        description: "队列名称"
+      - name: "vdev"
+        type: "struct virtio_device *"
+        description: "所属设备"
+      - name: "index"
+        type: "unsigned int"
+        description: "队列索引"
+      - name: "num_free"
+        type: "unsigned int"
+        description: "空闲描述符数"
+      - name: "priv"
+        type: "void *"
+        description: "驱动私有数据"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  virtio_probe:
+    description: "Virtio 设备探测流程"
+    chain:
+      - caller: "virtio_bus_match"
+        callee: "virtio_driver.probe"
+        description: "调用驱动探测"
+      - caller: "probe"
+        callee: "virtio_find_vqs"
+        description: "创建 virtqueue"
+      - caller: "virtio_find_vqs"
+        callee: "virtio_config_ops->find_vqs"
+        description: "后端分配队列"
+
+  virtio_request:
+    description: "Virtio 请求处理流程"
+    chain:
+      - caller: "driver"
+        callee: "virtqueue_add_sgs"
+        description: "添加请求到队列"
+      - caller: "driver"
+        callee: "virtqueue_kick"
+        description: "通知后端"
+      - caller: "后端处理完成"
+        callee: "vring_interrupt"
+        context: "hardirq"
+        description: "中断处理"
+      - caller: "vring_interrupt"
+        callee: "vq->callback"
+        context: "softirq"
+        description: "调用驱动回调"
+      - caller: "callback"
+        callee: "virtqueue_get_buf"
+        description: "获取完成的请求"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 Virtio 驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/virtio.h>
+      #include <linux/virtio_config.h>
+      
+      #define VIRTIO_ID_MY_DEVICE 42
+      
+      struct my_virtio_dev {
+          struct virtio_device *vdev;
+          struct virtqueue *vq;
+          spinlock_t lock;
+          struct work_struct work;
+      };
+      
+      static void my_vq_callback(struct virtqueue *vq)
+      {
+          struct my_virtio_dev *mydev = vq->vdev->priv;
+          
+          /* 在工作队列中处理 */
+          schedule_work(&mydev->work);
+      }
+      
+      static void my_work_handler(struct work_struct *work)
+      {
+          struct my_virtio_dev *mydev =
+              container_of(work, struct my_virtio_dev, work);
+          unsigned long flags;
+          void *buf;
+          unsigned int len;
+          
+          spin_lock_irqsave(&mydev->lock, flags);
+          
+          while ((buf = virtqueue_get_buf(mydev->vq, &len))) {
+              /* 处理完成的请求 */
+              my_process_response(mydev, buf, len);
+          }
+          
+          spin_unlock_irqrestore(&mydev->lock, flags);
+      }
+      
+      static int my_virtio_send(struct my_virtio_dev *mydev,
+                                 void *data, size_t len)
+      {
+          struct scatterlist sg;
+          unsigned long flags;
+          int ret;
+          
+          sg_init_one(&sg, data, len);
+          
+          spin_lock_irqsave(&mydev->lock, flags);
+          
+          ret = virtqueue_add_outbuf(mydev->vq, &sg, 1, data,
+                                      GFP_ATOMIC);
+          if (ret == 0)
+              virtqueue_kick(mydev->vq);
+          
+          spin_unlock_irqrestore(&mydev->lock, flags);
+          
+          return ret;
+      }
+      
+      static int my_virtio_probe(struct virtio_device *vdev)
+      {
+          struct my_virtio_dev *mydev;
+          struct virtqueue *vq;
+          int ret;
+          
+          mydev = kzalloc(sizeof(*mydev), GFP_KERNEL);
+          if (!mydev)
+              return -ENOMEM;
+          
+          mydev->vdev = vdev;
+          vdev->priv = mydev;
+          spin_lock_init(&mydev->lock);
+          INIT_WORK(&mydev->work, my_work_handler);
+          
+          /* 创建 virtqueue */
+          vq = virtio_find_single_vq(vdev, my_vq_callback,
+                                      "my-queue");
+          if (IS_ERR(vq)) {
+              ret = PTR_ERR(vq);
+              goto err_free;
+          }
+          mydev->vq = vq;
+          
+          /* 通知后端驱动就绪 */
+          virtio_device_ready(vdev);
+          
+          return 0;
+          
+      err_free:
+          kfree(mydev);
+          return ret;
+      }
+      
+      static void my_virtio_remove(struct virtio_device *vdev)
+      {
+          struct my_virtio_dev *mydev = vdev->priv;
+          
+          /* 停止设备 */
+          virtio_reset_device(vdev);
+          
+          /* 取消工作 */
+          cancel_work_sync(&mydev->work);
+          
+          /* 删除 virtqueue */
+          vdev->config->del_vqs(vdev);
+          
+          kfree(mydev);
+      }
+      
+      static struct virtio_device_id my_virtio_ids[] = {
+          { VIRTIO_ID_MY_DEVICE, VIRTIO_DEV_ANY_ID },
+          { 0 },
+      };
+      MODULE_DEVICE_TABLE(virtio, my_virtio_ids);
+      
+      static struct virtio_driver my_virtio_driver = {
+          .driver.name = "my-virtio",
+          .driver.owner = THIS_MODULE,
+          .id_table = my_virtio_ids,
+          .probe = my_virtio_probe,
+          .remove = my_virtio_remove,
+      };
+      module_virtio_driver(my_virtio_driver);

@@ -8,6 +8,7 @@ devfreq:
   description: "Device Frequency Scaling"
   header: "linux/devfreq.h"
   icon: "📈"
+  kernel_version: "3.3+"
   registration:
     - pattern: 'devfreq_add_device\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<profile>\w+)\s*,\s*"(?P<governor>[^"]+)"'
       description: "添加 devfreq 设备"
@@ -129,3 +130,174 @@ call_chains:
       - caller: "update_devfreq"
         callee: "profile->target"
         description: "设置硬件频率"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  devfreq:
+    pattern: 'struct devfreq\s*\{'
+    description: "devfreq 设备结构"
+    file: "include/linux/devfreq.h"
+    fields:
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+      - name: "profile"
+        type: "struct devfreq_dev_profile *"
+        description: "设备配置"
+      - name: "governor"
+        type: "const struct devfreq_governor *"
+        description: "调频策略"
+      - name: "governor_data"
+        type: "void *"
+        description: "策略私有数据"
+      - name: "previous_freq"
+        type: "unsigned long"
+        description: "上一次频率"
+      - name: "suspend_freq"
+        type: "unsigned long"
+        description: "挂起时频率"
+      - name: "max_freq"
+        type: "unsigned long"
+        description: "最大频率"
+      - name: "min_freq"
+        type: "unsigned long"
+        description: "最小频率"
+
+  devfreq_dev_profile:
+    pattern: 'struct devfreq_dev_profile\s*\{'
+    description: "devfreq 设备配置"
+    file: "include/linux/devfreq.h"
+    fields:
+      - name: "initial_freq"
+        type: "unsigned long"
+        description: "初始频率"
+      - name: "polling_ms"
+        type: "unsigned int"
+        description: "轮询间隔 (ms)"
+      - name: "target"
+        type: "callback"
+        description: "设置目标频率"
+      - name: "get_dev_status"
+        type: "callback"
+        description: "获取设备状态"
+      - name: "get_cur_freq"
+        type: "callback"
+        description: "获取当前频率"
+      - name: "freq_table"
+        type: "unsigned long *"
+        description: "频率表"
+      - name: "max_state"
+        type: "unsigned int"
+        description: "频率级别数"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 devfreq 驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/devfreq.h>
+      #include <linux/platform_device.h>
+      
+      struct my_devfreq {
+          struct devfreq *df;
+          struct device *dev;
+          void __iomem *regs;
+          unsigned long freq;
+      };
+      
+      static unsigned long freq_table[] = {
+          100000000,  /* 100 MHz */
+          200000000,  /* 200 MHz */
+          400000000,  /* 400 MHz */
+          800000000,  /* 800 MHz */
+      };
+      
+      static int my_target(struct device *dev,
+                           unsigned long *freq, u32 flags)
+      {
+          struct my_devfreq *mydf = dev_get_drvdata(dev);
+          unsigned long target = *freq;
+          int i;
+          
+          /* 找到合适的频率 */
+          for (i = ARRAY_SIZE(freq_table) - 1; i >= 0; i--) {
+              if (freq_table[i] <= target)
+                  break;
+          }
+          if (i < 0)
+              i = 0;
+          
+          target = freq_table[i];
+          
+          /* 设置硬件频率 */
+          writel(target / 1000000, mydf->regs + FREQ_REG);
+          mydf->freq = target;
+          *freq = target;
+          
+          return 0;
+      }
+      
+      static int my_get_dev_status(struct device *dev,
+                                    struct devfreq_dev_status *stat)
+      {
+          struct my_devfreq *mydf = dev_get_drvdata(dev);
+          
+          stat->current_frequency = mydf->freq;
+          stat->busy_time = readl(mydf->regs + BUSY_CNT);
+          stat->total_time = readl(mydf->regs + TOTAL_CNT);
+          
+          return 0;
+      }
+      
+      static int my_get_cur_freq(struct device *dev, unsigned long *freq)
+      {
+          struct my_devfreq *mydf = dev_get_drvdata(dev);
+          *freq = mydf->freq;
+          return 0;
+      }
+      
+      static struct devfreq_dev_profile my_profile = {
+          .initial_freq    = 400000000,
+          .polling_ms      = 100,
+          .target          = my_target,
+          .get_dev_status  = my_get_dev_status,
+          .get_cur_freq    = my_get_cur_freq,
+          .freq_table      = freq_table,
+          .max_state       = ARRAY_SIZE(freq_table),
+      };
+      
+      static int my_devfreq_probe(struct platform_device *pdev)
+      {
+          struct my_devfreq *mydf;
+          
+          mydf = devm_kzalloc(&pdev->dev, sizeof(*mydf), GFP_KERNEL);
+          if (!mydf)
+              return -ENOMEM;
+          
+          mydf->dev = &pdev->dev;
+          mydf->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(mydf->regs))
+              return PTR_ERR(mydf->regs);
+          
+          mydf->freq = my_profile.initial_freq;
+          
+          platform_set_drvdata(pdev, mydf);
+          
+          mydf->df = devm_devfreq_add_device(&pdev->dev,
+                                              &my_profile,
+                                              DEVFREQ_GOV_SIMPLE_ONDEMAND,
+                                              NULL);
+          if (IS_ERR(mydf->df))
+              return PTR_ERR(mydf->df);
+          
+          return 0;
+      }
