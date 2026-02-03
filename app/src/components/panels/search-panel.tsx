@@ -15,6 +15,7 @@ import {
 import { cn } from "../../lib/utils"
 import { currentFileAtom } from "../../lib/atoms/layout-atoms"
 import { useAtom } from "jotai"
+import { List, ListImperativeAPI, RowComponentProps } from 'react-window'
 
 // 搜索结果类型
 export interface SearchResult {
@@ -33,6 +34,73 @@ interface SearchPanelProps {
   onResultSelect?: (result: SearchResult) => void
 }
 
+// 虚拟化行组件属性
+interface VirtualSearchRowProps {
+  results: SearchResult[]
+  selectedIndex: number
+  onResultClick: (result: SearchResult) => void
+  getKindIcon: (kind: string) => React.ReactNode
+  getKindLabel: (kind: string) => string
+}
+
+// 虚拟化搜索结果行
+function VirtualSearchRow({
+  index,
+  style,
+  results,
+  selectedIndex,
+  onResultClick,
+  getKindIcon,
+  getKindLabel,
+}: RowComponentProps<VirtualSearchRowProps>) {
+  const result = results[index]
+  const isSelected = selectedIndex === index
+  
+  return (
+    <div
+      style={style}
+      data-index={index}
+      data-testid="search-result-item"
+      className={cn(
+        "group flex flex-col gap-1 px-3 py-2 cursor-pointer transition-colors mx-2 rounded-md",
+        isSelected && "bg-[var(--bg-tertiary)]",
+        !isSelected && "hover:bg-[var(--bg-hover)]"
+      )}
+      onClick={() => onResultClick(result)}
+    >
+      {/* Result Header */}
+      <div className="flex items-center gap-2">
+        {getKindIcon(result.kind)}
+        <span className={cn(
+          "flex-1 text-xs font-medium truncate",
+          isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
+        )}>
+          {result.name}
+        </span>
+        <span className="text-[10px] px-1 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
+          {getKindLabel(result.kind)}
+        </span>
+      </div>
+
+      {/* File Path & Line */}
+      <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+        <span className="truncate max-w-[180px]">{result.file_path.split('/').pop()}</span>
+        <span>:</span>
+        <span className="font-mono">{result.line}</span>
+      </div>
+
+      {/* Preview */}
+      {result.preview && (
+        <div className="mt-1 p-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-subtle)]">
+          <code className="text-[10px] font-mono text-[var(--text-secondary)] line-clamp-2">
+            {result.preview}
+          </code>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function SearchPanel({ className, onResultSelect }: SearchPanelProps) {
   const [currentFile, setCurrentFile] = useAtom(currentFileAtom)
   const [query, setQuery] = React.useState("")
@@ -45,6 +113,23 @@ export function SearchPanel({ className, onResultSelect }: SearchPanelProps) {
   
   const inputRef = React.useRef<HTMLInputElement>(null)
   const resultsRef = React.useRef<HTMLDivElement>(null)
+  const listRef = React.useRef<ListImperativeAPI | null>(null)
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const [containerHeight, setContainerHeight] = React.useState(300)
+  
+  // 监听容器高度变化
+  React.useEffect(() => {
+    if (!containerRef.current) return
+    
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height)
+      }
+    })
+    
+    observer.observe(containerRef.current)
+    return () => observer.disconnect()
+  }, [])
 
   // 搜索函数 - 防抖处理
   const performSearch = React.useCallback(async (searchQuery: string, kind: SearchKind) => {
@@ -117,13 +202,10 @@ export function SearchPanel({ className, onResultSelect }: SearchPanelProps) {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [results, selectedIndex])
 
-  // 自动滚动到选中项
+  // 自动滚动到选中项（虚拟化版本）
   React.useEffect(() => {
-    if (resultsRef.current && results.length > 0) {
-      const selectedElement = resultsRef.current.querySelector(`[data-index="${selectedIndex}"]`)
-      if (selectedElement) {
-        selectedElement.scrollIntoView({ block: "nearest" })
-      }
+    if (listRef.current && results.length > 0) {
+      listRef.current.scrollToRow({ index: selectedIndex, align: 'smart' })
     }
   }, [selectedIndex, results.length])
 
@@ -256,10 +338,10 @@ export function SearchPanel({ className, onResultSelect }: SearchPanelProps) {
         </div>
       )}
 
-      {/* Results */}
+      {/* Results - 虚拟化渲染 */}
       <div 
-        ref={resultsRef}
-        className="flex-1 overflow-y-auto py-2"
+        ref={containerRef}
+        className="flex-1 overflow-hidden"
         data-testid="search-results"
       >
         {loading ? (
@@ -271,49 +353,22 @@ export function SearchPanel({ className, onResultSelect }: SearchPanelProps) {
             <p className="text-xs text-red-400">{error}</p>
           </div>
         ) : results.length > 0 ? (
-          results.map((result, index) => (
-            <div
-              key={`${result.file_path}-${result.name}-${result.line}`}
-              data-index={index}
-              data-testid="search-result-item"
-              className={cn(
-                "group flex flex-col gap-1 px-3 py-2 cursor-pointer transition-colors mx-2 rounded-md",
-                selectedIndex === index && "bg-[var(--bg-tertiary)]",
-                selectedIndex !== index && "hover:bg-[var(--bg-hover)]"
-              )}
-              onClick={() => handleResultClick(result)}
-            >
-              {/* Result Header */}
-              <div className="flex items-center gap-2">
-                {getKindIcon(result.kind)}
-                <span className={cn(
-                  "flex-1 text-xs font-medium truncate",
-                  selectedIndex === index ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
-                )}>
-                  {result.name}
-                </span>
-                <span className="text-[10px] px-1 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
-                  {getKindLabel(result.kind)}
-                </span>
-              </div>
-
-              {/* File Path & Line */}
-              <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
-                <span className="truncate max-w-[180px]">{result.file_path.split('/').pop()}</span>
-                <span>:</span>
-                <span className="font-mono">{result.line}</span>
-              </div>
-
-              {/* Preview */}
-              {result.preview && (
-                <div className="mt-1 p-1.5 rounded bg-[var(--bg-primary)] border border-[var(--border-subtle)]">
-                  <code className="text-[10px] font-mono text-[var(--text-secondary)] line-clamp-2">
-                    {result.preview}
-                  </code>
-                </div>
-              )}
-            </div>
-          ))
+          <List<VirtualSearchRowProps>
+            listRef={listRef}
+            defaultHeight={containerHeight}
+            rowCount={results.length}
+            rowHeight={80}
+            rowComponent={VirtualSearchRow}
+            rowProps={{
+              results,
+              selectedIndex,
+              onResultClick: handleResultClick,
+              getKindIcon,
+              getKindLabel,
+            }}
+            overscanCount={3}
+            role="listbox"
+          />
         ) : query ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <Search className="h-8 w-8 text-[var(--text-muted)] mb-2" />

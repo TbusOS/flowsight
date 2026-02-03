@@ -20,6 +20,7 @@ import { cn } from "../../lib/utils"
 import { currentFileAtom, setEntryFunctionAtom, jumpTargetAtom } from "../../lib/atoms/layout-atoms"
 import { useAtomValue, useSetAtom } from "jotai"
 import { useDebounce } from "../../hooks/usePerformance"
+import { List, ListImperativeAPI, RowComponentProps } from 'react-window'
 
 // 大纲项类型
 export interface OutlineItem {
@@ -156,6 +157,46 @@ const OutlineItemRow = React.memo(function OutlineItemRow({
   )
 })
 
+// 虚拟化行组件的属性
+interface VirtualRowProps {
+  items: OutlineItem[]
+  selectedItem: string | null
+  expandedItems: Set<string>
+  onSelect: (id: string, name: string, line: number, type: string) => void
+  onToggle: (id: string) => void
+}
+
+// 虚拟化行组件
+function VirtualOutlineRow({ 
+  index, 
+  style,
+  items,
+  selectedItem,
+  expandedItems,
+  onSelect,
+  onToggle,
+}: RowComponentProps<VirtualRowProps>) {
+  const item = items[index]
+  const itemId = item.id ?? item.name
+  const hasChildren = item.children && item.children.length > 0
+  const isExpanded = expandedItems.has(itemId)
+  const isSelected = selectedItem === itemId
+
+  return (
+    <div style={style}>
+      <OutlineItemRow
+        item={item}
+        depth={0}
+        isSelected={isSelected}
+        isExpanded={isExpanded}
+        hasChildren={hasChildren || false}
+        onSelect={onSelect}
+        onToggle={onToggle}
+      />
+    </div>
+  )
+}
+
 // 主组件
 export const OutlinePanel = React.memo(function OutlinePanel({ 
   className, 
@@ -170,9 +211,26 @@ export const OutlinePanel = React.memo(function OutlinePanel({
   const [expandedItems, setExpandedItems] = React.useState<Set<string>>(new Set())
   const [selectedItem, setSelectedItem] = React.useState<string | null>(null)
   const [searchText, setSearchText] = React.useState("")
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const listRef = React.useRef<ListImperativeAPI | null>(null)
+  const [containerHeight, setContainerHeight] = React.useState(300)
   
   // 搜索防抖
   const debouncedSearch = useDebounce(searchText, 150)
+
+  // 监听容器高度变化
+  React.useEffect(() => {
+    if (!containerRef.current) return
+    
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height)
+      }
+    })
+    
+    observer.observe(containerRef.current)
+    return () => observer.disconnect()
+  }, [])
 
   // 当文件变化时加载函数列表
   React.useEffect(() => {
@@ -256,32 +314,24 @@ export const OutlinePanel = React.memo(function OutlinePanel({
     })
   }, [])
 
-  // 递归渲染项目
-  const renderItem = React.useCallback((item: OutlineItem, depth = 0): React.ReactNode => {
-    const itemId = item.id ?? item.name
-    const hasChildren = item.children && item.children.length > 0
-    const isExpanded = expandedItems.has(itemId)
-    const isSelected = selectedItem === itemId
+  // 选中项变化时滚动到可见
+  React.useEffect(() => {
+    if (selectedItem && listRef.current) {
+      const index = filteredItems.findIndex(item => (item.id ?? item.name) === selectedItem)
+      if (index >= 0) {
+        listRef.current.scrollToRow({ index, align: 'smart' })
+      }
+    }
+  }, [selectedItem, filteredItems])
 
-    return (
-      <React.Fragment key={itemId}>
-        <OutlineItemRow
-          item={item}
-          depth={depth}
-          isSelected={isSelected}
-          isExpanded={isExpanded}
-          hasChildren={hasChildren || false}
-          onSelect={handleSelect}
-          onToggle={handleToggle}
-        />
-        {hasChildren && isExpanded && (
-          <div>
-            {item.children!.map(child => renderItem(child, depth + 1))}
-          </div>
-        )}
-      </React.Fragment>
-    )
-  }, [expandedItems, selectedItem, handleSelect, handleToggle])
+  // 虚拟列表行属性
+  const rowProps = React.useMemo<VirtualRowProps>(() => ({
+    items: filteredItems,
+    selectedItem,
+    expandedItems,
+    onSelect: handleSelect,
+    onToggle: handleToggle,
+  }), [filteredItems, selectedItem, expandedItems, handleSelect, handleToggle])
 
   // 清除搜索
   const clearSearch = React.useCallback(() => {
@@ -342,8 +392,8 @@ export const OutlinePanel = React.memo(function OutlinePanel({
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto py-1">
+      {/* Content - 虚拟化渲染 */}
+      <div ref={containerRef} className="flex-1 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-5 w-5 animate-spin text-[var(--text-muted)]" />
@@ -353,7 +403,16 @@ export const OutlinePanel = React.memo(function OutlinePanel({
             <p className="text-xs text-red-400">{error}</p>
           </div>
         ) : filteredItems.length > 0 ? (
-          filteredItems.map(item => renderItem(item))
+          <List<VirtualRowProps>
+            listRef={listRef}
+            defaultHeight={containerHeight}
+            rowCount={filteredItems.length}
+            rowHeight={36}
+            rowComponent={VirtualOutlineRow}
+            rowProps={rowProps}
+            overscanCount={5}
+            role="listbox"
+          />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <Layers className="h-8 w-8 text-[var(--text-muted)] mb-2" />
