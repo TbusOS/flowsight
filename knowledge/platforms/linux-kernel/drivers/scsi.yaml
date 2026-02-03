@@ -520,3 +520,128 @@ examples:
           /* 命令已完成，让错误处理器处理 */
           return BLK_EH_DONE;
       }
+
+# ============================================================
+# KERNEL VERSION
+# ============================================================
+
+kernel_version: "2.6.0+"
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  Scsi_Host:
+    pattern: 'struct Scsi_Host\s*\{'
+    description: "SCSI 主机结构"
+    file: "include/scsi/scsi_host.h"
+    fields:
+      - name: "host_list"
+        type: "struct list_head"
+        description: "主机列表"
+      - name: "shost_gendev"
+        type: "struct device"
+        description: "通用设备"
+      - name: "hostt"
+        type: "struct scsi_host_template *"
+        description: "主机模板"
+      - name: "host_no"
+        type: "unsigned int"
+        description: "主机编号"
+      - name: "can_queue"
+        type: "int"
+        description: "最大队列命令数"
+      - name: "this_id"
+        type: "int"
+        description: "主机 SCSI ID"
+      - name: "sg_tablesize"
+        type: "unsigned short"
+        description: "SG 表大小"
+      - name: "max_sectors"
+        type: "unsigned int"
+        description: "最大扇区数"
+      - name: "cmd_per_lun"
+        type: "int"
+        description: "每 LUN 命令数"
+      - name: "hostdata"
+        type: "unsigned long[]"
+        description: "私有数据"
+
+  scsi_target:
+    pattern: 'struct scsi_target\s*\{'
+    description: "SCSI 目标设备"
+    file: "include/scsi/scsi_device.h"
+    fields:
+      - name: "devices"
+        type: "struct list_head"
+        description: "设备列表"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+      - name: "channel"
+        type: "unsigned int"
+        description: "通道号"
+      - name: "id"
+        type: "unsigned int"
+        description: "目标 ID"
+      - name: "state"
+        type: "enum scsi_target_state"
+        description: "目标状态"
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  scsi_hotplug:
+    description: "SCSI 热插拔流程"
+    chain:
+      - caller: "scsi_scan_host"
+        callee: "scsi_scan_host_selected"
+        description: "扫描指定范围"
+      - caller: "scsi_scan_host_selected"
+        callee: "scsi_scan_target"
+        description: "扫描目标"
+      - caller: "scsi_scan_target"
+        callee: "scsi_probe_lun"
+        description: "探测 LUN"
+      - caller: "scsi_probe_lun"
+        callee: "scsi_add_lun"
+        description: "添加 LUN"
+      - caller: "scsi_add_lun"
+        callee: "device_add"
+        description: "添加到设备模型"
+
+  scsi_remove:
+    description: "SCSI 设备移除流程"
+    chain:
+      - caller: "scsi_remove_host"
+        callee: "scsi_forget_host"
+        description: "遗忘所有设备"
+      - caller: "scsi_forget_host"
+        callee: "__scsi_remove_device"
+        description: "移除单个设备"
+      - caller: "__scsi_remove_device"
+        callee: "device_del"
+        description: "从设备模型删除"
+
+  scsi_eh_complete:
+    description: "SCSI 完整错误处理流程"
+    chain:
+      - caller: "scsi_timeout (命令超时)"
+        callee: "scsi_eh_scmd_add"
+        description: "添加到错误队列"
+      - caller: "scsi_error_handler (kthread)"
+        callee: "scsi_eh_get_sense"
+        description: "获取 sense 数据"
+      - caller: "scsi_error_handler"
+        callee: "scsi_eh_abort_cmds"
+        description: "尝试中止命令"
+      - caller: "scsi_error_handler"
+        callee: "scsi_eh_bus_device_reset"
+        description: "设备复位"
+      - caller: "scsi_error_handler"
+        callee: "scsi_eh_bus_reset"
+        description: "总线复位"
+      - caller: "scsi_error_handler"
+        callee: "scsi_eh_host_reset"
+        description: "主机复位"

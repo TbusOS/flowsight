@@ -227,3 +227,174 @@ examples:
           },
       };
       module_platform_driver(my_bl_driver);
+
+  - description: "PWM 背光驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/backlight.h>
+      #include <linux/platform_device.h>
+      #include <linux/pwm.h>
+      
+      struct pwm_bl_data {
+          struct backlight_device *bd;
+          struct pwm_device *pwm;
+          unsigned int max_brightness;
+          bool enabled;
+      };
+      
+      static int pwm_bl_update_status(struct backlight_device *bd)
+      {
+          struct pwm_bl_data *pb = bl_get_data(bd);
+          int brightness = bd->props.brightness;
+          struct pwm_state state;
+          
+          if (bd->props.power != FB_BLANK_UNBLANK ||
+              bd->props.state & (BL_CORE_SUSPENDED | BL_CORE_FBBLANK))
+              brightness = 0;
+          
+          pwm_get_state(pb->pwm, &state);
+          state.duty_cycle = DIV_ROUND_UP(brightness * state.period,
+                                          pb->max_brightness);
+          state.enabled = brightness > 0;
+          
+          pwm_apply_state(pb->pwm, &state);
+          pb->enabled = state.enabled;
+          
+          return 0;
+      }
+      
+      static const struct backlight_ops pwm_bl_ops = {
+          .options        = BL_CORE_SUSPENDRESUME,
+          .update_status  = pwm_bl_update_status,
+      };
+      
+      static int pwm_bl_probe(struct platform_device *pdev)
+      {
+          struct pwm_bl_data *pb;
+          struct backlight_properties props;
+          
+          pb = devm_kzalloc(&pdev->dev, sizeof(*pb), GFP_KERNEL);
+          if (!pb)
+              return -ENOMEM;
+          
+          pb->pwm = devm_pwm_get(&pdev->dev, NULL);
+          if (IS_ERR(pb->pwm))
+              return PTR_ERR(pb->pwm);
+          
+          pb->max_brightness = 255;
+          
+          memset(&props, 0, sizeof(props));
+          props.type = BACKLIGHT_RAW;
+          props.max_brightness = pb->max_brightness;
+          props.brightness = pb->max_brightness;
+          
+          pb->bd = devm_backlight_device_register(&pdev->dev,
+                      dev_name(&pdev->dev), &pdev->dev, pb,
+                      &pwm_bl_ops, &props);
+          if (IS_ERR(pb->bd))
+              return PTR_ERR(pb->bd);
+          
+          backlight_update_status(pb->bd);
+          return 0;
+      }
+      
+      static const struct of_device_id pwm_bl_of_match[] = {
+          { .compatible = "pwm-backlight" },
+          { }
+      };
+      MODULE_DEVICE_TABLE(of, pwm_bl_of_match);
+      
+      static struct platform_driver pwm_bl_driver = {
+          .probe  = pwm_bl_probe,
+          .driver = {
+              .name           = "pwm-backlight",
+              .of_match_table = pwm_bl_of_match,
+          },
+      };
+      module_platform_driver(pwm_bl_driver);
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  backlight_ops:
+    pattern: 'struct backlight_ops\s*\{'
+    description: "背光操作函数表"
+    file: "include/linux/backlight.h"
+    fields:
+      - name: "options"
+        type: "unsigned int"
+        description: "选项标志 (BL_CORE_SUSPENDRESUME)"
+      - name: "update_status"
+        type: "int (*)(struct backlight_device *)"
+        description: "更新背光状态回调"
+      - name: "get_brightness"
+        type: "int (*)(struct backlight_device *)"
+        description: "获取当前亮度回调"
+      - name: "check_fb"
+        type: "int (*)(struct backlight_device *, struct fb_info *)"
+        description: "检查 framebuffer 关联"
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  backlight_suspend:
+    description: "Backlight Suspend Flow"
+    chain:
+      - caller: "pm_runtime_suspend"
+        callee: "backlight_suspend"
+        description: "系统挂起触发"
+      - caller: "backlight_suspend"
+        callee: "bd->ops->update_status"
+        description: "设置挂起状态"
+        note: "props.state |= BL_CORE_SUSPENDED"
+
+  backlight_resume:
+    description: "Backlight Resume Flow"
+    chain:
+      - caller: "pm_runtime_resume"
+        callee: "backlight_resume"
+        description: "系统恢复触发"
+      - caller: "backlight_resume"
+        callee: "backlight_update_status"
+        description: "恢复亮度状态"
+
+  backlight_notifier:
+    description: "Framebuffer Notifier Chain"
+    chain:
+      - caller: "fb_notifier_call_chain"
+        callee: "backlight_fb_notifier_callback"
+        mechanism: "notifier"
+        description: "FB 事件通知"
+      - caller: "backlight_fb_notifier_callback"
+        callee: "backlight_update_status"
+        description: "更新背光状态"
+
+# ============================================================
+# DEVICE TREE BINDINGS
+# ============================================================
+
+device_tree:
+  pwm_backlight:
+    description: "PWM 背光设备树绑定"
+    compatible: "pwm-backlight"
+    example: |
+      backlight: backlight {
+          compatible = "pwm-backlight";
+          pwms = <&pwm0 0 5000000 0>;
+          brightness-levels = <0 4 8 16 32 64 128 255>;
+          default-brightness-level = <6>;
+          power-supply = <&vdd_bl>;
+      };
+
+  gpio_backlight:
+    description: "GPIO 背光设备树绑定"
+    compatible: "gpio-backlight"
+    example: |
+      backlight: backlight {
+          compatible = "gpio-backlight";
+          gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
+          default-on;
+      };

@@ -417,3 +417,124 @@ examples:
           },
       };
       module_platform_driver(my_nand_driver);
+
+# ============================================================
+# SPI NOR FLASH
+# ============================================================
+
+spi_nor:
+  description: "SPI NOR Flash 子系统"
+  header: "linux/mtd/spi-nor.h"
+  icon: "⚡"
+  kernel_version: "3.14+"
+
+  registration:
+    - pattern: 'spi_nor_scan\s*\(\s*&(?P<nor>\w+)\s*,'
+      description: "扫描 SPI NOR Flash"
+    - pattern: 'spi_nor_remove\s*\(\s*&(?P<nor>\w+)\s*\)'
+      description: "移除 SPI NOR Flash"
+
+  data_structures:
+    spi_nor:
+      pattern: 'struct spi_nor\s*\{'
+      description: "SPI NOR Flash 设备结构"
+      file: "include/linux/mtd/spi-nor.h"
+      fields:
+        - name: "mtd"
+          type: "struct mtd_info"
+          description: "MTD 设备"
+        - name: "lock"
+          type: "struct mutex"
+          description: "设备锁"
+        - name: "dev"
+          type: "struct device *"
+          description: "父设备"
+        - name: "page_size"
+          type: "size_t"
+          description: "页大小"
+        - name: "addr_nbytes"
+          type: "u8"
+          description: "地址字节数"
+        - name: "erase_opcode"
+          type: "u8"
+          description: "擦除命令"
+        - name: "read_opcode"
+          type: "u8"
+          description: "读取命令"
+        - name: "program_opcode"
+          type: "u8"
+          description: "编程命令"
+
+# ============================================================
+# MTD PARTITIONS
+# ============================================================
+
+mtd_partitions:
+  description: "MTD 分区支持"
+  header: "linux/mtd/partitions.h"
+  icon: "📦"
+
+  data_structures:
+    mtd_partition:
+      pattern: 'struct mtd_partition\s*\{'
+      description: "MTD 分区信息"
+      file: "include/linux/mtd/partitions.h"
+      fields:
+        - name: "name"
+          type: "char *"
+          description: "分区名称"
+        - name: "size"
+          type: "uint64_t"
+          description: "分区大小 (MTDPART_SIZ_FULL 表示剩余)"
+        - name: "offset"
+          type: "uint64_t"
+          description: "分区偏移 (MTDPART_OFS_APPEND 自动)"
+        - name: "mask_flags"
+          type: "uint32_t"
+          description: "需要屏蔽的标志"
+
+  example: |
+    static const struct mtd_partition my_partitions[] = {
+        { .name = "bootloader", .offset = 0, .size = SZ_256K,
+          .mask_flags = MTD_WRITEABLE },
+        { .name = "kernel", .offset = MTDPART_OFS_APPEND, .size = SZ_4M },
+        { .name = "rootfs", .offset = MTDPART_OFS_APPEND,
+          .size = MTDPART_SIZ_FULL },
+    };
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  mtd_write:
+    description: "MTD Write Operation"
+    chain:
+      - caller: "mtd_write"
+        callee: "part_write (如果是分区)"
+        description: "处理分区偏移"
+      - caller: "part_write / mtd_write"
+        callee: "mtd->_write"
+        description: "调用底层写入函数"
+
+  mtd_erase:
+    description: "MTD Erase Operation"
+    chain:
+      - caller: "mtd_erase"
+        callee: "mtd->_erase"
+        description: "调用底层擦除"
+      - caller: "_erase"
+        callee: "nand_erase_nand"
+        description: "NAND 擦除实现"
+
+  spi_nor_probe:
+    description: "SPI NOR Flash Probe Flow"
+    chain:
+      - caller: "platform_driver.probe"
+        callee: "spi_nor_scan"
+        description: "扫描 SPI NOR Flash"
+      - caller: "spi_nor_scan"
+        callee: "spi_nor_read_id"
+        description: "读取 JEDEC ID"
+      - caller: "platform_driver.probe"
+        callee: "mtd_device_register"
+        description: "注册 MTD 设备"

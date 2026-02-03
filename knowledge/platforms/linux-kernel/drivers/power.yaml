@@ -264,3 +264,210 @@ examples:
           },
       };
       module_platform_driver(my_battery_driver);
+
+  - description: "充电器驱动示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/power_supply.h>
+      #include <linux/platform_device.h>
+      #include <linux/interrupt.h>
+      
+      struct my_charger {
+          struct power_supply *psy;
+          struct device *dev;
+          int online;
+          int current_max;
+          int voltage_max;
+      };
+      
+      static enum power_supply_property my_charger_props[] = {
+          POWER_SUPPLY_PROP_ONLINE,
+          POWER_SUPPLY_PROP_TYPE,
+          POWER_SUPPLY_PROP_CURRENT_MAX,
+          POWER_SUPPLY_PROP_VOLTAGE_MAX,
+      };
+      
+      static int my_charger_get_property(struct power_supply *psy,
+                                         enum power_supply_property psp,
+                                         union power_supply_propval *val)
+      {
+          struct my_charger *chg = power_supply_get_drvdata(psy);
+          
+          switch (psp) {
+          case POWER_SUPPLY_PROP_ONLINE:
+              val->intval = chg->online;
+              break;
+          case POWER_SUPPLY_PROP_TYPE:
+              val->intval = POWER_SUPPLY_TYPE_USB;
+              break;
+          case POWER_SUPPLY_PROP_CURRENT_MAX:
+              val->intval = chg->current_max;
+              break;
+          case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+              val->intval = chg->voltage_max;
+              break;
+          default:
+              return -EINVAL;
+          }
+          return 0;
+      }
+      
+      static char *my_charger_supplied_to[] = { "my-battery" };
+      
+      static const struct power_supply_desc my_charger_desc = {
+          .name           = "my-charger",
+          .type           = POWER_SUPPLY_TYPE_USB,
+          .properties     = my_charger_props,
+          .num_properties = ARRAY_SIZE(my_charger_props),
+          .get_property   = my_charger_get_property,
+      };
+      
+      static irqreturn_t my_charger_irq(int irq, void *data)
+      {
+          struct my_charger *chg = data;
+          chg->online = !chg->online;
+          power_supply_changed(chg->psy);
+          return IRQ_HANDLED;
+      }
+      
+      static int my_charger_probe(struct platform_device *pdev)
+      {
+          struct my_charger *chg;
+          struct power_supply_config cfg = {};
+          
+          chg = devm_kzalloc(&pdev->dev, sizeof(*chg), GFP_KERNEL);
+          if (!chg)
+              return -ENOMEM;
+          
+          chg->dev = &pdev->dev;
+          chg->current_max = 500000;
+          chg->voltage_max = 5000000;
+          
+          cfg.drv_data = chg;
+          cfg.of_node = pdev->dev.of_node;
+          cfg.supplied_to = my_charger_supplied_to;
+          cfg.num_supplicants = ARRAY_SIZE(my_charger_supplied_to);
+          
+          chg->psy = devm_power_supply_register(&pdev->dev,
+                                                 &my_charger_desc, &cfg);
+          return PTR_ERR_OR_ZERO(chg->psy);
+      }
+      
+      static struct platform_driver my_charger_driver = {
+          .probe  = my_charger_probe,
+          .driver = { .name = "my-charger" },
+      };
+      module_platform_driver(my_charger_driver);
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  power_supply_config:
+    pattern: 'struct power_supply_config\s*\{'
+    description: "电源配置结构"
+    file: "include/linux/power_supply.h"
+    fields:
+      - name: "drv_data"
+        type: "void *"
+        description: "驱动私有数据"
+      - name: "of_node"
+        type: "struct device_node *"
+        description: "设备树节点"
+      - name: "supplied_to"
+        type: "char **"
+        description: "供电目标名称数组"
+      - name: "num_supplicants"
+        type: "size_t"
+        description: "供电目标数量"
+
+  power_supply_propval:
+    pattern: 'union power_supply_propval\s*\{'
+    description: "属性值联合体"
+    file: "include/linux/power_supply.h"
+    fields:
+      - name: "intval"
+        type: "int"
+        description: "整数值"
+      - name: "strval"
+        type: "const char *"
+        description: "字符串值"
+
+# ============================================================
+# PROPERTY ENUMS
+# ============================================================
+
+property_enums:
+  power_supply_status:
+    description: "电源状态枚举"
+    values:
+      - POWER_SUPPLY_STATUS_UNKNOWN: "未知状态"
+      - POWER_SUPPLY_STATUS_CHARGING: "充电中"
+      - POWER_SUPPLY_STATUS_DISCHARGING: "放电中"
+      - POWER_SUPPLY_STATUS_NOT_CHARGING: "未充电"
+      - POWER_SUPPLY_STATUS_FULL: "已充满"
+
+  power_supply_health:
+    description: "电源健康状态枚举"
+    values:
+      - POWER_SUPPLY_HEALTH_UNKNOWN: "未知"
+      - POWER_SUPPLY_HEALTH_GOOD: "良好"
+      - POWER_SUPPLY_HEALTH_OVERHEAT: "过热"
+      - POWER_SUPPLY_HEALTH_DEAD: "损坏"
+      - POWER_SUPPLY_HEALTH_OVERVOLTAGE: "过压"
+      - POWER_SUPPLY_HEALTH_COLD: "过冷"
+      - POWER_SUPPLY_HEALTH_OVERCURRENT: "过流"
+
+  power_supply_type:
+    description: "电源类型枚举"
+    values:
+      - POWER_SUPPLY_TYPE_BATTERY: "电池"
+      - POWER_SUPPLY_TYPE_UPS: "UPS"
+      - POWER_SUPPLY_TYPE_MAINS: "市电/AC"
+      - POWER_SUPPLY_TYPE_USB: "USB 供电"
+      - POWER_SUPPLY_TYPE_USB_DCP: "USB DCP 充电器"
+      - POWER_SUPPLY_TYPE_USB_TYPE_C: "USB Type-C"
+      - POWER_SUPPLY_TYPE_USB_PD: "USB PD"
+      - POWER_SUPPLY_TYPE_WIRELESS: "无线充电"
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  sysfs_read:
+    description: "Sysfs 属性读取流程"
+    chain:
+      - caller: "sysfs read"
+        callee: "power_supply_show_property"
+        description: "读取属性请求"
+      - caller: "power_supply_show_property"
+        callee: "psy->desc->get_property"
+        description: "调用驱动获取属性"
+
+  sysfs_write:
+    description: "Sysfs 属性写入流程"
+    chain:
+      - caller: "sysfs write"
+        callee: "power_supply_store_property"
+        description: "写入属性请求"
+      - caller: "power_supply_store_property"
+        callee: "psy->desc->property_is_writeable"
+        description: "检查可写性"
+      - caller: "power_supply_store_property"
+        callee: "psy->desc->set_property"
+        description: "调用驱动设置属性"
+
+  external_power:
+    description: "外部电源变化通知"
+    chain:
+      - caller: "charger driver"
+        callee: "power_supply_changed"
+        description: "充电器状态变化"
+      - caller: "power_supply_changed"
+        callee: "power_supply_changed_work"
+        async: true
+        mechanism: "workqueue"
+      - caller: "power_supply_changed_work"
+        callee: "psy->desc->external_power_changed"
+        description: "通知电池驱动"

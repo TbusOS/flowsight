@@ -389,3 +389,165 @@ examples:
           },
       };
       module_platform_driver(my_rproc_driver);
+
+  - description: "RPMSG 设备驱动示例"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/rpmsg.h>
+      
+      struct my_rpmsg_dev {
+          struct rpmsg_device *rpdev;
+          struct completion done;
+          char rx_buf[256];
+      };
+      
+      static int my_rpmsg_callback(struct rpmsg_device *rpdev,
+                                    void *data, int len,
+                                    void *priv, u32 src)
+      {
+          struct my_rpmsg_dev *mdev = dev_get_drvdata(&rpdev->dev);
+          
+          dev_info(&rpdev->dev, "rx: %d bytes from 0x%x\n", len, src);
+          
+          if (len < sizeof(mdev->rx_buf)) {
+              memcpy(mdev->rx_buf, data, len);
+              mdev->rx_buf[len] = '\0';
+          }
+          
+          complete(&mdev->done);
+          return 0;
+      }
+      
+      static int my_rpmsg_probe(struct rpmsg_device *rpdev)
+      {
+          struct my_rpmsg_dev *mdev;
+          
+          mdev = devm_kzalloc(&rpdev->dev, sizeof(*mdev), GFP_KERNEL);
+          if (!mdev)
+              return -ENOMEM;
+          
+          mdev->rpdev = rpdev;
+          init_completion(&mdev->done);
+          dev_set_drvdata(&rpdev->dev, mdev);
+          
+          rpmsg_send(rpdev->ept, "hello", 5);
+          return 0;
+      }
+      
+      static struct rpmsg_device_id my_rpmsg_id_table[] = {
+          { .name = "my-channel" },
+          { },
+      };
+      MODULE_DEVICE_TABLE(rpmsg, my_rpmsg_id_table);
+      
+      static struct rpmsg_driver my_rpmsg_driver = {
+          .probe    = my_rpmsg_probe,
+          .callback = my_rpmsg_callback,
+          .id_table = my_rpmsg_id_table,
+          .drv.name = "my-rpmsg",
+      };
+      module_rpmsg_driver(my_rpmsg_driver);
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  rpmsg_device:
+    pattern: 'struct rpmsg_device\s*\{'
+    description: "RPMSG 设备结构"
+    file: "include/linux/rpmsg.h"
+    fields:
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+      - name: "id"
+        type: "struct rpmsg_device_id"
+        description: "设备标识"
+      - name: "src"
+        type: "u32"
+        description: "源地址"
+      - name: "dst"
+        type: "u32"
+        description: "目标地址"
+      - name: "ept"
+        type: "struct rpmsg_endpoint *"
+        description: "关联端点"
+      - name: "ops"
+        type: "const struct rpmsg_device_ops *"
+        description: "设备操作"
+
+  rpmsg_endpoint:
+    pattern: 'struct rpmsg_endpoint\s*\{'
+    description: "RPMSG 端点结构"
+    file: "include/linux/rpmsg.h"
+    fields:
+      - name: "rpdev"
+        type: "struct rpmsg_device *"
+        description: "关联设备"
+      - name: "cb"
+        type: "rpmsg_rx_cb_t"
+        description: "接收回调"
+      - name: "addr"
+        type: "u32"
+        description: "端点地址"
+      - name: "priv"
+        type: "void *"
+        description: "私有数据"
+
+# ============================================================
+# RESOURCE TABLE
+# ============================================================
+
+resource_table:
+  description: "Remote Processor Resource Table"
+  header: "linux/remoteproc.h"
+  icon: "📋"
+
+  resource_types:
+    RSC_CARVEOUT:
+      value: 0
+      description: "Carveout 内存（连续物理内存）"
+    RSC_DEVMEM:
+      value: 1
+      description: "设备内存映射"
+    RSC_TRACE:
+      value: 2
+      description: "跟踪缓冲区"
+    RSC_VDEV:
+      value: 3
+      description: "Virtio 设备"
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  rproc_crash:
+    description: "Remote Processor Crash Recovery"
+    chain:
+      - caller: "driver/watchdog"
+        callee: "rproc_report_crash"
+        context: "any"
+        description: "报告崩溃"
+      - caller: "rproc_report_crash"
+        callee: "rproc_trigger_recovery"
+        async: true
+        mechanism: "workqueue"
+        description: "触发恢复"
+      - caller: "rproc_trigger_recovery"
+        callee: "rproc_ops->stop"
+        description: "停止处理器"
+      - caller: "rproc_trigger_recovery"
+        callee: "rproc_ops->start"
+        description: "重启处理器"
+
+  rpmsg_recv:
+    description: "RPMSG Receive Flow"
+    chain:
+      - caller: "virtqueue callback"
+        callee: "rpmsg_recv_single"
+        context: "softirq"
+        description: "接收单个消息"
+      - caller: "rpmsg_recv_single"
+        callee: "rpmsg_endpoint->cb"
+        description: "调用端点回调"

@@ -346,3 +346,146 @@ examples:
           .id_table = my_sensor_id,
       };
       module_i2c_driver(my_sensor_driver);
+
+  - description: "带写入功能的 hwmon 驱动"
+    kernel_version: "5.0+"
+    code: |
+      static int my_hwmon_write(struct device *dev,
+                                enum hwmon_sensor_types type,
+                                u32 attr, int channel, long val)
+      {
+          struct my_sensor *sensor = dev_get_drvdata(dev);
+          int ret = 0;
+          
+          mutex_lock(&sensor->lock);
+          
+          switch (type) {
+          case hwmon_temp:
+              switch (attr) {
+              case hwmon_temp_max:
+                  val = clamp_val(val, -128000, 127000);
+                  ret = i2c_smbus_write_word_data(sensor->client,
+                              TEMP_MAX_REG, val * 256 / 1000);
+                  break;
+              default:
+                  ret = -EOPNOTSUPP;
+              }
+              break;
+          default:
+              ret = -EOPNOTSUPP;
+          }
+          
+          mutex_unlock(&sensor->lock);
+          return ret;
+      }
+      
+      static umode_t my_hwmon_is_visible_rw(const void *data,
+                                            enum hwmon_sensor_types type,
+                                            u32 attr, int channel)
+      {
+          switch (type) {
+          case hwmon_temp:
+              switch (attr) {
+              case hwmon_temp_input:
+                  return 0444;
+              case hwmon_temp_max:
+                  return 0644;  /* 可读可写 */
+              }
+          }
+          return 0;
+      }
+      
+      static const struct hwmon_ops my_hwmon_ops_rw = {
+          .is_visible = my_hwmon_is_visible_rw,
+          .read       = my_hwmon_read,
+          .write      = my_hwmon_write,
+      };
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  hwmon_channel_info:
+    pattern: 'struct hwmon_channel_info\s*\{'
+    description: "hwmon 通道信息结构"
+    file: "include/linux/hwmon.h"
+    fields:
+      - name: "type"
+        type: "enum hwmon_sensor_types"
+        description: "传感器类型"
+      - name: "config"
+        type: "const u32 *"
+        description: "属性配置数组"
+
+# ============================================================
+# SENSOR TYPE ATTRIBUTES
+# ============================================================
+
+sensor_attributes:
+  temperature:
+    type: "hwmon_temp"
+    attributes:
+      - HWMON_T_INPUT: "当前温度"
+      - HWMON_T_MAX: "最高温度"
+      - HWMON_T_MAX_HYST: "最高温度滞后"
+      - HWMON_T_MIN: "最低温度"
+      - HWMON_T_CRIT: "临界温度"
+      - HWMON_T_ALARM: "温度报警"
+      - HWMON_T_LABEL: "温度标签"
+      - HWMON_T_OFFSET: "温度偏移"
+
+  voltage:
+    type: "hwmon_in"
+    attributes:
+      - HWMON_I_INPUT: "当前电压"
+      - HWMON_I_MIN: "最小电压"
+      - HWMON_I_MAX: "最大电压"
+      - HWMON_I_ALARM: "电压报警"
+
+  fan:
+    type: "hwmon_fan"
+    attributes:
+      - HWMON_F_INPUT: "当前转速"
+      - HWMON_F_MIN: "最小转速"
+      - HWMON_F_MAX: "最大转速"
+      - HWMON_F_TARGET: "目标转速"
+      - HWMON_F_ALARM: "风扇报警"
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  hwmon_write:
+    description: "Hwmon Attribute Write"
+    chain:
+      - caller: "sysfs write"
+        callee: "hwmon_attr_store"
+        description: "sysfs 存储函数"
+      - caller: "hwmon_attr_store"
+        callee: "ops->write"
+        description: "调用驱动写入函数"
+
+  hwmon_event_notify:
+    description: "Hwmon Event Notification"
+    chain:
+      - caller: "IRQ handler"
+        callee: "hwmon_notify_event"
+        context: "hardirq/softirq"
+        description: "中断触发事件"
+      - caller: "hwmon_notify_event"
+        callee: "sysfs_notify"
+        description: "通知用户空间"
+
+# ============================================================
+# THERMAL INTEGRATION
+# ============================================================
+
+hwmon_thermal:
+  description: "Hwmon Thermal Zone Integration"
+  kernel_version: "3.0+"
+  patterns:
+    - pattern: 'devm_hwmon_device_register_with_info\s*\('
+      description: "带热区支持的注册"
+  integration:
+    description: "当 hwmon 提供温度传感器时自动创建热区"
+    config: "CONFIG_THERMAL_HWMON"

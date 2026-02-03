@@ -301,3 +301,226 @@ examples:
           
           return 0;
       }
+
+  - description: "自定义 Devfreq Governor 示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/devfreq.h>
+      
+      #define MY_GOV_NAME "my_governor"
+      
+      struct my_gov_data {
+          unsigned long target_freq;
+          unsigned int load_threshold;
+      };
+      
+      static int my_gov_get_target_freq(struct devfreq *df,
+                                         unsigned long *freq)
+      {
+          struct devfreq_dev_status *stat;
+          struct my_gov_data *data = df->governor_data;
+          unsigned long load;
+          int err;
+          
+          err = devfreq_update_stats(df);
+          if (err)
+              return err;
+          
+          stat = &df->last_status;
+          
+          if (stat->total_time > 0)
+              load = stat->busy_time * 100 / stat->total_time;
+          else
+              load = 0;
+          
+          if (load > data->load_threshold)
+              *freq = df->max_freq;
+          else if (load < data->load_threshold / 2)
+              *freq = df->min_freq;
+          else
+              *freq = stat->current_frequency;
+          
+          return 0;
+      }
+      
+      static int my_gov_event_handler(struct devfreq *df,
+                                       unsigned int event, void *data)
+      {
+          struct my_gov_data *gov_data;
+          
+          switch (event) {
+          case DEVFREQ_GOV_START:
+              gov_data = kzalloc(sizeof(*gov_data), GFP_KERNEL);
+              if (!gov_data)
+                  return -ENOMEM;
+              gov_data->load_threshold = 70;
+              df->governor_data = gov_data;
+              devfreq_monitor_start(df);
+              break;
+          case DEVFREQ_GOV_STOP:
+              devfreq_monitor_stop(df);
+              kfree(df->governor_data);
+              df->governor_data = NULL;
+              break;
+          case DEVFREQ_GOV_SUSPEND:
+              devfreq_monitor_suspend(df);
+              break;
+          case DEVFREQ_GOV_RESUME:
+              devfreq_monitor_resume(df);
+              break;
+          }
+          return 0;
+      }
+      
+      static struct devfreq_governor my_governor = {
+          .name            = MY_GOV_NAME,
+          .get_target_freq = my_gov_get_target_freq,
+          .event_handler   = my_gov_event_handler,
+      };
+      
+      static int __init my_gov_init(void)
+      {
+          return devfreq_add_governor(&my_governor);
+      }
+      module_init(my_gov_init);
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  devfreq_governor:
+    pattern: 'struct devfreq_governor\s*\{'
+    description: "devfreq 调频策略结构"
+    file: "include/linux/devfreq.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "策略名称"
+      - name: "immutable"
+        type: "unsigned int"
+        description: "是否可更改"
+      - name: "get_target_freq"
+        type: "callback"
+        description: "计算目标频率回调"
+      - name: "event_handler"
+        type: "callback"
+        description: "事件处理回调"
+
+  devfreq_dev_status:
+    pattern: 'struct devfreq_dev_status\s*\{'
+    description: "设备状态结构"
+    file: "include/linux/devfreq.h"
+    fields:
+      - name: "total_time"
+        type: "unsigned long"
+        description: "总采样时间"
+      - name: "busy_time"
+        type: "unsigned long"
+        description: "忙碌时间"
+      - name: "current_frequency"
+        type: "unsigned long"
+        description: "当前频率"
+
+  devfreq_simple_ondemand_data:
+    pattern: 'struct devfreq_simple_ondemand_data\s*\{'
+    description: "simple_ondemand 策略数据"
+    file: "include/linux/devfreq.h"
+    fields:
+      - name: "upthreshold"
+        type: "unsigned int"
+        description: "升频阈值 (0-100)"
+      - name: "downdifferential"
+        type: "unsigned int"
+        description: "降频差值"
+
+# ============================================================
+# OPP INTEGRATION
+# ============================================================
+
+opp_integration:
+  description: "Operating Performance Points 集成"
+  header: "linux/pm_opp.h"
+  icon: "⚡"
+  patterns:
+    - pattern: 'dev_pm_opp_of_add_table\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "从设备树添加 OPP 表"
+    - pattern: 'dev_pm_opp_of_remove_table\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "移除 OPP 表"
+    - pattern: 'devfreq_recommended_opp\s*\(\s*(?P<dev>\w+)\s*,\s*&(?P<freq>\w+)\s*,'
+      description: "获取推荐 OPP"
+
+# ============================================================
+# DEVFREQ COOLING
+# ============================================================
+
+devfreq_cooling:
+  description: "Devfreq Cooling Device"
+  header: "linux/devfreq_cooling.h"
+  icon: "❄️"
+  kernel_version: "4.3+"
+  registration:
+    - pattern: 'of_devfreq_cooling_register\s*\(\s*(?P<np>\w+)\s*,\s*(?P<devfreq>\w+)\s*\)'
+      description: "注册 devfreq 冷却设备"
+    - pattern: 'devfreq_cooling_unregister\s*\(\s*(?P<cdev>\w+)\s*\)'
+      description: "注销冷却设备"
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  governor_event:
+    description: "Governor 事件处理流程"
+    chain:
+      - caller: "devfreq_add_device"
+        callee: "governor->event_handler"
+        event: "DEVFREQ_GOV_START"
+        description: "启动策略"
+      - caller: "devfreq_monitor"
+        callee: "governor->event_handler"
+        event: "DEVFREQ_GOV_INTERVAL"
+        mechanism: "delayed_work"
+        description: "定时更新"
+      - caller: "devfreq_suspend_device"
+        callee: "governor->event_handler"
+        event: "DEVFREQ_GOV_SUSPEND"
+        description: "挂起策略"
+
+  opp_scaling:
+    description: "OPP 调频流程"
+    chain:
+      - caller: "update_devfreq"
+        callee: "devfreq_recommended_opp"
+        description: "获取推荐 OPP"
+      - caller: "devfreq_recommended_opp"
+        callee: "dev_pm_opp_find_freq_ceil"
+        description: "查找目标 OPP"
+      - caller: "profile->target"
+        callee: "dev_pm_opp_set_rate"
+        description: "设置频率和电压"
+
+# ============================================================
+# DEVICE TREE BINDINGS
+# ============================================================
+
+device_tree:
+  devfreq_opp:
+    description: "Devfreq OPP 设备树绑定"
+    example: |
+      gpu: gpu@12340000 {
+          compatible = "vendor,gpu";
+          operating-points-v2 = <&gpu_opp_table>;
+          #cooling-cells = <2>;
+      };
+      
+      gpu_opp_table: opp-table {
+          compatible = "operating-points-v2";
+          opp-100000000 {
+              opp-hz = /bits/ 64 <100000000>;
+              opp-microvolt = <850000>;
+          };
+          opp-400000000 {
+              opp-hz = /bits/ 64 <400000000>;
+              opp-microvolt = <950000>;
+          };
+      };

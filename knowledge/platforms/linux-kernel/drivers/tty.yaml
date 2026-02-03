@@ -371,3 +371,182 @@ examples:
           .type = my_type,
           .config_port = my_config_port,
       };
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  uart_open:
+    description: "UART 设备打开流程"
+    chain:
+      - caller: "user space"
+        callee: "tty_open"
+        context: "process"
+        description: "打开 TTY 设备"
+      - caller: "tty_open"
+        callee: "tty_port_open"
+        description: "打开 TTY 端口"
+      - caller: "tty_port_open"
+        callee: "port->ops->activate"
+        description: "激活端口硬件"
+      - caller: "activate"
+        callee: "uart_ops->startup"
+        description: "启动 UART 端口"
+
+  uart_write:
+    description: "UART 数据发送流程"
+    chain:
+      - caller: "user space"
+        callee: "tty_write"
+        context: "process"
+        description: "写入数据"
+      - caller: "tty_write"
+        callee: "tty_ldisc->write"
+        description: "线路规程处理"
+      - caller: "tty_ldisc"
+        callee: "uart_write"
+        description: "UART 层写入"
+      - caller: "uart_write"
+        callee: "uart_ops->start_tx"
+        context: "atomic"
+        description: "启动发送"
+
+  uart_rx_interrupt:
+    description: "UART 接收中断流程"
+    chain:
+      - caller: "hardware"
+        callee: "uart_irq_handler"
+        context: "hardirq"
+        description: "UART 中断"
+      - caller: "uart_irq_handler"
+        callee: "uart_insert_char"
+        description: "插入接收字符"
+      - caller: "uart_irq_handler"
+        callee: "tty_flip_buffer_push"
+        async: true
+        mechanism: "workqueue"
+        description: "推送数据到 TTY"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  uart_driver:
+    pattern: 'struct uart_driver\s*\{'
+    description: "UART 驱动结构"
+    file: "include/linux/serial_core.h"
+    fields:
+      - name: "owner"
+        type: "struct module *"
+        description: "驱动所属模块"
+      - name: "driver_name"
+        type: "const char *"
+        description: "驱动名称"
+      - name: "dev_name"
+        type: "const char *"
+        description: "设备名称前缀（如 ttyS）"
+      - name: "major"
+        type: "int"
+        description: "主设备号"
+      - name: "minor"
+        type: "int"
+        description: "起始次设备号"
+      - name: "nr"
+        type: "int"
+        description: "支持的端口数量"
+      - name: "cons"
+        type: "struct console *"
+        description: "关联的控制台"
+
+  uart_port:
+    pattern: 'struct uart_port\s*\{'
+    description: "UART 端口结构"
+    file: "include/linux/serial_core.h"
+    fields:
+      - name: "lock"
+        type: "spinlock_t"
+        description: "端口自旋锁"
+      - name: "iobase"
+        type: "unsigned long"
+        description: "IO 端口基地址"
+      - name: "membase"
+        type: "unsigned char __iomem *"
+        description: "内存映射基地址"
+      - name: "irq"
+        type: "unsigned int"
+        description: "中断号"
+      - name: "uartclk"
+        type: "unsigned int"
+        description: "UART 时钟频率"
+      - name: "fifosize"
+        type: "unsigned int"
+        description: "FIFO 大小"
+      - name: "ops"
+        type: "const struct uart_ops *"
+        description: "端口操作函数"
+      - name: "line"
+        type: "unsigned int"
+        description: "端口号"
+
+  tty_struct:
+    pattern: 'struct tty_struct\s*\{'
+    description: "TTY 设备结构"
+    file: "include/linux/tty.h"
+    fields:
+      - name: "driver"
+        type: "struct tty_driver *"
+        description: "TTY 驱动"
+      - name: "ops"
+        type: "const struct tty_operations *"
+        description: "操作函数"
+      - name: "ldisc"
+        type: "struct tty_ldisc *"
+        description: "线路规程"
+      - name: "termios"
+        type: "struct ktermios"
+        description: "终端属性"
+      - name: "port"
+        type: "struct tty_port *"
+        description: "关联端口"
+
+  tty_port:
+    pattern: 'struct tty_port\s*\{'
+    description: "TTY 端口结构"
+    file: "include/linux/tty_port.h"
+    fields:
+      - name: "tty"
+        type: "struct tty_struct *"
+        description: "关联的 TTY"
+      - name: "ops"
+        type: "const struct tty_port_operations *"
+        description: "端口操作"
+      - name: "lock"
+        type: "spinlock_t"
+        description: "端口锁"
+      - name: "buf"
+        type: "struct tty_bufhead"
+        description: "缓冲区头"
+
+# ============================================================
+# LINE DISCIPLINE
+# ============================================================
+
+line_discipline:
+  description: "TTY Line Discipline"
+  header: "linux/tty_ldisc.h"
+  icon: "📐"
+  kernel_version: "2.6.0+"
+
+  registration:
+    - pattern: 'tty_register_ldisc\s*\(\s*(?P<num>\w+)\s*,\s*&(?P<ops>\w+)\s*\)'
+      description: "注册线路规程"
+    - pattern: 'tty_unregister_ldisc\s*\(\s*(?P<num>\w+)\s*\)'
+      description: "注销线路规程"
+
+  callbacks:
+    receive_buf:
+      pattern: '\.receive_buf\s*=\s*(?P<handler>\w+)'
+      description: "接收缓冲区数据"
+      context: "process"

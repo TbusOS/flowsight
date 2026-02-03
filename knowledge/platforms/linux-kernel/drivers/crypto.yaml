@@ -366,3 +366,190 @@ examples:
       }
       module_init(my_aes_init);
       module_exit(my_aes_exit);
+
+  - description: "使用 crypto_engine 的硬件加速驱动"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <crypto/engine.h>
+      #include <crypto/internal/skcipher.h>
+      
+      struct my_hw_crypto {
+          struct crypto_engine *engine;
+          void __iomem *regs;
+          struct completion done;
+      };
+      
+      struct my_crypto_ctx {
+          struct my_hw_crypto *hw;
+          u8 key[32];
+          unsigned int keylen;
+      };
+      
+      static int my_aes_encrypt_hw(struct skcipher_request *req)
+      {
+          struct my_crypto_ctx *ctx = crypto_skcipher_ctx(
+                                          crypto_skcipher_reqtfm(req));
+          return crypto_transfer_skcipher_request_to_engine(
+                      ctx->hw->engine, req);
+      }
+      
+      static int my_do_one_request(struct crypto_engine *engine, void *areq)
+      {
+          struct skcipher_request *req = container_of(areq,
+                                              struct skcipher_request, base);
+          struct my_crypto_ctx *ctx = crypto_skcipher_ctx(
+                                          crypto_skcipher_reqtfm(req));
+          struct my_hw_crypto *hw = ctx->hw;
+          int err = 0;
+          
+          /* 配置硬件 */
+          memcpy_toio(hw->regs + KEY_REG, ctx->key, ctx->keylen);
+          
+          reinit_completion(&hw->done);
+          writel(1, hw->regs + START_REG);
+          
+          if (!wait_for_completion_timeout(&hw->done, msecs_to_jiffies(1000)))
+              err = -ETIMEDOUT;
+          
+          crypto_finalize_skcipher_request(engine, req, err);
+          return 0;
+      }
+      
+      static int my_hw_crypto_probe(struct platform_device *pdev)
+      {
+          struct my_hw_crypto *hw;
+          
+          hw = devm_kzalloc(&pdev->dev, sizeof(*hw), GFP_KERNEL);
+          if (!hw)
+              return -ENOMEM;
+          
+          init_completion(&hw->done);
+          hw->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(hw->regs))
+              return PTR_ERR(hw->regs);
+          
+          hw->engine = crypto_engine_alloc_init(&pdev->dev, true);
+          if (!hw->engine)
+              return -ENOMEM;
+          
+          hw->engine->do_one_request = my_do_one_request;
+          
+          return crypto_engine_start(hw->engine);
+      }
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  ahash_alg:
+    pattern: 'struct ahash_alg\s*\{'
+    description: "异步哈希算法结构"
+    file: "include/crypto/hash.h"
+    fields:
+      - name: "init"
+        type: "int (*)(struct ahash_request *)"
+        description: "初始化哈希上下文"
+      - name: "update"
+        type: "int (*)(struct ahash_request *)"
+        description: "更新哈希数据"
+      - name: "final"
+        type: "int (*)(struct ahash_request *)"
+        description: "完成哈希"
+      - name: "finup"
+        type: "int (*)(struct ahash_request *)"
+        description: "更新并完成"
+      - name: "digest"
+        type: "int (*)(struct ahash_request *)"
+        description: "一次性计算"
+      - name: "setkey"
+        type: "int (*)(struct crypto_ahash *, const u8 *, unsigned int)"
+        description: "设置密钥"
+      - name: "halg"
+        type: "struct hash_alg_common"
+        description: "通用哈希算法信息"
+
+  aead_alg:
+    pattern: 'struct aead_alg\s*\{'
+    description: "AEAD 算法结构"
+    file: "include/crypto/aead.h"
+    fields:
+      - name: "setkey"
+        type: "int (*)(struct crypto_aead *, const u8 *, unsigned int)"
+        description: "设置密钥"
+      - name: "setauthsize"
+        type: "int (*)(struct crypto_aead *, unsigned int)"
+        description: "设置认证标签大小"
+      - name: "encrypt"
+        type: "int (*)(struct aead_request *)"
+        description: "加密操作"
+      - name: "decrypt"
+        type: "int (*)(struct aead_request *)"
+        description: "解密操作"
+      - name: "ivsize"
+        type: "unsigned int"
+        description: "IV 大小"
+      - name: "maxauthsize"
+        type: "unsigned int"
+        description: "最大认证标签大小"
+
+  crypto_engine:
+    pattern: 'struct crypto_engine\s*\{'
+    description: "加密引擎结构"
+    file: "include/crypto/engine.h"
+    fields:
+      - name: "running"
+        type: "bool"
+        description: "引擎是否运行"
+      - name: "busy"
+        type: "bool"
+        description: "引擎是否忙碌"
+      - name: "queue"
+        type: "struct crypto_queue"
+        description: "请求队列"
+      - name: "do_batch_requests"
+        type: "int (*)(struct crypto_engine *)"
+        description: "批量处理请求"
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  ahash_flow:
+    description: "Async Hash Request Flow"
+    chain:
+      - caller: "crypto_ahash_init"
+        callee: "ahash_alg->init"
+        description: "初始化哈希"
+      - caller: "crypto_ahash_update"
+        callee: "ahash_alg->update"
+        description: "更新数据"
+      - caller: "crypto_ahash_final"
+        callee: "ahash_alg->final"
+        description: "完成计算"
+      - caller: "ahash_alg->final"
+        callee: "ahash_request_complete"
+        async: true
+        description: "请求完成回调"
+
+  crypto_engine_flow:
+    description: "Crypto Engine Complete Flow"
+    chain:
+      - caller: "driver"
+        callee: "crypto_engine_alloc_init"
+        description: "分配引擎"
+      - caller: "driver"
+        callee: "crypto_engine_start"
+        description: "启动引擎"
+      - caller: "crypto_transfer_*_request_to_engine"
+        callee: "crypto_engine_queue_request"
+        description: "入队请求"
+      - caller: "crypto_pump_work"
+        callee: "engine->do_one_request"
+        context: "kthread"
+        description: "处理请求"
+      - caller: "driver IRQ"
+        callee: "crypto_finalize_*_request"
+        context: "hardirq"
+        description: "完成请求"

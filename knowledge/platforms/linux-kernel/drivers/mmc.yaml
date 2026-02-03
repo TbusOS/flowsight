@@ -395,3 +395,180 @@ examples:
           },
       };
       module_platform_driver(my_mmc_driver);
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  mmc_card:
+    pattern: 'struct mmc_card\s*\{'
+    description: "MMC/SD 卡结构"
+    file: "include/linux/mmc/card.h"
+    fields:
+      - name: "host"
+        type: "struct mmc_host *"
+        description: "关联主机"
+      - name: "dev"
+        type: "struct device"
+        description: "内嵌设备"
+      - name: "type"
+        type: "unsigned int"
+        description: "卡类型 (SD/MMC/SDIO)"
+      - name: "state"
+        type: "unsigned int"
+        description: "卡状态"
+      - name: "rca"
+        type: "unsigned int"
+        description: "相对卡地址"
+      - name: "ocr"
+        type: "u32"
+        description: "操作条件寄存器"
+
+  mmc_command:
+    pattern: 'struct mmc_command\s*\{'
+    description: "MMC 命令结构"
+    file: "include/linux/mmc/core.h"
+    fields:
+      - name: "opcode"
+        type: "u32"
+        description: "命令码"
+      - name: "arg"
+        type: "u32"
+        description: "命令参数"
+      - name: "resp"
+        type: "u32[4]"
+        description: "响应（最多 128 位）"
+      - name: "flags"
+        type: "unsigned int"
+        description: "命令标志"
+      - name: "error"
+        type: "int"
+        description: "错误码"
+
+  mmc_data:
+    pattern: 'struct mmc_data\s*\{'
+    description: "MMC 数据传输结构"
+    file: "include/linux/mmc/core.h"
+    fields:
+      - name: "blksz"
+        type: "unsigned int"
+        description: "块大小"
+      - name: "blocks"
+        type: "unsigned int"
+        description: "块数量"
+      - name: "error"
+        type: "int"
+        description: "错误码"
+      - name: "flags"
+        type: "unsigned int"
+        description: "传输标志"
+      - name: "bytes_xfered"
+        type: "unsigned int"
+        description: "已传输字节数"
+      - name: "sg"
+        type: "struct scatterlist *"
+        description: "散列表"
+      - name: "sg_len"
+        type: "unsigned int"
+        description: "散列表长度"
+
+  mmc_ios:
+    pattern: 'struct mmc_ios\s*\{'
+    description: "MMC IO 设置"
+    file: "include/linux/mmc/host.h"
+    fields:
+      - name: "clock"
+        type: "unsigned int"
+        description: "时钟频率"
+      - name: "vdd"
+        type: "unsigned short"
+        description: "VDD 电压选择"
+      - name: "bus_mode"
+        type: "unsigned char"
+        description: "总线模式"
+      - name: "bus_width"
+        type: "unsigned char"
+        description: "总线宽度"
+      - name: "timing"
+        type: "unsigned char"
+        description: "时序模式"
+      - name: "signal_voltage"
+        type: "unsigned char"
+        description: "信号电压"
+
+# ============================================================
+# MMC CAPABILITIES
+# ============================================================
+
+mmc_capabilities:
+  description: "MMC Host Capabilities"
+  caps:
+    - MMC_CAP_4_BIT_DATA: "支持 4 位数据"
+    - MMC_CAP_8_BIT_DATA: "支持 8 位数据"
+    - MMC_CAP_SD_HIGHSPEED: "支持 SD 高速模式"
+    - MMC_CAP_MMC_HIGHSPEED: "支持 MMC 高速模式"
+    - MMC_CAP_UHS_SDR12: "支持 UHS SDR12"
+    - MMC_CAP_UHS_SDR50: "支持 UHS SDR50"
+    - MMC_CAP_UHS_SDR104: "支持 UHS SDR104"
+    - MMC_CAP_UHS_DDR50: "支持 UHS DDR50"
+
+  caps2:
+    - MMC_CAP2_HS200_1_8V_SDR: "支持 HS200 1.8V"
+    - MMC_CAP2_HS400_1_8V: "支持 HS400 1.8V"
+    - MMC_CAP2_HS400_ES: "支持 HS400 增强选通"
+    - MMC_CAP2_CQE: "支持命令队列"
+
+# ============================================================
+# ADDITIONAL HOST OPERATIONS
+# ============================================================
+
+mmc_host_ops_extended:
+  description: "Extended MMC Host Operations"
+  header: "linux/mmc/host.h"
+
+  callbacks:
+    pre_req:
+      pattern: '\.pre_req\s*=\s*(?P<handler>\w+)'
+      description: "请求预处理（DMA 映射）"
+      context: "process"
+
+    post_req:
+      pattern: '\.post_req\s*=\s*(?P<handler>\w+)'
+      description: "请求后处理（DMA 解映射）"
+      context: "process/softirq"
+
+    execute_tuning:
+      pattern: '\.execute_tuning\s*=\s*(?P<handler>\w+)'
+      description: "执行时序调谐"
+      context: "process"
+      can_sleep: true
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  mmc_suspend:
+    description: "MMC Power Management Suspend"
+    chain:
+      - caller: "system suspend"
+        callee: "mmc_pm_notify"
+        description: "PM 通知"
+      - caller: "mmc_pm_notify"
+        callee: "mmc_suspend_host"
+        description: "挂起主机"
+      - caller: "mmc_suspend_host"
+        callee: "host->ops->set_ios"
+        description: "设置低功耗状态"
+
+  mmc_tuning:
+    description: "MMC Tuning Flow"
+    chain:
+      - caller: "mmc_init_card"
+        callee: "mmc_execute_tuning"
+        description: "执行调谐"
+      - caller: "mmc_execute_tuning"
+        callee: "host->ops->execute_tuning"
+        description: "主机调谐实现"
+      - caller: "execute_tuning"
+        callee: "mmc_send_tuning"
+        description: "发送调谐块"

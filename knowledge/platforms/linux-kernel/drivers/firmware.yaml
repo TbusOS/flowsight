@@ -269,3 +269,187 @@ examples:
           wait_for_completion(&mydev->fw_done);
           return mydev->fw_status;
       }
+
+  - description: "固件上传接口驱动示例"
+    kernel_version: "5.18+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/firmware.h>
+      #include <linux/platform_device.h>
+      
+      struct my_fpga {
+          struct device *dev;
+          struct fw_upload *fwl;
+          void __iomem *regs;
+          bool cancel_request;
+      };
+      
+      static enum fw_upload_err my_fpga_prepare(struct fw_upload *fwl,
+                                                 const u8 *data, u32 size)
+      {
+          struct my_fpga *fpga = fwl->dd_handle;
+          
+          if (readl(fpga->regs + FPGA_STATUS) != FPGA_STATUS_IDLE)
+              return FW_UPLOAD_ERR_BUSY;
+          
+          fpga->cancel_request = false;
+          writel(1, fpga->regs + FPGA_CONFIG_MODE);
+          
+          return FW_UPLOAD_ERR_NONE;
+      }
+      
+      static enum fw_upload_err my_fpga_write(struct fw_upload *fwl,
+                                               const u8 *data, u32 offset,
+                                               u32 size, u32 *written)
+      {
+          struct my_fpga *fpga = fwl->dd_handle;
+          u32 i;
+          
+          if (fpga->cancel_request)
+              return FW_UPLOAD_ERR_CANCELED;
+          
+          for (i = 0; i < size; i++) {
+              writeb(data[i], fpga->regs + FPGA_DATA);
+              if (readl(fpga->regs + FPGA_STATUS) == FPGA_STATUS_ERROR)
+                  return FW_UPLOAD_ERR_HW_ERROR;
+          }
+          
+          *written = size;
+          return FW_UPLOAD_ERR_NONE;
+      }
+      
+      static enum fw_upload_err my_fpga_poll_complete(struct fw_upload *fwl)
+      {
+          struct my_fpga *fpga = fwl->dd_handle;
+          int timeout = 1000;
+          
+          while (timeout--) {
+              if (readl(fpga->regs + FPGA_STATUS) == FPGA_STATUS_DONE)
+                  return FW_UPLOAD_ERR_NONE;
+              if (fpga->cancel_request)
+                  return FW_UPLOAD_ERR_CANCELED;
+              msleep(10);
+          }
+          return FW_UPLOAD_ERR_TIMEOUT;
+      }
+      
+      static void my_fpga_cancel(struct fw_upload *fwl)
+      {
+          struct my_fpga *fpga = fwl->dd_handle;
+          fpga->cancel_request = true;
+          writel(1, fpga->regs + FPGA_RESET);
+      }
+      
+      static void my_fpga_cleanup(struct fw_upload *fwl)
+      {
+          struct my_fpga *fpga = fwl->dd_handle;
+          writel(0, fpga->regs + FPGA_CONFIG_MODE);
+      }
+      
+      static const struct fw_upload_ops my_fpga_upload_ops = {
+          .prepare        = my_fpga_prepare,
+          .write          = my_fpga_write,
+          .poll_complete  = my_fpga_poll_complete,
+          .cancel         = my_fpga_cancel,
+          .cleanup        = my_fpga_cleanup,
+      };
+      
+      static int my_fpga_probe(struct platform_device *pdev)
+      {
+          struct my_fpga *fpga;
+          
+          fpga = devm_kzalloc(&pdev->dev, sizeof(*fpga), GFP_KERNEL);
+          if (!fpga)
+              return -ENOMEM;
+          
+          fpga->dev = &pdev->dev;
+          fpga->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(fpga->regs))
+              return PTR_ERR(fpga->regs);
+          
+          fpga->fwl = firmware_upload_register(THIS_MODULE, &pdev->dev,
+                                                "my-fpga-fw",
+                                                &my_fpga_upload_ops, fpga);
+          return PTR_ERR_OR_ZERO(fpga->fwl);
+      }
+      
+      static void my_fpga_remove(struct platform_device *pdev)
+      {
+          struct my_fpga *fpga = platform_get_drvdata(pdev);
+          firmware_upload_unregister(fpga->fwl);
+      }
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  fw_upload:
+    pattern: 'struct fw_upload\s*\{'
+    description: "固件上传设备结构"
+    file: "include/linux/firmware.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "上传接口名称"
+      - name: "ops"
+        type: "const struct fw_upload_ops *"
+        description: "操作函数表"
+      - name: "dd_handle"
+        type: "void *"
+        description: "驱动私有数据"
+
+# ============================================================
+# FIRMWARE FALLBACK
+# ============================================================
+
+firmware_fallback:
+  description: "固件回退机制"
+  header: "linux/firmware.h"
+  icon: "🔄"
+  search_paths:
+    - "/lib/firmware/updates/$(uname -r)/"
+    - "/lib/firmware/updates/"
+    - "/lib/firmware/$(uname -r)/"
+    - "/lib/firmware/"
+  patterns:
+    - pattern: 'firmware_request_nowarn\s*\('
+      description: "请求固件（失败时不打印警告）"
+    - pattern: 'request_firmware_into_buf\s*\('
+      description: "请求固件到指定缓冲区"
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  fw_upload_flow:
+    description: "固件上传流程"
+    chain:
+      - caller: "sysfs write"
+        callee: "fw_upload_start"
+        description: "用户空间触发上传"
+      - caller: "fw_upload_start"
+        callee: "fw_upload_ops->prepare"
+        description: "准备上传"
+      - caller: "fw_upload_main"
+        callee: "fw_upload_ops->write"
+        mechanism: "workqueue"
+        description: "写入固件数据块"
+      - caller: "fw_upload_main"
+        callee: "fw_upload_ops->poll_complete"
+        description: "轮询完成状态"
+      - caller: "fw_upload_main"
+        callee: "fw_upload_ops->cleanup"
+        description: "清理资源"
+
+# ============================================================
+# DEVICE TREE BINDINGS
+# ============================================================
+
+device_tree:
+  firmware_path:
+    description: "设备树中指定固件路径"
+    example: |
+      my_device@0 {
+          compatible = "vendor,my-device";
+          firmware-name = "vendor/my_device.fw";
+      };

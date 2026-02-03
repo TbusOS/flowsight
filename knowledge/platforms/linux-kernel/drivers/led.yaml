@@ -324,3 +324,161 @@ examples:
       }
       module_init(my_trigger_init);
       module_exit(my_trigger_exit);
+
+  - description: "多色 RGB LED 驱动示例"
+    kernel_version: "5.9+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/led-class-multicolor.h>
+      #include <linux/platform_device.h>
+      
+      struct my_rgb_led {
+          struct led_classdev_mc mc_cdev;
+          struct mc_subled subled_info[3];
+          void __iomem *regs;
+      };
+      
+      static int my_rgb_brightness_set(struct led_classdev *cdev,
+                                        enum led_brightness brightness)
+      {
+          struct led_classdev_mc *mc = lcdev_to_mccdev(cdev);
+          struct my_rgb_led *led = container_of(mc, struct my_rgb_led, mc_cdev);
+          
+          led_mc_calc_color_components(mc, brightness);
+          
+          writel(mc->subled_info[0].brightness, led->regs + RED_REG);
+          writel(mc->subled_info[1].brightness, led->regs + GREEN_REG);
+          writel(mc->subled_info[2].brightness, led->regs + BLUE_REG);
+          
+          return 0;
+      }
+      
+      static int my_rgb_led_probe(struct platform_device *pdev)
+      {
+          struct my_rgb_led *led;
+          
+          led = devm_kzalloc(&pdev->dev, sizeof(*led), GFP_KERNEL);
+          if (!led)
+              return -ENOMEM;
+          
+          led->regs = devm_platform_ioremap_resource(pdev, 0);
+          if (IS_ERR(led->regs))
+              return PTR_ERR(led->regs);
+          
+          led->subled_info[0].color_index = LED_COLOR_ID_RED;
+          led->subled_info[0].intensity = 255;
+          led->subled_info[1].color_index = LED_COLOR_ID_GREEN;
+          led->subled_info[1].intensity = 255;
+          led->subled_info[2].color_index = LED_COLOR_ID_BLUE;
+          led->subled_info[2].intensity = 255;
+          
+          led->mc_cdev.led_cdev.name = "my-rgb-led";
+          led->mc_cdev.led_cdev.brightness = LED_OFF;
+          led->mc_cdev.led_cdev.max_brightness = 255;
+          led->mc_cdev.led_cdev.brightness_set_blocking = my_rgb_brightness_set;
+          led->mc_cdev.num_colors = 3;
+          led->mc_cdev.subled_info = led->subled_info;
+          
+          return devm_led_classdev_multicolor_register(&pdev->dev, &led->mc_cdev);
+      }
+      module_platform_driver(my_rgb_driver);
+
+# ============================================================
+# MULTICOLOR LED
+# ============================================================
+led_classdev_multicolor:
+  description: "Multi-color LED Class Device"
+  header: "linux/led-class-multicolor.h"
+  icon: "🌈"
+  kernel_version: "5.9+"
+  registration:
+    - pattern: 'devm_led_classdev_multicolor_register\s*\(\s*(?P<parent>\w+)\s*,\s*&(?P<mcled>\w+)\s*\)'
+      description: "托管注册多色 LED"
+    - pattern: 'led_classdev_multicolor_register\s*\('
+      description: "注册多色 LED"
+  helpers:
+    - pattern: 'led_mc_calc_color_components\s*\(\s*(?P<mcled>\w+)\s*,\s*(?P<brightness>\w+)\s*\)'
+      description: "计算各颜色分量"
+
+# ============================================================
+# FLASH LED
+# ============================================================
+led_classdev_flash:
+  description: "Flash LED Class Device"
+  header: "linux/led-class-flash.h"
+  icon: "⚡"
+  kernel_version: "4.2+"
+  registration:
+    - pattern: 'devm_led_classdev_flash_register_ext\s*\('
+      description: "托管注册闪光 LED"
+  structure:
+    name: "led_classdev_flash"
+    callbacks:
+      flash_brightness_set:
+        pattern: '\.flash_brightness_set\s*=\s*(?P<handler>\w+)'
+        description: "设置闪光亮度"
+      strobe_set:
+        pattern: '\.strobe_set\s*=\s*(?P<handler>\w+)'
+        description: "触发闪光"
+
+# ============================================================
+# ADDITIONAL DATA STRUCTURES
+# ============================================================
+
+  led_classdev_mc:
+    pattern: 'struct led_classdev_mc\s*\{'
+    description: "多色 LED 类设备"
+    file: "include/linux/led-class-multicolor.h"
+    fields:
+      - name: "led_cdev"
+        type: "struct led_classdev"
+        description: "内嵌的 LED 类设备"
+      - name: "num_colors"
+        type: "unsigned int"
+        description: "颜色数量"
+      - name: "subled_info"
+        type: "struct mc_subled *"
+        description: "子 LED 信息数组"
+
+  mc_subled:
+    pattern: 'struct mc_subled\s*\{'
+    description: "多色 LED 子通道"
+    file: "include/linux/led-class-multicolor.h"
+    fields:
+      - name: "color_index"
+        type: "enum led_brightness"
+        description: "颜色索引 (LED_COLOR_ID_*)"
+      - name: "brightness"
+        type: "unsigned int"
+        description: "该颜色亮度"
+      - name: "intensity"
+        type: "unsigned int"
+        description: "用户设置的强度"
+
+# ============================================================
+# ADDITIONAL CALL CHAINS
+# ============================================================
+
+  led_trigger_register_flow:
+    description: "LED Trigger Registration"
+    chain:
+      - caller: "module_init"
+        callee: "led_trigger_register"
+        description: "注册触发器"
+      - caller: "led_trigger_register"
+        callee: "list_add_tail"
+        description: "添加到触发器链表"
+
+  led_blink_flow:
+    description: "LED Blink Timer Flow"
+    chain:
+      - caller: "led_blink_set"
+        callee: "led_set_software_blink"
+        description: "设置软件闪烁"
+      - caller: "led_set_software_blink"
+        callee: "mod_timer"
+        description: "启动闪烁定时器"
+      - caller: "timer callback"
+        callee: "led_timer_function"
+        context: "softirq"
+        description: "定时器回调"
