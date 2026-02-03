@@ -5,6 +5,23 @@ All notable changes to FlowSight will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-02-04
+
+### Added
+
+#### Documentation
+- **快速开始指南**: 5 分钟上手教程 (`docs/user-guide/quick-start.md`)
+- **功能说明文档**: 所有功能详细介绍 (`docs/user-guide/features.md`)
+- **异步机制分析指南**: WorkQueue、Timer、IRQ 深入分析 (`docs/user-guide/async-analysis.md`)
+- **知识库说明文档**: 内置知识库使用指南 (`docs/user-guide/knowledge-base.md`)
+- **用户指南索引**: 更新用户指南目录结构
+
+### Changed
+
+- 更新文档中心索引，添加用户指南快速导航
+
+---
+
 ## [0.2.0] - 2026-02-01
 
 ### Added

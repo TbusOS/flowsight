@@ -40,6 +40,15 @@ docs/
 
 ## 🚀 快速导航
 
+### 用户指南（新用户从这里开始）
+
+| 文档 | 说明 | 阅读时间 |
+|------|------|----------|
+| [快速开始](user-guide/quick-start.md) | 5 分钟上手 FlowSight | 5 分钟 |
+| [功能说明](user-guide/features.md) | 所有功能详细介绍 | 15 分钟 |
+| [异步机制分析](user-guide/async-analysis.md) | WorkQueue、Timer、IRQ 分析 | 20 分钟 |
+| [知识库说明](user-guide/knowledge-base.md) | 内置知识库使用指南 | 10 分钟 |
+
 ### 入门必读
 
 | 文档 | 说明 |

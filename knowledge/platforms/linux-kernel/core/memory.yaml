@@ -37,6 +37,12 @@ mm_core:
       description: "零初始化内存分配"
       can_sleep: "depends on GFP flags"
       note: "同 kmalloc，can_sleep 由 GFP 标志决定"
+    # kzalloc - sizeof(*ptr) 模式 (常见于驱动代码)
+    - pattern: 'kzalloc\s*\(\s*sizeof\s*\(\s*\*\s*(?P<ptr>\w+)\s*\)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "ptr"
+      description: "零初始化分配 (sizeof(*ptr) 模式)"
+      can_sleep: "depends on GFP flags"
+      note: "推荐写法: kzalloc(sizeof(*ptr), GFP_KERNEL)"
 
     # kmalloc_array - 数组分配
     - pattern: 'kmalloc_array\s*\(\s*(?P<n>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
@@ -624,6 +630,84 @@ slub_allocator:
     - pattern: 'kzalloc_node\s*\(\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<node>\w+)\s*\)'
       variable_capture: "size"
       description: "从指定节点零初始化分配"
+
+
+# ============================================================
+# DEVICE MANAGED MEMORY (devm_*)
+# ============================================================
+
+devm_memory:
+  description: "Device Managed Memory - 设备管理的内存分配"
+  header: "linux/device.h"
+  icon: "🔧"
+  kernel_version: "2.6.21+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  bind_patterns:
+    # devm_kzalloc - 设备管理的零初始化分配
+    - pattern: 'devm_kzalloc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "设备管理的零初始化内存分配"
+      can_sleep: "depends on GFP flags"
+      note: "设备移除时自动释放，无需手动 kfree"
+
+    # devm_kzalloc - 支持 &pdev->dev 形式
+    - pattern: 'devm_kzalloc\s*\(\s*&(?P<pdev>\w+)->dev\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "pdev"
+      description: "设备管理的零初始化分配 (平台设备)"
+      can_sleep: "depends on GFP flags"
+      note: "常见用法: devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL)"
+
+    # devm_kzalloc - sizeof(*ptr) 模式
+    - pattern: 'devm_kzalloc\s*\(\s*(?P<dev>[^,]+)\s*,\s*sizeof\s*\(\s*\*\s*(?P<ptr>\w+)\s*\)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "ptr"
+      description: "设备管理的分配 (sizeof(*ptr) 模式)"
+      can_sleep: "depends on GFP flags"
+      note: "推荐写法: devm_kzalloc(dev, sizeof(*ptr), GFP_KERNEL)"
+
+    # devm_kmalloc - 设备管理的分配
+    - pattern: 'devm_kmalloc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "设备管理的内存分配"
+      can_sleep: "depends on GFP flags"
+      note: "设备移除时自动释放"
+
+    # devm_kcalloc - 设备管理的数组分配
+    - pattern: 'devm_kcalloc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<n>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "设备管理的数组分配"
+      can_sleep: "depends on GFP flags"
+      note: "带溢出检查的数组分配"
+
+    # devm_kmalloc_array - 设备管理的数组分配
+    - pattern: 'devm_kmalloc_array\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<n>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "dev"
+      description: "设备管理的数组分配"
+      can_sleep: "depends on GFP flags"
+
+    # devm_kfree - 提前释放设备管理的内存
+    - pattern: 'devm_kfree\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<ptr>[^)]+)\s*\)'
+      variable_capture: "ptr"
+      description: "提前释放设备管理的内存"
+      can_sleep: false
+      note: "通常不需要手动调用，设备移除时自动释放"
+
+    # devm_kstrdup - 设备管理的字符串复制
+    - pattern: 'devm_kstrdup\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<s>[^,]+)\s*,\s*(?P<flags>\w+)\s*\)'
+      variable_capture: "s"
+      description: "设备管理的字符串复制"
+      can_sleep: "depends on GFP flags"
+
+    # devm_kasprintf - 设备管理的格式化字符串
+    - pattern: 'devm_kasprintf\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<flags>\w+)\s*,\s*(?P<fmt>[^,)]+)'
+      variable_capture: "fmt"
+      description: "设备管理的格式化字符串分配"
+      can_sleep: "depends on GFP flags"
 
 
 # ============================================================

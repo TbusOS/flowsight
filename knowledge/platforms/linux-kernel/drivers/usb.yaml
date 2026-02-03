@@ -21,12 +21,16 @@ usb_driver:
   icon: "🔌"
 
   registration:
+    # module_usb_driver - 现代驱动推荐方式 (5.0+ 优先使用)
+    - pattern: 'module_usb_driver\s*\(\s*(?P<driver>\w+)\s*\)'
+      description: "模块初始化宏 (推荐)"
+      note: "现代驱动优先使用此宏，替代 usb_register/usb_deregister 组合"
+    # usb_register - 传统方式 (仍有效)
     - pattern: 'usb_register\s*\(\s*&(?P<driver>\w+)\s*\)'
-      description: "注册 USB 驱动"
+      description: "注册 USB 驱动 (传统)"
+      note: "推荐使用 module_usb_driver() 替代"
     - pattern: 'usb_register_driver\s*\(\s*&(?P<driver>\w+)\s*,\s*[^)]+\)'
       description: "注册 USB 驱动 (带 owner)"
-    - pattern: 'module_usb_driver\s*\(\s*(?P<driver>\w+)\s*\)'
-      description: "模块初始化宏"
     - pattern: 'usb_deregister\s*\(\s*&(?P<driver>\w+)\s*\)'
       description: "注销 USB 驱动"
 
@@ -143,8 +147,14 @@ urb:
   icon: "📦"
 
   allocation:
+    # usb_alloc_urb - 支持数字、变量和表达式参数
     - pattern: 'usb_alloc_urb\s*\(\s*(?P<iso_packets>\d+)\s*,\s*(?P<mem_flags>\w+)\s*\)'
-      description: "分配 URB"
+      description: "分配 URB (数字参数)"
+    - pattern: 'usb_alloc_urb\s*\(\s*(?P<iso_packets>[a-zA-Z_]\w*)\s*,\s*(?P<mem_flags>\w+)\s*\)'
+      description: "分配 URB (变量参数)"
+    - pattern: 'usb_alloc_urb\s*\(\s*(?P<iso_packets>[^,]+)\s*,\s*(?P<mem_flags>\w+)\s*\)'
+      description: "分配 URB (表达式参数)"
+      note: "支持如 pdu->u.cmd_submit.number_of_packets 等复杂表达式"
     - pattern: 'usb_free_urb\s*\(\s*(?P<urb>[^)]+)\s*\)'
       description: "释放 URB"
 

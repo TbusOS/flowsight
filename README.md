@@ -250,9 +250,11 @@ pnpm tauri build
 
 | 文档 | 描述 |
 |------|------|
+| [快速开始](docs/user-guide/quick-start.md) | 5 分钟上手教程 |
+| [功能说明](docs/user-guide/features.md) | 所有功能详细介绍 |
+| [用户指南](docs/user-guide/README.md) | 完整使用教程 |
 | [API 参考](docs/api/tauri-commands.md) | Tauri 命令 API 文档 |
 | [变更日志](CHANGELOG.md) | 版本更新记录 |
-| [用户指南](docs/user-guide/README.md) | 使用教程 |
 | [开发者指南](docs/developer/README.md) | 开发与贡献指南 |
 | [架构设计](docs/architecture/README.md) | 技术架构文档 |
 
