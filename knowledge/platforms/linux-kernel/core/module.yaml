@@ -1,0 +1,726 @@
+# Linux Kernel Module System Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/core-api/kernel-api.html
+# Kernel source: kernel/module.c, include/linux/module.h
+# Kernel Version: 2.6.0+
+# ============================================================
+
+# ============================================================
+# MODULE OVERVIEW
+# ============================================================
+module_overview:
+  description: "Linux 内核模块子系统"
+  header: "linux/module.h"
+  icon: "📦"
+  kernel_version: "2.6.0+"
+  
+  key_concepts:
+    loadable_kernel_module:
+      description: "可动态加载的内核代码"
+      notes:
+        - "可在运行时加载/卸载"
+        - "扩展内核功能而无需重新编译"
+        - "典型用途：驱动、文件系统、网络协议"
+    
+    module_lifecycle:
+      description: "模块生命周期"
+      stages:
+        - "加载 (insmod/modprobe)"
+        - "初始化 (module_init)"
+        - "运行"
+        - "清理 (module_exit)"
+        - "卸载 (rmmod)"
+
+# ============================================================
+# MODULE DEFINITION
+# ============================================================
+module_definition:
+  description: "模块定义宏"
+  header: "linux/module.h"
+  icon: "📝"
+
+  essential_macros:
+    module_init:
+      pattern: 'module_init\s*\(\s*(?P<func>\w+)\s*\)'
+      description: "定义模块初始化函数"
+      context: "process"
+      can_sleep: true
+      example: |
+        static int __init my_init(void)
+        {
+            pr_info("Module loaded\n");
+            return 0;
+        }
+        module_init(my_init);
+
+    module_exit:
+      pattern: 'module_exit\s*\(\s*(?P<func>\w+)\s*\)'
+      description: "定义模块清理函数"
+      context: "process"
+      can_sleep: true
+      example: |
+        static void __exit my_exit(void)
+        {
+            pr_info("Module unloaded\n");
+        }
+        module_exit(my_exit);
+
+    MODULE_LICENSE:
+      pattern: 'MODULE_LICENSE\s*\(\s*"(?P<license>[^"]+)"\s*\)'
+      description: "声明模块许可证"
+      required: true
+      values:
+        - '"GPL"'
+        - '"GPL v2"'
+        - '"GPL and additional rights"'
+        - '"Dual BSD/GPL"'
+        - '"Dual MIT/GPL"'
+        - '"Dual MPL/GPL"'
+        - '"Proprietary"'
+
+    MODULE_AUTHOR:
+      pattern: 'MODULE_AUTHOR\s*\(\s*"(?P<author>[^"]+)"\s*\)'
+      description: "声明模块作者"
+
+    MODULE_DESCRIPTION:
+      pattern: 'MODULE_DESCRIPTION\s*\(\s*"(?P<desc>[^"]+)"\s*\)'
+      description: "声明模块描述"
+
+    MODULE_VERSION:
+      pattern: 'MODULE_VERSION\s*\(\s*"(?P<version>[^"]+)"\s*\)'
+      description: "声明模块版本"
+
+    MODULE_ALIAS:
+      pattern: 'MODULE_ALIAS\s*\(\s*"(?P<alias>[^"]+)"\s*\)'
+      description: "声明模块别名"
+      notes: "用于自动加载"
+
+    MODULE_DEVICE_TABLE:
+      pattern: 'MODULE_DEVICE_TABLE\s*\(\s*(?P<type>\w+)\s*,\s*(?P<table>\w+)\s*\)'
+      description: "声明设备 ID 表"
+      types:
+        - "pci: PCI 设备"
+        - "usb: USB 设备"
+        - "platform: 平台设备"
+        - "of: 设备树匹配"
+        - "i2c: I2C 设备"
+        - "spi: SPI 设备"
+        - "acpi: ACPI 设备"
+
+# ============================================================
+# MODULE PARAMETERS
+# ============================================================
+module_parameters:
+  description: "模块参数系统"
+  header: "linux/moduleparam.h"
+  icon: "⚙️"
+
+  macros:
+    module_param:
+      pattern: 'module_param\s*\(\s*(?P<name>\w+)\s*,\s*(?P<type>\w+)\s*,\s*(?P<perm>\w+)\s*\)'
+      description: "定义模块参数"
+      types:
+        - "bool: 布尔值"
+        - "invbool: 反转布尔值"
+        - "charp: 字符串指针"
+        - "int: 整数"
+        - "uint: 无符号整数"
+        - "long: 长整数"
+        - "ulong: 无符号长整数"
+        - "short: 短整数"
+        - "ushort: 无符号短整数"
+        - "byte: 字节"
+      permissions:
+        "0": "不在 sysfs 中显示"
+        "0444": "只读"
+        "0644": "所有者可写，其他只读"
+      example: |
+        static int debug = 0;
+        module_param(debug, int, 0644);
+        MODULE_PARM_DESC(debug, "Enable debug mode");
+
+    module_param_named:
+      pattern: 'module_param_named\s*\(\s*(?P<extname>\w+)\s*,\s*(?P<intname>\w+)\s*,'
+      description: "定义不同外部名的参数"
+
+    module_param_array:
+      pattern: 'module_param_array\s*\(\s*(?P<name>\w+)\s*,\s*(?P<type>\w+)\s*,'
+      description: "定义数组参数"
+      example: |
+        static int ports[4] = {0, 0, 0, 0};
+        static int num_ports;
+        module_param_array(ports, int, &num_ports, 0444);
+
+    module_param_cb:
+      pattern: 'module_param_cb\s*\(\s*(?P<name>\w+)\s*,\s*&(?P<ops>\w+)\s*,'
+      description: "带回调的参数"
+      notes: "参数变化时调用回调"
+
+    MODULE_PARM_DESC:
+      pattern: 'MODULE_PARM_DESC\s*\(\s*(?P<name>\w+)\s*,\s*"(?P<desc>[^"]+)"\s*\)'
+      description: "参数描述"
+
+# ============================================================
+# MODULE LOADING
+# ============================================================
+module_loading:
+  description: "模块加载机制"
+  header: "linux/module.h"
+  icon: "📥"
+  kernel_source: "kernel/module.c"
+
+  system_calls:
+    init_module:
+      description: "加载模块（原始接口）"
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*init_module\s*,'
+      parameters:
+        - "umod: 模块镜像"
+        - "len: 镜像长度"
+        - "uargs: 参数字符串"
+
+    finit_module:
+      description: "从文件描述符加载模块"
+      kernel_version: "3.8+"
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*finit_module\s*,'
+      flags:
+        MODULE_INIT_IGNORE_MODVERSIONS: "忽略版本检查"
+        MODULE_INIT_IGNORE_VERMAGIC: "忽略 vermagic"
+
+    delete_module:
+      description: "卸载模块"
+      pattern: 'SYSCALL_DEFINE2\s*\(\s*delete_module\s*,'
+      flags:
+        O_NONBLOCK: "非阻塞卸载"
+        O_TRUNC: "强制卸载"
+
+  kernel_functions:
+    load_module:
+      pattern: 'load_module\s*\('
+      description: "加载模块核心实现"
+      context: "process"
+      can_sleep: true
+      steps:
+        - "module_sig_check: 验证签名"
+        - "elf_header_check: 检查 ELF 头"
+        - "setup_load_info: 解析 ELF 段"
+        - "rewrite_section_headers: 处理段头"
+        - "check_modstruct_version: 检查版本"
+        - "layout_and_allocate: 分配内存"
+        - "find_module_sections: 查找特殊段"
+        - "setup_modinfo: 设置模块信息"
+        - "simplify_symbols: 解析符号"
+        - "apply_relocations: 应用重定位"
+        - "post_relocation: 重定位后处理"
+        - "complete_formation: 完成构建"
+        - "do_init_module: 执行初始化"
+
+    do_init_module:
+      pattern: 'do_init_module\s*\(\s*(?P<mod>\w+)\s*\)'
+      description: "执行模块初始化"
+      steps:
+        - "调用 module_init 函数"
+        - "释放 __init 段内存"
+        - "设置模块状态为 LIVE"
+
+    free_module:
+      pattern: 'free_module\s*\(\s*(?P<mod>\w+)\s*\)'
+      description: "释放模块资源"
+      context: "process"
+
+# ============================================================
+# MODULE STRUCTURE
+# ============================================================
+module_struct:
+  description: "模块数据结构"
+  header: "linux/module.h"
+  icon: "🏗️"
+
+  data_structures:
+    module:
+      pattern: 'struct module\s*\{'
+      description: "模块描述符"
+      file: "include/linux/module.h"
+      fields:
+        - name: "state"
+          type: "enum module_state"
+          description: "模块状态"
+          values:
+            MODULE_STATE_LIVE: "正常运行"
+            MODULE_STATE_COMING: "正在初始化"
+            MODULE_STATE_GOING: "正在卸载"
+            MODULE_STATE_UNFORMED: "未完成构建"
+        - name: "list"
+          type: "struct list_head"
+          description: "模块链表节点"
+        - name: "name"
+          type: "char[MODULE_NAME_LEN]"
+          description: "模块名"
+        - name: "init"
+          type: "int (*)(void)"
+          description: "初始化函数"
+        - name: "exit"
+          type: "void (*)(void)"
+          description: "清理函数"
+        - name: "refcnt"
+          type: "atomic_t"
+          description: "引用计数"
+        - name: "srcversion"
+          type: "char[]"
+          description: "源码版本"
+        - name: "holders_dir"
+          type: "struct kobject *"
+          description: "sysfs holders 目录"
+        - name: "version"
+          type: "const char *"
+          description: "版本字符串"
+        - name: "args"
+          type: "char *"
+          description: "模块参数"
+
+  sections:
+    __init:
+      description: "初始化代码段"
+      notes: "加载后释放"
+      marker: "__init"
+
+    __exit:
+      description: "清理代码段"
+      notes: "内建模块时丢弃"
+      marker: "__exit"
+
+    __initdata:
+      description: "初始化数据段"
+      notes: "加载后释放"
+      marker: "__initdata"
+
+    __read_mostly:
+      description: "读多写少的数据"
+      marker: "__read_mostly"
+
+# ============================================================
+# MODULE DEPENDENCIES
+# ============================================================
+module_dependencies:
+  description: "模块依赖管理"
+  header: "linux/module.h"
+  icon: "🔗"
+
+  functions:
+    try_module_get:
+      pattern: 'try_module_get\s*\(\s*(?P<mod>\w+)\s*\)'
+      description: "尝试增加模块引用计数"
+      returns: "bool - 成功返回 true"
+      context: "any"
+      notes: "模块正在卸载时返回 false"
+
+    module_put:
+      pattern: 'module_put\s*\(\s*(?P<mod>\w+)\s*\)'
+      description: "减少模块引用计数"
+      context: "any"
+
+    __module_get:
+      pattern: '__module_get\s*\(\s*(?P<mod>\w+)\s*\)'
+      description: "无条件增加引用计数"
+      notes: "调用者必须确保模块不会被卸载"
+
+    module_refcount:
+      pattern: 'module_refcount\s*\(\s*(?P<mod>\w+)\s*\)'
+      description: "获取模块引用计数"
+
+  macros:
+    THIS_MODULE:
+      pattern: 'THIS_MODULE'
+      description: "当前模块的 struct module 指针"
+      notes: "内建模块时为 NULL"
+
+# ============================================================
+# SYMBOL EXPORT
+# ============================================================
+symbol_export:
+  description: "符号导出机制"
+  header: "linux/export.h"
+  icon: "📤"
+
+  macros:
+    EXPORT_SYMBOL:
+      pattern: 'EXPORT_SYMBOL\s*\(\s*(?P<sym>\w+)\s*\)'
+      description: "导出符号（所有模块可用）"
+
+    EXPORT_SYMBOL_GPL:
+      pattern: 'EXPORT_SYMBOL_GPL\s*\(\s*(?P<sym>\w+)\s*\)'
+      description: "导出符号（仅 GPL 模块可用）"
+
+    EXPORT_SYMBOL_NS:
+      pattern: 'EXPORT_SYMBOL_NS\s*\(\s*(?P<sym>\w+)\s*,\s*(?P<ns>\w+)\s*\)'
+      description: "导出符号到命名空间"
+      kernel_version: "5.4+"
+
+    EXPORT_SYMBOL_NS_GPL:
+      pattern: 'EXPORT_SYMBOL_NS_GPL\s*\(\s*(?P<sym>\w+)\s*,\s*(?P<ns>\w+)\s*\)'
+      description: "导出 GPL 符号到命名空间"
+      kernel_version: "5.4+"
+
+    MODULE_IMPORT_NS:
+      pattern: 'MODULE_IMPORT_NS\s*\(\s*(?P<ns>\w+)\s*\)'
+      description: "导入符号命名空间"
+      kernel_version: "5.4+"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  module_load_flow:
+    description: "模块加载流程"
+    chain:
+      - caller: "insmod / modprobe"
+        callee: "finit_module syscall"
+        context: "user"
+        description: "用户空间触发"
+      - caller: "finit_module"
+        callee: "load_module"
+        context: "process"
+        description: "加载模块"
+      - caller: "load_module"
+        callee: "module_sig_check"
+        description: "验证模块签名"
+      - caller: "load_module"
+        callee: "layout_and_allocate"
+        description: "分配模块内存"
+      - caller: "load_module"
+        callee: "apply_relocations"
+        description: "应用重定位"
+      - caller: "load_module"
+        callee: "do_init_module"
+        description: "执行初始化"
+      - caller: "do_init_module"
+        callee: "mod->init()"
+        description: "调用 module_init 函数"
+
+  module_unload_flow:
+    description: "模块卸载流程"
+    chain:
+      - caller: "rmmod"
+        callee: "delete_module syscall"
+        context: "user"
+        description: "用户空间触发"
+      - caller: "delete_module"
+        callee: "try_stop_module"
+        description: "尝试停止模块"
+      - caller: "try_stop_module"
+        callee: "wait for refcount == 0"
+        description: "等待引用归零"
+      - caller: "delete_module"
+        callee: "mod->exit()"
+        description: "调用 module_exit 函数"
+      - caller: "delete_module"
+        callee: "free_module"
+        description: "释放模块资源"
+
+  symbol_resolution_flow:
+    description: "符号解析流程"
+    chain:
+      - caller: "load_module"
+        callee: "simplify_symbols"
+        description: "解析符号"
+      - caller: "simplify_symbols"
+        callee: "resolve_symbol_wait"
+        description: "解析外部符号"
+      - caller: "resolve_symbol_wait"
+        callee: "find_symbol"
+        description: "在导出符号表中查找"
+
+# ============================================================
+# DRIVER HELPER MACROS
+# ============================================================
+driver_helpers:
+  description: "驱动注册便捷宏"
+  header: "various"
+  icon: "🔧"
+
+  macros:
+    module_platform_driver:
+      pattern: 'module_platform_driver\s*\(\s*(?P<drv>\w+)\s*\)'
+      description: "平台驱动快捷宏"
+      expands_to: |
+        module_init(platform_driver_register(&drv));
+        module_exit(platform_driver_unregister(&drv));
+
+    module_pci_driver:
+      pattern: 'module_pci_driver\s*\(\s*(?P<drv>\w+)\s*\)'
+      description: "PCI 驱动快捷宏"
+
+    module_usb_driver:
+      pattern: 'module_usb_driver\s*\(\s*(?P<drv>\w+)\s*\)'
+      description: "USB 驱动快捷宏"
+
+    module_i2c_driver:
+      pattern: 'module_i2c_driver\s*\(\s*(?P<drv>\w+)\s*\)'
+      description: "I2C 驱动快捷宏"
+
+    module_spi_driver:
+      pattern: 'module_spi_driver\s*\(\s*(?P<drv>\w+)\s*\)'
+      description: "SPI 驱动快捷宏"
+
+    builtin_platform_driver:
+      pattern: 'builtin_platform_driver\s*\(\s*(?P<drv>\w+)\s*\)'
+      description: "内建平台驱动"
+      notes: "无 module_exit"
+
+# ============================================================
+# MODULE INFORMATION
+# ============================================================
+module_info:
+  description: "模块信息查询"
+  icon: "ℹ️"
+
+  proc_files:
+    modules:
+      path: "/proc/modules"
+      description: "已加载模块列表"
+      format: "name size refcount dependencies state address"
+
+  sysfs:
+    module_dir:
+      path: "/sys/module/<name>/"
+      description: "模块 sysfs 目录"
+      contents:
+        - "parameters/: 模块参数"
+        - "holders/: 依赖此模块的模块"
+        - "refcnt: 引用计数"
+        - "version: 版本信息"
+        - "srcversion: 源码版本"
+
+  commands:
+    lsmod:
+      description: "列出已加载模块"
+      equivalent: "cat /proc/modules"
+
+    modinfo:
+      description: "显示模块信息"
+      example: "modinfo <module.ko>"
+
+    modprobe:
+      description: "智能加载模块（处理依赖）"
+      example: "modprobe <module_name>"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "基本模块模板"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/init.h>
+      
+      static int debug = 0;
+      module_param(debug, int, 0644);
+      MODULE_PARM_DESC(debug, "Enable debug output");
+      
+      static int __init my_module_init(void)
+      {
+          pr_info("My module loaded, debug=%d\n", debug);
+          
+          /* 初始化资源 */
+          
+          return 0;  /* 成功返回 0 */
+      }
+      
+      static void __exit my_module_exit(void)
+      {
+          pr_info("My module unloaded\n");
+          
+          /* 清理资源 */
+      }
+      
+      module_init(my_module_init);
+      module_exit(my_module_exit);
+      
+      MODULE_LICENSE("GPL");
+      MODULE_AUTHOR("Author Name");
+      MODULE_DESCRIPTION("A simple example module");
+      MODULE_VERSION("1.0");
+
+  - description: "带设备表的驱动模块"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/of.h>
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          dev_info(&pdev->dev, "Device probed\n");
+          return 0;
+      }
+      
+      static int my_remove(struct platform_device *pdev)
+      {
+          dev_info(&pdev->dev, "Device removed\n");
+          return 0;
+      }
+      
+      static const struct of_device_id my_of_match[] = {
+          { .compatible = "vendor,my-device" },
+          { },
+      };
+      MODULE_DEVICE_TABLE(of, my_of_match);
+      
+      static struct platform_driver my_driver = {
+          .probe  = my_probe,
+          .remove = my_remove,
+          .driver = {
+              .name = "my-driver",
+              .of_match_table = my_of_match,
+          },
+      };
+      module_platform_driver(my_driver);
+      
+      MODULE_LICENSE("GPL");
+      MODULE_DESCRIPTION("Platform driver example");
+
+  - description: "模块间引用计数"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/module.h>
+      
+      /* 模块 A 提供的函数 */
+      static struct my_service *service;
+      
+      int use_service(void)
+      {
+          struct module *mod = find_module("module_a");
+          
+          if (!mod || !try_module_get(mod)) {
+              pr_err("Cannot get reference to module_a\n");
+              return -ENOENT;
+          }
+          
+          /* 使用 service... */
+          
+          /* 完成后释放引用 */
+          module_put(mod);
+          return 0;
+      }
+      
+      /* 或者在 file_operations 中使用 */
+      static int my_open(struct inode *inode, struct file *file)
+      {
+          /* 自动增加当前模块引用 */
+          if (!try_module_get(THIS_MODULE))
+              return -ENODEV;
+          return 0;
+      }
+      
+      static int my_release(struct inode *inode, struct file *file)
+      {
+          module_put(THIS_MODULE);
+          return 0;
+      }
+
+  - description: "带回调的模块参数"
+    kernel_version: "3.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/moduleparam.h>
+      
+      static int threshold = 100;
+      
+      static int param_set_threshold(const char *val,
+                                      const struct kernel_param *kp)
+      {
+          int new_val;
+          int ret = kstrtoint(val, 10, &new_val);
+          
+          if (ret)
+              return ret;
+          
+          if (new_val < 0 || new_val > 1000) {
+              pr_err("threshold must be 0-1000\n");
+              return -EINVAL;
+          }
+          
+          threshold = new_val;
+          pr_info("Threshold changed to %d\n", threshold);
+          
+          /* 可以在这里触发相关操作 */
+          
+          return 0;
+      }
+      
+      static int param_get_threshold(char *buffer,
+                                      const struct kernel_param *kp)
+      {
+          return sprintf(buffer, "%d\n", threshold);
+      }
+      
+      static const struct kernel_param_ops threshold_ops = {
+          .set = param_set_threshold,
+          .get = param_get_threshold,
+      };
+      
+      module_param_cb(threshold, &threshold_ops, &threshold, 0644);
+      MODULE_PARM_DESC(threshold, "Processing threshold (0-1000)");
+
+# ============================================================
+# ERROR HANDLING
+# ============================================================
+error_handling:
+  description: "模块加载错误处理"
+  
+  init_errors:
+    description: "初始化函数返回值"
+    notes:
+      - "返回 0 表示成功"
+      - "返回负错误码表示失败"
+      - "失败时模块不会被加载"
+    common_errors:
+      -ENOMEM: "内存分配失败"
+      -ENODEV: "设备不存在"
+      -EBUSY: "资源忙"
+      -EINVAL: "无效参数"
+      -ENOENT: "依赖不存在"
+
+  cleanup_pattern:
+    description: "清理模式"
+    code: |
+      static int __init my_init(void)
+      {
+          int ret;
+          
+          ret = step1();
+          if (ret)
+              return ret;
+          
+          ret = step2();
+          if (ret)
+              goto err_step1;
+          
+          ret = step3();
+          if (ret)
+              goto err_step2;
+          
+          return 0;
+          
+      err_step2:
+          cleanup_step2();
+      err_step1:
+          cleanup_step1();
+          return ret;
+      }
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.0":
+    - "基础模块系统"
+    - "module_init/module_exit"
+  "3.8":
+    - "添加 finit_module() 系统调用"
+  "4.5":
+    - "模块签名强制选项"
+  "5.4":
+    - "符号命名空间 (EXPORT_SYMBOL_NS)"
+  "5.9":
+    - "模块加载代码重构"

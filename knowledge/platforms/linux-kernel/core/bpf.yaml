@@ -1,0 +1,619 @@
+# Linux Kernel BPF/eBPF Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/bpf/
+# Reference: https://ebpf.io/
+# Kernel source: kernel/bpf/, include/linux/bpf.h
+# Kernel Version: 3.15+ (cBPF), 3.18+ (eBPF)
+# ============================================================
+
+# ============================================================
+# BPF OVERVIEW
+# ============================================================
+bpf_overview:
+  description: "Linux eBPF (Extended Berkeley Packet Filter)"
+  header: "linux/bpf.h"
+  icon: "🐝"
+  kernel_version: "3.18+"
+  
+  purpose:
+    - "内核可编程性"
+    - "安全的内核扩展机制"
+    - "高性能数据包处理"
+    - "系统可观测性（跟踪、监控）"
+    - "安全策略执行"
+
+  key_concepts:
+    program:
+      description: "BPF 程序"
+      notes: "在内核中安全运行的字节码"
+    
+    map:
+      description: "BPF Map"
+      notes: "内核与用户空间共享的数据结构"
+    
+    verifier:
+      description: "BPF 验证器"
+      notes: "确保程序安全性"
+    
+    helper:
+      description: "BPF 辅助函数"
+      notes: "程序可调用的内核函数"
+
+# ============================================================
+# BPF PROGRAM TYPES
+# ============================================================
+program_types:
+  description: "BPF 程序类型"
+  header: "include/uapi/linux/bpf.h"
+  icon: "📋"
+
+  types:
+    BPF_PROG_TYPE_SOCKET_FILTER:
+      description: "套接字过滤器"
+      kernel_version: "3.18"
+      attach_to: "socket"
+      use_case: "数据包过滤、流量监控"
+
+    BPF_PROG_TYPE_KPROBE:
+      description: "内核探针"
+      kernel_version: "4.1"
+      attach_to: "kprobe/kretprobe"
+      use_case: "内核函数跟踪"
+
+    BPF_PROG_TYPE_TRACEPOINT:
+      description: "跟踪点"
+      kernel_version: "4.7"
+      attach_to: "tracepoint"
+      use_case: "静态内核跟踪点"
+
+    BPF_PROG_TYPE_XDP:
+      description: "XDP (eXpress Data Path)"
+      kernel_version: "4.8"
+      attach_to: "网络设备"
+      use_case: "高性能数据包处理"
+      actions:
+        XDP_ABORTED: "错误，丢弃"
+        XDP_DROP: "丢弃数据包"
+        XDP_PASS: "传递到网络栈"
+        XDP_TX: "从同一接口发送"
+        XDP_REDIRECT: "重定向到其他接口"
+
+    BPF_PROG_TYPE_PERF_EVENT:
+      description: "性能事件"
+      kernel_version: "4.9"
+      attach_to: "perf_event"
+      use_case: "性能监控"
+
+    BPF_PROG_TYPE_CGROUP_SKB:
+      description: "Cgroup 套接字缓冲区"
+      kernel_version: "4.10"
+      attach_to: "cgroup"
+      use_case: "Cgroup 级网络策略"
+
+    BPF_PROG_TYPE_SCHED_CLS:
+      description: "流量分类器"
+      kernel_version: "4.1"
+      attach_to: "tc (traffic control)"
+      use_case: "数据包分类、修改"
+
+    BPF_PROG_TYPE_SCHED_ACT:
+      description: "流量动作"
+      kernel_version: "4.1"
+      attach_to: "tc action"
+      use_case: "数据包动作"
+
+    BPF_PROG_TYPE_RAW_TRACEPOINT:
+      description: "原始跟踪点"
+      kernel_version: "4.17"
+      attach_to: "raw_tracepoint"
+      use_case: "低开销跟踪"
+
+    BPF_PROG_TYPE_CGROUP_SOCK_ADDR:
+      description: "Cgroup 套接字地址"
+      kernel_version: "4.17"
+      attach_to: "cgroup"
+      use_case: "connect/bind 拦截"
+
+    BPF_PROG_TYPE_LSM:
+      description: "LSM (Linux Security Module)"
+      kernel_version: "5.7"
+      attach_to: "LSM 钩子"
+      use_case: "安全策略"
+
+    BPF_PROG_TYPE_STRUCT_OPS:
+      description: "结构体操作"
+      kernel_version: "5.3"
+      attach_to: "内核结构体回调"
+      use_case: "替换内核回调（如 TCP 拥塞控制）"
+
+    BPF_PROG_TYPE_SYSCALL:
+      description: "系统调用"
+      kernel_version: "5.14"
+      use_case: "从用户空间发起 BPF 操作"
+
+# ============================================================
+# BPF MAPS
+# ============================================================
+bpf_maps:
+  description: "BPF Map 类型"
+  header: "include/uapi/linux/bpf.h"
+  icon: "🗺️"
+
+  types:
+    BPF_MAP_TYPE_HASH:
+      description: "哈希表"
+      kernel_version: "3.18"
+      use_case: "键值存储"
+
+    BPF_MAP_TYPE_ARRAY:
+      description: "数组"
+      kernel_version: "3.18"
+      use_case: "固定大小数组，键为索引"
+
+    BPF_MAP_TYPE_PROG_ARRAY:
+      description: "程序数组"
+      kernel_version: "4.2"
+      use_case: "尾调用"
+
+    BPF_MAP_TYPE_PERF_EVENT_ARRAY:
+      description: "性能事件数组"
+      kernel_version: "4.3"
+      use_case: "向用户空间发送事件"
+
+    BPF_MAP_TYPE_PERCPU_HASH:
+      description: "每 CPU 哈希表"
+      kernel_version: "4.6"
+      use_case: "无锁统计"
+
+    BPF_MAP_TYPE_PERCPU_ARRAY:
+      description: "每 CPU 数组"
+      kernel_version: "4.6"
+      use_case: "每 CPU 计数器"
+
+    BPF_MAP_TYPE_STACK_TRACE:
+      description: "堆栈跟踪"
+      kernel_version: "4.6"
+      use_case: "保存调用栈"
+
+    BPF_MAP_TYPE_LRU_HASH:
+      description: "LRU 哈希表"
+      kernel_version: "4.10"
+      use_case: "自动淘汰旧条目"
+
+    BPF_MAP_TYPE_RINGBUF:
+      description: "环形缓冲区"
+      kernel_version: "5.8"
+      use_case: "高效事件传输"
+
+    BPF_MAP_TYPE_HASH_OF_MAPS:
+      description: "Map 的哈希表"
+      kernel_version: "4.12"
+      use_case: "嵌套 map"
+
+    BPF_MAP_TYPE_ARRAY_OF_MAPS:
+      description: "Map 的数组"
+      kernel_version: "4.12"
+      use_case: "嵌套 map"
+
+# ============================================================
+# BPF SYSTEM CALL
+# ============================================================
+bpf_syscall:
+  description: "BPF 系统调用"
+  header: "include/uapi/linux/bpf.h"
+  icon: "📞"
+  kernel_source: "kernel/bpf/syscall.c"
+
+  commands:
+    BPF_MAP_CREATE:
+      description: "创建 BPF map"
+      
+    BPF_MAP_LOOKUP_ELEM:
+      description: "查找 map 元素"
+      
+    BPF_MAP_UPDATE_ELEM:
+      description: "更新 map 元素"
+      
+    BPF_MAP_DELETE_ELEM:
+      description: "删除 map 元素"
+      
+    BPF_MAP_GET_NEXT_KEY:
+      description: "遍历 map"
+      
+    BPF_PROG_LOAD:
+      description: "加载 BPF 程序"
+      
+    BPF_OBJ_PIN:
+      description: "将对象固定到文件系统"
+      
+    BPF_OBJ_GET:
+      description: "从文件系统获取对象"
+      
+    BPF_PROG_ATTACH:
+      description: "附加程序"
+      
+    BPF_PROG_DETACH:
+      description: "分离程序"
+      
+    BPF_LINK_CREATE:
+      description: "创建 BPF link"
+      kernel_version: "5.7"
+
+# ============================================================
+# BPF HELPERS
+# ============================================================
+bpf_helpers:
+  description: "BPF 辅助函数"
+  header: "include/uapi/linux/bpf.h"
+  icon: "🔧"
+
+  common_helpers:
+    bpf_map_lookup_elem:
+      description: "查找 map 元素"
+      signature: "void *bpf_map_lookup_elem(map, key)"
+
+    bpf_map_update_elem:
+      description: "更新 map 元素"
+      signature: "int bpf_map_update_elem(map, key, value, flags)"
+
+    bpf_map_delete_elem:
+      description: "删除 map 元素"
+      signature: "int bpf_map_delete_elem(map, key)"
+
+    bpf_probe_read:
+      description: "安全读取内核内存"
+      signature: "int bpf_probe_read(dst, size, src)"
+      deprecated: "使用 bpf_probe_read_kernel"
+
+    bpf_probe_read_kernel:
+      description: "读取内核内存"
+      kernel_version: "5.5"
+      signature: "int bpf_probe_read_kernel(dst, size, src)"
+
+    bpf_probe_read_user:
+      description: "读取用户空间内存"
+      kernel_version: "5.5"
+      signature: "int bpf_probe_read_user(dst, size, src)"
+
+    bpf_ktime_get_ns:
+      description: "获取内核时间（纳秒）"
+      signature: "u64 bpf_ktime_get_ns(void)"
+
+    bpf_trace_printk:
+      description: "调试打印"
+      signature: "int bpf_trace_printk(fmt, fmt_size, ...)"
+      notes: "仅用于调试"
+
+    bpf_get_current_pid_tgid:
+      description: "获取当前 PID/TGID"
+      signature: "u64 bpf_get_current_pid_tgid(void)"
+
+    bpf_get_current_uid_gid:
+      description: "获取当前 UID/GID"
+      signature: "u64 bpf_get_current_uid_gid(void)"
+
+    bpf_get_current_comm:
+      description: "获取当前进程名"
+      signature: "int bpf_get_current_comm(buf, buf_size)"
+
+    bpf_perf_event_output:
+      description: "输出到 perf 缓冲区"
+      signature: "int bpf_perf_event_output(ctx, map, flags, data, size)"
+
+    bpf_ringbuf_output:
+      description: "输出到环形缓冲区"
+      kernel_version: "5.8"
+      signature: "int bpf_ringbuf_output(ringbuf, data, size, flags)"
+
+    bpf_ringbuf_reserve:
+      description: "预留环形缓冲区空间"
+      kernel_version: "5.8"
+      signature: "void *bpf_ringbuf_reserve(ringbuf, size, flags)"
+
+    bpf_ringbuf_submit:
+      description: "提交预留的数据"
+      kernel_version: "5.8"
+      signature: "void bpf_ringbuf_submit(data, flags)"
+
+# ============================================================
+# BPF VERIFIER
+# ============================================================
+bpf_verifier:
+  description: "BPF 验证器"
+  header: "kernel/bpf/verifier.c"
+  icon: "✅"
+
+  checks:
+    - "程序不会崩溃或挂起内核"
+    - "程序会终止（无无限循环）"
+    - "内存访问是安全的"
+    - "不会泄露内核指针"
+    - "只调用允许的辅助函数"
+    - "寄存器使用正确"
+
+  limitations:
+    max_instructions:
+      description: "最大指令数"
+      value: "1M (4096 在早期版本)"
+    
+    max_stack:
+      description: "最大栈大小"
+      value: "512 字节"
+    
+    max_complexity:
+      description: "最大复杂度"
+      notes: "验证路径数限制"
+
+# ============================================================
+# BPF IN KERNEL DRIVERS
+# ============================================================
+driver_integration:
+  description: "驱动中的 BPF 使用"
+  icon: "🔌"
+
+  xdp_driver:
+    description: "XDP 驱动支持"
+    modes:
+      native:
+        description: "原生 XDP"
+        notes: "驱动直接支持，最高性能"
+      offload:
+        description: "XDP 卸载"
+        notes: "硬件执行 BPF"
+      generic:
+        description: "通用 XDP"
+        notes: "内核软件实现"
+
+    driver_ops:
+      ndo_bpf:
+        description: "BPF 操作回调"
+        pattern: '\.ndo_bpf\s*=\s*(?P<handler>\w+)'
+      
+      ndo_xdp_xmit:
+        description: "XDP 发送回调"
+        pattern: '\.ndo_xdp_xmit\s*=\s*(?P<handler>\w+)'
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  bpf_prog_load_flow:
+    description: "BPF 程序加载流程"
+    chain:
+      - caller: "bpf() syscall"
+        callee: "bpf_prog_load"
+        context: "process"
+        description: "加载程序"
+      - caller: "bpf_prog_load"
+        callee: "bpf_prog_alloc"
+        description: "分配程序结构"
+      - caller: "bpf_prog_load"
+        callee: "bpf_check"
+        description: "验证程序"
+      - caller: "bpf_check"
+        callee: "do_check"
+        description: "执行验证"
+      - caller: "bpf_prog_load"
+        callee: "bpf_prog_select_runtime"
+        description: "JIT 编译"
+
+  xdp_execution_flow:
+    description: "XDP 执行流程"
+    chain:
+      - caller: "driver rx handler"
+        callee: "bpf_prog_run_xdp"
+        context: "softirq/NAPI"
+        description: "运行 XDP 程序"
+      - caller: "bpf_prog_run_xdp"
+        callee: "执行 JIT 代码"
+        description: "执行 BPF 字节码"
+      - caller: "driver"
+        callee: "根据返回值处理"
+        description: "XDP_DROP/PASS/TX/REDIRECT"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "内核模块中运行 BPF 程序"
+    kernel_version: "4.4+"
+    code: |
+      #include <linux/bpf.h>
+      #include <linux/filter.h>
+      
+      /* 定义简单的 BPF 程序 */
+      static struct bpf_insn my_prog[] = {
+          /* r0 = 0 (返回值) */
+          BPF_MOV64_IMM(BPF_REG_0, 0),
+          /* return r0 */
+          BPF_EXIT_INSN(),
+      };
+      
+      /* 加载并运行 BPF 程序 */
+      int run_bpf_prog(struct sk_buff *skb)
+      {
+          struct bpf_prog *prog;
+          int ret;
+          
+          prog = bpf_prog_alloc(sizeof(my_prog), 0);
+          if (!prog)
+              return -ENOMEM;
+          
+          prog->len = ARRAY_SIZE(my_prog);
+          memcpy(prog->insnsi, my_prog, sizeof(my_prog));
+          prog->type = BPF_PROG_TYPE_SOCKET_FILTER;
+          
+          /* 验证并 JIT 编译 */
+          ret = bpf_prog_select_runtime(prog, NULL);
+          if (ret) {
+              bpf_prog_free(prog);
+              return ret;
+          }
+          
+          /* 运行程序 */
+          ret = BPF_PROG_RUN(prog, skb);
+          
+          bpf_prog_free(prog);
+          return ret;
+      }
+
+  - description: "XDP 驱动支持示例"
+    kernel_version: "4.8+"
+    code: |
+      #include <linux/bpf.h>
+      #include <linux/netdevice.h>
+      
+      static int my_xdp_setup(struct net_device *dev,
+                              struct netdev_bpf *bpf)
+      {
+          struct bpf_prog *prog = bpf->prog;
+          struct my_adapter *adapter = netdev_priv(dev);
+          
+          switch (bpf->command) {
+          case XDP_SETUP_PROG:
+              /* 保存旧程序 */
+              struct bpf_prog *old = adapter->xdp_prog;
+              
+              /* 设置新程序 */
+              adapter->xdp_prog = prog;
+              if (prog)
+                  bpf_prog_add(prog, 1);
+              
+              /* 释放旧程序 */
+              if (old)
+                  bpf_prog_put(old);
+              
+              return 0;
+              
+          case XDP_QUERY_PROG:
+              bpf->prog_id = adapter->xdp_prog ?
+                             adapter->xdp_prog->aux->id : 0;
+              return 0;
+              
+          default:
+              return -EINVAL;
+          }
+      }
+      
+      /* 在 NAPI poll 中运行 XDP */
+      static int my_napi_poll(struct napi_struct *napi, int budget)
+      {
+          struct my_adapter *adapter = ...;
+          struct bpf_prog *xdp_prog = adapter->xdp_prog;
+          
+          while (packets_to_process) {
+              struct xdp_buff xdp;
+              u32 act;
+              
+              /* 设置 xdp_buff */
+              xdp.data = packet_data;
+              xdp.data_end = packet_data + len;
+              xdp.data_hard_start = ...;
+              
+              if (xdp_prog) {
+                  act = bpf_prog_run_xdp(xdp_prog, &xdp);
+                  switch (act) {
+                  case XDP_DROP:
+                      /* 丢弃数据包 */
+                      continue;
+                  case XDP_TX:
+                      /* 发送回同一接口 */
+                      my_xdp_xmit(dev, &xdp);
+                      continue;
+                  case XDP_REDIRECT:
+                      /* 重定向到其他接口 */
+                      xdp_do_redirect(dev, &xdp, xdp_prog);
+                      continue;
+                  case XDP_PASS:
+                  default:
+                      /* 传递到网络栈 */
+                      break;
+                  }
+              }
+              
+              /* 正常处理数据包 */
+              process_packet(adapter, packet_data, len);
+          }
+          
+          return processed;
+      }
+      
+      static const struct net_device_ops my_netdev_ops = {
+          .ndo_bpf      = my_xdp_setup,
+          .ndo_xdp_xmit = my_xdp_xmit,
+          /* ... */
+      };
+
+# ============================================================
+# TOOLS AND ECOSYSTEM
+# ============================================================
+ecosystem:
+  description: "BPF 工具生态"
+  icon: "🛠️"
+
+  tools:
+    bpftool:
+      description: "BPF 管理工具"
+      commands:
+        - "bpftool prog list"
+        - "bpftool map show"
+        - "bpftool feature probe"
+
+    bpftrace:
+      description: "高级跟踪语言"
+      example: "bpftrace -e 'kprobe:vfs_read { @[comm] = count(); }'"
+
+    libbpf:
+      description: "BPF 用户空间库"
+      features:
+        - "CO-RE (Compile Once, Run Everywhere)"
+        - "BTF 支持"
+        - "BPF skeleton"
+
+    bcc:
+      description: "BPF Compiler Collection"
+      language: "Python/C"
+      use_case: "快速原型开发"
+
+  frameworks:
+    cilium:
+      description: "Kubernetes 网络和安全"
+      use_case: "容器网络策略"
+
+    falco:
+      description: "运行时安全"
+      use_case: "异常检测"
+
+    katran:
+      description: "负载均衡器"
+      use_case: "高性能 L4 LB"
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "3.15":
+    - "cBPF 套接字过滤"
+  "3.18":
+    - "eBPF 引入"
+    - "Map 支持"
+  "4.1":
+    - "kprobe 程序"
+    - "tc BPF"
+  "4.8":
+    - "XDP"
+  "4.18":
+    - "BTF (BPF Type Format)"
+  "5.0":
+    - "BPF trampoline"
+  "5.5":
+    - "bpf_probe_read_kernel/user"
+  "5.7":
+    - "BPF LSM"
+    - "BPF link"
+  "5.8":
+    - "Ring buffer"
+  "5.10":
+    - "BPF iterator"
+  "5.13":
+    - "BPF timer"

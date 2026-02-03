@@ -1,0 +1,773 @@
+# Linux Kernel Process Management Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/core-api/kernel-api.html
+# Kernel source: kernel/fork.c, kernel/exit.c, kernel/exec.c
+# Kernel Version: 2.6.0+
+# ============================================================
+
+# ============================================================
+# PROCESS OVERVIEW
+# ============================================================
+process_overview:
+  description: "Linux 进程管理子系统"
+  header: "linux/sched.h"
+  icon: "🔄"
+  kernel_version: "2.6.0+"
+  
+  key_concepts:
+    task_struct:
+      description: "进程/线程描述符"
+      location: "include/linux/sched.h"
+      notes: "Linux 内核中进程和线程都用 task_struct 表示"
+    
+    process_vs_thread:
+      description: "进程与线程的区别"
+      notes:
+        - "线程共享地址空间 (mm_struct)"
+        - "线程共享文件描述符表 (files_struct)"
+        - "线程共享信号处理 (sighand_struct)"
+        - "线程有独立的栈和寄存器状态"
+
+# ============================================================
+# PROCESS CREATION (FORK)
+# ============================================================
+fork:
+  description: "进程创建机制"
+  header: "linux/sched/task.h"
+  icon: "🍴"
+  kernel_source: "kernel/fork.c"
+
+  system_calls:
+    fork:
+      description: "创建子进程（完全复制）"
+      pattern: 'SYSCALL_DEFINE0\s*\(\s*fork\s*\)'
+      notes: "子进程获得父进程的完整副本"
+
+    vfork:
+      description: "创建子进程（共享地址空间）"
+      pattern: 'SYSCALL_DEFINE0\s*\(\s*vfork\s*\)'
+      notes: "父进程阻塞直到子进程 exec 或 exit"
+
+    clone:
+      description: "创建进程/线程（可定制共享）"
+      pattern: 'SYSCALL_DEFINE5\s*\(\s*clone\s*,'
+      flags:
+        CLONE_VM: "共享地址空间"
+        CLONE_FS: "共享文件系统信息"
+        CLONE_FILES: "共享文件描述符表"
+        CLONE_SIGHAND: "共享信号处理"
+        CLONE_THREAD: "放入同一线程组"
+        CLONE_NEWNS: "新的挂载命名空间"
+        CLONE_NEWPID: "新的 PID 命名空间"
+        CLONE_NEWNET: "新的网络命名空间"
+        CLONE_NEWUSER: "新的用户命名空间"
+        CLONE_PARENT: "与调用者同父"
+        CLONE_PTRACE: "继续被跟踪"
+
+    clone3:
+      description: "扩展的 clone 系统调用"
+      kernel_version: "5.3+"
+      pattern: 'SYSCALL_DEFINE2\s*\(\s*clone3\s*,'
+
+  kernel_functions:
+    kernel_clone:
+      pattern: 'kernel_clone\s*\(\s*(?P<args>\w+)\s*\)'
+      description: "内核态进程创建入口"
+      kernel_version: "5.9+"
+      context: "process"
+      can_sleep: true
+
+    _do_fork:
+      pattern: '_do_fork\s*\('
+      description: "fork 核心实现（旧版本）"
+      deprecated: "5.9+ 使用 kernel_clone"
+
+    copy_process:
+      pattern: 'copy_process\s*\('
+      description: "复制进程数据结构"
+      context: "process"
+      can_sleep: true
+      steps:
+        - "dup_task_struct: 复制 task_struct"
+        - "copy_creds: 复制凭证"
+        - "copy_files: 复制文件表"
+        - "copy_fs: 复制文件系统信息"
+        - "copy_sighand: 复制信号处理"
+        - "copy_signal: 复制信号结构"
+        - "copy_mm: 复制地址空间"
+        - "copy_namespaces: 复制命名空间"
+        - "copy_thread: 复制线程上下文"
+
+    dup_task_struct:
+      pattern: 'dup_task_struct\s*\(\s*(?P<orig>\w+)\s*,'
+      description: "复制 task_struct"
+      context: "process"
+
+    copy_mm:
+      pattern: 'copy_mm\s*\(\s*(?P<flags>\w+)\s*,\s*(?P<tsk>\w+)\s*\)'
+      description: "复制地址空间"
+      notes: "CLONE_VM 时共享，否则调用 dup_mm"
+
+    wake_up_new_task:
+      pattern: 'wake_up_new_task\s*\(\s*(?P<p>\w+)\s*\)'
+      description: "唤醒新创建的任务"
+      context: "process"
+
+  data_structures:
+    kernel_clone_args:
+      pattern: 'struct kernel_clone_args\s*\{'
+      description: "克隆参数结构"
+      file: "include/linux/sched/task.h"
+      fields:
+        - name: "flags"
+          type: "u64"
+          description: "克隆标志"
+        - name: "pidfd"
+          type: "int __user *"
+          description: "pidfd 输出"
+        - name: "child_tid"
+          type: "pid_t __user *"
+          description: "子进程 TID 存储位置"
+        - name: "parent_tid"
+          type: "pid_t __user *"
+          description: "父进程 TID 存储位置"
+        - name: "exit_signal"
+          type: "int"
+          description: "子进程退出时发送的信号"
+        - name: "stack"
+          type: "unsigned long"
+          description: "栈指针"
+        - name: "stack_size"
+          type: "unsigned long"
+          description: "栈大小"
+        - name: "tls"
+          type: "unsigned long"
+          description: "TLS 描述符"
+
+# ============================================================
+# PROCESS TERMINATION (EXIT)
+# ============================================================
+exit:
+  description: "进程终止机制"
+  header: "linux/sched/task.h"
+  icon: "🚪"
+  kernel_source: "kernel/exit.c"
+
+  system_calls:
+    exit:
+      description: "终止当前线程"
+      pattern: 'SYSCALL_DEFINE1\s*\(\s*exit\s*,'
+      notes: "只终止调用线程"
+
+    exit_group:
+      description: "终止整个线程组"
+      pattern: 'SYSCALL_DEFINE1\s*\(\s*exit_group\s*,'
+      notes: "终止进程的所有线程"
+
+  kernel_functions:
+    do_exit:
+      pattern: 'do_exit\s*\(\s*(?P<code>\w+)\s*\)'
+      description: "进程退出核心实现"
+      context: "process"
+      can_sleep: true
+      steps:
+        - "设置 PF_EXITING 标志"
+        - "exit_signals: 处理信号"
+        - "exit_mm: 释放地址空间"
+        - "exit_sem: 撤销 SysV 信号量"
+        - "exit_files: 关闭文件"
+        - "exit_fs: 释放文件系统"
+        - "exit_task_namespaces: 退出命名空间"
+        - "exit_notify: 通知父进程"
+        - "do_task_dead: 切换到僵尸状态"
+
+    do_group_exit:
+      pattern: 'do_group_exit\s*\(\s*(?P<code>\w+)\s*\)'
+      description: "线程组退出"
+      context: "process"
+
+    exit_mm:
+      pattern: 'exit_mm\s*\('
+      description: "释放地址空间"
+      notes: "减少 mm_struct 引用计数"
+
+    exit_files:
+      pattern: 'exit_files\s*\(\s*(?P<tsk>\w+)\s*\)'
+      description: "关闭所有打开的文件"
+
+    exit_notify:
+      pattern: 'exit_notify\s*\(\s*(?P<tsk>\w+)\s*,'
+      description: "通知父进程子进程已退出"
+      notes: "发送 SIGCHLD"
+
+    release_task:
+      pattern: 'release_task\s*\(\s*(?P<p>\w+)\s*\)'
+      description: "释放 task_struct"
+      notes: "由父进程 wait 后调用"
+
+  process_states:
+    EXIT_ZOMBIE:
+      description: "僵尸状态"
+      notes: "进程已退出但 task_struct 未释放，等待父进程 wait"
+    
+    EXIT_DEAD:
+      description: "最终死亡状态"
+      notes: "task_struct 即将被释放"
+
+# ============================================================
+# PROCESS EXECUTION (EXEC)
+# ============================================================
+exec:
+  description: "程序执行机制"
+  header: "linux/binfmts.h"
+  icon: "▶️"
+  kernel_source: "fs/exec.c"
+
+  system_calls:
+    execve:
+      description: "执行程序"
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*execve\s*,'
+      parameters:
+        - "filename: 程序路径"
+        - "argv: 参数数组"
+        - "envp: 环境变量数组"
+
+    execveat:
+      description: "相对目录执行程序"
+      kernel_version: "3.19+"
+      pattern: 'SYSCALL_DEFINE5\s*\(\s*execveat\s*,'
+
+  kernel_functions:
+    do_execveat_common:
+      pattern: 'do_execveat_common\s*\('
+      description: "execve 核心实现"
+      context: "process"
+      can_sleep: true
+
+    bprm_execve:
+      pattern: 'bprm_execve\s*\('
+      description: "执行二进制程序"
+      kernel_version: "5.9+"
+
+    exec_binprm:
+      pattern: 'exec_binprm\s*\(\s*(?P<bprm>\w+)\s*\)'
+      description: "执行二进制格式处理"
+      steps:
+        - "search_binary_handler: 查找格式处理器"
+        - "load_binary: 加载程序"
+        - "start_thread: 设置入口点"
+
+    search_binary_handler:
+      pattern: 'search_binary_handler\s*\(\s*(?P<bprm>\w+)\s*\)'
+      description: "查找二进制格式处理器"
+      notes: "遍历 formats 链表"
+
+    flush_old_exec:
+      pattern: 'flush_old_exec\s*\(\s*(?P<bprm>\w+)\s*\)'
+      description: "清理旧的执行上下文"
+      steps:
+        - "de_thread: 终止其他线程"
+        - "exec_mmap: 替换地址空间"
+        - "flush_thread: 清理线程状态"
+
+    setup_new_exec:
+      pattern: 'setup_new_exec\s*\(\s*(?P<bprm>\w+)\s*\)'
+      description: "设置新的执行上下文"
+
+  data_structures:
+    linux_binprm:
+      pattern: 'struct linux_binprm\s*\{'
+      description: "二进制程序参数"
+      file: "include/linux/binfmts.h"
+      fields:
+        - name: "vma"
+          type: "struct vm_area_struct *"
+          description: "栈 VMA"
+        - name: "vma_pages"
+          type: "unsigned long"
+          description: "栈页数"
+        - name: "mm"
+          type: "struct mm_struct *"
+          description: "新的地址空间"
+        - name: "p"
+          type: "unsigned long"
+          description: "栈指针"
+        - name: "cred"
+          type: "struct cred *"
+          description: "新的凭证"
+        - name: "file"
+          type: "struct file *"
+          description: "可执行文件"
+        - name: "filename"
+          type: "const char *"
+          description: "文件名"
+        - name: "interp"
+          type: "const char *"
+          description: "解释器路径"
+        - name: "buf"
+          type: "char[BINPRM_BUF_SIZE]"
+          description: "文件头缓冲区"
+        - name: "argc"
+          type: "int"
+          description: "参数数量"
+        - name: "envc"
+          type: "int"
+          description: "环境变量数量"
+
+    linux_binfmt:
+      pattern: 'struct linux_binfmt\s*\{'
+      description: "二进制格式处理器"
+      file: "include/linux/binfmts.h"
+      fields:
+        - name: "lh"
+          type: "struct list_head"
+          description: "链表节点"
+        - name: "module"
+          type: "struct module *"
+          description: "所属模块"
+        - name: "load_binary"
+          type: "int (*)(struct linux_binprm *)"
+          description: "加载二进制文件"
+        - name: "load_shlib"
+          type: "int (*)(struct file *)"
+          description: "加载共享库"
+        - name: "core_dump"
+          type: "int (*)(struct coredump_params *)"
+          description: "生成 core dump"
+
+  binary_formats:
+    elf:
+      description: "ELF 格式"
+      handler: "elf_format"
+      file: "fs/binfmt_elf.c"
+      magic: "0x7f 'E' 'L' 'F'"
+
+    script:
+      description: "脚本格式（#!）"
+      handler: "script_format"
+      file: "fs/binfmt_script.c"
+      magic: "'#' '!'"
+
+    misc:
+      description: "杂项格式"
+      handler: "misc_format"
+      file: "fs/binfmt_misc.c"
+      notes: "可通过 /proc/sys/fs/binfmt_misc 配置"
+
+# ============================================================
+# PROCESS WAITING
+# ============================================================
+wait:
+  description: "进程等待机制"
+  header: "linux/wait.h"
+  icon: "⏳"
+  kernel_source: "kernel/exit.c"
+
+  system_calls:
+    wait4:
+      description: "等待子进程状态变化"
+      pattern: 'SYSCALL_DEFINE4\s*\(\s*wait4\s*,'
+      parameters:
+        - "pid: 目标 PID"
+        - "stat_addr: 状态存储地址"
+        - "options: 等待选项"
+        - "ru: 资源使用信息"
+
+    waitid:
+      description: "等待子进程（扩展版）"
+      pattern: 'SYSCALL_DEFINE5\s*\(\s*waitid\s*,'
+
+    waitpid:
+      description: "等待指定子进程"
+      notes: "wait4 的简化版"
+
+  wait_options:
+    WNOHANG: "非阻塞等待"
+    WUNTRACED: "报告停止的子进程"
+    WCONTINUED: "报告继续的子进程"
+    WEXITED: "报告退出的子进程"
+    WSTOPPED: "报告停止的子进程"
+    WNOWAIT: "不释放子进程"
+
+  kernel_functions:
+    do_wait:
+      pattern: 'do_wait\s*\(\s*(?P<wo>\w+)\s*\)'
+      description: "等待核心实现"
+      context: "process"
+      can_sleep: true
+
+    wait_consider_task:
+      pattern: 'wait_consider_task\s*\('
+      description: "检查单个子进程"
+
+    wait_task_zombie:
+      pattern: 'wait_task_zombie\s*\('
+      description: "处理僵尸子进程"
+      notes: "调用 release_task 释放"
+
+# ============================================================
+# TASK STRUCT
+# ============================================================
+task_struct:
+  description: "进程描述符"
+  header: "linux/sched.h"
+  icon: "📋"
+
+  key_fields:
+    state:
+      type: "volatile long"
+      description: "进程状态"
+      values:
+        TASK_RUNNING: "运行中或就绪"
+        TASK_INTERRUPTIBLE: "可中断睡眠"
+        TASK_UNINTERRUPTIBLE: "不可中断睡眠"
+        TASK_STOPPED: "已停止"
+        TASK_TRACED: "被跟踪"
+        EXIT_ZOMBIE: "僵尸"
+        EXIT_DEAD: "死亡"
+
+    flags:
+      type: "unsigned int"
+      description: "进程标志"
+      values:
+        PF_EXITING: "正在退出"
+        PF_KTHREAD: "内核线程"
+        PF_IDLE: "空闲线程"
+        PF_WQ_WORKER: "工作队列 worker"
+        PF_FORKNOEXEC: "fork 后未 exec"
+        PF_SIGNALED: "被信号杀死"
+
+    pid:
+      type: "pid_t"
+      description: "进程 ID"
+
+    tgid:
+      type: "pid_t"
+      description: "线程组 ID（主线程 PID）"
+
+    parent:
+      type: "struct task_struct *"
+      description: "父进程"
+
+    children:
+      type: "struct list_head"
+      description: "子进程链表"
+
+    sibling:
+      type: "struct list_head"
+      description: "兄弟进程链表节点"
+
+    group_leader:
+      type: "struct task_struct *"
+      description: "线程组领导者"
+
+    mm:
+      type: "struct mm_struct *"
+      description: "地址空间（内核线程为 NULL）"
+
+    active_mm:
+      type: "struct mm_struct *"
+      description: "当前使用的地址空间"
+
+    files:
+      type: "struct files_struct *"
+      description: "打开的文件"
+
+    fs:
+      type: "struct fs_struct *"
+      description: "文件系统信息（pwd, root）"
+
+    signal:
+      type: "struct signal_struct *"
+      description: "信号描述符"
+
+    sighand:
+      type: "struct sighand_struct *"
+      description: "信号处理程序"
+
+    cred:
+      type: "const struct cred *"
+      description: "凭证（uid, gid, capabilities）"
+
+    comm:
+      type: "char[TASK_COMM_LEN]"
+      description: "进程名（最多 16 字符）"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  fork_flow:
+    description: "Fork 创建流程"
+    chain:
+      - caller: "sys_fork / sys_clone"
+        callee: "kernel_clone"
+        context: "process"
+        description: "系统调用入口"
+      - caller: "kernel_clone"
+        callee: "copy_process"
+        description: "复制进程结构"
+      - caller: "copy_process"
+        callee: "dup_task_struct"
+        description: "复制 task_struct"
+      - caller: "copy_process"
+        callee: "copy_mm"
+        description: "复制/共享地址空间"
+      - caller: "copy_process"
+        callee: "copy_thread"
+        arch_specific: true
+        description: "设置新线程上下文"
+      - caller: "kernel_clone"
+        callee: "wake_up_new_task"
+        description: "将新任务加入调度"
+
+  exit_flow:
+    description: "Exit 退出流程"
+    chain:
+      - caller: "sys_exit / sys_exit_group"
+        callee: "do_exit"
+        context: "process"
+        description: "退出入口"
+      - caller: "do_exit"
+        callee: "exit_signals"
+        description: "处理信号"
+      - caller: "do_exit"
+        callee: "exit_mm"
+        description: "释放地址空间"
+      - caller: "do_exit"
+        callee: "exit_files"
+        description: "关闭文件"
+      - caller: "do_exit"
+        callee: "exit_notify"
+        description: "通知父进程 (SIGCHLD)"
+      - caller: "do_exit"
+        callee: "do_task_dead"
+        description: "变为僵尸，schedule() 不返回"
+      - caller: "parent wait"
+        callee: "release_task"
+        description: "释放 task_struct"
+
+  exec_flow:
+    description: "Exec 执行流程"
+    chain:
+      - caller: "sys_execve"
+        callee: "do_execveat_common"
+        context: "process"
+        description: "execve 入口"
+      - caller: "do_execveat_common"
+        callee: "bprm_execve"
+        description: "准备执行"
+      - caller: "bprm_execve"
+        callee: "exec_binprm"
+        description: "执行二进制"
+      - caller: "exec_binprm"
+        callee: "search_binary_handler"
+        description: "查找格式处理器"
+      - caller: "search_binary_handler"
+        callee: "load_binary (ELF/script/...)"
+        description: "加载程序"
+      - caller: "load_elf_binary"
+        callee: "flush_old_exec"
+        description: "清理旧上下文"
+      - caller: "load_elf_binary"
+        callee: "setup_new_exec"
+        description: "设置新上下文"
+      - caller: "load_elf_binary"
+        callee: "start_thread"
+        arch_specific: true
+        description: "设置入口点"
+
+  wait_flow:
+    description: "Wait 等待流程"
+    chain:
+      - caller: "sys_wait4"
+        callee: "do_wait"
+        context: "process"
+        description: "等待入口"
+      - caller: "do_wait"
+        callee: "do_wait_thread"
+        description: "遍历子进程"
+      - caller: "do_wait_thread"
+        callee: "wait_consider_task"
+        description: "检查单个子进程"
+      - caller: "wait_consider_task"
+        callee: "wait_task_zombie"
+        description: "处理僵尸"
+      - caller: "wait_task_zombie"
+        callee: "release_task"
+        description: "释放 task_struct"
+
+# ============================================================
+# KERNEL THREAD CREATION
+# ============================================================
+kernel_threads:
+  description: "内核线程创建（参考 kthread.yaml）"
+  
+  quick_reference:
+    kthread_create:
+      pattern: 'kthread_create\s*\('
+      description: "创建内核线程（不启动）"
+      
+    kthread_run:
+      pattern: 'kthread_run\s*\('
+      description: "创建并启动内核线程"
+      
+    kernel_thread:
+      pattern: 'kernel_thread\s*\('
+      description: "底层内核线程创建"
+      notes: "通常使用 kthread_* API"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "驱动中创建工作进程"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/kthread.h>
+      #include <linux/sched.h>
+      
+      static struct task_struct *worker_task;
+      
+      static int worker_thread(void *data)
+      {
+          struct my_device *dev = data;
+          
+          while (!kthread_should_stop()) {
+              /* 等待工作 */
+              wait_event_interruptible(dev->wait_queue,
+                  !list_empty(&dev->work_list) ||
+                  kthread_should_stop());
+              
+              if (kthread_should_stop())
+                  break;
+              
+              /* 处理工作 */
+              process_work(dev);
+          }
+          
+          return 0;
+      }
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev;
+          
+          dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+          init_waitqueue_head(&dev->wait_queue);
+          INIT_LIST_HEAD(&dev->work_list);
+          
+          worker_task = kthread_run(worker_thread, dev,
+                                     "my_worker");
+          if (IS_ERR(worker_task))
+              return PTR_ERR(worker_task);
+          
+          return 0;
+      }
+      
+      static int my_remove(struct platform_device *pdev)
+      {
+          if (worker_task)
+              kthread_stop(worker_task);
+          return 0;
+      }
+
+  - description: "检查进程状态和标志"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/sched.h>
+      
+      void check_process_state(struct task_struct *task)
+      {
+          /* 检查进程是否正在退出 */
+          if (task->flags & PF_EXITING) {
+              pr_info("Process %d is exiting\n", task->pid);
+              return;
+          }
+          
+          /* 检查是否是内核线程 */
+          if (task->flags & PF_KTHREAD) {
+              pr_info("Task %d is a kernel thread\n", task->pid);
+          }
+          
+          /* 获取进程名 */
+          pr_info("Process name: %s\n", task->comm);
+          
+          /* 获取线程组 ID（进程 ID） */
+          pr_info("TGID: %d, PID: %d\n", task->tgid, task->pid);
+          
+          /* 遍历子进程 */
+          struct task_struct *child;
+          list_for_each_entry(child, &task->children, sibling) {
+              pr_info("Child: %s (pid %d)\n", child->comm, child->pid);
+          }
+      }
+
+  - description: "注册二进制格式处理器"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/binfmts.h>
+      #include <linux/module.h>
+      
+      #define MY_MAGIC 0x4D59  /* "MY" */
+      
+      static int load_my_binary(struct linux_binprm *bprm)
+      {
+          /* 检查魔数 */
+          if (*(u16 *)bprm->buf != MY_MAGIC)
+              return -ENOEXEC;
+          
+          /* 清理旧的执行上下文 */
+          int ret = flush_old_exec(bprm);
+          if (ret)
+              return ret;
+          
+          /* 设置新的执行上下文 */
+          setup_new_exec(bprm);
+          
+          /* 加载程序到内存... */
+          
+          /* 设置入口点 */
+          start_thread(current_pt_regs(), entry_point, stack_pointer);
+          
+          return 0;
+      }
+      
+      static struct linux_binfmt my_format = {
+          .module      = THIS_MODULE,
+          .load_binary = load_my_binary,
+      };
+      
+      static int __init my_format_init(void)
+      {
+          register_binfmt(&my_format);
+          return 0;
+      }
+      
+      static void __exit my_format_exit(void)
+      {
+          unregister_binfmt(&my_format);
+      }
+      
+      module_init(my_format_init);
+      module_exit(my_format_exit);
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.0":
+    - "基础进程管理"
+    - "clone 系统调用"
+  "3.19":
+    - "添加 execveat()"
+  "4.3":
+    - "添加 pidfd 支持开始"
+  "5.1":
+    - "clone3() 系统调用"
+  "5.3":
+    - "pidfd_send_signal()"
+  "5.9":
+    - "kernel_clone() 替代 _do_fork()"
+  "5.10":
+    - "clone3() 扩展"

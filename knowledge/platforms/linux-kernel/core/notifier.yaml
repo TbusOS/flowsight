@@ -1,0 +1,556 @@
+# Linux Kernel Notifier Chain Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/core-api/notifier.html
+# Kernel source: kernel/notifier.c, include/linux/notifier.h
+# Kernel Version: 2.6.0+
+# ============================================================
+
+# ============================================================
+# NOTIFIER CHAIN OVERVIEW
+# ============================================================
+notifier_overview:
+  description: "Linux 通知链机制"
+  header: "linux/notifier.h"
+  icon: "🔔"
+  kernel_version: "2.6.0+"
+  
+  purpose:
+    - "事件通知机制"
+    - "松耦合的内核子系统通信"
+    - "允许模块注册回调以响应特定事件"
+    - "类似发布-订阅模式"
+
+  chain_types:
+    atomic_notifier_chain:
+      description: "原子通知链"
+      context: "any (including interrupt)"
+      can_sleep: false
+      protection: "RCU"
+      use_when: "回调不能睡眠"
+
+    blocking_notifier_chain:
+      description: "阻塞通知链"
+      context: "process only"
+      can_sleep: true
+      protection: "读写信号量"
+      use_when: "回调可能睡眠"
+
+    raw_notifier_chain:
+      description: "原始通知链"
+      context: "depends on usage"
+      can_sleep: "depends"
+      protection: "none (caller responsibility)"
+      use_when: "需要自定义保护"
+
+    srcu_notifier_chain:
+      description: "SRCU 通知链"
+      context: "process only"
+      can_sleep: true
+      protection: "SRCU"
+      use_when: "需要睡眠且高性能读取"
+
+# ============================================================
+# NOTIFIER CHAIN DEFINITION
+# ============================================================
+chain_definition:
+  description: "通知链定义"
+  header: "linux/notifier.h"
+  icon: "📋"
+
+  macros:
+    ATOMIC_NOTIFIER_HEAD:
+      pattern: 'ATOMIC_NOTIFIER_HEAD\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "定义原子通知链头"
+      example: |
+        static ATOMIC_NOTIFIER_HEAD(my_notifier_chain);
+
+    BLOCKING_NOTIFIER_HEAD:
+      pattern: 'BLOCKING_NOTIFIER_HEAD\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "定义阻塞通知链头"
+      example: |
+        static BLOCKING_NOTIFIER_HEAD(my_blocking_chain);
+
+    RAW_NOTIFIER_HEAD:
+      pattern: 'RAW_NOTIFIER_HEAD\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "定义原始通知链头"
+      example: |
+        static RAW_NOTIFIER_HEAD(my_raw_chain);
+
+    SRCU_NOTIFIER_HEAD:
+      pattern: 'SRCU_NOTIFIER_HEAD\s*\(\s*(?P<name>\w+)\s*\)'
+      description: "定义 SRCU 通知链头（需要动态初始化）"
+
+  data_structures:
+    notifier_block:
+      pattern: 'struct notifier_block\s*\{'
+      description: "通知块结构"
+      file: "include/linux/notifier.h"
+      fields:
+        - name: "notifier_call"
+          type: "notifier_fn_t"
+          description: "回调函数"
+        - name: "next"
+          type: "struct notifier_block *"
+          description: "链表下一个"
+        - name: "priority"
+          type: "int"
+          description: "优先级（高优先级先调用）"
+
+    atomic_notifier_head:
+      pattern: 'struct atomic_notifier_head\s*\{'
+      description: "原子通知链头"
+      fields:
+        - name: "lock"
+          type: "spinlock_t"
+          description: "自旋锁"
+        - name: "head"
+          type: "struct notifier_block *"
+          description: "链表头"
+
+    blocking_notifier_head:
+      pattern: 'struct blocking_notifier_head\s*\{'
+      description: "阻塞通知链头"
+      fields:
+        - name: "rwsem"
+          type: "struct rw_semaphore"
+          description: "读写信号量"
+        - name: "head"
+          type: "struct notifier_block *"
+          description: "链表头"
+
+# ============================================================
+# NOTIFIER REGISTRATION
+# ============================================================
+registration:
+  description: "通知链注册"
+  header: "linux/notifier.h"
+  icon: "📝"
+
+  atomic_chain:
+    register:
+      pattern: 'atomic_notifier_chain_register\s*\(\s*&(?P<chain>\w+)\s*,\s*&(?P<block>\w+)\s*\)'
+      description: "注册到原子通知链"
+      context: "any"
+      can_sleep: false
+
+    unregister:
+      pattern: 'atomic_notifier_chain_unregister\s*\(\s*&(?P<chain>\w+)\s*,\s*&(?P<block>\w+)\s*\)'
+      description: "从原子通知链注销"
+      context: "any"
+
+  blocking_chain:
+    register:
+      pattern: 'blocking_notifier_chain_register\s*\(\s*&(?P<chain>\w+)\s*,\s*&(?P<block>\w+)\s*\)'
+      description: "注册到阻塞通知链"
+      context: "process"
+      can_sleep: true
+
+    unregister:
+      pattern: 'blocking_notifier_chain_unregister\s*\(\s*&(?P<chain>\w+)\s*,\s*&(?P<block>\w+)\s*\)'
+      description: "从阻塞通知链注销"
+      context: "process"
+
+  raw_chain:
+    register:
+      pattern: 'raw_notifier_chain_register\s*\(\s*&(?P<chain>\w+)\s*,\s*&(?P<block>\w+)\s*\)'
+      description: "注册到原始通知链"
+      notes: "调用者负责同步"
+
+    unregister:
+      pattern: 'raw_notifier_chain_unregister\s*\(\s*&(?P<chain>\w+)\s*,\s*&(?P<block>\w+)\s*\)'
+      description: "从原始通知链注销"
+
+# ============================================================
+# NOTIFIER CALL
+# ============================================================
+notification:
+  description: "通知调用"
+  header: "linux/notifier.h"
+  icon: "📢"
+
+  functions:
+    atomic_notifier_call_chain:
+      pattern: 'atomic_notifier_call_chain\s*\(\s*&(?P<chain>\w+)\s*,\s*(?P<val>\w+)\s*,\s*(?P<v>\w+)\s*\)'
+      description: "调用原子通知链"
+      context: "any"
+      can_sleep: false
+      parameters:
+        - name: "nh"
+          type: "struct atomic_notifier_head *"
+          description: "通知链头"
+        - name: "val"
+          type: "unsigned long"
+          description: "事件值"
+        - name: "v"
+          type: "void *"
+          description: "私有数据"
+
+    blocking_notifier_call_chain:
+      pattern: 'blocking_notifier_call_chain\s*\(\s*&(?P<chain>\w+)\s*,\s*(?P<val>\w+)\s*,\s*(?P<v>\w+)\s*\)'
+      description: "调用阻塞通知链"
+      context: "process"
+      can_sleep: true
+
+    raw_notifier_call_chain:
+      pattern: 'raw_notifier_call_chain\s*\(\s*&(?P<chain>\w+)\s*,\s*(?P<val>\w+)\s*,\s*(?P<v>\w+)\s*\)'
+      description: "调用原始通知链"
+
+  return_values:
+    NOTIFY_DONE:
+      value: 0x0000
+      description: "回调不关心此事件"
+    NOTIFY_OK:
+      value: 0x0001
+      description: "回调处理了事件"
+    NOTIFY_STOP_MASK:
+      value: 0x8000
+      description: "停止进一步通知"
+    NOTIFY_BAD:
+      value: "(NOTIFY_STOP_MASK | 0x0002)"
+      description: "错误，停止链"
+    NOTIFY_STOP:
+      value: "(NOTIFY_OK | NOTIFY_STOP_MASK)"
+      description: "成功处理，停止链"
+
+# ============================================================
+# COMMON NOTIFIER CHAINS
+# ============================================================
+common_chains:
+  description: "常用通知链"
+  icon: "📦"
+
+  cpu_notifier:
+    description: "CPU 热插拔通知"
+    header: "linux/cpu.h"
+    deprecated: "4.6+ 使用 cpuhp_setup_state()"
+    events:
+      CPU_ONLINE: "CPU 上线"
+      CPU_DEAD: "CPU 下线"
+      CPU_UP_PREPARE: "CPU 准备上线"
+      CPU_DOWN_PREPARE: "CPU 准备下线"
+
+  memory_notifier:
+    description: "内存热插拔通知"
+    header: "linux/memory.h"
+    registration: "register_memory_notifier()"
+    events:
+      MEM_GOING_ONLINE: "内存准备上线"
+      MEM_CANCEL_ONLINE: "取消上线"
+      MEM_ONLINE: "内存已上线"
+      MEM_GOING_OFFLINE: "内存准备下线"
+      MEM_CANCEL_OFFLINE: "取消下线"
+      MEM_OFFLINE: "内存已下线"
+
+  netdevice_notifier:
+    description: "网络设备通知"
+    header: "linux/netdevice.h"
+    registration: "register_netdevice_notifier()"
+    events:
+      NETDEV_UP: "设备启动"
+      NETDEV_DOWN: "设备停止"
+      NETDEV_REGISTER: "设备注册"
+      NETDEV_UNREGISTER: "设备注销"
+      NETDEV_CHANGE: "设备状态变化"
+      NETDEV_CHANGEMTU: "MTU 变化"
+      NETDEV_CHANGEADDR: "MAC 地址变化"
+
+  reboot_notifier:
+    description: "重启通知"
+    header: "linux/reboot.h"
+    registration: "register_reboot_notifier()"
+    events:
+      SYS_DOWN: "系统关闭"
+      SYS_RESTART: "系统重启"
+      SYS_HALT: "系统停止"
+      SYS_POWER_OFF: "关机"
+
+  pm_notifier:
+    description: "电源管理通知"
+    header: "linux/suspend.h"
+    registration: "register_pm_notifier()"
+    events:
+      PM_HIBERNATION_PREPARE: "休眠准备"
+      PM_POST_HIBERNATION: "休眠后"
+      PM_SUSPEND_PREPARE: "挂起准备"
+      PM_POST_SUSPEND: "挂起后"
+      PM_RESTORE_PREPARE: "恢复准备"
+      PM_POST_RESTORE: "恢复后"
+
+  keyboard_notifier:
+    description: "键盘事件通知"
+    header: "linux/keyboard.h"
+    registration: "register_keyboard_notifier()"
+    events:
+      KBD_KEYCODE: "按键码"
+      KBD_UNBOUND_KEYCODE: "未绑定按键"
+      KBD_UNICODE: "Unicode 字符"
+      KBD_KEYSYM: "按键符号"
+      KBD_POST_KEYSYM: "按键符号后"
+
+  die_notifier:
+    description: "内核 die 通知"
+    header: "linux/kdebug.h"
+    registration: "register_die_notifier()"
+    arch_specific: true
+    events:
+      DIE_OOPS: "Oops 发生"
+      DIE_INT3: "INT3 断点"
+      DIE_DEBUG: "调试异常"
+      DIE_PANIC: "Panic"
+      DIE_NMI: "NMI"
+
+  usb_notifier:
+    description: "USB 设备通知"
+    header: "linux/usb.h"
+    registration: "usb_register_notify()"
+    events:
+      USB_DEVICE_ADD: "USB 设备添加"
+      USB_DEVICE_REMOVE: "USB 设备移除"
+      USB_BUS_ADD: "USB 总线添加"
+      USB_BUS_REMOVE: "USB 总线移除"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  notifier_register_flow:
+    description: "通知链注册流程"
+    chain:
+      - caller: "module init"
+        callee: "*_notifier_chain_register"
+        context: "process"
+        description: "注册回调"
+      - caller: "*_notifier_chain_register"
+        callee: "notifier_chain_register"
+        description: "插入链表（按优先级）"
+
+  notifier_call_flow:
+    description: "通知调用流程"
+    chain:
+      - caller: "事件发生"
+        callee: "*_notifier_call_chain"
+        description: "发起通知"
+      - caller: "*_notifier_call_chain"
+        callee: "notifier_call_chain"
+        description: "遍历链表"
+      - caller: "notifier_call_chain"
+        callee: "nb->notifier_call(nb, val, v)"
+        description: "调用每个回调"
+      - caller: "notifier_call"
+        callee: "check return value"
+        description: "检查是否停止"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "网络设备通知监听"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/netdevice.h>
+      
+      static int my_netdev_event(struct notifier_block *nb,
+                                  unsigned long event, void *ptr)
+      {
+          struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+          
+          switch (event) {
+          case NETDEV_UP:
+              pr_info("Network device %s is up\n", dev->name);
+              break;
+          case NETDEV_DOWN:
+              pr_info("Network device %s is down\n", dev->name);
+              break;
+          case NETDEV_REGISTER:
+              pr_info("Network device %s registered\n", dev->name);
+              break;
+          case NETDEV_UNREGISTER:
+              pr_info("Network device %s unregistered\n", dev->name);
+              break;
+          }
+          
+          return NOTIFY_OK;
+      }
+      
+      static struct notifier_block my_netdev_notifier = {
+          .notifier_call = my_netdev_event,
+          .priority = 0,
+      };
+      
+      static int __init my_init(void)
+      {
+          return register_netdevice_notifier(&my_netdev_notifier);
+      }
+      
+      static void __exit my_exit(void)
+      {
+          unregister_netdevice_notifier(&my_netdev_notifier);
+      }
+      
+      module_init(my_init);
+      module_exit(my_exit);
+
+  - description: "自定义通知链"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/notifier.h>
+      
+      /* 定义事件类型 */
+      #define MY_EVENT_START  0x01
+      #define MY_EVENT_STOP   0x02
+      #define MY_EVENT_ERROR  0x03
+      
+      /* 定义阻塞通知链 */
+      static BLOCKING_NOTIFIER_HEAD(my_notifier_chain);
+      
+      /* 导出注册/注销函数 */
+      int register_my_notifier(struct notifier_block *nb)
+      {
+          return blocking_notifier_chain_register(&my_notifier_chain, nb);
+      }
+      EXPORT_SYMBOL_GPL(register_my_notifier);
+      
+      int unregister_my_notifier(struct notifier_block *nb)
+      {
+          return blocking_notifier_chain_unregister(&my_notifier_chain, nb);
+      }
+      EXPORT_SYMBOL_GPL(unregister_my_notifier);
+      
+      /* 发送通知的函数 */
+      void notify_my_event(unsigned long event, void *data)
+      {
+          blocking_notifier_call_chain(&my_notifier_chain, event, data);
+      }
+      EXPORT_SYMBOL_GPL(notify_my_event);
+      
+      /* 使用示例 - 在其他模块中 */
+      static int my_callback(struct notifier_block *nb,
+                              unsigned long event, void *data)
+      {
+          switch (event) {
+          case MY_EVENT_START:
+              pr_info("Received start event\n");
+              break;
+          case MY_EVENT_STOP:
+              pr_info("Received stop event\n");
+              break;
+          case MY_EVENT_ERROR:
+              pr_err("Received error event\n");
+              return NOTIFY_BAD;  /* 停止链，报告错误 */
+          }
+          
+          return NOTIFY_OK;
+      }
+      
+      static struct notifier_block my_nb = {
+          .notifier_call = my_callback,
+          .priority = 10,  /* 高优先级 */
+      };
+
+  - description: "电源管理通知"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/suspend.h>
+      
+      static int my_pm_notifier(struct notifier_block *nb,
+                                 unsigned long event, void *ptr)
+      {
+          switch (event) {
+          case PM_SUSPEND_PREPARE:
+              pr_info("System is preparing to suspend\n");
+              /* 保存状态、停止活动等 */
+              break;
+              
+          case PM_POST_SUSPEND:
+              pr_info("System resumed from suspend\n");
+              /* 恢复状态、重启活动等 */
+              break;
+              
+          case PM_HIBERNATION_PREPARE:
+              pr_info("System is preparing for hibernation\n");
+              break;
+              
+          case PM_POST_HIBERNATION:
+              pr_info("System resumed from hibernation\n");
+              break;
+          }
+          
+          return NOTIFY_OK;
+      }
+      
+      static struct notifier_block my_pm_nb = {
+          .notifier_call = my_pm_notifier,
+      };
+      
+      static int __init my_init(void)
+      {
+          return register_pm_notifier(&my_pm_nb);
+      }
+      
+      static void __exit my_exit(void)
+      {
+          unregister_pm_notifier(&my_pm_nb);
+      }
+      
+      module_init(my_init);
+      module_exit(my_exit);
+
+  - description: "重启通知处理"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/reboot.h>
+      
+      static int my_reboot_handler(struct notifier_block *nb,
+                                    unsigned long action, void *data)
+      {
+          switch (action) {
+          case SYS_RESTART:
+              pr_info("System is restarting\n");
+              /* 保存关键数据 */
+              break;
+              
+          case SYS_HALT:
+              pr_info("System is halting\n");
+              break;
+              
+          case SYS_POWER_OFF:
+              pr_info("System is powering off\n");
+              /* 关闭硬件 */
+              break;
+          }
+          
+          return NOTIFY_DONE;
+      }
+      
+      static struct notifier_block my_reboot_nb = {
+          .notifier_call = my_reboot_handler,
+          .priority = 0,  /* 默认优先级 */
+      };
+      
+      static int __init my_init(void)
+      {
+          return register_reboot_notifier(&my_reboot_nb);
+      }
+      
+      static void __exit my_exit(void)
+      {
+          unregister_reboot_notifier(&my_reboot_nb);
+      }
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.0":
+    - "基础通知链机制"
+    - "atomic/blocking/raw 三种类型"
+  "2.6.17":
+    - "添加 SRCU 通知链"
+  "4.6":
+    - "CPU 热插拔使用新 API (cpuhp_setup_state)"
+  "4.10":
+    - "通知链代码清理"

@@ -1,0 +1,575 @@
+# Linux Kernel Signal Handling Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/core-api/signal.html
+# Kernel source: kernel/signal.c, include/linux/signal.h
+# Kernel Version: 2.6.0+
+# ============================================================
+
+# ============================================================
+# SIGNAL OVERVIEW
+# ============================================================
+signal_overview:
+  description: "Linux 信号子系统"
+  header: "linux/signal.h"
+  icon: "📡"
+  kernel_version: "2.6.0+"
+  
+  signal_types:
+    standard_signals:
+      description: "标准 POSIX 信号 (1-31)"
+      examples:
+        - SIGKILL: "9 - 强制终止（不可捕获）"
+        - SIGTERM: "15 - 请求终止"
+        - SIGINT: "2 - 中断 (Ctrl+C)"
+        - SIGSEGV: "11 - 段错误"
+        - SIGCHLD: "17 - 子进程状态变化"
+        - SIGSTOP: "19 - 停止进程（不可捕获）"
+        - SIGCONT: "18 - 继续执行"
+        - SIGUSR1: "10 - 用户定义信号1"
+        - SIGUSR2: "12 - 用户定义信号2"
+        - SIGALRM: "14 - 定时器到期"
+        - SIGPIPE: "13 - 管道断开"
+        - SIGHUP: "1 - 挂起"
+
+    realtime_signals:
+      description: "实时信号 (SIGRTMIN - SIGRTMAX)"
+      range: "32-64"
+      features:
+        - "可排队（不会丢失）"
+        - "可携带数据 (sigval)"
+        - "按优先级排序"
+
+# ============================================================
+# SIGNAL SENDING
+# ============================================================
+signal_send:
+  description: "信号发送机制"
+  header: "linux/signal.h"
+  icon: "📤"
+
+  kernel_functions:
+    send_sig:
+      pattern: 'send_sig\s*\(\s*(?P<sig>\w+)\s*,\s*(?P<task>\w+)\s*,\s*(?P<priv>\d+)\s*\)'
+      description: "向进程发送信号"
+      context: "process/softirq"
+      can_sleep: false
+      parameters:
+        - name: "sig"
+          type: "int"
+          description: "信号编号"
+        - name: "t"
+          type: "struct task_struct *"
+          description: "目标进程"
+        - name: "priv"
+          type: "int"
+          description: "是否特权发送"
+
+    send_sig_info:
+      pattern: 'send_sig_info\s*\(\s*(?P<sig>\w+)\s*,\s*(?P<info>\w+)\s*,\s*(?P<task>\w+)\s*\)'
+      description: "发送带附加信息的信号"
+      context: "process"
+      can_sleep: true
+
+    kill_pid:
+      pattern: 'kill_pid\s*\(\s*(?P<pid>\w+)\s*,\s*(?P<sig>\w+)\s*,\s*(?P<priv>\d+)\s*\)'
+      description: "通过 PID 发送信号"
+      context: "process"
+
+    kill_proc:
+      pattern: 'kill_proc\s*\(\s*(?P<pid>\w+)\s*,\s*(?P<sig>\w+)\s*,\s*(?P<priv>\d+)\s*\)'
+      description: "通过进程号发送信号（已废弃）"
+      deprecated: true
+
+    force_sig:
+      pattern: 'force_sig\s*\(\s*(?P<sig>\w+)\s*,\s*(?P<task>\w+)\s*\)'
+      description: "强制发送信号（不可阻塞）"
+      context: "any"
+      notes: "用于 SIGSEGV, SIGBUS 等硬件异常"
+
+    force_sig_fault:
+      pattern: 'force_sig_fault\s*\('
+      description: "强制发送带故障信息的信号"
+      kernel_version: "4.11+"
+
+# ============================================================
+# SIGNAL HANDLING
+# ============================================================
+signal_handling:
+  description: "信号处理机制"
+  header: "linux/signal.h"
+  icon: "📥"
+
+  registration:
+    sigaction:
+      pattern: 'sigaction\s*\(\s*(?P<sig>\w+)\s*,'
+      description: "设置信号处理函数（用户空间）"
+      context: "user"
+
+    kernel_sigaction:
+      pattern: 'kernel_sigaction\s*\(\s*(?P<sig>\w+)\s*,\s*(?P<action>\w+)\s*\)'
+      description: "内核设置信号处理"
+      context: "process"
+
+  data_structures:
+    sigaction:
+      pattern: 'struct sigaction\s*\{'
+      description: "信号处理动作结构"
+      file: "include/uapi/asm-generic/signal.h"
+      fields:
+        - name: "sa_handler"
+          type: "__sighandler_t"
+          description: "信号处理函数"
+        - name: "sa_flags"
+          type: "unsigned long"
+          description: "信号标志"
+        - name: "sa_mask"
+          type: "sigset_t"
+          description: "处理时阻塞的信号"
+
+    sighand_struct:
+      pattern: 'struct sighand_struct\s*\{'
+      description: "信号处理程序集"
+      file: "include/linux/sched/signal.h"
+      fields:
+        - name: "count"
+          type: "atomic_t"
+          description: "引用计数"
+        - name: "action"
+          type: "struct k_sigaction[_NSIG]"
+          description: "信号动作数组"
+        - name: "siglock"
+          type: "spinlock_t"
+          description: "保护信号操作的锁"
+
+    signal_struct:
+      pattern: 'struct signal_struct\s*\{'
+      description: "进程组共享的信号信息"
+      file: "include/linux/sched/signal.h"
+      fields:
+        - name: "sigcnt"
+          type: "atomic_t"
+          description: "引用计数"
+        - name: "live"
+          type: "atomic_t"
+          description: "存活线程数"
+        - name: "shared_pending"
+          type: "struct sigpending"
+          description: "进程组共享的待处理信号"
+        - name: "group_exit_code"
+          type: "int"
+          description: "组退出码"
+        - name: "group_stop_count"
+          type: "int"
+          description: "组停止计数"
+        - name: "flags"
+          type: "unsigned int"
+          description: "信号标志 (SIGNAL_*)"
+
+    sigpending:
+      pattern: 'struct sigpending\s*\{'
+      description: "待处理信号队列"
+      file: "include/linux/signal_types.h"
+      fields:
+        - name: "list"
+          type: "struct list_head"
+          description: "sigqueue 链表"
+        - name: "signal"
+          type: "sigset_t"
+          description: "待处理信号位图"
+
+    sigqueue:
+      pattern: 'struct sigqueue\s*\{'
+      description: "信号队列项"
+      file: "include/linux/signal_types.h"
+      fields:
+        - name: "list"
+          type: "struct list_head"
+          description: "链表节点"
+        - name: "flags"
+          type: "int"
+          description: "标志"
+        - name: "info"
+          type: "siginfo_t"
+          description: "信号信息"
+        - name: "user"
+          type: "struct user_struct *"
+          description: "发送者用户"
+
+# ============================================================
+# SIGNAL BLOCKING
+# ============================================================
+signal_blocking:
+  description: "信号阻塞机制"
+  header: "linux/signal.h"
+  icon: "🚫"
+
+  kernel_functions:
+    sigprocmask:
+      pattern: 'sigprocmask\s*\(\s*(?P<how>\w+)\s*,\s*(?P<set>\w+)\s*,\s*(?P<oldset>\w+)\s*\)'
+      description: "修改信号掩码"
+      how_values:
+        - SIG_BLOCK: "添加到阻塞集"
+        - SIG_UNBLOCK: "从阻塞集移除"
+        - SIG_SETMASK: "设置阻塞集"
+
+    siginitset:
+      pattern: 'siginitset\s*\(\s*(?P<set>\w+)\s*,\s*(?P<mask>\w+)\s*\)'
+      description: "初始化信号集"
+
+    sigaddset:
+      pattern: 'sigaddset\s*\(\s*(?P<set>\w+)\s*,\s*(?P<sig>\w+)\s*\)'
+      description: "向信号集添加信号"
+
+    sigdelset:
+      pattern: 'sigdelset\s*\(\s*(?P<set>\w+)\s*,\s*(?P<sig>\w+)\s*\)'
+      description: "从信号集删除信号"
+
+    sigismember:
+      pattern: 'sigismember\s*\(\s*(?P<set>\w+)\s*,\s*(?P<sig>\w+)\s*\)'
+      description: "检查信号是否在集合中"
+
+# ============================================================
+# SIGNAL FLAGS
+# ============================================================
+signal_flags:
+  description: "信号标志常量"
+  
+  sa_flags:
+    SA_NOCLDSTOP: "子进程停止时不产生 SIGCHLD"
+    SA_NOCLDWAIT: "子进程退出时不产生僵尸"
+    SA_SIGINFO: "使用 sa_sigaction 而非 sa_handler"
+    SA_ONSTACK: "在备用栈上执行处理程序"
+    SA_RESTART: "系统调用被信号中断后自动重启"
+    SA_NODEFER: "处理信号时不自动阻塞该信号"
+    SA_RESETHAND: "处理后重置为默认处理"
+    SA_INTERRUPT: "系统调用被中断时返回 EINTR"
+
+  signal_struct_flags:
+    SIGNAL_STOP_STOPPED: "进程组已停止"
+    SIGNAL_STOP_CONTINUED: "进程组已继续"
+    SIGNAL_GROUP_EXIT: "进程组正在退出"
+    SIGNAL_UNKILLABLE: "进程不可被杀死 (init)"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  signal_delivery:
+    description: "信号投递流程"
+    chain:
+      - caller: "send_sig / kill_pid"
+        callee: "__send_signal"
+        context: "process/softirq"
+        description: "发送信号入口"
+      - caller: "__send_signal"
+        callee: "prepare_signal"
+        description: "检查信号是否应该被投递"
+      - caller: "__send_signal"
+        callee: "__sigqueue_alloc"
+        description: "分配 sigqueue"
+      - caller: "__send_signal"
+        callee: "complete_signal"
+        description: "完成信号投递"
+      - caller: "complete_signal"
+        callee: "signal_wake_up"
+        description: "唤醒目标进程"
+
+  signal_handling_flow:
+    description: "信号处理流程"
+    chain:
+      - caller: "exit_to_user_mode / ret_from_exception"
+        callee: "do_signal"
+        context: "process"
+        description: "返回用户空间前检查信号"
+      - caller: "do_signal"
+        callee: "get_signal"
+        description: "获取待处理信号"
+      - caller: "get_signal"
+        callee: "dequeue_signal"
+        description: "从队列取出信号"
+      - caller: "do_signal"
+        callee: "handle_signal"
+        description: "处理信号"
+      - caller: "handle_signal"
+        callee: "setup_rt_frame"
+        arch_specific: true
+        description: "设置信号栈帧"
+
+  force_sig_flow:
+    description: "强制信号流程"
+    chain:
+      - caller: "hardware exception"
+        callee: "force_sig_fault"
+        context: "exception"
+        description: "硬件异常触发"
+      - caller: "force_sig_fault"
+        callee: "force_sig_info"
+        description: "带信息强制发送"
+      - caller: "force_sig_info"
+        callee: "do_send_sig_info"
+        description: "实际发送"
+
+# ============================================================
+# SIGNAL IN DRIVERS
+# ============================================================
+driver_usage:
+  description: "驱动中的信号使用"
+  header: "linux/signal.h"
+  icon: "🔧"
+
+  common_patterns:
+    async_io_notification:
+      description: "异步 IO 完成通知"
+      pattern: 'kill_fasync\s*\(\s*&(?P<fasync>\w+)\s*,\s*(?P<sig>\w+)\s*,'
+      example: |
+        static struct fasync_struct *async_queue;
+        
+        static int my_fasync(int fd, struct file *file, int on)
+        {
+            return fasync_helper(fd, file, on, &async_queue);
+        }
+        
+        static void notify_user(void)
+        {
+            /* 向注册了异步通知的进程发送 SIGIO */
+            kill_fasync(&async_queue, SIGIO, POLL_IN);
+        }
+
+    fatal_signal_pending:
+      description: "检查是否有致命信号待处理"
+      pattern: 'fatal_signal_pending\s*\(\s*(?P<task>\w+)\s*\)'
+      example: |
+        /* 在长时间操作中检查是否应该中止 */
+        while (work_remaining) {
+            if (fatal_signal_pending(current))
+                return -EINTR;
+            do_some_work();
+        }
+
+    signal_pending:
+      description: "检查是否有信号待处理"
+      pattern: 'signal_pending\s*\(\s*(?P<task>\w+)\s*\)'
+      example: |
+        /* 可中断的等待 */
+        while (!condition) {
+            if (signal_pending(current))
+                return -ERESTARTSYS;
+            schedule();
+        }
+
+# ============================================================
+# SIGINFO STRUCTURE
+# ============================================================
+siginfo:
+  description: "信号附加信息结构"
+  header: "linux/signal.h"
+  icon: "ℹ️"
+
+  data_structures:
+    siginfo_t:
+      pattern: 'typedef struct siginfo\s*\{'
+      description: "信号信息结构"
+      file: "include/uapi/asm-generic/siginfo.h"
+      fields:
+        - name: "si_signo"
+          type: "int"
+          description: "信号编号"
+        - name: "si_errno"
+          type: "int"
+          description: "错误码"
+        - name: "si_code"
+          type: "int"
+          description: "信号来源代码"
+        - name: "si_pid"
+          type: "pid_t"
+          description: "发送者 PID"
+        - name: "si_uid"
+          type: "uid_t"
+          description: "发送者 UID"
+        - name: "si_addr"
+          type: "void *"
+          description: "故障地址 (SIGSEGV/SIGBUS)"
+        - name: "si_value"
+          type: "sigval_t"
+          description: "用户数据（实时信号）"
+
+  si_code_values:
+    common:
+      SI_USER: "kill() 发送"
+      SI_KERNEL: "内核发送"
+      SI_QUEUE: "sigqueue() 发送"
+      SI_TIMER: "POSIX 定时器到期"
+      SI_MESGQ: "POSIX 消息队列状态变化"
+      SI_ASYNCIO: "异步 IO 完成"
+      SI_SIGIO: "SIGIO 排队"
+    
+    sigchld:
+      CLD_EXITED: "子进程退出"
+      CLD_KILLED: "子进程被杀死"
+      CLD_DUMPED: "子进程异常终止 (core dump)"
+      CLD_TRAPPED: "子进程被跟踪"
+      CLD_STOPPED: "子进程停止"
+      CLD_CONTINUED: "子进程继续"
+
+    sigsegv:
+      SEGV_MAPERR: "地址未映射"
+      SEGV_ACCERR: "权限不足"
+
+    sigbus:
+      BUS_ADRALN: "地址对齐错误"
+      BUS_ADRERR: "不存在的物理地址"
+      BUS_OBJERR: "对象特定的硬件错误"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "驱动中使用异步通知"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/fs.h>
+      #include <linux/signal.h>
+      
+      static struct fasync_struct *my_async_queue;
+      
+      static int my_fasync(int fd, struct file *file, int on)
+      {
+          return fasync_helper(fd, file, on, &my_async_queue);
+      }
+      
+      static int my_release(struct inode *inode, struct file *file)
+      {
+          /* 移除异步通知 */
+          my_fasync(-1, file, 0);
+          return 0;
+      }
+      
+      /* 当数据可用时调用 */
+      static void data_ready(void)
+      {
+          if (my_async_queue)
+              kill_fasync(&my_async_queue, SIGIO, POLL_IN);
+      }
+      
+      static const struct file_operations my_fops = {
+          .owner   = THIS_MODULE,
+          .fasync  = my_fasync,
+          .release = my_release,
+      };
+
+  - description: "可中断的内核等待"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/sched/signal.h>
+      #include <linux/wait.h>
+      
+      static DECLARE_WAIT_QUEUE_HEAD(my_wait);
+      static int condition_met;
+      
+      static int wait_for_event(void)
+      {
+          int ret;
+          
+          ret = wait_event_interruptible(my_wait, condition_met);
+          if (ret == -ERESTARTSYS) {
+              /* 被信号中断 */
+              pr_info("Wait interrupted by signal\n");
+              return ret;
+          }
+          
+          return 0;
+      }
+      
+      /* 在长循环中检查信号 */
+      static int long_operation(void)
+      {
+          int i;
+          
+          for (i = 0; i < 1000000; i++) {
+              if (signal_pending(current))
+                  return -EINTR;
+              
+              if (fatal_signal_pending(current))
+                  return -EINTR;  /* 必须立即返回 */
+              
+              /* 做一些工作 */
+              cond_resched();
+          }
+          
+          return 0;
+      }
+
+  - description: "内核线程中处理信号"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/kthread.h>
+      #include <linux/signal.h>
+      
+      static struct task_struct *my_thread;
+      
+      static int thread_func(void *data)
+      {
+          /* 允许 SIGTERM 终止线程 */
+          allow_signal(SIGTERM);
+          
+          while (!kthread_should_stop()) {
+              /* 检查是否收到信号 */
+              if (signal_pending(current)) {
+                  /* 清除待处理信号 */
+                  flush_signals(current);
+                  pr_info("Thread received signal, exiting\n");
+                  break;
+              }
+              
+              /* 做一些工作 */
+              schedule_timeout_interruptible(HZ);
+          }
+          
+          return 0;
+      }
+      
+      static int __init my_init(void)
+      {
+          my_thread = kthread_run(thread_func, NULL, "my_thread");
+          return PTR_ERR_OR_ZERO(my_thread);
+      }
+      
+      static void __exit my_exit(void)
+      {
+          if (my_thread)
+              kthread_stop(my_thread);
+      }
+
+# ============================================================
+# SIGNAL DELIVERY CONTEXT
+# ============================================================
+delivery_context:
+  description: "信号投递的执行上下文"
+  
+  notes:
+    - "信号只能在返回用户空间时被处理"
+    - "内核线程通常忽略所有信号"
+    - "SIGKILL 和 SIGSTOP 不能被捕获、阻塞或忽略"
+    - "信号处理函数运行在用户态，但由内核设置栈帧"
+    
+  timing:
+    - "同步信号（如 SIGSEGV）立即投递"
+    - "异步信号在返回用户空间前检查"
+    - "睡眠在 TASK_INTERRUPTIBLE 状态的进程可被信号唤醒"
+    - "睡眠在 TASK_UNINTERRUPTIBLE 状态的进程不响应信号"
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.0":
+    - "基础信号机制"
+  "4.11":
+    - "添加 force_sig_fault()"
+  "4.14":
+    - "信号代码重构"
+  "5.0":
+    - "添加 pidfd_send_signal() 系统调用"
+  "5.1":
+    - "改进信号处理性能"

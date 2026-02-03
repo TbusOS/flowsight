@@ -1,0 +1,585 @@
+# Linux Kernel Namespace Knowledge Base
+#
+# Reference: https://man7.org/linux/man-pages/man7/namespaces.7.html
+# Kernel source: kernel/*_namespace.c, kernel/nsproxy.c
+# Kernel Version: 2.6.24+ (各命名空间版本不同)
+# ============================================================
+
+# ============================================================
+# NAMESPACE OVERVIEW
+# ============================================================
+namespace_overview:
+  description: "Linux 命名空间机制"
+  header: "linux/nsproxy.h"
+  icon: "🏠"
+  kernel_version: "2.6.24+"
+  
+  purpose:
+    - "进程资源隔离"
+    - "容器技术的核心基础"
+    - "每种命名空间隔离特定类型的资源"
+    
+  types:
+    mnt:
+      description: "挂载命名空间"
+      kernel_version: "2.4.19"
+      isolates: "挂载点"
+      clone_flag: "CLONE_NEWNS"
+      
+    uts:
+      description: "UTS 命名空间"
+      kernel_version: "2.6.19"
+      isolates: "主机名和域名"
+      clone_flag: "CLONE_NEWUTS"
+      
+    ipc:
+      description: "IPC 命名空间"
+      kernel_version: "2.6.19"
+      isolates: "System V IPC, POSIX 消息队列"
+      clone_flag: "CLONE_NEWIPC"
+      
+    pid:
+      description: "PID 命名空间"
+      kernel_version: "2.6.24"
+      isolates: "进程 ID"
+      clone_flag: "CLONE_NEWPID"
+      
+    net:
+      description: "网络命名空间"
+      kernel_version: "2.6.29"
+      isolates: "网络设备、IP 地址、路由表、端口"
+      clone_flag: "CLONE_NEWNET"
+      
+    user:
+      description: "用户命名空间"
+      kernel_version: "3.8"
+      isolates: "用户 ID 和组 ID"
+      clone_flag: "CLONE_NEWUSER"
+      
+    cgroup:
+      description: "Cgroup 命名空间"
+      kernel_version: "4.6"
+      isolates: "Cgroup 根目录视图"
+      clone_flag: "CLONE_NEWCGROUP"
+      
+    time:
+      description: "时间命名空间"
+      kernel_version: "5.6"
+      isolates: "系统时间 (CLOCK_MONOTONIC, CLOCK_BOOTTIME)"
+      clone_flag: "CLONE_NEWTIME"
+
+# ============================================================
+# NAMESPACE PROXY
+# ============================================================
+nsproxy:
+  description: "命名空间代理结构"
+  header: "linux/nsproxy.h"
+  icon: "🔗"
+  kernel_source: "kernel/nsproxy.c"
+
+  data_structures:
+    nsproxy:
+      pattern: 'struct nsproxy\s*\{'
+      description: "命名空间代理"
+      file: "include/linux/nsproxy.h"
+      fields:
+        - name: "count"
+          type: "atomic_t"
+          description: "引用计数"
+        - name: "uts_ns"
+          type: "struct uts_namespace *"
+          description: "UTS 命名空间"
+        - name: "ipc_ns"
+          type: "struct ipc_namespace *"
+          description: "IPC 命名空间"
+        - name: "mnt_ns"
+          type: "struct mnt_namespace *"
+          description: "挂载命名空间"
+        - name: "pid_ns_for_children"
+          type: "struct pid_namespace *"
+          description: "子进程的 PID 命名空间"
+        - name: "net_ns"
+          type: "struct net *"
+          description: "网络命名空间"
+        - name: "cgroup_ns"
+          type: "struct cgroup_namespace *"
+          description: "Cgroup 命名空间"
+        - name: "time_ns"
+          type: "struct time_namespace *"
+          description: "时间命名空间"
+        - name: "time_ns_for_children"
+          type: "struct time_namespace *"
+          description: "子进程的时间命名空间"
+
+  kernel_functions:
+    get_nsproxy:
+      pattern: 'get_nsproxy\s*\(\s*(?P<nsproxy>\w+)\s*\)'
+      description: "增加 nsproxy 引用计数"
+      
+    put_nsproxy:
+      pattern: 'put_nsproxy\s*\(\s*(?P<nsproxy>\w+)\s*\)'
+      description: "减少 nsproxy 引用计数"
+      
+    copy_namespaces:
+      pattern: 'copy_namespaces\s*\('
+      description: "复制/共享命名空间（在 fork 时）"
+
+# ============================================================
+# PID NAMESPACE
+# ============================================================
+pid_namespace:
+  description: "PID 命名空间"
+  header: "linux/pid_namespace.h"
+  icon: "🔢"
+  kernel_version: "2.6.24+"
+  kernel_source: "kernel/pid_namespace.c"
+
+  data_structures:
+    pid_namespace:
+      pattern: 'struct pid_namespace\s*\{'
+      description: "PID 命名空间结构"
+      file: "include/linux/pid_namespace.h"
+      fields:
+        - name: "kref"
+          type: "struct kref"
+          description: "引用计数"
+        - name: "idr"
+          type: "struct idr"
+          description: "PID 到 task 映射"
+        - name: "rcu"
+          type: "struct rcu_head"
+          description: "RCU 回收"
+        - name: "pid_allocated"
+          type: "unsigned int"
+          description: "已分配 PID 数"
+        - name: "child_reaper"
+          type: "struct task_struct *"
+          description: "孤儿进程收养者 (init)"
+        - name: "bacct"
+          type: "struct bsd_acct_struct *"
+          description: "进程记账"
+        - name: "level"
+          type: "unsigned int"
+          description: "嵌套层级"
+        - name: "parent"
+          type: "struct pid_namespace *"
+          description: "父命名空间"
+        - name: "user_ns"
+          type: "struct user_namespace *"
+          description: "所属用户命名空间"
+        - name: "ns"
+          type: "struct ns_common"
+          description: "通用命名空间结构"
+
+  features:
+    - "进程在每个祖先 PID 命名空间中都有一个 PID"
+    - "命名空间中的 PID 1 是 init 进程"
+    - "init 进程退出时，整个命名空间终止"
+    - "嵌套最多 32 层"
+
+# ============================================================
+# NETWORK NAMESPACE
+# ============================================================
+net_namespace:
+  description: "网络命名空间"
+  header: "net/net_namespace.h"
+  icon: "🌐"
+  kernel_version: "2.6.29+"
+  kernel_source: "net/core/net_namespace.c"
+
+  data_structures:
+    net:
+      pattern: 'struct net\s*\{'
+      description: "网络命名空间结构"
+      file: "include/net/net_namespace.h"
+      fields:
+        - name: "count"
+          type: "refcount_t"
+          description: "引用计数"
+        - name: "passive"
+          type: "refcount_t"
+          description: "被动引用"
+        - name: "rules_mod_lock"
+          type: "spinlock_t"
+          description: "规则修改锁"
+        - name: "dev_base_head"
+          type: "struct list_head"
+          description: "网络设备链表"
+        - name: "dev_name_head"
+          type: "struct hlist_head *"
+          description: "设备名哈希表"
+        - name: "dev_index_head"
+          type: "struct hlist_head *"
+          description: "设备索引哈希表"
+        - name: "loopback_dev"
+          type: "struct net_device *"
+          description: "回环设备"
+        - name: "proc_net"
+          type: "struct proc_dir_entry *"
+          description: "/proc/net 目录"
+        - name: "user_ns"
+          type: "struct user_namespace *"
+          description: "所属用户命名空间"
+        - name: "ns"
+          type: "struct ns_common"
+          description: "通用命名空间结构"
+
+  kernel_functions:
+    get_net:
+      pattern: 'get_net\s*\(\s*(?P<net>\w+)\s*\)'
+      description: "增加网络命名空间引用"
+      
+    put_net:
+      pattern: 'put_net\s*\(\s*(?P<net>\w+)\s*\)'
+      description: "减少网络命名空间引用"
+      
+    dev_net:
+      pattern: 'dev_net\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "获取设备所属网络命名空间"
+
+  features:
+    - "每个命名空间有独立的网络设备"
+    - "独立的 IP 地址、路由表、防火墙规则"
+    - "独立的 /proc/net 和 /sys/class/net"
+    - "veth pair 可连接不同网络命名空间"
+
+# ============================================================
+# USER NAMESPACE
+# ============================================================
+user_namespace:
+  description: "用户命名空间"
+  header: "linux/user_namespace.h"
+  icon: "👤"
+  kernel_version: "3.8+"
+  kernel_source: "kernel/user_namespace.c"
+
+  data_structures:
+    user_namespace:
+      pattern: 'struct user_namespace\s*\{'
+      description: "用户命名空间结构"
+      file: "include/linux/user_namespace.h"
+      fields:
+        - name: "kref"
+          type: "struct kref"
+          description: "引用计数"
+        - name: "parent"
+          type: "struct user_namespace *"
+          description: "父命名空间"
+        - name: "level"
+          type: "int"
+          description: "嵌套层级"
+        - name: "owner"
+          type: "kuid_t"
+          description: "创建者 UID"
+        - name: "group"
+          type: "kgid_t"
+          description: "创建者 GID"
+        - name: "flags"
+          type: "unsigned long"
+          description: "标志"
+        - name: "uid_map"
+          type: "struct uid_gid_map"
+          description: "UID 映射"
+        - name: "gid_map"
+          type: "struct uid_gid_map"
+          description: "GID 映射"
+        - name: "ns"
+          type: "struct ns_common"
+          description: "通用命名空间结构"
+
+  features:
+    - "允许非 root 用户创建命名空间"
+    - "命名空间内的 root 在外部是普通用户"
+    - "UID/GID 映射决定权限"
+    - "是其他命名空间的所有者"
+
+  uid_gid_mapping:
+    description: "UID/GID 映射"
+    files:
+      - "/proc/[pid]/uid_map"
+      - "/proc/[pid]/gid_map"
+    format: "内部ID 外部ID 范围"
+    example: "0 1000 1  # 内部 root 映射到外部 UID 1000"
+
+# ============================================================
+# MOUNT NAMESPACE
+# ============================================================
+mnt_namespace:
+  description: "挂载命名空间"
+  header: "linux/mnt_namespace.h"
+  icon: "📁"
+  kernel_version: "2.4.19+"
+  kernel_source: "fs/namespace.c"
+
+  features:
+    - "最早的命名空间类型"
+    - "每个命名空间有独立的挂载点视图"
+    - "挂载传播控制不同命名空间间的挂载事件"
+
+  mount_propagation:
+    shared:
+      description: "共享挂载"
+      notes: "挂载事件双向传播"
+    slave:
+      description: "从属挂载"
+      notes: "只接收主挂载的事件"
+    private:
+      description: "私有挂载"
+      notes: "不传播任何事件"
+    unbindable:
+      description: "不可绑定挂载"
+      notes: "不能被 bind mount"
+
+# ============================================================
+# NAMESPACE OPERATIONS
+# ============================================================
+namespace_operations:
+  description: "命名空间操作"
+  header: "linux/ns_common.h"
+  icon: "⚙️"
+
+  system_calls:
+    clone:
+      description: "创建进程时创建新命名空间"
+      flags:
+        - "CLONE_NEWNS: 新挂载命名空间"
+        - "CLONE_NEWUTS: 新 UTS 命名空间"
+        - "CLONE_NEWIPC: 新 IPC 命名空间"
+        - "CLONE_NEWPID: 新 PID 命名空间"
+        - "CLONE_NEWNET: 新网络命名空间"
+        - "CLONE_NEWUSER: 新用户命名空间"
+        - "CLONE_NEWCGROUP: 新 Cgroup 命名空间"
+        - "CLONE_NEWTIME: 新时间命名空间"
+
+    unshare:
+      description: "当前进程脱离命名空间"
+      pattern: 'SYSCALL_DEFINE1\s*\(\s*unshare\s*,'
+      notes: "创建新命名空间并加入"
+
+    setns:
+      description: "加入已存在的命名空间"
+      pattern: 'SYSCALL_DEFINE2\s*\(\s*setns\s*,'
+      parameters:
+        - "fd: 命名空间文件描述符"
+        - "nstype: 命名空间类型"
+
+  proc_files:
+    description: "命名空间的 procfs 表示"
+    path: "/proc/[pid]/ns/"
+    entries:
+      - "mnt: 挂载命名空间"
+      - "uts: UTS 命名空间"
+      - "ipc: IPC 命名空间"
+      - "pid: PID 命名空间"
+      - "pid_for_children: 子进程 PID 命名空间"
+      - "net: 网络命名空间"
+      - "user: 用户命名空间"
+      - "cgroup: Cgroup 命名空间"
+      - "time: 时间命名空间"
+      - "time_for_children: 子进程时间命名空间"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  namespace_create_flow:
+    description: "命名空间创建流程"
+    chain:
+      - caller: "sys_clone / sys_unshare"
+        callee: "copy_namespaces"
+        context: "process"
+        description: "复制/创建命名空间"
+      - caller: "copy_namespaces"
+        callee: "create_new_namespaces"
+        description: "创建新命名空间集"
+      - caller: "create_new_namespaces"
+        callee: "copy_*_ns (各命名空间)"
+        description: "创建各类型命名空间"
+
+  setns_flow:
+    description: "加入命名空间流程"
+    chain:
+      - caller: "sys_setns"
+        callee: "validate_ns"
+        description: "验证命名空间"
+      - caller: "sys_setns"
+        callee: "commit_nsset"
+        description: "切换命名空间"
+      - caller: "commit_nsset"
+        callee: "switch_task_namespaces"
+        description: "更新 task 的 nsproxy"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "驱动中获取网络命名空间"
+    kernel_version: "2.6.29+"
+    code: |
+      #include <linux/module.h>
+      #include <net/net_namespace.h>
+      #include <linux/netdevice.h>
+      
+      /* 获取设备所属的网络命名空间 */
+      void process_device(struct net_device *dev)
+      {
+          struct net *net = dev_net(dev);
+          
+          /* 在该命名空间中查找其他设备 */
+          struct net_device *other;
+          for_each_netdev(net, other) {
+              pr_info("Device in same namespace: %s\n", other->name);
+          }
+      }
+      
+      /* 遍历所有网络命名空间 */
+      void list_all_namespaces(void)
+      {
+          struct net *net;
+          
+          rtnl_lock();
+          for_each_net(net) {
+              struct net_device *dev;
+              pr_info("Network namespace %p:\n", net);
+              for_each_netdev(net, dev) {
+                  pr_info("  - %s\n", dev->name);
+              }
+          }
+          rtnl_unlock();
+      }
+
+  - description: "在特定 PID 命名空间中查找进程"
+    kernel_version: "2.6.24+"
+    code: |
+      #include <linux/sched.h>
+      #include <linux/pid_namespace.h>
+      
+      /* 获取进程在指定命名空间中的 PID */
+      pid_t get_pid_in_ns(struct task_struct *task,
+                          struct pid_namespace *ns)
+      {
+          return task_pid_nr_ns(task, ns);
+      }
+      
+      /* 在当前命名空间中查找进程 */
+      struct task_struct *find_process_in_current_ns(pid_t pid)
+      {
+          return find_task_by_vpid(pid);
+      }
+      
+      /* 获取进程的 PID 命名空间 */
+      struct pid_namespace *get_task_pid_ns(struct task_struct *task)
+      {
+          return task_active_pid_ns(task);
+      }
+
+  - description: "用户命名空间 UID 转换"
+    kernel_version: "3.8+"
+    code: |
+      #include <linux/user_namespace.h>
+      #include <linux/cred.h>
+      
+      /* 将内核 UID 转换为用户命名空间中的 UID */
+      uid_t kernel_to_user_uid(struct user_namespace *ns, kuid_t kuid)
+      {
+          return from_kuid(ns, kuid);
+      }
+      
+      /* 将用户命名空间中的 UID 转换为内核 UID */
+      kuid_t user_to_kernel_uid(struct user_namespace *ns, uid_t uid)
+      {
+          return make_kuid(ns, uid);
+      }
+      
+      /* 检查是否有能力（在用户命名空间中） */
+      bool has_capability_in_ns(struct user_namespace *ns, int cap)
+      {
+          return ns_capable(ns, cap);
+      }
+
+  - description: "内核模块中处理命名空间"
+    kernel_version: "2.6.24+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/nsproxy.h>
+      #include <linux/fs_struct.h>
+      
+      /* 获取当前进程的命名空间 */
+      void show_current_namespaces(void)
+      {
+          struct nsproxy *ns = current->nsproxy;
+          
+          pr_info("Current namespaces:\n");
+          pr_info("  UTS: %p\n", ns->uts_ns);
+          pr_info("  IPC: %p\n", ns->ipc_ns);
+          pr_info("  MNT: %p\n", ns->mnt_ns);
+          pr_info("  PID: %p (level %d)\n", 
+                  task_active_pid_ns(current),
+                  task_active_pid_ns(current)->level);
+          pr_info("  NET: %p\n", ns->net_ns);
+      }
+      
+      /* 在指定网络命名空间中注册 */
+      int register_in_net_ns(struct net *net)
+      {
+          /* 增加引用计数 */
+          get_net(net);
+          
+          /* 在该命名空间中操作... */
+          
+          /* 完成后释放 */
+          put_net(net);
+          return 0;
+      }
+
+# ============================================================
+# CONTAINER RELEVANCE
+# ============================================================
+container_usage:
+  description: "命名空间在容器中的应用"
+  icon: "🐳"
+  
+  docker_example:
+    description: "Docker 容器使用的命名空间"
+    namespaces:
+      - "PID: 容器有独立的进程树"
+      - "NET: 容器有独立的网络栈"
+      - "MNT: 容器有独立的文件系统视图"
+      - "UTS: 容器有独立的主机名"
+      - "IPC: 容器有独立的 IPC"
+      - "USER: 可选，用户映射"
+      - "CGROUP: 隔离 cgroup 视图"
+
+  tools:
+    nsenter:
+      description: "进入命名空间"
+      example: "nsenter -t <pid> -n -p /bin/bash"
+    
+    ip_netns:
+      description: "管理网络命名空间"
+      example: "ip netns add myns; ip netns exec myns ip a"
+    
+    unshare:
+      description: "创建并进入新命名空间"
+      example: "unshare --pid --fork --mount-proc /bin/bash"
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.4.19":
+    - "挂载命名空间 (CLONE_NEWNS)"
+  "2.6.19":
+    - "UTS 命名空间"
+    - "IPC 命名空间"
+  "2.6.24":
+    - "PID 命名空间"
+  "2.6.29":
+    - "网络命名空间"
+  "3.8":
+    - "用户命名空间（完整支持）"
+    - "非特权用户可创建命名空间"
+  "4.6":
+    - "Cgroup 命名空间"
+  "5.6":
+    - "时间命名空间"
