@@ -1,0 +1,712 @@
+# Linux Kernel Futex (Fast Userspace Mutex) Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/locking/futex-requeue-pi.html
+# Kernel source: kernel/futex.c, include/linux/futex.h
+# Kernel Version: 2.6.0+
+# ============================================================
+
+# ============================================================
+# FUTEX OVERVIEW
+# ============================================================
+futex_overview:
+  description: "Linux 快速用户空间互斥锁 (Futex)"
+  header: "linux/futex.h"
+  icon: "🔐"
+  kernel_version: "2.6.0+"
+  
+  key_concepts:
+    futex:
+      description: "Fast Userspace muTEX - 高效的用户空间同步原语"
+      notes:
+        - "无竞争时完全在用户空间完成"
+        - "有竞争时才进入内核等待"
+        - "是 pthread_mutex、sem_t 等的底层实现"
+        - "地址作为唯一标识（共享内存可跨进程）"
+    
+    futex_word:
+      description: "futex 字 - 一个 32 位整数"
+      location: "用户空间内存"
+      notes:
+        - "原子操作的目标"
+        - "等待/唤醒的标识"
+        - "可以在共享内存中实现跨进程同步"
+
+# ============================================================
+# FUTEX OPERATIONS
+# ============================================================
+futex_operations:
+  description: "futex 系统调用操作"
+  header: "uapi/linux/futex.h"
+  icon: "⚙️"
+
+  basic_operations:
+    FUTEX_WAIT:
+      value: 0
+      description: "等待 futex 值变化"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_WAIT\s*,'
+      behavior: "如果 *uaddr == val，则睡眠直到被唤醒"
+      notes:
+        - "原子检查并睡眠"
+        - "可被信号中断"
+        - "支持超时 (timespec)"
+
+    FUTEX_WAKE:
+      value: 1
+      description: "唤醒等待的线程"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_WAKE\s*,'
+      behavior: "唤醒最多 val 个等待在 uaddr 上的线程"
+      notes:
+        - "返回实际唤醒的线程数"
+        - "val = 1 唤醒一个，val = INT_MAX 唤醒所有"
+
+    FUTEX_FD:
+      value: 2
+      description: "返回与 futex 关联的文件描述符"
+      deprecated: true
+      removed_in: "2.6.26"
+      notes: "已废弃，不应使用"
+
+    FUTEX_REQUEUE:
+      value: 3
+      description: "唤醒部分线程，将其余线程重新排队"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_REQUEUE\s*,'
+      behavior: "唤醒 val 个线程，将 val2 个线程移到 uaddr2"
+      notes:
+        - "用于实现条件变量"
+        - "避免惊群效应"
+
+    FUTEX_CMP_REQUEUE:
+      value: 4
+      description: "带比较的 requeue"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_CMP_REQUEUE\s*,'
+      behavior: "先检查 *uaddr == val3，然后执行 requeue"
+      notes: "比 FUTEX_REQUEUE 更安全，推荐使用"
+
+    FUTEX_WAKE_OP:
+      value: 5
+      description: "原子操作并唤醒"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_WAKE_OP\s*,'
+      behavior: "在 uaddr2 上执行原子操作，根据结果唤醒线程"
+      notes: "用于优化条件变量的 broadcast"
+
+    FUTEX_WAIT_BITSET:
+      value: 9
+      description: "带位集掩码的等待"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_WAIT_BITSET\s*,'
+      kernel_version: "2.6.25+"
+      notes: "支持选择性唤醒"
+
+    FUTEX_WAKE_BITSET:
+      value: 10
+      description: "带位集掩码的唤醒"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_WAKE_BITSET\s*,'
+      kernel_version: "2.6.25+"
+      notes: "只唤醒掩码匹配的等待者"
+
+  pi_operations:
+    FUTEX_LOCK_PI:
+      value: 6
+      description: "优先级继承锁获取"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_LOCK_PI\s*,'
+      behavior: "获取 PI futex，失败则睡眠并继承优先级"
+      notes:
+        - "防止优先级反转"
+        - "需要 CONFIG_FUTEX_PI"
+
+    FUTEX_UNLOCK_PI:
+      value: 7
+      description: "优先级继承锁释放"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_UNLOCK_PI\s*,'
+      behavior: "释放 PI futex，唤醒最高优先级等待者"
+
+    FUTEX_TRYLOCK_PI:
+      value: 8
+      description: "尝试获取 PI 锁（非阻塞）"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_TRYLOCK_PI\s*,'
+      behavior: "如果锁可用则获取，否则立即返回"
+
+    FUTEX_WAIT_REQUEUE_PI:
+      value: 11
+      description: "等待并准备 PI requeue"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_WAIT_REQUEUE_PI\s*,'
+      kernel_version: "2.6.31+"
+      notes: "用于 PI 条件变量"
+
+    FUTEX_CMP_REQUEUE_PI:
+      value: 12
+      description: "带比较的 PI requeue"
+      pattern: 'futex\s*\([^,]+,\s*FUTEX_CMP_REQUEUE_PI\s*,'
+      kernel_version: "2.6.31+"
+
+  flags:
+    FUTEX_PRIVATE_FLAG:
+      value: 128
+      description: "进程私有 futex（不跨进程共享）"
+      notes: "性能优化，避免全局哈希表查找"
+
+    FUTEX_CLOCK_REALTIME:
+      value: 256
+      description: "使用 CLOCK_REALTIME 而非 CLOCK_MONOTONIC"
+      kernel_version: "2.6.28+"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+data_structures:
+  futex_q:
+    description: "Futex 等待队列项"
+    file: "kernel/futex.c"
+    pattern: 'struct futex_q\s*\{'
+    fields:
+      - name: "list"
+        type: "struct plist_node"
+        description: "优先级链表节点"
+      - name: "task"
+        type: "struct task_struct *"
+        description: "等待的任务"
+      - name: "lock_ptr"
+        type: "spinlock_t *"
+        description: "保护此项的自旋锁"
+      - name: "key"
+        type: "union futex_key"
+        description: "futex 标识键"
+      - name: "pi_state"
+        type: "struct futex_pi_state *"
+        description: "PI 状态（PI futex 使用）"
+      - name: "rt_waiter"
+        type: "struct rt_mutex_waiter *"
+        description: "RT mutex 等待者"
+      - name: "requeue_pi_key"
+        type: "union futex_key *"
+        description: "requeue PI 的目标键"
+      - name: "bitset"
+        type: "u32"
+        description: "等待位集掩码"
+
+  futex_key:
+    description: "Futex 唯一标识键"
+    file: "kernel/futex.c"
+    pattern: 'union futex_key\s*\{'
+    notes: "用于在哈希表中定位 futex"
+    variants:
+      shared:
+        description: "共享 futex（文件映射）"
+        fields:
+          - name: "inode"
+            type: "struct inode *"
+            description: "文件 inode"
+          - name: "pgoff"
+            type: "unsigned long"
+            description: "页偏移"
+      private:
+        description: "私有 futex（匿名映射）"
+        fields:
+          - name: "mm"
+            type: "struct mm_struct *"
+            description: "内存描述符"
+          - name: "address"
+            type: "unsigned long"
+            description: "虚拟地址"
+      both:
+        description: "公共部分"
+        fields:
+          - name: "ptr"
+            type: "u64"
+            description: "指针值"
+          - name: "word"
+            type: "unsigned long"
+            description: "地址/偏移"
+          - name: "offset"
+            type: "unsigned int"
+            description: "页内偏移"
+
+  futex_pi_state:
+    description: "PI Futex 状态"
+    file: "kernel/futex.c"
+    pattern: 'struct futex_pi_state\s*\{'
+    fields:
+      - name: "list"
+        type: "struct list_head"
+        description: "链接到任务的 pi_state_list"
+      - name: "pi_mutex"
+        type: "struct rt_mutex"
+        description: "内核 RT mutex"
+      - name: "owner"
+        type: "struct task_struct *"
+        description: "当前持有者"
+      - name: "refcount"
+        type: "atomic_t"
+        description: "引用计数"
+      - name: "key"
+        type: "union futex_key"
+        description: "futex 标识键"
+
+  futex_hash_bucket:
+    description: "Futex 哈希桶"
+    file: "kernel/futex.c"
+    pattern: 'struct futex_hash_bucket\s*\{'
+    fields:
+      - name: "lock"
+        type: "spinlock_t"
+        description: "保护等待队列的锁"
+      - name: "chain"
+        type: "struct plist_head"
+        description: "等待者优先级链表"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+kernel_functions:
+  system_call:
+    do_futex:
+      pattern: 'do_futex\s*\(\s*(?P<uaddr>[^,]+)\s*,\s*(?P<op>\w+)\s*,'
+      description: "futex 系统调用核心实现"
+      file: "kernel/futex.c"
+      context: "process"
+      can_sleep: true
+
+    SYS_futex:
+      pattern: 'SYSCALL_DEFINE6\s*\(\s*futex\s*,'
+      description: "futex 系统调用入口"
+      file: "kernel/futex.c"
+
+  wait_operations:
+    futex_wait:
+      pattern: 'futex_wait\s*\(\s*(?P<uaddr>[^,]+)\s*,'
+      description: "FUTEX_WAIT 实现"
+      context: "process"
+      can_sleep: true
+      returns: "0 成功，-EWOULDBLOCK 值不匹配，-ETIMEDOUT 超时"
+
+    futex_wait_queue_me:
+      pattern: 'futex_wait_queue_me\s*\('
+      description: "将当前任务加入等待队列并睡眠"
+      context: "process"
+      can_sleep: true
+
+    futex_wait_setup:
+      pattern: 'futex_wait_setup\s*\('
+      description: "设置 futex 等待"
+      steps:
+        - "get_futex_key: 获取 futex 键"
+        - "hash_futex: 计算哈希"
+        - "queue_lock: 获取队列锁"
+        - "验证 futex 值"
+
+  wake_operations:
+    futex_wake:
+      pattern: 'futex_wake\s*\(\s*(?P<uaddr>[^,]+)\s*,'
+      description: "FUTEX_WAKE 实现"
+      context: "any"
+      can_sleep: false
+      returns: "唤醒的线程数"
+
+    wake_futex:
+      pattern: 'wake_futex\s*\(\s*(?P<q>\w+)\s*\)'
+      description: "唤醒单个等待者"
+      context: "any"
+      steps:
+        - "从队列移除"
+        - "设置任务状态"
+        - "wake_up_state: 唤醒任务"
+
+    futex_wake_op:
+      pattern: 'futex_wake_op\s*\('
+      description: "FUTEX_WAKE_OP 实现"
+      context: "any"
+      notes: "原子修改第二个 futex 并根据结果唤醒"
+
+  requeue_operations:
+    futex_requeue:
+      pattern: 'futex_requeue\s*\('
+      description: "FUTEX_REQUEUE/FUTEX_CMP_REQUEUE 实现"
+      context: "process"
+      notes: "将等待者从一个 futex 移到另一个"
+
+    requeue_futex:
+      pattern: 'requeue_futex\s*\(\s*(?P<q>\w+)\s*,'
+      description: "将单个等待者重新排队"
+
+  pi_operations:
+    futex_lock_pi:
+      pattern: 'futex_lock_pi\s*\('
+      description: "FUTEX_LOCK_PI 实现"
+      context: "process"
+      can_sleep: true
+      notes: "通过 rt_mutex 实现优先级继承"
+
+    futex_unlock_pi:
+      pattern: 'futex_unlock_pi\s*\('
+      description: "FUTEX_UNLOCK_PI 实现"
+      context: "process"
+
+    lookup_pi_state:
+      pattern: 'lookup_pi_state\s*\('
+      description: "查找或创建 PI 状态"
+
+    attach_to_pi_state:
+      pattern: 'attach_to_pi_state\s*\('
+      description: "将等待者附加到 PI 状态"
+
+  robust_futex:
+    exit_robust_list:
+      pattern: 'exit_robust_list\s*\(\s*(?P<curr>\w+)\s*\)'
+      description: "进程退出时清理 robust futex"
+      context: "process"
+      notes: "设置 FUTEX_OWNER_DIED 位并唤醒等待者"
+
+    handle_futex_death:
+      pattern: 'handle_futex_death\s*\('
+      description: "处理持有者死亡的 futex"
+
+# ============================================================
+# ROBUST FUTEX
+# ============================================================
+robust_futex:
+  description: "健壮 Futex - 处理持有者崩溃"
+  header: "linux/futex.h"
+  icon: "🛡️"
+
+  flags:
+    FUTEX_WAITERS:
+      value: 0x80000000
+      description: "表示有等待者"
+
+    FUTEX_OWNER_DIED:
+      value: 0x40000000
+      description: "持有者已死亡"
+
+    FUTEX_TID_MASK:
+      value: 0x3fffffff
+      description: "TID 掩码"
+
+  data_structures:
+    robust_list:
+      pattern: 'struct robust_list\s*\{'
+      description: "健壮 futex 链表项"
+      file: "include/uapi/linux/futex.h"
+      fields:
+        - name: "next"
+          type: "struct robust_list *"
+          description: "下一个 futex"
+
+    robust_list_head:
+      pattern: 'struct robust_list_head\s*\{'
+      description: "健壮 futex 链表头"
+      file: "include/uapi/linux/futex.h"
+      fields:
+        - name: "list"
+          type: "struct robust_list"
+          description: "链表"
+        - name: "futex_offset"
+          type: "long"
+          description: "futex 在结构中的偏移"
+        - name: "list_op_pending"
+          type: "struct robust_list *"
+          description: "正在操作的项"
+
+  system_calls:
+    set_robust_list:
+      pattern: 'SYSCALL_DEFINE2\s*\(\s*set_robust_list\s*,'
+      description: "设置线程的 robust 列表"
+
+    get_robust_list:
+      pattern: 'SYSCALL_DEFINE3\s*\(\s*get_robust_list\s*,'
+      description: "获取线程的 robust 列表"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  futex_wait_flow:
+    description: "FUTEX_WAIT 调用流程"
+    chain:
+      - caller: "sys_futex"
+        callee: "do_futex"
+        context: "process"
+        description: "系统调用入口"
+      - caller: "do_futex"
+        callee: "futex_wait"
+        description: "处理 FUTEX_WAIT"
+      - caller: "futex_wait"
+        callee: "futex_wait_setup"
+        description: "准备等待"
+      - caller: "futex_wait_setup"
+        callee: "get_futex_key"
+        description: "获取 futex 键"
+      - caller: "futex_wait"
+        callee: "futex_wait_queue_me"
+        description: "加入队列并睡眠"
+      - caller: "futex_wait_queue_me"
+        callee: "schedule"
+        description: "睡眠"
+
+  futex_wake_flow:
+    description: "FUTEX_WAKE 调用流程"
+    chain:
+      - caller: "sys_futex"
+        callee: "do_futex"
+        context: "process"
+        description: "系统调用入口"
+      - caller: "do_futex"
+        callee: "futex_wake"
+        description: "处理 FUTEX_WAKE"
+      - caller: "futex_wake"
+        callee: "get_futex_key"
+        description: "获取 futex 键"
+      - caller: "futex_wake"
+        callee: "hash_futex"
+        description: "定位哈希桶"
+      - caller: "futex_wake"
+        callee: "wake_futex"
+        description: "唤醒等待者"
+      - caller: "wake_futex"
+        callee: "wake_up_state"
+        description: "唤醒任务"
+
+  pi_lock_flow:
+    description: "PI Futex 锁获取流程"
+    chain:
+      - caller: "sys_futex"
+        callee: "do_futex"
+        context: "process"
+        description: "系统调用入口"
+      - caller: "do_futex"
+        callee: "futex_lock_pi"
+        description: "处理 FUTEX_LOCK_PI"
+      - caller: "futex_lock_pi"
+        callee: "get_futex_key"
+        description: "获取 futex 键"
+      - caller: "futex_lock_pi"
+        callee: "lookup_pi_state"
+        description: "查找 PI 状态"
+      - caller: "futex_lock_pi"
+        callee: "__rt_mutex_start_proxy_lock"
+        description: "通过 RT mutex 等待"
+      - caller: "__rt_mutex_start_proxy_lock"
+        callee: "rt_mutex_slowlock"
+        description: "RT mutex 慢路径"
+
+  robust_exit_flow:
+    description: "Robust Futex 退出清理流程"
+    chain:
+      - caller: "do_exit"
+        callee: "exit_robust_list"
+        context: "process"
+        description: "进程退出"
+      - caller: "exit_robust_list"
+        callee: "handle_futex_death"
+        description: "处理每个 robust futex"
+      - caller: "handle_futex_death"
+        callee: "cmpxchg_futex_value_locked"
+        description: "原子设置 OWNER_DIED"
+      - caller: "handle_futex_death"
+        callee: "futex_wake"
+        description: "唤醒等待者"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "用户空间互斥锁实现"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/futex.h>
+      #include <sys/syscall.h>
+      #include <unistd.h>
+      #include <stdatomic.h>
+      
+      typedef struct {
+          _Atomic int state;  /* 0: 未锁定, 1: 已锁定无等待者, 2: 有等待者 */
+      } mutex_t;
+      
+      static long futex(int *uaddr, int op, int val,
+                        const struct timespec *timeout)
+      {
+          return syscall(SYS_futex, uaddr, op, val, timeout, NULL, 0);
+      }
+      
+      void mutex_lock(mutex_t *m)
+      {
+          int expected = 0;
+          
+          /* 快速路径：尝试从 0 变为 1 */
+          if (atomic_compare_exchange_strong(&m->state, &expected, 1))
+              return;
+          
+          /* 慢路径：设置为 2 并等待 */
+          while (1) {
+              if (expected == 2 || 
+                  !atomic_compare_exchange_strong(&m->state, &expected, 2)) {
+                  /* 等待 futex 值变化 */
+                  futex((int *)&m->state, FUTEX_WAIT_PRIVATE, 2, NULL);
+              }
+              expected = 0;
+              if (atomic_compare_exchange_strong(&m->state, &expected, 2))
+                  return;
+          }
+      }
+      
+      void mutex_unlock(mutex_t *m)
+      {
+          /* 如果从 2 变为 0，说明有等待者 */
+          if (atomic_fetch_sub(&m->state, 1) != 1) {
+              atomic_store(&m->state, 0);
+              futex((int *)&m->state, FUTEX_WAKE_PRIVATE, 1, NULL);
+          }
+      }
+
+  - description: "内核驱动中使用 futex 通知用户空间"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/futex.h>
+      #include <linux/uaccess.h>
+      
+      struct my_device {
+          /* 用户空间映射的事件标志 */
+          u32 __user *event_flag;
+      };
+      
+      /* 从中断处理程序通知用户空间 */
+      static void notify_userspace(struct my_device *dev)
+      {
+          u32 val = 1;
+          
+          /* 设置事件标志 */
+          if (put_user(val, dev->event_flag))
+              return;
+          
+          /* 唤醒等待的用户空间线程 */
+          /* 注意：内核不能直接调用 futex，这里是概念示例 */
+          /* 实际实现通常使用 eventfd 或其他机制 */
+      }
+
+  - description: "PI Futex 条件变量 (pthread_cond_wait 底层)"
+    kernel_version: "2.6.31+"
+    code: |
+      /* 用户空间 PI 条件变量实现概念 */
+      
+      #include <linux/futex.h>
+      #include <sys/syscall.h>
+      
+      typedef struct {
+          _Atomic int seq;  /* 序列号 */
+      } pi_cond_t;
+      
+      typedef struct {
+          _Atomic int state;
+      } pi_mutex_t;
+      
+      void pi_cond_wait(pi_cond_t *c, pi_mutex_t *m)
+      {
+          int seq = atomic_load(&c->seq);
+          
+          /* 释放互斥锁 */
+          pi_mutex_unlock(m);
+          
+          /* 使用 FUTEX_WAIT_REQUEUE_PI:
+           * 1. 等待在 cond->seq 上
+           * 2. 被唤醒时自动获取 mutex (PI 方式)
+           */
+          syscall(SYS_futex, &c->seq, 
+                  FUTEX_WAIT_REQUEUE_PI | FUTEX_PRIVATE_FLAG,
+                  seq, NULL, &m->state, 0);
+          
+          /* 返回时已持有互斥锁 */
+      }
+      
+      void pi_cond_signal(pi_cond_t *c, pi_mutex_t *m)
+      {
+          /* 使用 FUTEX_CMP_REQUEUE_PI:
+           * 将一个等待者从 cond 移到 mutex
+           */
+          syscall(SYS_futex, &c->seq,
+                  FUTEX_CMP_REQUEUE_PI | FUTEX_PRIVATE_FLAG,
+                  1, /* 唤醒数 */
+                  (void *)1, /* requeue 数 */
+                  &m->state,
+                  atomic_load(&c->seq));
+      }
+
+  - description: "Robust Futex 设置"
+    kernel_version: "2.6.17+"
+    code: |
+      #include <linux/futex.h>
+      #include <sys/syscall.h>
+      
+      /* 设置 robust 列表头 */
+      void setup_robust_list(void)
+      {
+          static __thread struct robust_list_head robust_list;
+          
+          robust_list.list.next = &robust_list.list;
+          robust_list.futex_offset = offsetof(struct my_lock, futex);
+          robust_list.list_op_pending = NULL;
+          
+          syscall(SYS_set_robust_list, &robust_list, sizeof(robust_list));
+      }
+      
+      struct my_lock {
+          struct robust_list list;
+          int futex;
+          /* 其他数据 */
+      };
+      
+      void lock_with_robust(struct my_lock *lock, 
+                            struct robust_list_head *head)
+      {
+          /* 添加到 robust 列表 */
+          lock->list.next = head->list.next;
+          head->list_op_pending = &lock->list;
+          __sync_synchronize();
+          head->list.next = &lock->list;
+          head->list_op_pending = NULL;
+          
+          /* 获取锁 */
+          int tid = gettid();
+          while (1) {
+              int expected = 0;
+              if (__sync_bool_compare_and_swap(&lock->futex, 0, tid))
+                  break;
+              
+              /* 检查 OWNER_DIED */
+              int val = lock->futex;
+              if (val & FUTEX_OWNER_DIED) {
+                  /* 尝试获取死锁 */
+                  if (__sync_bool_compare_and_swap(&lock->futex, val,
+                          tid | FUTEX_WAITERS))
+                      break;
+              }
+              
+              syscall(SYS_futex, &lock->futex, FUTEX_WAIT,
+                      val | FUTEX_WAITERS, NULL, NULL, 0);
+          }
+      }
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.5.7":
+    - "引入 futex 系统调用"
+  "2.6.0":
+    - "基础 FUTEX_WAIT/FUTEX_WAKE"
+    - "FUTEX_REQUEUE"
+  "2.6.17":
+    - "Robust futex 支持"
+    - "set_robust_list/get_robust_list 系统调用"
+  "2.6.18":
+    - "PI futex 支持"
+    - "FUTEX_LOCK_PI/FUTEX_UNLOCK_PI"
+  "2.6.25":
+    - "FUTEX_WAIT_BITSET/FUTEX_WAKE_BITSET"
+  "2.6.26":
+    - "移除 FUTEX_FD"
+  "2.6.28":
+    - "FUTEX_CLOCK_REALTIME 标志"
+  "2.6.31":
+    - "FUTEX_WAIT_REQUEUE_PI/FUTEX_CMP_REQUEUE_PI"
+    - "完整的 PI 条件变量支持"
+  "5.0":
+    - "性能优化"
+    - "哈希表改进"

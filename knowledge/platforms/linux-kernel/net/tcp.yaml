@@ -1,0 +1,931 @@
+# Linux Kernel TCP Protocol Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/networking/tcp.html
+# Kernel Version: 5.0+
+
+# ============================================================
+# TCP CORE
+# ============================================================
+
+tcp_core:
+  description: "TCP Protocol Core - TCP 协议核心"
+  header: "net/ipv4/tcp.c"
+  icon: "🔗"
+  kernel_version: "5.0+"
+
+  context:
+    type: "process/softirq"
+    can_sleep: "depends on context"
+    description: "发送在进程上下文，接收在软中断上下文"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  tcp_sock:
+    description: "TCP Socket Structure - TCP 套接字结构"
+    header: "include/linux/tcp.h"
+    pattern: 'struct tcp_sock\s*\{'
+    fields:
+      # 继承自 inet_connection_sock
+      - name: "inet_conn"
+        type: "struct inet_connection_sock"
+        description: "继承的连接 socket"
+
+      # 序列号相关
+      - name: "snd_una"
+        type: "u32"
+        description: "最早未确认的序列号 (send unacknowledged)"
+      - name: "snd_nxt"
+        type: "u32"
+        description: "下一个要发送的序列号"
+      - name: "snd_wnd"
+        type: "u32"
+        description: "发送窗口大小"
+      - name: "snd_wl1"
+        type: "u32"
+        description: "更新窗口时的序列号"
+      - name: "rcv_nxt"
+        type: "u32"
+        description: "期望接收的下一个序列号"
+      - name: "rcv_wnd"
+        type: "u32"
+        description: "接收窗口大小"
+      - name: "rcv_wup"
+        type: "u32"
+        description: "上次发送 ACK 时的 rcv_nxt"
+
+      # 拥塞控制
+      - name: "snd_cwnd"
+        type: "u32"
+        description: "拥塞窗口大小"
+      - name: "snd_ssthresh"
+        type: "u32"
+        description: "慢启动阈值"
+      - name: "srtt_us"
+        type: "u32"
+        description: "平滑往返时间 (微秒)"
+      - name: "rttvar_us"
+        type: "u32"
+        description: "RTT 变化量 (微秒)"
+      - name: "mdev_us"
+        type: "u32"
+        description: "RTT 平均偏差"
+      - name: "rto"
+        type: "u32"
+        description: "重传超时 (jiffies)"
+
+      # 时间戳
+      - name: "rcv_tsval"
+        type: "u32"
+        description: "接收到的时间戳值"
+      - name: "rcv_tsecr"
+        type: "u32"
+        description: "接收到的时间戳回显"
+      - name: "ts_recent"
+        type: "u32"
+        description: "最近的时间戳"
+      - name: "ts_recent_stamp"
+        type: "u32"
+        description: "ts_recent 的时间"
+
+      # MSS 和窗口缩放
+      - name: "mss_cache"
+        type: "u16"
+        description: "缓存的 MSS 值"
+      - name: "advmss"
+        type: "u16"
+        description: "通告的 MSS"
+      - name: "rx_opt"
+        type: "struct tcp_options_received"
+        description: "接收的 TCP 选项"
+
+      # 重传和丢包
+      - name: "retrans_out"
+        type: "u32"
+        description: "已重传的段数"
+      - name: "lost_out"
+        type: "u32"
+        description: "丢失的段数"
+      - name: "sacked_out"
+        type: "u32"
+        description: "SACK 确认的段数"
+      - name: "fackets_out"
+        type: "u32"
+        description: "FACK 计数"
+
+      # 快速重传
+      - name: "reordering"
+        type: "u32"
+        description: "乱序阈值"
+      - name: "high_seq"
+        type: "u32"
+        description: "进入恢复时的 snd_nxt"
+      - name: "prior_ssthresh"
+        type: "u32"
+        description: "进入恢复前的 ssthresh"
+
+      # 发送/接收队列
+      - name: "packets_out"
+        type: "u32"
+        description: "发送中的段数"
+      - name: "write_seq"
+        type: "u32"
+        description: "写入的最大序列号"
+      - name: "pushed_seq"
+        type: "u32"
+        description: "已推送的序列号"
+
+      # 拥塞控制算法
+      - name: "icsk_ca_ops"
+        type: "struct tcp_congestion_ops *"
+        description: "拥塞控制算法操作"
+
+  tcp_options_received:
+    description: "TCP Options Received - 接收的 TCP 选项"
+    header: "include/linux/tcp.h"
+    pattern: 'struct tcp_options_received\s*\{'
+    fields:
+      - name: "tstamp_ok"
+        type: "u16:1"
+        description: "是否启用时间戳"
+      - name: "sack_ok"
+        type: "u16:1"
+        description: "是否启用 SACK"
+      - name: "wscale_ok"
+        type: "u16:1"
+        description: "是否启用窗口缩放"
+      - name: "ecn_ok"
+        type: "u16:1"
+        description: "是否启用 ECN"
+      - name: "snd_wscale"
+        type: "u8"
+        description: "发送窗口缩放因子"
+      - name: "rcv_wscale"
+        type: "u8"
+        description: "接收窗口缩放因子"
+      - name: "rcv_tsval"
+        type: "u32"
+        description: "接收的时间戳值"
+      - name: "rcv_tsecr"
+        type: "u32"
+        description: "接收的时间戳回显"
+      - name: "mss_clamp"
+        type: "u16"
+        description: "MSS 上限"
+
+  tcp_congestion_ops:
+    description: "TCP Congestion Control Operations - TCP 拥塞控制操作"
+    header: "include/net/tcp.h"
+    pattern: 'struct tcp_congestion_ops\s*\{'
+    fields:
+      - name: "name"
+        type: "char[16]"
+        description: "算法名称"
+      - name: "owner"
+        type: "struct module *"
+        description: "所属模块"
+      - name: "flags"
+        type: "u32"
+        description: "算法标志"
+      - name: "init"
+        type: "void (*)(struct sock *)"
+        description: "初始化拥塞控制状态"
+      - name: "release"
+        type: "void (*)(struct sock *)"
+        description: "释放拥塞控制状态"
+      - name: "ssthresh"
+        type: "u32 (*)(struct sock *)"
+        description: "计算慢启动阈值"
+      - name: "cong_avoid"
+        type: "void (*)(struct sock *, u32, u32)"
+        description: "拥塞避免算法"
+      - name: "set_state"
+        type: "void (*)(struct sock *, u8)"
+        description: "设置拥塞状态"
+      - name: "cwnd_event"
+        type: "void (*)(struct sock *, enum tcp_ca_event)"
+        description: "拥塞窗口事件"
+      - name: "in_ack_event"
+        type: "void (*)(struct sock *, u32)"
+        description: "ACK 事件处理"
+      - name: "pkts_acked"
+        type: "void (*)(struct sock *, const struct ack_sample *)"
+        description: "数据包被确认"
+      - name: "undo_cwnd"
+        type: "u32 (*)(struct sock *)"
+        description: "撤销拥塞窗口"
+
+# ============================================================
+# TCP STATE MACHINE
+# ============================================================
+
+tcp_state_machine:
+  description: "TCP State Machine - TCP 状态机"
+  header: "include/net/tcp_states.h"
+  icon: "🔄"
+  kernel_version: "5.0+"
+
+  states:
+    TCP_ESTABLISHED:
+      value: 1
+      description: "连接已建立，数据可双向传输"
+    TCP_SYN_SENT:
+      value: 2
+      description: "已发送 SYN，等待 SYN-ACK"
+    TCP_SYN_RECV:
+      value: 3
+      description: "已收到 SYN，发送了 SYN-ACK，等待 ACK"
+    TCP_FIN_WAIT1:
+      value: 4
+      description: "主动关闭，已发送 FIN，等待 ACK"
+    TCP_FIN_WAIT2:
+      value: 5
+      description: "收到 FIN 的 ACK，等待对方 FIN"
+    TCP_TIME_WAIT:
+      value: 6
+      description: "等待 2MSL 后关闭"
+    TCP_CLOSE:
+      value: 7
+      description: "连接已关闭"
+    TCP_CLOSE_WAIT:
+      value: 8
+      description: "被动关闭，收到 FIN，等待应用关闭"
+    TCP_LAST_ACK:
+      value: 9
+      description: "被动关闭，已发送 FIN，等待 ACK"
+    TCP_LISTEN:
+      value: 10
+      description: "监听状态，等待连接请求"
+    TCP_CLOSING:
+      value: 11
+      description: "双方同时关闭"
+    TCP_NEW_SYN_RECV:
+      value: 12
+      description: "SYN 请求已收到 (fastopen)"
+
+  transitions:
+    three_way_handshake:
+      description: "三次握手"
+      steps:
+        - from: "TCP_CLOSE"
+          to: "TCP_SYN_SENT"
+          trigger: "客户端调用 connect()"
+          action: "发送 SYN"
+        - from: "TCP_LISTEN"
+          to: "TCP_SYN_RECV"
+          trigger: "服务器收到 SYN"
+          action: "发送 SYN-ACK"
+        - from: "TCP_SYN_SENT"
+          to: "TCP_ESTABLISHED"
+          trigger: "客户端收到 SYN-ACK"
+          action: "发送 ACK"
+        - from: "TCP_SYN_RECV"
+          to: "TCP_ESTABLISHED"
+          trigger: "服务器收到 ACK"
+          action: "连接建立"
+
+    four_way_close:
+      description: "四次挥手"
+      steps:
+        - from: "TCP_ESTABLISHED"
+          to: "TCP_FIN_WAIT1"
+          trigger: "主动端调用 close()"
+          action: "发送 FIN"
+        - from: "TCP_ESTABLISHED"
+          to: "TCP_CLOSE_WAIT"
+          trigger: "被动端收到 FIN"
+          action: "发送 ACK"
+        - from: "TCP_FIN_WAIT1"
+          to: "TCP_FIN_WAIT2"
+          trigger: "收到 ACK"
+          action: "等待对方 FIN"
+        - from: "TCP_CLOSE_WAIT"
+          to: "TCP_LAST_ACK"
+          trigger: "应用调用 close()"
+          action: "发送 FIN"
+        - from: "TCP_FIN_WAIT2"
+          to: "TCP_TIME_WAIT"
+          trigger: "收到 FIN"
+          action: "发送 ACK，进入 TIME_WAIT"
+        - from: "TCP_LAST_ACK"
+          to: "TCP_CLOSE"
+          trigger: "收到 ACK"
+          action: "连接关闭"
+        - from: "TCP_TIME_WAIT"
+          to: "TCP_CLOSE"
+          trigger: "2MSL 超时"
+          action: "连接关闭"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # ========== 发送路径 ==========
+  tcp_sendmsg:
+    pattern: 'tcp_sendmsg\s*\('
+    description: "TCP 发送消息入口"
+    file: "net/ipv4/tcp.c"
+    signature: "int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)"
+    context: "process"
+    can_sleep: true
+    return_value:
+      success: "发送的字节数"
+      failure: "-ERRNO"
+    typical_actions:
+      - "从用户空间复制数据"
+      - "分段并加入发送队列"
+      - "触发发送"
+
+  tcp_sendmsg_locked:
+    pattern: 'tcp_sendmsg_locked\s*\('
+    description: "TCP 发送消息 (持有 socket 锁)"
+    file: "net/ipv4/tcp.c"
+    signature: "int tcp_sendmsg_locked(struct sock *sk, struct msghdr *msg, size_t size)"
+    context: "process"
+    can_sleep: true
+
+  tcp_write_xmit:
+    pattern: 'tcp_write_xmit\s*\('
+    description: "TCP 写入发送"
+    file: "net/ipv4/tcp_output.c"
+    signature: "bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle, int push_one, gfp_t gfp)"
+    context: "process/softirq"
+    can_sleep: false
+    typical_actions:
+      - "从发送队列取出 skb"
+      - "检查拥塞窗口"
+      - "发送数据段"
+
+  tcp_transmit_skb:
+    pattern: 'tcp_transmit_skb\s*\('
+    description: "TCP 发送单个 SKB"
+    file: "net/ipv4/tcp_output.c"
+    signature: "int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it, gfp_t gfp_mask)"
+    context: "any"
+    can_sleep: false
+    typical_actions:
+      - "构建 TCP 头部"
+      - "计算校验和"
+      - "传递给 IP 层"
+
+  __tcp_transmit_skb:
+    pattern: '__tcp_transmit_skb\s*\('
+    description: "TCP 发送 SKB (内部)"
+    file: "net/ipv4/tcp_output.c"
+    signature: "int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it, gfp_t gfp_mask, u32 rcv_nxt)"
+    context: "any"
+    can_sleep: false
+
+  tcp_push:
+    pattern: 'tcp_push\s*\('
+    description: "TCP 推送数据"
+    file: "net/ipv4/tcp.c"
+    signature: "void tcp_push(struct sock *sk, int flags, int mss_now, int nonagle, int size_goal)"
+    context: "process"
+    can_sleep: false
+    typical_actions:
+      - "检查是否可以发送"
+      - "调用 tcp_write_xmit"
+
+  # ========== 接收路径 ==========
+  tcp_recvmsg:
+    pattern: 'tcp_recvmsg\s*\('
+    description: "TCP 接收消息入口"
+    file: "net/ipv4/tcp.c"
+    signature: "int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len)"
+    context: "process"
+    can_sleep: true
+    return_value:
+      success: "接收的字节数"
+      failure: "-ERRNO"
+      eof: "0 (连接关闭)"
+    typical_actions:
+      - "等待数据到达"
+      - "从接收队列复制数据"
+      - "更新接收窗口"
+
+  tcp_v4_rcv:
+    pattern: 'tcp_v4_rcv\s*\('
+    description: "TCP IPv4 接收入口"
+    file: "net/ipv4/tcp_ipv4.c"
+    signature: "int tcp_v4_rcv(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    return_value:
+      success: "0"
+      failure: "非 0"
+    typical_actions:
+      - "查找 socket"
+      - "验证校验和"
+      - "分发到 socket"
+
+  tcp_v4_do_rcv:
+    pattern: 'tcp_v4_do_rcv\s*\('
+    description: "TCP IPv4 接收处理"
+    file: "net/ipv4/tcp_ipv4.c"
+    signature: "int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "根据状态调用处理函数"
+      - "ESTABLISHED 状态调用快速路径"
+
+  tcp_rcv_established:
+    pattern: 'tcp_rcv_established\s*\('
+    description: "TCP 已建立状态接收 (快速路径)"
+    file: "net/ipv4/tcp_input.c"
+    signature: "void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "处理 ACK"
+      - "处理数据"
+      - "更新窗口"
+
+  tcp_rcv_state_process:
+    pattern: 'tcp_rcv_state_process\s*\('
+    description: "TCP 状态机处理"
+    file: "net/ipv4/tcp_input.c"
+    signature: "int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "处理非 ESTABLISHED 状态的数据包"
+      - "状态转换"
+
+  # ========== 连接管理 ==========
+  tcp_v4_connect:
+    pattern: 'tcp_v4_connect\s*\('
+    description: "TCP IPv4 连接"
+    file: "net/ipv4/tcp_ipv4.c"
+    signature: "int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)"
+    context: "process"
+    can_sleep: true
+    return_value:
+      success: "0"
+      failure: "-ERRNO"
+    typical_actions:
+      - "路由查找"
+      - "发送 SYN"
+      - "设置状态为 SYN_SENT"
+
+  tcp_connect:
+    pattern: 'tcp_connect\s*\('
+    description: "TCP 连接 (发送 SYN)"
+    file: "net/ipv4/tcp_output.c"
+    signature: "int tcp_connect(struct sock *sk)"
+    context: "process"
+    can_sleep: true
+    typical_actions:
+      - "构建 SYN 包"
+      - "发送 SYN"
+      - "设置重传定时器"
+
+  tcp_disconnect:
+    pattern: 'tcp_disconnect\s*\('
+    description: "TCP 断开连接"
+    file: "net/ipv4/tcp.c"
+    signature: "int tcp_disconnect(struct sock *sk, int flags)"
+    context: "process"
+    can_sleep: true
+
+  tcp_close:
+    pattern: 'tcp_close\s*\('
+    description: "TCP 关闭连接"
+    file: "net/ipv4/tcp.c"
+    signature: "void tcp_close(struct sock *sk, long timeout)"
+    context: "process"
+    can_sleep: true
+    typical_actions:
+      - "发送 FIN"
+      - "进入 FIN_WAIT1 状态"
+      - "等待关闭完成"
+
+  # ========== 拥塞控制 ==========
+  tcp_cong_control:
+    pattern: 'tcp_cong_control\s*\('
+    description: "TCP 拥塞控制"
+    file: "net/ipv4/tcp_input.c"
+    signature: "void tcp_cong_control(struct sock *sk, u32 ack, u32 acked_sacked, int flag, const struct rate_sample *rs)"
+    context: "softirq"
+    can_sleep: false
+
+  tcp_slow_start:
+    pattern: 'tcp_slow_start\s*\('
+    description: "TCP 慢启动"
+    file: "net/ipv4/tcp_cong.c"
+    signature: "u32 tcp_slow_start(struct tcp_sock *tp, u32 acked)"
+    context: "softirq"
+    can_sleep: false
+    notes: "每收到一个 ACK，cwnd 增加 1"
+
+  tcp_cong_avoid_ai:
+    pattern: 'tcp_cong_avoid_ai\s*\('
+    description: "TCP 拥塞避免 (加性增)"
+    file: "net/ipv4/tcp_cong.c"
+    signature: "void tcp_cong_avoid_ai(struct tcp_sock *tp, u32 w, u32 acked)"
+    context: "softirq"
+    can_sleep: false
+    notes: "每个 RTT，cwnd 增加约 1"
+
+  tcp_reno_cong_avoid:
+    pattern: 'tcp_reno_cong_avoid\s*\('
+    description: "TCP Reno 拥塞避免"
+    file: "net/ipv4/tcp_cong.c"
+    signature: "void tcp_reno_cong_avoid(struct sock *sk, u32 ack, u32 acked)"
+    context: "softirq"
+    can_sleep: false
+
+  tcp_enter_cwr:
+    pattern: 'tcp_enter_cwr\s*\('
+    description: "进入 CWR 状态"
+    file: "net/ipv4/tcp_input.c"
+    signature: "void tcp_enter_cwr(struct sock *sk)"
+    context: "softirq"
+    can_sleep: false
+    notes: "收到 ECN CE 标记时"
+
+  tcp_enter_recovery:
+    pattern: 'tcp_enter_recovery\s*\('
+    description: "进入恢复状态"
+    file: "net/ipv4/tcp_input.c"
+    signature: "void tcp_enter_recovery(struct sock *sk, bool ece_ack)"
+    context: "softirq"
+    can_sleep: false
+    notes: "检测到丢包时"
+
+  tcp_enter_loss:
+    pattern: 'tcp_enter_loss\s*\('
+    description: "进入丢包状态"
+    file: "net/ipv4/tcp_input.c"
+    signature: "void tcp_enter_loss(struct sock *sk)"
+    context: "softirq"
+    can_sleep: false
+    notes: "RTO 超时时"
+
+  # ========== 重传 ==========
+  tcp_retransmit_skb:
+    pattern: 'tcp_retransmit_skb\s*\('
+    description: "TCP 重传 SKB"
+    file: "net/ipv4/tcp_output.c"
+    signature: "int tcp_retransmit_skb(struct sock *sk, struct sk_buff *skb, int segs)"
+    context: "softirq"
+    can_sleep: false
+
+  tcp_retransmit_timer:
+    pattern: 'tcp_retransmit_timer\s*\('
+    description: "TCP 重传定时器"
+    file: "net/ipv4/tcp_timer.c"
+    signature: "void tcp_retransmit_timer(struct sock *sk)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "检查是否需要重传"
+      - "指数退避"
+      - "进入丢包状态"
+
+  tcp_xmit_retransmit_queue:
+    pattern: 'tcp_xmit_retransmit_queue\s*\('
+    description: "重传整个队列"
+    file: "net/ipv4/tcp_output.c"
+    signature: "void tcp_xmit_retransmit_queue(struct sock *sk)"
+    context: "softirq"
+    can_sleep: false
+
+  # ========== ACK 处理 ==========
+  tcp_ack:
+    pattern: 'tcp_ack\s*\('
+    description: "TCP ACK 处理"
+    file: "net/ipv4/tcp_input.c"
+    signature: "int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "更新 snd_una"
+      - "释放已确认的数据"
+      - "更新拥塞窗口"
+
+  tcp_send_ack:
+    pattern: 'tcp_send_ack\s*\('
+    description: "TCP 发送 ACK"
+    file: "net/ipv4/tcp_output.c"
+    signature: "void tcp_send_ack(struct sock *sk)"
+    context: "softirq"
+    can_sleep: false
+
+  tcp_send_delayed_ack:
+    pattern: 'tcp_send_delayed_ack\s*\('
+    description: "TCP 发送延迟 ACK"
+    file: "net/ipv4/tcp_output.c"
+    signature: "void tcp_send_delayed_ack(struct sock *sk)"
+    context: "softirq"
+    can_sleep: false
+    notes: "最多延迟 40ms"
+
+# ============================================================
+# CONGESTION CONTROL ALGORITHMS
+# ============================================================
+
+congestion_control:
+  description: "TCP Congestion Control Algorithms - TCP 拥塞控制算法"
+  header: "include/net/tcp.h"
+  icon: "📊"
+
+  algorithms:
+    reno:
+      name: "Reno"
+      description: "经典 TCP Reno 算法"
+      file: "net/ipv4/tcp_cong.c"
+      features:
+        - "慢启动"
+        - "拥塞避免 (AIMD)"
+        - "快速重传"
+        - "快速恢复"
+
+    cubic:
+      name: "CUBIC"
+      description: "Linux 默认拥塞控制算法"
+      file: "net/ipv4/tcp_cubic.c"
+      features:
+        - "立方函数增长"
+        - "高带宽网络优化"
+        - "RTT 公平性"
+
+    bbr:
+      name: "BBR"
+      description: "Bottleneck Bandwidth and RTT"
+      file: "net/ipv4/tcp_bbr.c"
+      features:
+        - "基于带宽和 RTT 估计"
+        - "不依赖丢包信号"
+        - "低延迟高吞吐"
+
+    vegas:
+      name: "Vegas"
+      description: "基于延迟的拥塞控制"
+      file: "net/ipv4/tcp_vegas.c"
+      features:
+        - "基于 RTT 变化"
+        - "预防性拥塞避免"
+
+    westwood:
+      name: "Westwood+"
+      description: "带宽估计算法"
+      file: "net/ipv4/tcp_westwood.c"
+      features:
+        - "带宽估计"
+        - "丢包后智能降速"
+
+  registration:
+    tcp_register_congestion_control:
+      pattern: 'tcp_register_congestion_control\s*\(\s*&?(?P<ops>\w+)\s*\)'
+      description: "注册拥塞控制算法"
+      context: "process"
+      can_sleep: true
+
+    tcp_unregister_congestion_control:
+      pattern: 'tcp_unregister_congestion_control\s*\(\s*&?(?P<ops>\w+)\s*\)'
+      description: "注销拥塞控制算法"
+      context: "process"
+      can_sleep: true
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  tcp_send_path:
+    description: "TCP 发送路径"
+    trigger: "应用调用 send/write"
+    chain:
+      - function: "sys_sendto / sys_write"
+        file: "net/socket.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "sock_sendmsg"
+        file: "net/socket.c"
+        description: "socket 发送消息"
+      - function: "inet_sendmsg"
+        file: "net/ipv4/af_inet.c"
+        description: "INET 发送消息"
+      - function: "tcp_sendmsg"
+        file: "net/ipv4/tcp.c"
+        description: "TCP 发送入口"
+      - function: "tcp_sendmsg_locked"
+        file: "net/ipv4/tcp.c"
+        description: "持锁发送"
+      - function: "tcp_push"
+        file: "net/ipv4/tcp.c"
+        description: "推送数据"
+      - function: "tcp_write_xmit"
+        file: "net/ipv4/tcp_output.c"
+        description: "发送到网络"
+      - function: "__tcp_transmit_skb"
+        file: "net/ipv4/tcp_output.c"
+        description: "构建并发送"
+      - function: "ip_queue_xmit"
+        file: "net/ipv4/ip_output.c"
+        description: "IP 层发送"
+
+  tcp_receive_path:
+    description: "TCP 接收路径"
+    trigger: "网卡收到 TCP 数据包"
+    chain:
+      - function: "ip_local_deliver_finish"
+        file: "net/ipv4/ip_input.c"
+        description: "IP 层投递"
+        context: "softirq"
+      - function: "tcp_v4_rcv"
+        file: "net/ipv4/tcp_ipv4.c"
+        description: "TCP 接收入口"
+      - function: "__inet_lookup_skb"
+        file: "net/ipv4/inet_hashtables.c"
+        description: "查找 socket"
+      - function: "tcp_v4_do_rcv"
+        file: "net/ipv4/tcp_ipv4.c"
+        description: "执行接收"
+      - function: "tcp_rcv_established"
+        file: "net/ipv4/tcp_input.c"
+        description: "已建立状态快速路径"
+      - function: "tcp_ack"
+        file: "net/ipv4/tcp_input.c"
+        description: "处理 ACK"
+      - function: "tcp_data_queue"
+        file: "net/ipv4/tcp_input.c"
+        description: "数据入队"
+      - function: "sk->sk_data_ready"
+        file: "net/core/sock.c"
+        description: "通知应用数据可读"
+
+  tcp_connect_path:
+    description: "TCP 连接建立路径"
+    trigger: "应用调用 connect()"
+    chain:
+      - function: "sys_connect"
+        file: "net/socket.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "__sys_connect"
+        file: "net/socket.c"
+      - function: "inet_stream_connect"
+        file: "net/ipv4/af_inet.c"
+        description: "TCP 流连接"
+      - function: "__inet_stream_connect"
+        file: "net/ipv4/af_inet.c"
+      - function: "tcp_v4_connect"
+        file: "net/ipv4/tcp_ipv4.c"
+        description: "IPv4 TCP 连接"
+      - function: "tcp_connect"
+        file: "net/ipv4/tcp_output.c"
+        description: "发送 SYN"
+      - function: "inet_wait_for_connect"
+        file: "net/ipv4/af_inet.c"
+        description: "等待连接完成"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "TCP 拥塞控制算法注册示例"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <net/tcp.h>
+      
+      /* 拥塞控制状态 */
+      struct my_cc_state {
+          u32 last_cwnd;
+          u32 last_rtt;
+      };
+      
+      /* 初始化 */
+      static void my_cc_init(struct sock *sk)
+      {
+          struct my_cc_state *ca = inet_csk_ca(sk);
+          struct tcp_sock *tp = tcp_sk(sk);
+          
+          ca->last_cwnd = tp->snd_cwnd;
+          ca->last_rtt = 0;
+      }
+      
+      /* 计算 ssthresh */
+      static u32 my_cc_ssthresh(struct sock *sk)
+      {
+          const struct tcp_sock *tp = tcp_sk(sk);
+          
+          /* 丢包后减半 */
+          return max(tp->snd_cwnd >> 1U, 2U);
+      }
+      
+      /* 拥塞避免 */
+      static void my_cc_cong_avoid(struct sock *sk, u32 ack, u32 acked)
+      {
+          struct tcp_sock *tp = tcp_sk(sk);
+          
+          if (!tcp_is_cwnd_limited(sk))
+              return;
+          
+          if (tcp_in_slow_start(tp)) {
+              /* 慢启动：指数增长 */
+              tcp_slow_start(tp, acked);
+          } else {
+              /* 拥塞避免：线性增长 */
+              tcp_cong_avoid_ai(tp, tp->snd_cwnd, acked);
+          }
+      }
+      
+      /* 状态变化 */
+      static void my_cc_state(struct sock *sk, u8 new_state)
+      {
+          if (new_state == TCP_CA_Loss) {
+              /* 进入丢包状态 */
+              pr_debug("my_cc: entering loss state\n");
+          }
+      }
+      
+      /* 拥塞控制操作结构 */
+      static struct tcp_congestion_ops my_cc_ops __read_mostly = {
+          .name       = "my_cc",
+          .owner      = THIS_MODULE,
+          .init       = my_cc_init,
+          .ssthresh   = my_cc_ssthresh,
+          .cong_avoid = my_cc_cong_avoid,
+          .set_state  = my_cc_state,
+      };
+      
+      static int __init my_cc_register(void)
+      {
+          BUILD_BUG_ON(sizeof(struct my_cc_state) > ICSK_CA_PRIV_SIZE);
+          return tcp_register_congestion_control(&my_cc_ops);
+      }
+      
+      static void __exit my_cc_unregister(void)
+      {
+          tcp_unregister_congestion_control(&my_cc_ops);
+      }
+      
+      module_init(my_cc_register);
+      module_exit(my_cc_unregister);
+      MODULE_LICENSE("GPL");
+      MODULE_DESCRIPTION("My TCP Congestion Control");
+
+  - description: "TCP socket 选项示例"
+    kernel_version: "5.0+"
+    code: |
+      /* 用户空间代码 */
+      #include <sys/socket.h>
+      #include <netinet/tcp.h>
+      
+      int setup_tcp_socket(int sockfd)
+      {
+          int optval;
+          socklen_t optlen;
+          
+          /* 设置 TCP_NODELAY (禁用 Nagle 算法) */
+          optval = 1;
+          if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY,
+                        &optval, sizeof(optval)) < 0)
+              return -1;
+          
+          /* 设置 TCP_QUICKACK (禁用延迟 ACK) */
+          optval = 1;
+          if (setsockopt(sockfd, IPPROTO_TCP, TCP_QUICKACK,
+                        &optval, sizeof(optval)) < 0)
+              return -1;
+          
+          /* 设置拥塞控制算法 */
+          const char *cc = "bbr";
+          if (setsockopt(sockfd, IPPROTO_TCP, TCP_CONGESTION,
+                        cc, strlen(cc)) < 0)
+              return -1;
+          
+          /* 获取当前拥塞控制算法 */
+          char cc_name[16];
+          optlen = sizeof(cc_name);
+          if (getsockopt(sockfd, IPPROTO_TCP, TCP_CONGESTION,
+                        cc_name, &optlen) < 0)
+              return -1;
+          
+          /* 设置 TCP keepalive */
+          optval = 1;
+          setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE,
+                    &optval, sizeof(optval));
+          
+          optval = 60;  /* 空闲 60 秒后开始探测 */
+          setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPIDLE,
+                    &optval, sizeof(optval));
+          
+          optval = 10;  /* 探测间隔 10 秒 */
+          setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPINTVL,
+                    &optval, sizeof(optval));
+          
+          optval = 5;   /* 探测 5 次 */
+          setsockopt(sockfd, IPPROTO_TCP, TCP_KEEPCNT,
+                    &optval, sizeof(optval));
+          
+          return 0;
+      }

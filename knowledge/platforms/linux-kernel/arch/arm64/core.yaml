@@ -1,0 +1,685 @@
+# ARM64 (AArch64) Architecture Core Knowledge Base
+#
+# Reference: arch/arm64/
+# Reference: Documentation/arm64/
+# Reference: ARM Architecture Reference Manual ARMv8
+
+kernel_version:
+  minimum: "4.14"
+  recommended: "5.10+"
+  tested_on: "6.1"
+
+# ============================================================
+# ARM64 ARCHITECTURE OVERVIEW
+# ============================================================
+
+arm64_overview:
+  description: "ARM64 (AArch64) 64位架构核心"
+  header: "arch/arm64/include/asm/"
+  icon: "🔱"
+
+  features:
+    - "64位通用寄存器 (X0-X30)"
+    - "四个异常级别 (EL0-EL3)"
+    - "虚拟化支持 (EL2)"
+    - "TrustZone 安全扩展 (EL3)"
+    - "可配置页大小 (4K/16K/64K)"
+    - "最大 52位物理地址"
+    - "最大 48/52位虚拟地址"
+
+  exception_levels:
+    - level: "EL0"
+      name: "User"
+      description: "用户态应用程序"
+      privileges: "最低特权级"
+    - level: "EL1"
+      name: "Kernel"
+      description: "操作系统内核"
+      privileges: "管理内存、中断等"
+    - level: "EL2"
+      name: "Hypervisor"
+      description: "虚拟化管理程序"
+      privileges: "可选，虚拟化支持"
+    - level: "EL3"
+      name: "Secure Monitor"
+      description: "安全监控"
+      privileges: "最高特权，TrustZone"
+
+
+# ============================================================
+# ARM64 REGISTERS
+# ============================================================
+
+registers:
+  general_purpose:
+    description: "通用寄存器"
+    registers:
+      - name: "X0-X7"
+        description: "参数/结果寄存器"
+        notes: "函数调用约定中的参数传递"
+      - name: "X8"
+        description: "间接结果寄存器 (XR)"
+      - name: "X9-X15"
+        description: "临时寄存器"
+        notes: "调用者保存"
+      - name: "X16-X17"
+        description: "IP0, IP1 - 过程内调用临时寄存器"
+      - name: "X18"
+        description: "平台寄存器"
+        notes: "Linux 用于 current_task (per-cpu)"
+      - name: "X19-X28"
+        description: "被调用者保存寄存器"
+      - name: "X29"
+        description: "帧指针 (FP)"
+      - name: "X30"
+        description: "链接寄存器 (LR)"
+        notes: "保存返回地址"
+      - name: "SP"
+        description: "栈指针"
+        notes: "每个 EL 有独立的 SP (SP_EL0/SP_ELx)"
+      - name: "PC"
+        description: "程序计数器"
+        notes: "不可直接访问，通过 ADR/ADRP 获取"
+
+  special_registers:
+    description: "特殊用途寄存器"
+    registers:
+      - name: "PSTATE"
+        description: "处理器状态"
+        fields:
+          - "N: 负数标志"
+          - "Z: 零标志"
+          - "C: 进位标志"
+          - "V: 溢出标志"
+          - "D: 调试屏蔽"
+          - "A: SError 屏蔽"
+          - "I: IRQ 屏蔽"
+          - "F: FIQ 屏蔽"
+          - "CurrentEL: 当前异常级别"
+          - "SPSel: 栈指针选择"
+      - name: "SPSR_ELx"
+        description: "保存的程序状态寄存器"
+        notes: "异常返回时恢复 PSTATE"
+      - name: "ELR_ELx"
+        description: "异常链接寄存器"
+        notes: "保存异常返回地址"
+      - name: "CurrentEL"
+        description: "当前异常级别"
+
+  system_registers:
+    description: "系统寄存器 (通过 MSR/MRS 访问)"
+    registers:
+      - name: "SCTLR_ELx"
+        description: "系统控制寄存器"
+        fields: ["M: MMU 使能", "C: 数据缓存使能", "I: 指令缓存使能"]
+      - name: "TTBR0_EL1"
+        description: "翻译表基址寄存器 0"
+        notes: "用户空间页表基址"
+      - name: "TTBR1_EL1"
+        description: "翻译表基址寄存器 1"
+        notes: "内核空间页表基址"
+      - name: "TCR_EL1"
+        description: "翻译控制寄存器"
+        fields: ["T0SZ/T1SZ: 地址大小", "TG0/TG1: 页大小"]
+      - name: "MAIR_EL1"
+        description: "内存属性间接寄存器"
+      - name: "VBAR_EL1"
+        description: "向量基址寄存器"
+        notes: "异常向量表基址"
+      - name: "TPIDR_EL0/EL1"
+        description: "线程 ID 寄存器"
+        notes: "TLS (Thread Local Storage)"
+      - name: "ESR_ELx"
+        description: "异常综合寄存器"
+        notes: "异常原因信息"
+      - name: "FAR_ELx"
+        description: "故障地址寄存器"
+
+
+# ============================================================
+# ARM64 EXCEPTION HANDLING
+# ============================================================
+
+arm64_exception:
+  description: "ARM64 异常处理机制"
+  header: "arch/arm64/kernel/entry.S"
+  icon: "⚡"
+
+  exception_types:
+    - type: "Synchronous"
+      description: "同步异常"
+      examples: ["SVC (系统调用)", "Data Abort", "Instruction Abort", "未定义指令"]
+    - type: "IRQ"
+      description: "中断请求"
+    - type: "FIQ"
+      description: "快速中断请求"
+    - type: "SError"
+      description: "系统错误 (异步)"
+      examples: ["外部数据终止", "奇偶校验错误"]
+
+  vector_table:
+    description: "异常向量表结构"
+    header: "arch/arm64/kernel/entry.S"
+    layout:
+      - offset: "0x000"
+        description: "Synchronous, 当前 EL, SP_EL0"
+      - offset: "0x080"
+        description: "IRQ, 当前 EL, SP_EL0"
+      - offset: "0x100"
+        description: "FIQ, 当前 EL, SP_EL0"
+      - offset: "0x180"
+        description: "SError, 当前 EL, SP_EL0"
+      - offset: "0x200"
+        description: "Synchronous, 当前 EL, SP_ELx"
+      - offset: "0x280"
+        description: "IRQ, 当前 EL, SP_ELx"
+      - offset: "0x300"
+        description: "FIQ, 当前 EL, SP_ELx"
+      - offset: "0x380"
+        description: "SError, 当前 EL, SP_ELx"
+      - offset: "0x400"
+        description: "Synchronous, 较低 EL, AArch64"
+      - offset: "0x480"
+        description: "IRQ, 较低 EL, AArch64"
+      - offset: "0x500"
+        description: "FIQ, 较低 EL, AArch64"
+      - offset: "0x580"
+        description: "SError, 较低 EL, AArch64"
+      - offset: "0x600"
+        description: "Synchronous, 较低 EL, AArch32"
+      - offset: "0x680"
+        description: "IRQ, 较低 EL, AArch32"
+      - offset: "0x700"
+        description: "FIQ, 较低 EL, AArch32"
+      - offset: "0x780"
+        description: "SError, 较低 EL, AArch32"
+
+  kernel_call_chain:
+    trigger: "异常发生"
+    chain:
+      - function: "vectors"
+        file: "arch/arm64/kernel/entry.S"
+        description: "异常向量入口"
+      - function: "kernel_ventry"
+        file: "arch/arm64/kernel/entry.S"
+        description: "内核异常入口宏"
+      - function: "el1h_64_irq"
+        file: "arch/arm64/kernel/entry.S"
+        description: "内核态 IRQ 入口"
+      - function: "el1h_64_irq_handler"
+        file: "arch/arm64/kernel/entry-common.c"
+        description: "IRQ C 处理入口"
+      - function: "handle_arch_irq"
+        file: "arch/arm64/kernel/irq.c"
+        description: "架构级中断处理"
+        is_user_entry: true
+
+
+# ============================================================
+# ARM64 SYSTEM CALL
+# ============================================================
+
+arm64_syscall:
+  description: "ARM64 系统调用机制"
+  header: "arch/arm64/kernel/syscall.c"
+  icon: "📞"
+
+  context:
+    type: "syscall"
+    can_sleep: true
+    preemptible: true
+
+  abi:
+    instruction: "SVC #0"
+    syscall_number: "X8"
+    arguments: ["X0", "X1", "X2", "X3", "X4", "X5"]
+    return_value: "X0"
+    preserved: ["X19-X28", "SP", "FP"]
+
+  kernel_call_chain:
+    trigger: "SVC #0 指令"
+    chain:
+      - function: "el0t_64_sync"
+        file: "arch/arm64/kernel/entry.S"
+        description: "用户态同步异常入口"
+      - function: "el0t_64_sync_handler"
+        file: "arch/arm64/kernel/entry-common.c"
+        description: "同步异常 C 处理"
+      - function: "el0_svc"
+        file: "arch/arm64/kernel/entry-common.c"
+        description: "系统调用分发"
+      - function: "do_el0_svc"
+        file: "arch/arm64/kernel/syscall.c"
+        description: "执行系统调用"
+      - function: "invoke_syscall"
+        file: "arch/arm64/kernel/syscall.c"
+        description: "调用系统调用表"
+      - function: "sys_xxx"
+        file: "kernel/"
+        description: "具体系统调用实现"
+        is_user_entry: true
+
+  notes:
+    - "ARM64 使用 SVC 指令触发系统调用"
+    - "支持 AArch32 兼容模式系统调用"
+    - "系统调用号通过 X8 传递"
+
+
+# ============================================================
+# ARM64 PAGE TABLE
+# ============================================================
+
+arm64_pagetable:
+  description: "ARM64 页表结构"
+  header: "arch/arm64/include/asm/pgtable.h"
+  icon: "📄"
+
+  page_sizes:
+    - size: "4KB"
+      config: "CONFIG_ARM64_4K_PAGES"
+      levels: 4
+      va_bits: "48-bit (可选 52-bit)"
+    - size: "16KB"
+      config: "CONFIG_ARM64_16K_PAGES"
+      levels: 4
+      va_bits: "48-bit"
+    - size: "64KB"
+      config: "CONFIG_ARM64_64K_PAGES"
+      levels: 3
+      va_bits: "48-bit (可选 52-bit)"
+
+  translation_levels:
+    description: "4KB 页表的四级转换"
+    levels:
+      - level: "PGD"
+        name: "Page Global Directory"
+        bits: "[47:39]"
+        entries: 512
+      - level: "PUD"
+        name: "Page Upper Directory"
+        bits: "[38:30]"
+        entries: 512
+      - level: "PMD"
+        name: "Page Middle Directory"
+        bits: "[29:21]"
+        entries: 512
+      - level: "PTE"
+        name: "Page Table Entry"
+        bits: "[20:12]"
+        entries: 512
+
+  descriptor_format:
+    description: "页表描述符格式"
+    fields:
+      - name: "Valid"
+        bit: "0"
+        description: "有效位"
+      - name: "Type"
+        bit: "1"
+        description: "0=块/页, 1=表"
+      - name: "AttrIndex"
+        bits: "[4:2]"
+        description: "MAIR 索引"
+      - name: "NS"
+        bit: "5"
+        description: "非安全位"
+      - name: "AP"
+        bits: "[7:6]"
+        description: "访问权限"
+      - name: "SH"
+        bits: "[9:8]"
+        description: "共享性"
+      - name: "AF"
+        bit: "10"
+        description: "访问标志"
+      - name: "nG"
+        bit: "11"
+        description: "非全局位"
+      - name: "DBM"
+        bit: "51"
+        description: "脏位管理"
+      - name: "Contiguous"
+        bit: "52"
+        description: "连续提示"
+      - name: "PXN"
+        bit: "53"
+        description: "特权执行禁止"
+      - name: "UXN/XN"
+        bit: "54"
+        description: "用户/执行禁止"
+
+  address_space:
+    user_space:
+      ttbr: "TTBR0_EL1"
+      range: "0x0000_0000_0000_0000 - 0x0000_FFFF_FFFF_FFFF"
+    kernel_space:
+      ttbr: "TTBR1_EL1"
+      range: "0xFFFF_0000_0000_0000 - 0xFFFF_FFFF_FFFF_FFFF"
+
+
+# ============================================================
+# ARM64 INTERRUPT CONTROLLER (GICv3)
+# ============================================================
+
+gicv3:
+  description: "ARM GICv3 中断控制器"
+  header: "include/linux/irqchip/arm-gic-v3.h"
+  icon: "🎯"
+
+  components:
+    - name: "Distributor (GICD)"
+      description: "中断分发器 - 管理 SPI"
+      address: "内存映射"
+    - name: "Redistributor (GICR)"
+      description: "重分发器 - 管理 SGI/PPI (每 CPU)"
+      address: "内存映射"
+    - name: "CPU Interface (ICC)"
+      description: "CPU 接口 - 系统寄存器"
+      access: "通过 MSR/MRS"
+    - name: "ITS (Interrupt Translation Service)"
+      description: "中断翻译服务 - MSI 支持"
+      optional: true
+
+  interrupt_types:
+    - type: "SGI"
+      range: "0-15"
+      description: "软件生成中断 (IPI)"
+    - type: "PPI"
+      range: "16-31"
+      description: "私有外设中断 (每 CPU)"
+    - type: "SPI"
+      range: "32-1019"
+      description: "共享外设中断"
+    - type: "LPI"
+      range: "8192+"
+      description: "本地外设中断 (MSI)"
+
+  system_registers:
+    - name: "ICC_SRE_EL1"
+      description: "系统寄存器使能"
+    - name: "ICC_PMR_EL1"
+      description: "优先级屏蔽寄存器"
+    - name: "ICC_IAR1_EL1"
+      description: "中断应答寄存器"
+    - name: "ICC_EOIR1_EL1"
+      description: "中断结束寄存器"
+    - name: "ICC_SGI1R_EL1"
+      description: "SGI 生成寄存器"
+
+  kernel_call_chain:
+    trigger: "GICv3 IRQ"
+    chain:
+      - function: "el1h_64_irq"
+        file: "arch/arm64/kernel/entry.S"
+        description: "IRQ 向量入口"
+      - function: "gic_handle_irq"
+        file: "drivers/irqchip/irq-gic-v3.c"
+        description: "GICv3 中断处理"
+      - function: "gic_read_iar"
+        file: "drivers/irqchip/irq-gic-v3.c"
+        description: "读取 IAR 获取中断号"
+      - function: "generic_handle_domain_irq"
+        file: "kernel/irq/irqdesc.c"
+        description: "通用中断处理"
+      - function: "my_irq_handler()"
+        file: "用户代码"
+        is_user_entry: true
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  pt_regs:
+    description: "ARM64 寄存器上下文"
+    header: "arch/arm64/include/asm/ptrace.h"
+    fields:
+      - name: "regs[31]"
+        type: "u64"
+        description: "X0-X30 通用寄存器"
+      - name: "sp"
+        type: "u64"
+        description: "栈指针"
+      - name: "pc"
+        type: "u64"
+        description: "程序计数器"
+      - name: "pstate"
+        type: "u64"
+        description: "处理器状态"
+      - name: "orig_x0"
+        type: "u64"
+        description: "原始 X0 (系统调用号)"
+      - name: "syscallno"
+        type: "u64"
+        description: "系统调用号"
+
+  thread_struct:
+    description: "ARM64 线程硬件上下文"
+    header: "arch/arm64/include/asm/processor.h"
+    fields:
+      - name: "cpu_context"
+        type: "struct cpu_context"
+        description: "CPU 上下文 (X19-X28, FP, SP, PC)"
+      - name: "tp_value"
+        type: "unsigned long"
+        description: "TLS 指针"
+      - name: "fpsimd_state"
+        type: "struct user_fpsimd_state"
+        description: "SIMD/FP 状态"
+      - name: "fault_address"
+        type: "unsigned long"
+        description: "故障地址"
+      - name: "fault_code"
+        type: "unsigned int"
+        description: "故障代码"
+
+  cpu_context:
+    description: "CPU 上下文 (上下文切换保存)"
+    header: "arch/arm64/include/asm/processor.h"
+    fields:
+      - name: "x19, x20, ..., x28"
+        type: "unsigned long"
+        description: "被调用者保存寄存器"
+      - name: "fp"
+        type: "unsigned long"
+        description: "帧指针 (X29)"
+      - name: "sp"
+        type: "unsigned long"
+        description: "栈指针"
+      - name: "pc"
+        type: "unsigned long"
+        description: "程序计数器"
+
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  context_switch:
+    description: "上下文切换"
+    functions:
+      - name: "__switch_to"
+        file: "arch/arm64/kernel/process.c"
+        description: "进程上下文切换"
+      - name: "cpu_switch_to"
+        file: "arch/arm64/kernel/entry.S"
+        description: "汇编级上下文切换"
+      - name: "fpsimd_thread_switch"
+        file: "arch/arm64/kernel/fpsimd.c"
+        description: "FP/SIMD 上下文切换"
+
+  exception_handling:
+    description: "异常处理函数"
+    functions:
+      - name: "do_mem_abort"
+        file: "arch/arm64/mm/fault.c"
+        description: "内存访问异常"
+      - name: "do_page_fault"
+        file: "arch/arm64/mm/fault.c"
+        description: "页错误处理"
+      - name: "do_undefinstr"
+        file: "arch/arm64/kernel/traps.c"
+        description: "未定义指令"
+      - name: "do_el0_svc"
+        file: "arch/arm64/kernel/syscall.c"
+        description: "系统调用处理"
+
+  mm_functions:
+    description: "内存管理函数"
+    functions:
+      - name: "paging_init"
+        file: "arch/arm64/mm/mmu.c"
+        description: "分页初始化"
+      - name: "create_mapping"
+        file: "arch/arm64/mm/mmu.c"
+        description: "创建页表映射"
+      - name: "swapper_pg_dir"
+        file: "arch/arm64/kernel/head.S"
+        description: "内核页表"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "ARM64 系统调用示例"
+    kernel_version: "5.0+"
+    code: |
+      /* 用户空间调用 */
+      mov x8, #__NR_write    /* 系统调用号 */
+      mov x0, #1             /* fd = STDOUT */
+      ldr x1, =message       /* buf */
+      mov x2, #13            /* len */
+      svc #0                 /* 触发系统调用 */
+      
+      /* 内核空间处理 */
+      SYSCALL_DEFINE3(write, unsigned int, fd, const char __user *, buf,
+                      size_t, count)
+      {
+          return ksys_write(fd, buf, count);
+      }
+
+  - description: "ARM64 中断处理程序注册"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/interrupt.h>
+      
+      static irqreturn_t my_arm64_irq_handler(int irq, void *dev_id)
+      {
+          struct my_device *dev = dev_id;
+          u64 status;
+          
+          /* 读取状态寄存器 */
+          status = readq(dev->regs + IRQ_STATUS);
+          if (!(status & IRQ_PENDING))
+              return IRQ_NONE;
+          
+          /* 清除中断 */
+          writeq(status, dev->regs + IRQ_CLEAR);
+          
+          /* 处理中断 */
+          complete(&dev->completion);
+          
+          return IRQ_HANDLED;
+      }
+      
+      static int my_arm64_probe(struct platform_device *pdev)
+      {
+          int irq, ret;
+          
+          irq = platform_get_irq(pdev, 0);
+          if (irq < 0)
+              return irq;
+          
+          ret = devm_request_irq(&pdev->dev, irq,
+                                 my_arm64_irq_handler,
+                                 IRQF_SHARED,
+                                 "my-arm64-device", dev);
+          return ret;
+      }
+
+  - description: "ARM64 内联汇编读取系统寄存器"
+    kernel_version: "5.0+"
+    code: |
+      #include <asm/sysreg.h>
+      
+      /* 读取当前异常级别 */
+      static inline u64 read_current_el(void)
+      {
+          u64 el;
+          asm volatile("mrs %0, CurrentEL" : "=r" (el));
+          return (el >> 2) & 3;
+      }
+      
+      /* 读取 SCTLR_EL1 */
+      static inline u64 read_sctlr_el1(void)
+      {
+          return read_sysreg(sctlr_el1);
+      }
+      
+      /* 写入 TTBR0_EL1 */
+      static inline void write_ttbr0_el1(u64 val)
+      {
+          write_sysreg(val, ttbr0_el1);
+          isb();
+      }
+      
+      /* 发送 IPI */
+      static inline void send_ipi(u64 target_affinity)
+      {
+          u64 val = (target_affinity << 16) | (1 << 0);  /* SGI 0 */
+          asm volatile("msr ICC_SGI1R_EL1, %0" : : "r" (val));
+          isb();
+      }
+
+  - description: "ARM64 页表操作"
+    kernel_version: "5.0+"
+    code: |
+      #include <asm/pgtable.h>
+      #include <asm/tlbflush.h>
+      
+      /* 创建页表映射 */
+      static void create_pte_mapping(pmd_t *pmd, unsigned long addr,
+                                     unsigned long phys, pgprot_t prot)
+      {
+          pte_t *pte;
+          
+          pte = pte_offset_kernel(pmd, addr);
+          set_pte(pte, pfn_pte(phys >> PAGE_SHIFT, prot));
+      }
+      
+      /* 刷新 TLB */
+      static void flush_tlb_page(struct vm_area_struct *vma,
+                                 unsigned long addr)
+      {
+          /* ARMv8 TLBI 指令 */
+          asm volatile(
+              "dsb ishst\n"
+              "tlbi vale1is, %0\n"
+              "dsb ish\n"
+              "isb"
+              : : "r" (addr >> 12)
+          );
+      }
+      
+      /* 内存屏障 */
+      #define dmb(opt)  asm volatile("dmb " #opt : : : "memory")
+      #define dsb(opt)  asm volatile("dsb " #opt : : : "memory")
+      #define isb()     asm volatile("isb" : : : "memory")
+
+
+# ============================================================
+# NOTES
+# ============================================================
+
+notes:
+  - "ARM64 使用 ABI 标准 AAPCS64"
+  - "异常级别切换需要使用 ERET 指令"
+  - "Linux 内核运行在 EL1，可选支持 EL2 (KVM)"
+  - "ARMv8.0 支持 48位 VA，ARMv8.2-LVA 支持 52位"
+  - "ARMv8.1 引入 VHE (Virtualization Host Extensions)"
+  - "ARMv8.3 引入指针认证 (PAC)"
+  - "ARMv8.5 引入内存标记扩展 (MTE)"

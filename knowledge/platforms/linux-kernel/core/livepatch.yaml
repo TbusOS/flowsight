@@ -1,0 +1,764 @@
+# Linux Kernel Livepatch Subsystem Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/livepatch/livepatch.html
+# Kernel source: kernel/livepatch/, include/linux/livepatch.h
+# Kernel Version: 4.0+
+# ============================================================
+
+# ============================================================
+# LIVEPATCH OVERVIEW
+# ============================================================
+livepatch_overview:
+  description: "Linux 内核热补丁子系统"
+  header: "linux/livepatch.h"
+  icon: "🩹"
+  kernel_version: "4.0+"
+  kernel_config: "CONFIG_LIVEPATCH"
+  
+  key_concepts:
+    purpose:
+      description: "运行时内核代码修补"
+      notes:
+        - "无需重启修复安全漏洞"
+        - "无需重启修复关键 Bug"
+        - "最小化系统停机时间"
+        - "适用于高可用性系统"
+    
+    mechanism:
+      description: "热补丁机制"
+      notes:
+        - "使用 ftrace 重定向函数调用"
+        - "基于一致性模型确保安全"
+        - "支持函数级别替换"
+        - "可以打补丁和取消补丁"
+
+    consistency_model:
+      description: "一致性模型"
+      notes:
+        - "确保所有任务看到一致的代码"
+        - "使用每任务状态跟踪"
+        - "在安全点进行切换"
+        - "基于堆栈检查的强制转换"
+
+# ============================================================
+# LIVEPATCH DATA STRUCTURES
+# ============================================================
+data_structures:
+  description: "热补丁数据结构"
+  header: "linux/livepatch.h"
+  icon: "🏗️"
+  kernel_source: "include/linux/livepatch.h"
+
+  structures:
+    klp_patch:
+      pattern: 'struct klp_patch\s*\{'
+      description: "补丁描述符"
+      file: "include/linux/livepatch.h"
+      fields:
+        - name: "mod"
+          type: "struct module *"
+          description: "补丁所属模块"
+        - name: "objs"
+          type: "struct klp_object *"
+          description: "被补丁的对象数组"
+        - name: "replace"
+          type: "bool"
+          description: "是否替换所有之前的补丁"
+          kernel_version: "5.1+"
+        - name: "list"
+          type: "struct list_head"
+          description: "补丁链表节点"
+        - name: "kobj"
+          type: "struct kobject"
+          description: "sysfs 对象"
+        - name: "obj_list"
+          type: "struct list_head"
+          description: "动态对象链表"
+        - name: "enabled"
+          type: "bool"
+          description: "是否已启用"
+        - name: "forced"
+          type: "bool"
+          description: "是否强制启用"
+
+    klp_object:
+      pattern: 'struct klp_object\s*\{'
+      description: "被补丁的对象（模块或 vmlinux）"
+      file: "include/linux/livepatch.h"
+      fields:
+        - name: "name"
+          type: "const char *"
+          description: "模块名（NULL 表示 vmlinux）"
+        - name: "funcs"
+          type: "struct klp_func *"
+          description: "被补丁的函数数组"
+        - name: "callbacks"
+          type: "struct klp_callbacks"
+          description: "回调函数"
+        - name: "kobj"
+          type: "struct kobject"
+          description: "sysfs 对象"
+        - name: "func_list"
+          type: "struct list_head"
+          description: "函数链表"
+        - name: "node"
+          type: "struct list_head"
+          description: "对象链表节点"
+        - name: "mod"
+          type: "struct module *"
+          description: "关联的模块"
+        - name: "dynamic"
+          type: "bool"
+          description: "是否动态分配"
+        - name: "patched"
+          type: "bool"
+          description: "是否已打补丁"
+
+    klp_func:
+      pattern: 'struct klp_func\s*\{'
+      description: "被补丁的函数"
+      file: "include/linux/livepatch.h"
+      fields:
+        - name: "old_name"
+          type: "const char *"
+          description: "原函数名"
+        - name: "new_func"
+          type: "void *"
+          description: "新函数地址"
+        - name: "old_sympos"
+          type: "unsigned long"
+          description: "符号位置（处理同名函数）"
+        - name: "old_func"
+          type: "void *"
+          description: "原函数地址（自动填充）"
+        - name: "kobj"
+          type: "struct kobject"
+          description: "sysfs 对象"
+        - name: "node"
+          type: "struct list_head"
+          description: "函数链表节点"
+        - name: "stack_node"
+          type: "struct list_head"
+          description: "堆栈检查链表"
+        - name: "old_size"
+          type: "unsigned long"
+          description: "原函数大小"
+        - name: "new_size"
+          type: "unsigned long"
+          description: "新函数大小"
+        - name: "nop"
+          type: "bool"
+          description: "是否为空操作补丁"
+        - name: "patched"
+          type: "bool"
+          description: "是否已打补丁"
+        - name: "transition"
+          type: "bool"
+          description: "是否正在过渡"
+
+    klp_callbacks:
+      pattern: 'struct klp_callbacks\s*\{'
+      description: "补丁回调函数"
+      file: "include/linux/livepatch.h"
+      fields:
+        - name: "pre_patch"
+          type: "int (*)(struct klp_object *)"
+          description: "打补丁前回调"
+        - name: "post_patch"
+          type: "void (*)(struct klp_object *)"
+          description: "打补丁后回调"
+        - name: "pre_unpatch"
+          type: "void (*)(struct klp_object *)"
+          description: "取消补丁前回调"
+        - name: "post_unpatch"
+          type: "void (*)(struct klp_object *)"
+          description: "取消补丁后回调"
+        - name: "post_unpatch_enabled"
+          type: "bool"
+          description: "post_unpatch 是否启用"
+
+    klp_state:
+      pattern: 'struct klp_state\s*\{'
+      description: "补丁状态"
+      kernel_version: "5.1+"
+      file: "include/linux/livepatch.h"
+      fields:
+        - name: "id"
+          type: "unsigned long"
+          description: "状态标识符"
+        - name: "version"
+          type: "unsigned int"
+          description: "状态版本"
+        - name: "data"
+          type: "void *"
+          description: "状态数据"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+kernel_functions:
+  description: "热补丁内核函数"
+  header: "linux/livepatch.h"
+  icon: "⚙️"
+  kernel_source: "kernel/livepatch/core.c"
+
+  registration:
+    klp_enable_patch:
+      pattern: 'klp_enable_patch\s*\(\s*(?P<patch>\w+)\s*\)'
+      description: "启用补丁"
+      context: "process"
+      can_sleep: true
+      returns: "int - 0 成功，负错误码失败"
+      example: |
+        static struct klp_patch patch = {
+            .mod = THIS_MODULE,
+            .objs = objs,
+        };
+        
+        ret = klp_enable_patch(&patch);
+        if (ret)
+            return ret;
+
+    klp_disable_patch:
+      pattern: 'klp_disable_patch\s*\(\s*(?P<patch>\w+)\s*\)'
+      description: "禁用补丁（已废弃）"
+      context: "process"
+      deprecated: true
+      notes: "使用 sysfs 接口禁用"
+
+  state_management:
+    klp_get_state:
+      pattern: 'klp_get_state\s*\(\s*(?P<patch>\w+)\s*,\s*(?P<id>\w+)\s*\)'
+      description: "获取补丁状态"
+      kernel_version: "5.1+"
+      context: "process"
+
+    klp_get_prev_state:
+      pattern: 'klp_get_prev_state\s*\(\s*(?P<id>\w+)\s*\)'
+      description: "获取之前补丁的状态"
+      kernel_version: "5.1+"
+      context: "process"
+
+  shadow_variables:
+    klp_shadow_get:
+      pattern: 'klp_shadow_get\s*\(\s*(?P<obj>\w+)\s*,\s*(?P<id>\w+)\s*\)'
+      description: "获取影子变量"
+      context: "any"
+      returns: "void * - 影子变量数据"
+      notes: "用于为现有结构添加字段"
+
+    klp_shadow_alloc:
+      pattern: 'klp_shadow_alloc\s*\(\s*(?P<obj>\w+)\s*,\s*(?P<id>\w+)\s*,'
+      description: "分配影子变量"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "obj"
+          type: "void *"
+          description: "关联的对象"
+        - name: "id"
+          type: "unsigned long"
+          description: "影子变量 ID"
+        - name: "size"
+          type: "size_t"
+          description: "数据大小"
+        - name: "gfp_flags"
+          type: "gfp_t"
+          description: "分配标志"
+        - name: "ctor"
+          type: "klp_shadow_ctor_t"
+          description: "构造函数"
+        - name: "ctor_data"
+          type: "void *"
+          description: "构造函数数据"
+
+    klp_shadow_get_or_alloc:
+      pattern: 'klp_shadow_get_or_alloc\s*\('
+      description: "获取或分配影子变量"
+      context: "process"
+
+    klp_shadow_free:
+      pattern: 'klp_shadow_free\s*\(\s*(?P<obj>\w+)\s*,\s*(?P<id>\w+)\s*,'
+      description: "释放影子变量"
+      context: "process"
+
+    klp_shadow_free_all:
+      pattern: 'klp_shadow_free_all\s*\(\s*(?P<id>\w+)\s*,'
+      description: "释放所有指定 ID 的影子变量"
+      context: "process"
+
+# ============================================================
+# CONSISTENCY MODEL
+# ============================================================
+consistency_model:
+  description: "一致性模型详解"
+  header: "linux/livepatch.h"
+  icon: "🔄"
+
+  concepts:
+    transition_state:
+      description: "过渡状态"
+      notes:
+        - "补丁启用/禁用是渐进的"
+        - "每个任务独立过渡"
+        - "使用 TIF_PATCH_PENDING 标记"
+
+    patching_point:
+      description: "安全打补丁点"
+      safe_points:
+        - "系统调用边界"
+        - "进程调度点"
+        - "从中断返回"
+      notes: "任务在这些点检查是否需要切换"
+
+    stack_checking:
+      description: "堆栈检查"
+      notes:
+        - "检查任务堆栈是否包含被补丁函数"
+        - "如果包含，延迟切换"
+        - "可能需要强制切换"
+
+  sysfs_interface:
+    path: "/sys/kernel/livepatch/<patch>/"
+    files:
+      enabled:
+        description: "补丁启用状态"
+        write: "1 启用，0 禁用"
+        read: "当前状态"
+      transition:
+        description: "是否正在过渡"
+        read_only: true
+      force:
+        description: "强制过渡"
+        write: "1 强制完成过渡"
+        notes: "可能不安全，仅紧急使用"
+
+  task_flag:
+    TIF_PATCH_PENDING:
+      description: "任务待切换标志"
+      notes: "表示任务需要切换到新/旧代码"
+
+  klp_update_patch_state:
+    description: "任务切换检查函数"
+    called_from:
+      - "syscall exit"
+      - "schedule()"
+      - "interrupt return"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  patch_enable_flow:
+    description: "补丁启用流程"
+    chain:
+      - caller: "module_init"
+        callee: "klp_enable_patch"
+        context: "process"
+        description: "启用补丁入口"
+      - caller: "klp_enable_patch"
+        callee: "klp_init_patch"
+        description: "初始化补丁结构"
+      - caller: "klp_enable_patch"
+        callee: "klp_init_object"
+        description: "初始化对象"
+      - caller: "klp_init_object"
+        callee: "klp_init_func"
+        description: "初始化函数"
+      - caller: "klp_enable_patch"
+        callee: "klp_try_complete_transition"
+        description: "开始过渡"
+      - caller: "klp_try_complete_transition"
+        callee: "klp_complete_transition"
+        description: "完成过渡"
+
+  function_redirect_flow:
+    description: "函数重定向流程"
+    chain:
+      - caller: "original function call"
+        callee: "ftrace handler"
+        context: "any"
+        description: "ftrace 截获调用"
+      - caller: "ftrace handler"
+        callee: "klp_ftrace_handler"
+        description: "热补丁 ftrace 处理"
+      - caller: "klp_ftrace_handler"
+        callee: "new function"
+        description: "跳转到新函数"
+
+  transition_flow:
+    description: "任务过渡流程"
+    chain:
+      - caller: "syscall_exit / schedule / irq_return"
+        callee: "klp_update_patch_state"
+        context: "process"
+        description: "检查过渡状态"
+      - caller: "klp_update_patch_state"
+        callee: "set task patched state"
+        description: "更新任务补丁状态"
+      - caller: "kernel"
+        callee: "klp_try_complete_transition"
+        description: "检查是否所有任务已过渡"
+      - caller: "klp_try_complete_transition"
+        callee: "klp_complete_transition"
+        condition: "all tasks transitioned"
+        description: "完成过渡"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "基本热补丁模块"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/kernel.h>
+      #include <linux/livepatch.h>
+      
+      /* 新版本的函数 */
+      static int livepatch_cmdline_proc_show(struct seq_file *m, void *v)
+      {
+          seq_printf(m, "%s [LIVEPATCHED]\n", saved_command_line);
+          return 0;
+      }
+      
+      /* 定义被补丁的函数 */
+      static struct klp_func funcs[] = {
+          {
+              .old_name = "cmdline_proc_show",
+              .new_func = livepatch_cmdline_proc_show,
+          },
+          { }  /* 终止符 */
+      };
+      
+      /* 定义被补丁的对象（vmlinux） */
+      static struct klp_object objs[] = {
+          {
+              .name = NULL,  /* NULL 表示 vmlinux */
+              .funcs = funcs,
+          },
+          { }  /* 终止符 */
+      };
+      
+      /* 定义补丁 */
+      static struct klp_patch patch = {
+          .mod = THIS_MODULE,
+          .objs = objs,
+      };
+      
+      static int __init livepatch_init(void)
+      {
+          return klp_enable_patch(&patch);
+      }
+      
+      static void __exit livepatch_exit(void)
+      {
+          /* 补丁在模块卸载时自动禁用 */
+      }
+      
+      module_init(livepatch_init);
+      module_exit(livepatch_exit);
+      
+      MODULE_LICENSE("GPL");
+      MODULE_INFO(livepatch, "Y");
+      MODULE_AUTHOR("Your Name");
+      MODULE_DESCRIPTION("Livepatch sample");
+
+  - description: "补丁模块中的函数"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/livepatch.h>
+      
+      /* 补丁其他模块中的函数 */
+      static void livepatch_other_function(void)
+      {
+          pr_info("Patched function in another module\n");
+      }
+      
+      static struct klp_func other_funcs[] = {
+          {
+              .old_name = "target_function",
+              .new_func = livepatch_other_function,
+          },
+          { }
+      };
+      
+      static struct klp_object objs[] = {
+          {
+              .name = "target_module",  /* 目标模块名 */
+              .funcs = other_funcs,
+          },
+          { }
+      };
+      
+      static struct klp_patch patch = {
+          .mod = THIS_MODULE,
+          .objs = objs,
+      };
+
+  - description: "使用影子变量"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/livepatch.h>
+      
+      #define SV_ID_MY_DATA 1
+      
+      struct my_shadow_data {
+          int extra_field;
+          void *extra_ptr;
+      };
+      
+      /* 构造函数 */
+      static int my_shadow_ctor(void *obj, void *shadow_data, void *ctor_data)
+      {
+          struct my_shadow_data *data = shadow_data;
+          data->extra_field = *(int *)ctor_data;
+          data->extra_ptr = NULL;
+          return 0;
+      }
+      
+      /* 析构函数 */
+      static void my_shadow_dtor(void *obj, void *shadow_data)
+      {
+          struct my_shadow_data *data = shadow_data;
+          kfree(data->extra_ptr);
+      }
+      
+      /* 在补丁函数中使用 */
+      static void patched_function(struct target_struct *obj)
+      {
+          struct my_shadow_data *shadow;
+          int init_val = 42;
+          
+          /* 获取或创建影子变量 */
+          shadow = klp_shadow_get_or_alloc(obj, SV_ID_MY_DATA,
+                                           sizeof(*shadow), GFP_KERNEL,
+                                           my_shadow_ctor, &init_val);
+          if (!shadow)
+              return;
+          
+          /* 使用影子变量 */
+          shadow->extra_field++;
+          
+          /* 原有逻辑... */
+      }
+      
+      /* 清理时释放影子变量 */
+      static void cleanup_shadows(void)
+      {
+          klp_shadow_free_all(SV_ID_MY_DATA, my_shadow_dtor);
+      }
+
+  - description: "使用回调函数"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/livepatch.h>
+      
+      /* 打补丁前回调 */
+      static int pre_patch_callback(struct klp_object *obj)
+      {
+          pr_info("Pre-patch callback for %s\n",
+                  obj->name ? obj->name : "vmlinux");
+          
+          /* 可以在这里做准备工作 */
+          /* 返回非零值会阻止打补丁 */
+          return 0;
+      }
+      
+      /* 打补丁后回调 */
+      static void post_patch_callback(struct klp_object *obj)
+      {
+          pr_info("Post-patch callback for %s\n",
+                  obj->name ? obj->name : "vmlinux");
+          
+          /* 补丁已生效，可以做后续工作 */
+      }
+      
+      /* 取消补丁前回调 */
+      static void pre_unpatch_callback(struct klp_object *obj)
+      {
+          pr_info("Pre-unpatch callback\n");
+          
+          /* 准备取消补丁 */
+      }
+      
+      /* 取消补丁后回调 */
+      static void post_unpatch_callback(struct klp_object *obj)
+      {
+          pr_info("Post-unpatch callback\n");
+          
+          /* 清理工作 */
+      }
+      
+      static struct klp_callbacks callbacks = {
+          .pre_patch = pre_patch_callback,
+          .post_patch = post_patch_callback,
+          .pre_unpatch = pre_unpatch_callback,
+          .post_unpatch = post_unpatch_callback,
+          .post_unpatch_enabled = true,
+      };
+      
+      static struct klp_object objs[] = {
+          {
+              .name = NULL,
+              .funcs = funcs,
+              .callbacks = callbacks,
+          },
+          { }
+      };
+
+  - description: "累积补丁（替换之前所有补丁）"
+    kernel_version: "5.1+"
+    code: |
+      #include <linux/livepatch.h>
+      
+      /* 累积补丁包含所有之前补丁的修复 */
+      static struct klp_patch patch = {
+          .mod = THIS_MODULE,
+          .objs = objs,
+          .replace = true,  /* 替换所有之前的补丁 */
+      };
+      
+      static int __init cumulative_patch_init(void)
+      {
+          /* 这会禁用所有之前的补丁 */
+          return klp_enable_patch(&patch);
+      }
+
+  - description: "处理同名函数（使用 old_sympos）"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/livepatch.h>
+      
+      /* 当目标模块有多个同名静态函数时 */
+      static void patched_helper(void)
+      {
+          /* 新实现 */
+      }
+      
+      static struct klp_func funcs[] = {
+          {
+              .old_name = "helper",
+              .new_func = patched_helper,
+              /* 指定是第几个同名函数（从 0 开始） */
+              /* 0 = 唯一或第一个 */
+              /* 1 = 第二个同名函数 */
+              .old_sympos = 1,
+          },
+          { }
+      };
+
+# ============================================================
+# DEBUGGING
+# ============================================================
+debugging:
+  description: "热补丁调试"
+  icon: "🐛"
+
+  sysfs_info:
+    path: "/sys/kernel/livepatch/"
+    contents:
+      - "<patch>/enabled - 启用状态"
+      - "<patch>/transition - 过渡状态"
+      - "<patch>/force - 强制过渡"
+      - "<patch>/<object>/<func> - 函数信息"
+
+  debug_options:
+    klp_check_state:
+      description: "检查补丁状态"
+      command: "cat /sys/kernel/livepatch/<patch>/enabled"
+
+    force_transition:
+      description: "强制完成过渡"
+      command: "echo 1 > /sys/kernel/livepatch/<patch>/force"
+      warning: "可能导致系统不稳定"
+
+  common_issues:
+    stuck_transition:
+      description: "过渡卡住"
+      causes:
+        - "某个任务一直在被补丁函数中"
+        - "内核线程不经过安全点"
+      solutions:
+        - "等待任务离开函数"
+        - "使用 force 强制完成"
+
+    module_not_loaded:
+      description: "目标模块未加载"
+      error: "klp: object not found"
+      solution: "先加载目标模块"
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "4.0":
+    - "初始 livepatch 支持"
+    - "基本的 klp_patch/klp_object/klp_func"
+    - "ftrace 基础架构"
+  "4.7":
+    - "影子变量 API"
+    - "klp_shadow_* 函数"
+  "4.12":
+    - "改进的一致性模型"
+    - "每任务过渡跟踪"
+  "4.15":
+    - "回调函数支持"
+    - "klp_callbacks 结构"
+  "5.0":
+    - "原子替换支持准备"
+  "5.1":
+    - "原子替换 (replace=true)"
+    - "klp_state API"
+    - "累积补丁支持"
+  "5.8":
+    - "改进的堆栈检查"
+  "5.13":
+    - "ELF 重定位改进"
+  "5.19":
+    - "改进的模块加载时机处理"
+
+# ============================================================
+# BEST PRACTICES
+# ============================================================
+best_practices:
+  description: "热补丁最佳实践"
+  icon: "📚"
+
+  guidelines:
+    - title: "最小化补丁范围"
+      description: "只修改必要的函数"
+      reason: "减少风险和过渡时间"
+
+    - title: "使用累积补丁"
+      description: "新补丁应包含所有之前的修复"
+      reason: "简化补丁管理"
+
+    - title: "测试补丁过渡"
+      description: "确保补丁能正常启用和禁用"
+      reason: "避免生产环境问题"
+
+    - title: "使用回调清理状态"
+      description: "在 post_unpatch 中清理修改的状态"
+      reason: "确保干净的取消补丁"
+
+    - title: "避免修改数据结构"
+      description: "使用影子变量而不是修改结构体"
+      reason: "保持二进制兼容性"
+
+    - title: "处理模块加载顺序"
+      description: "考虑目标模块可能后加载"
+      reason: "补丁可能在目标加载前启用"
+
+  tools:
+    kpatch:
+      description: "Red Hat 热补丁创建工具"
+      url: "https://github.com/dynup/kpatch"
+
+    klp-build:
+      description: "SUSE 热补丁构建系统"
+      url: "内核源码树"
+
+    livepatch-build:
+      description: "Ubuntu 热补丁构建工具"

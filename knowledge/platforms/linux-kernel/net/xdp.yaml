@@ -1,0 +1,989 @@
+# Linux Kernel XDP (eXpress Data Path) Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/networking/xdp.html
+# Kernel Version: 5.0+
+
+# ============================================================
+# XDP CORE
+# ============================================================
+
+xdp_core:
+  description: "XDP Core - eXpress Data Path 核心"
+  header: "net/core/xdp.c"
+  icon: "⚡"
+  kernel_version: "4.8+"
+
+  context:
+    type: "softirq/NAPI"
+    can_sleep: false
+    description: "XDP 在 NAPI poll 上下文中执行，网络协议栈之前"
+
+  characteristics:
+    - "高性能数据包处理"
+    - "协议栈前执行，极低开销"
+    - "BPF 程序处理每个数据包"
+    - "支持丢弃、转发、重定向、透传"
+    - "可用于 DDoS 防护、负载均衡、防火墙"
+    - "需要驱动支持 (native) 或通用模式 (generic)"
+
+  modes:
+    native:
+      description: "原生 XDP (驱动支持)"
+      performance: "最佳"
+      notes: "在网卡驱动中执行，SKB 分配之前"
+    offload:
+      description: "硬件卸载 XDP"
+      performance: "最佳 (硬件执行)"
+      notes: "BPF 程序在网卡硬件执行"
+    generic:
+      description: "通用 XDP"
+      performance: "较低"
+      notes: "在 SKB 分配后执行，用于不支持原生 XDP 的驱动"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  xdp_buff:
+    description: "XDP Buffer - XDP 数据缓冲区"
+    header: "include/net/xdp.h"
+    pattern: 'struct xdp_buff\s*\{'
+    fields:
+      - name: "data"
+        type: "void *"
+        description: "数据包数据起始"
+      - name: "data_end"
+        type: "void *"
+        description: "数据包数据结束"
+      - name: "data_meta"
+        type: "void *"
+        description: "元数据区域起始"
+      - name: "data_hard_start"
+        type: "void *"
+        description: "硬件缓冲区起始"
+      - name: "rxq"
+        type: "struct xdp_rxq_info *"
+        description: "接收队列信息"
+      - name: "txq"
+        type: "struct xdp_txq_info *"
+        description: "发送队列信息"
+      - name: "frame_sz"
+        type: "u32"
+        description: "帧大小"
+      - name: "flags"
+        type: "u32"
+        description: "XDP 标志"
+    notes: |
+      data_hard_start <= data_meta <= data <= data_end
+      headroom = data - data_hard_start
+      metadata = data - data_meta
+
+  xdp_frame:
+    description: "XDP Frame - XDP 帧"
+    header: "include/net/xdp.h"
+    pattern: 'struct xdp_frame\s*\{'
+    fields:
+      - name: "data"
+        type: "void *"
+        description: "数据包数据"
+      - name: "len"
+        type: "u16"
+        description: "数据长度"
+      - name: "headroom"
+        type: "u16"
+        description: "头部空间"
+      - name: "metasize"
+        type: "u32:8"
+        description: "元数据大小"
+      - name: "frame_sz"
+        type: "u32:24"
+        description: "帧大小"
+      - name: "mem"
+        type: "struct xdp_mem_info"
+        description: "内存信息"
+      - name: "dev_rx"
+        type: "struct net_device *"
+        description: "接收设备"
+      - name: "flags"
+        type: "u32"
+        description: "帧标志"
+    notes: "用于 XDP_REDIRECT 时传递帧数据"
+
+  xdp_rxq_info:
+    description: "XDP RX Queue Info - XDP 接收队列信息"
+    header: "include/net/xdp.h"
+    pattern: 'struct xdp_rxq_info\s*\{'
+    fields:
+      - name: "dev"
+        type: "struct net_device *"
+        description: "网络设备"
+      - name: "queue_index"
+        type: "u32"
+        description: "队列索引"
+      - name: "reg_state"
+        type: "u32"
+        description: "注册状态"
+      - name: "mem"
+        type: "struct xdp_mem_info"
+        description: "内存类型信息"
+      - name: "napi_id"
+        type: "unsigned int"
+        description: "NAPI ID"
+
+  xdp_md:
+    description: "XDP Metadata (BPF 可见) - XDP 元数据"
+    header: "include/uapi/linux/bpf.h"
+    pattern: 'struct xdp_md\s*\{'
+    fields:
+      - name: "data"
+        type: "__u32"
+        description: "数据包数据起始指针"
+      - name: "data_end"
+        type: "__u32"
+        description: "数据包数据结束指针"
+      - name: "data_meta"
+        type: "__u32"
+        description: "元数据起始指针"
+      - name: "ingress_ifindex"
+        type: "__u32"
+        description: "入接口索引"
+      - name: "rx_queue_index"
+        type: "__u32"
+        description: "接收队列索引"
+      - name: "egress_ifindex"
+        type: "__u32"
+        description: "出接口索引 (devmap redirect)"
+    notes: "这是 BPF 程序看到的结构，与内核 xdp_buff 映射"
+
+# ============================================================
+# XDP ACTIONS
+# ============================================================
+
+xdp_actions:
+  description: "XDP Actions - XDP 操作"
+  header: "include/uapi/linux/bpf.h"
+  icon: "🎯"
+
+  values:
+    XDP_ABORTED:
+      value: 0
+      description: "错误/异常终止"
+      action: "丢弃数据包，记录错误"
+      notes: "表示 BPF 程序出错"
+
+    XDP_DROP:
+      value: 1
+      description: "丢弃数据包"
+      action: "静默丢弃，不进入协议栈"
+      use_cases:
+        - "DDoS 防护"
+        - "防火墙"
+        - "流量过滤"
+
+    XDP_PASS:
+      value: 2
+      description: "透传到协议栈"
+      action: "正常处理，进入内核协议栈"
+      notes: "默认行为"
+
+    XDP_TX:
+      value: 3
+      description: "从同一接口发回"
+      action: "数据包从接收接口发出"
+      use_cases:
+        - "反射回复"
+        - "同接口转发"
+
+    XDP_REDIRECT:
+      value: 4
+      description: "重定向到其他目标"
+      action: "转发到其他接口、CPU、socket"
+      use_cases:
+        - "负载均衡"
+        - "跨接口转发"
+        - "AF_XDP"
+      notes: "需要配合 bpf_redirect* 辅助函数"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # ========== XDP 程序管理 ==========
+  dev_xdp_attach:
+    pattern: 'dev_xdp_attach\s*\('
+    description: "附加 XDP 程序到设备"
+    file: "net/core/dev.c"
+    signature: "int dev_xdp_attach(struct net_device *dev, struct netlink_ext_ack *extack, struct bpf_xdp_link *link, struct bpf_prog *new_prog, struct bpf_prog *old_prog, u32 flags)"
+    context: "process"
+    can_sleep: true
+    return_value:
+      success: "0"
+      failure: "-ERRNO"
+
+  bpf_prog_run_xdp:
+    pattern: 'bpf_prog_run_xdp\s*\('
+    description: "运行 XDP BPF 程序"
+    file: "include/linux/filter.h"
+    signature: "u32 bpf_prog_run_xdp(const struct bpf_prog *prog, struct xdp_buff *xdp)"
+    context: "softirq/NAPI"
+    can_sleep: false
+    return_value: "XDP action (XDP_DROP, XDP_PASS, etc.)"
+
+  # ========== XDP 缓冲区操作 ==========
+  xdp_init_buff:
+    pattern: 'xdp_init_buff\s*\('
+    description: "初始化 XDP 缓冲区"
+    file: "include/net/xdp.h"
+    signature: "void xdp_init_buff(struct xdp_buff *xdp, u32 frame_sz, struct xdp_rxq_info *rxq)"
+    context: "softirq"
+    can_sleep: false
+
+  xdp_prepare_buff:
+    pattern: 'xdp_prepare_buff\s*\('
+    description: "准备 XDP 缓冲区"
+    file: "include/net/xdp.h"
+    signature: "void xdp_prepare_buff(struct xdp_buff *xdp, unsigned char *hard_start, int headroom, int data_len, const bool meta_valid)"
+    context: "softirq"
+    can_sleep: false
+
+  xdp_convert_buff_to_frame:
+    pattern: 'xdp_convert_buff_to_frame\s*\('
+    description: "转换 XDP buff 为 frame"
+    file: "include/net/xdp.h"
+    signature: "struct xdp_frame *xdp_convert_buff_to_frame(struct xdp_buff *xdp)"
+    context: "softirq"
+    can_sleep: false
+    return_value:
+      success: "xdp_frame 指针"
+      failure: "NULL"
+    notes: "用于 XDP_REDIRECT"
+
+  # ========== XDP 重定向 ==========
+  xdp_do_redirect:
+    pattern: 'xdp_do_redirect\s*\('
+    description: "执行 XDP 重定向"
+    file: "net/core/filter.c"
+    signature: "int xdp_do_redirect(struct net_device *dev, struct xdp_buff *xdp, struct bpf_prog *xdp_prog)"
+    context: "softirq"
+    can_sleep: false
+    return_value:
+      success: "0"
+      failure: "-ERRNO"
+
+  xdp_do_flush:
+    pattern: 'xdp_do_flush\s*\('
+    description: "刷新 XDP 重定向批次"
+    file: "net/core/filter.c"
+    signature: "void xdp_do_flush(void)"
+    context: "softirq"
+    can_sleep: false
+    notes: "批处理完成后必须调用"
+
+  # ========== XDP 内存管理 ==========
+  xdp_rxq_info_reg:
+    pattern: 'xdp_rxq_info_reg\s*\('
+    description: "注册 XDP 接收队列"
+    file: "net/core/xdp.c"
+    signature: "int xdp_rxq_info_reg(struct xdp_rxq_info *xdp_rxq, struct net_device *dev, u32 queue_index, unsigned int napi_id)"
+    context: "process"
+    can_sleep: true
+
+  xdp_rxq_info_unreg:
+    pattern: 'xdp_rxq_info_unreg\s*\('
+    description: "注销 XDP 接收队列"
+    file: "net/core/xdp.c"
+    signature: "void xdp_rxq_info_unreg(struct xdp_rxq_info *xdp_rxq)"
+    context: "process"
+    can_sleep: true
+
+  xdp_rxq_info_reg_mem_model:
+    pattern: 'xdp_rxq_info_reg_mem_model\s*\('
+    description: "注册内存模型"
+    file: "net/core/xdp.c"
+    signature: "int xdp_rxq_info_reg_mem_model(struct xdp_rxq_info *xdp_rxq, enum xdp_mem_type type, void *allocator)"
+    context: "process"
+    can_sleep: true
+
+  xdp_return_frame:
+    pattern: 'xdp_return_frame\s*\('
+    description: "返回 XDP 帧"
+    file: "net/core/xdp.c"
+    signature: "void xdp_return_frame(struct xdp_frame *xdpf)"
+    context: "any"
+    can_sleep: false
+    notes: "将帧返回给内存分配器"
+
+  xdp_return_frame_rx_napi:
+    pattern: 'xdp_return_frame_rx_napi\s*\('
+    description: "NAPI 上下文返回 XDP 帧"
+    file: "net/core/xdp.c"
+    signature: "void xdp_return_frame_rx_napi(struct xdp_frame *xdpf)"
+    context: "softirq"
+    can_sleep: false
+
+  # ========== 通用 XDP ==========
+  do_xdp_generic:
+    pattern: 'do_xdp_generic\s*\('
+    description: "执行通用 XDP"
+    file: "net/core/dev.c"
+    signature: "int do_xdp_generic(struct bpf_prog *xdp_prog, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    notes: "用于不支持原生 XDP 的驱动"
+
+  netif_receive_generic_xdp:
+    pattern: 'netif_receive_generic_xdp\s*\('
+    description: "通用 XDP 接收"
+    file: "net/core/dev.c"
+    signature: "int netif_receive_generic_xdp(struct sk_buff *skb, struct xdp_buff *xdp, struct bpf_prog *xdp_prog)"
+    context: "softirq"
+    can_sleep: false
+
+  # ========== XDP 发送 ==========
+  xdp_do_flush_map:
+    pattern: 'xdp_do_flush_map\s*\('
+    description: "刷新 XDP 映射"
+    file: "net/core/filter.c"
+    signature: "void xdp_do_flush_map(void)"
+    context: "softirq"
+    can_sleep: false
+
+# ============================================================
+# BPF HELPER FUNCTIONS
+# ============================================================
+
+bpf_helpers:
+  description: "XDP BPF Helper Functions - XDP BPF 辅助函数"
+  header: "include/uapi/linux/bpf.h"
+  icon: "🔧"
+
+  packet_access:
+    bpf_xdp_load_bytes:
+      signature: "long bpf_xdp_load_bytes(struct xdp_md *xdp_md, u32 offset, void *buf, u32 len)"
+      description: "从 XDP 数据包加载字节"
+
+    bpf_xdp_store_bytes:
+      signature: "long bpf_xdp_store_bytes(struct xdp_md *xdp_md, u32 offset, void *buf, u32 len)"
+      description: "存储字节到 XDP 数据包"
+
+    bpf_xdp_adjust_head:
+      signature: "long bpf_xdp_adjust_head(struct xdp_md *xdp_md, int delta)"
+      description: "调整数据包头部位置"
+      notes: "delta > 0 添加头部空间，< 0 移除头部"
+
+    bpf_xdp_adjust_tail:
+      signature: "long bpf_xdp_adjust_tail(struct xdp_md *xdp_md, int delta)"
+      description: "调整数据包尾部位置"
+
+    bpf_xdp_adjust_meta:
+      signature: "long bpf_xdp_adjust_meta(struct xdp_md *xdp_md, int delta)"
+      description: "调整元数据位置"
+      notes: "元数据可用于传递信息给 skb"
+
+  redirect:
+    bpf_redirect:
+      signature: "long bpf_redirect(u32 ifindex, u64 flags)"
+      description: "重定向到指定接口"
+      return: "XDP_REDIRECT"
+
+    bpf_redirect_map:
+      signature: "long bpf_redirect_map(struct bpf_map *map, u32 key, u64 flags)"
+      description: "通过 map 重定向"
+      maps:
+        - "BPF_MAP_TYPE_DEVMAP - 设备映射"
+        - "BPF_MAP_TYPE_CPUMAP - CPU 映射"
+        - "BPF_MAP_TYPE_XSKMAP - AF_XDP socket 映射"
+
+    bpf_redirect_peer:
+      signature: "long bpf_redirect_peer(u32 ifindex, u64 flags)"
+      description: "重定向到对端设备"
+      notes: "用于 veth 对"
+
+  map_lookup:
+    bpf_map_lookup_elem:
+      signature: "void *bpf_map_lookup_elem(struct bpf_map *map, const void *key)"
+      description: "查找 map 元素"
+
+    bpf_map_update_elem:
+      signature: "long bpf_map_update_elem(struct bpf_map *map, const void *key, const void *value, u64 flags)"
+      description: "更新 map 元素"
+
+    bpf_map_delete_elem:
+      signature: "long bpf_map_delete_elem(struct bpf_map *map, const void *key)"
+      description: "删除 map 元素"
+
+  utility:
+    bpf_ktime_get_ns:
+      signature: "u64 bpf_ktime_get_ns(void)"
+      description: "获取内核时间 (纳秒)"
+
+    bpf_get_smp_processor_id:
+      signature: "u32 bpf_get_smp_processor_id(void)"
+      description: "获取当前 CPU ID"
+
+    bpf_csum_diff:
+      signature: "s64 bpf_csum_diff(__be32 *from, u32 from_size, __be32 *to, u32 to_size, __wsum seed)"
+      description: "计算校验和差异"
+
+    bpf_fib_lookup:
+      signature: "long bpf_fib_lookup(void *ctx, struct bpf_fib_lookup *params, int plen, u32 flags)"
+      description: "FIB 路由查找"
+
+# ============================================================
+# XDP MAPS
+# ============================================================
+
+xdp_maps:
+  description: "XDP BPF Maps - XDP BPF 映射"
+  header: "include/uapi/linux/bpf.h"
+  icon: "🗺️"
+
+  BPF_MAP_TYPE_DEVMAP:
+    description: "设备映射"
+    use_case: "XDP_REDIRECT 到其他网络设备"
+    key: "u32 (索引)"
+    value: "u32 (ifindex)"
+
+  BPF_MAP_TYPE_DEVMAP_HASH:
+    description: "哈希设备映射"
+    use_case: "基于 ifindex 查找的设备映射"
+    key: "u32 (ifindex)"
+    value: "struct bpf_devmap_val"
+
+  BPF_MAP_TYPE_CPUMAP:
+    description: "CPU 映射"
+    use_case: "XDP_REDIRECT 到其他 CPU"
+    key: "u32 (索引)"
+    value: "struct bpf_cpumap_val"
+    notes: "用于多 CPU 负载均衡"
+
+  BPF_MAP_TYPE_XSKMAP:
+    description: "AF_XDP Socket 映射"
+    use_case: "XDP_REDIRECT 到用户空间 socket"
+    key: "u32 (索引)"
+    value: "fd (AF_XDP socket)"
+    notes: "零拷贝用户空间数据包处理"
+
+  BPF_MAP_TYPE_HASH:
+    description: "通用哈希表"
+    use_case: "连接跟踪、状态存储"
+    notes: "常用于存储会话信息"
+
+  BPF_MAP_TYPE_LRU_HASH:
+    description: "LRU 哈希表"
+    use_case: "有容量限制的状态存储"
+    notes: "自动驱逐最少使用的条目"
+
+  BPF_MAP_TYPE_PERCPU_HASH:
+    description: "Per-CPU 哈希表"
+    use_case: "高并发统计"
+    notes: "无锁，每 CPU 独立副本"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  native_xdp_path:
+    description: "原生 XDP 执行路径"
+    trigger: "网卡驱动接收数据包"
+    chain:
+      - function: "驱动 NAPI poll"
+        file: "驱动代码"
+        description: "从 DMA 描述符接收数据"
+        context: "softirq"
+      - function: "xdp_init_buff"
+        file: "include/net/xdp.h"
+        description: "初始化 XDP 缓冲区"
+      - function: "xdp_prepare_buff"
+        file: "include/net/xdp.h"
+        description: "准备数据指针"
+      - function: "bpf_prog_run_xdp"
+        file: "include/linux/filter.h"
+        description: "运行 XDP BPF 程序"
+      - function: "根据返回值处理"
+        description: |
+          XDP_DROP: 返回缓冲区
+          XDP_PASS: napi_gro_receive
+          XDP_TX: 驱动发送
+          XDP_REDIRECT: xdp_do_redirect
+
+  generic_xdp_path:
+    description: "通用 XDP 执行路径"
+    trigger: "SKB 已创建后"
+    chain:
+      - function: "netif_receive_skb"
+        file: "net/core/dev.c"
+        description: "网络接收入口"
+        context: "softirq"
+      - function: "__netif_receive_skb_core"
+        file: "net/core/dev.c"
+        description: "核心接收处理"
+      - function: "do_xdp_generic"
+        file: "net/core/dev.c"
+        description: "通用 XDP 处理"
+      - function: "netif_receive_generic_xdp"
+        file: "net/core/dev.c"
+        description: "从 SKB 构建 xdp_buff"
+      - function: "bpf_prog_run_xdp"
+        file: "include/linux/filter.h"
+        description: "运行 XDP BPF 程序"
+
+  xdp_redirect_path:
+    description: "XDP 重定向路径"
+    trigger: "BPF 返回 XDP_REDIRECT"
+    chain:
+      - function: "bpf_redirect_map"
+        file: "BPF 程序"
+        description: "BPF 调用重定向"
+        context: "softirq"
+      - function: "xdp_do_redirect"
+        file: "net/core/filter.c"
+        description: "执行重定向"
+      - function: "xdp_convert_buff_to_frame"
+        file: "include/net/xdp.h"
+        description: "转换为 frame"
+      - function: "目标处理"
+        description: |
+          DEVMAP: 目标设备 ndo_xdp_xmit
+          CPUMAP: 入队到目标 CPU
+          XSKMAP: 入队到 AF_XDP
+
+  af_xdp_path:
+    description: "AF_XDP 路径"
+    trigger: "XDP_REDIRECT 到 XSKMAP"
+    chain:
+      - function: "xdp_do_redirect"
+        file: "net/core/filter.c"
+        description: "执行重定向"
+        context: "softirq"
+      - function: "__xsk_map_redirect"
+        file: "net/xdp/xsk.c"
+        description: "重定向到 XSK"
+      - function: "xsk_rcv"
+        file: "net/xdp/xsk.c"
+        description: "XSK 接收"
+      - function: "__xsk_rcv"
+        file: "net/xdp/xsk.c"
+        description: "复制到用户空间 UMEM"
+      - function: "用户空间 poll/recv"
+        description: "用户获取数据包"
+
+# ============================================================
+# AF_XDP
+# ============================================================
+
+af_xdp:
+  description: "AF_XDP - 用户空间高性能数据包处理"
+  header: "net/xdp/xsk.c"
+  icon: "🚀"
+  kernel_version: "4.18+"
+
+  components:
+    umem:
+      description: "User Memory - 用户内存区域"
+      notes: "共享内存，零拷贝传输"
+
+    fill_ring:
+      description: "Fill Ring - 填充环"
+      direction: "用户 -> 内核"
+      notes: "用户提供空闲缓冲区给内核接收"
+
+    completion_ring:
+      description: "Completion Ring - 完成环"
+      direction: "内核 -> 用户"
+      notes: "内核通知已发送完成的缓冲区"
+
+    rx_ring:
+      description: "RX Ring - 接收环"
+      direction: "内核 -> 用户"
+      notes: "内核将接收的数据包传给用户"
+
+    tx_ring:
+      description: "TX Ring - 发送环"
+      direction: "用户 -> 内核"
+      notes: "用户提交待发送的数据包"
+
+  modes:
+    copy:
+      description: "拷贝模式"
+      notes: "数据在用户/内核间拷贝"
+    zerocopy:
+      description: "零拷贝模式"
+      notes: "数据直接 DMA 到/从用户空间"
+      requires: "驱动支持"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "XDP 丢弃程序 (eBPF C)"
+    kernel_version: "5.0+"
+    code: |
+      /* xdp_drop.c - 丢弃指定 IP 的数据包 */
+      #include <linux/bpf.h>
+      #include <linux/if_ether.h>
+      #include <linux/ip.h>
+      #include <bpf/bpf_helpers.h>
+      
+      /* 黑名单 map */
+      struct {
+          __uint(type, BPF_MAP_TYPE_HASH);
+          __uint(max_entries, 10000);
+          __type(key, __u32);    /* IP 地址 */
+          __type(value, __u64);  /* 丢弃计数 */
+      } blacklist SEC(".maps");
+      
+      SEC("xdp")
+      int xdp_drop_prog(struct xdp_md *ctx)
+      {
+          void *data_end = (void *)(long)ctx->data_end;
+          void *data = (void *)(long)ctx->data;
+          struct ethhdr *eth = data;
+          struct iphdr *iph;
+          __u32 src_ip;
+          __u64 *count;
+          
+          /* 边界检查 */
+          if ((void *)(eth + 1) > data_end)
+              return XDP_PASS;
+          
+          /* 只处理 IPv4 */
+          if (eth->h_proto != __constant_htons(ETH_P_IP))
+              return XDP_PASS;
+          
+          iph = (void *)(eth + 1);
+          if ((void *)(iph + 1) > data_end)
+              return XDP_PASS;
+          
+          src_ip = iph->saddr;
+          
+          /* 查找黑名单 */
+          count = bpf_map_lookup_elem(&blacklist, &src_ip);
+          if (count) {
+              __sync_fetch_and_add(count, 1);
+              return XDP_DROP;
+          }
+          
+          return XDP_PASS;
+      }
+      
+      char _license[] SEC("license") = "GPL";
+
+  - description: "XDP 负载均衡程序 (eBPF C)"
+    kernel_version: "5.0+"
+    code: |
+      /* xdp_lb.c - 简单负载均衡 */
+      #include <linux/bpf.h>
+      #include <linux/if_ether.h>
+      #include <linux/ip.h>
+      #include <linux/tcp.h>
+      #include <bpf/bpf_helpers.h>
+      #include <bpf/bpf_endian.h>
+      
+      /* 后端服务器映射 */
+      struct {
+          __uint(type, BPF_MAP_TYPE_DEVMAP);
+          __uint(max_entries, 64);
+          __type(key, __u32);
+          __type(value, __u32);
+      } tx_port SEC(".maps");
+      
+      /* 连接跟踪 */
+      struct conn_key {
+          __u32 src_ip;
+          __u32 dst_ip;
+          __u16 src_port;
+          __u16 dst_port;
+      };
+      
+      struct {
+          __uint(type, BPF_MAP_TYPE_LRU_HASH);
+          __uint(max_entries, 100000);
+          __type(key, struct conn_key);
+          __type(value, __u32);  /* 后端索引 */
+      } connections SEC(".maps");
+      
+      /* 简单哈希函数 */
+      static __always_inline __u32 hash_conn(struct conn_key *key)
+      {
+          return key->src_ip ^ key->dst_ip ^ 
+                 (key->src_port << 16 | key->dst_port);
+      }
+      
+      SEC("xdp")
+      int xdp_lb_prog(struct xdp_md *ctx)
+      {
+          void *data_end = (void *)(long)ctx->data_end;
+          void *data = (void *)(long)ctx->data;
+          struct ethhdr *eth = data;
+          struct iphdr *iph;
+          struct tcphdr *tcph;
+          struct conn_key key = {};
+          __u32 *backend_idx;
+          __u32 hash;
+          
+          if ((void *)(eth + 1) > data_end)
+              return XDP_PASS;
+          
+          if (eth->h_proto != __constant_htons(ETH_P_IP))
+              return XDP_PASS;
+          
+          iph = (void *)(eth + 1);
+          if ((void *)(iph + 1) > data_end)
+              return XDP_PASS;
+          
+          /* 只处理 TCP */
+          if (iph->protocol != IPPROTO_TCP)
+              return XDP_PASS;
+          
+          tcph = (void *)iph + (iph->ihl * 4);
+          if ((void *)(tcph + 1) > data_end)
+              return XDP_PASS;
+          
+          /* 构建连接键 */
+          key.src_ip = iph->saddr;
+          key.dst_ip = iph->daddr;
+          key.src_port = tcph->source;
+          key.dst_port = tcph->dest;
+          
+          /* 查找现有连接 */
+          backend_idx = bpf_map_lookup_elem(&connections, &key);
+          if (!backend_idx) {
+              /* 新连接，选择后端 */
+              hash = hash_conn(&key);
+              __u32 idx = hash % 4;  /* 4 个后端 */
+              bpf_map_update_elem(&connections, &key, &idx, BPF_ANY);
+              backend_idx = &idx;
+          }
+          
+          /* 重定向到后端 */
+          return bpf_redirect_map(&tx_port, *backend_idx, 0);
+      }
+      
+      char _license[] SEC("license") = "GPL";
+
+  - description: "加载 XDP 程序 (用户空间)"
+    kernel_version: "5.0+"
+    code: |
+      /* load_xdp.c - 加载 XDP 程序 */
+      #include <stdio.h>
+      #include <stdlib.h>
+      #include <string.h>
+      #include <errno.h>
+      #include <unistd.h>
+      #include <net/if.h>
+      #include <linux/if_link.h>
+      #include <bpf/bpf.h>
+      #include <bpf/libbpf.h>
+      
+      int main(int argc, char **argv)
+      {
+          struct bpf_object *obj;
+          struct bpf_program *prog;
+          int prog_fd;
+          int ifindex;
+          int err;
+          
+          if (argc != 3) {
+              fprintf(stderr, "Usage: %s <ifname> <xdp.o>\n", argv[0]);
+              return 1;
+          }
+          
+          ifindex = if_nametoindex(argv[1]);
+          if (!ifindex) {
+              perror("if_nametoindex");
+              return 1;
+          }
+          
+          /* 加载 BPF 对象文件 */
+          obj = bpf_object__open_file(argv[2], NULL);
+          if (libbpf_get_error(obj)) {
+              fprintf(stderr, "Error opening BPF object\n");
+              return 1;
+          }
+          
+          /* 加载程序 */
+          err = bpf_object__load(obj);
+          if (err) {
+              fprintf(stderr, "Error loading BPF object: %d\n", err);
+              bpf_object__close(obj);
+              return 1;
+          }
+          
+          /* 获取程序 FD */
+          prog = bpf_object__find_program_by_name(obj, "xdp_drop_prog");
+          if (!prog) {
+              fprintf(stderr, "Error finding program\n");
+              bpf_object__close(obj);
+              return 1;
+          }
+          
+          prog_fd = bpf_program__fd(prog);
+          
+          /* 附加到接口 */
+          /* XDP_FLAGS_SKB_MODE: 通用模式 */
+          /* XDP_FLAGS_DRV_MODE: 原生模式 */
+          /* XDP_FLAGS_HW_MODE: 硬件卸载 */
+          err = bpf_xdp_attach(ifindex, prog_fd, XDP_FLAGS_DRV_MODE, NULL);
+          if (err) {
+              fprintf(stderr, "Error attaching XDP: %d\n", err);
+              bpf_object__close(obj);
+              return 1;
+          }
+          
+          printf("XDP program attached to %s\n", argv[1]);
+          
+          /* 保持运行... */
+          pause();
+          
+          /* 卸载 */
+          bpf_xdp_detach(ifindex, XDP_FLAGS_DRV_MODE, NULL);
+          bpf_object__close(obj);
+          
+          return 0;
+      }
+
+  - description: "驱动中支持 XDP"
+    kernel_version: "5.0+"
+    code: |
+      /* 网络驱动支持 XDP 的关键代码 */
+      #include <linux/netdevice.h>
+      #include <net/xdp.h>
+      #include <linux/bpf.h>
+      
+      struct my_priv {
+          struct net_device *netdev;
+          struct bpf_prog *xdp_prog;
+          struct xdp_rxq_info xdp_rxq;
+          /* ... */
+      };
+      
+      /* ndo_bpf 回调 - 处理 XDP 程序加载/卸载 */
+      static int my_xdp(struct net_device *dev, struct netdev_bpf *xdp)
+      {
+          struct my_priv *priv = netdev_priv(dev);
+          struct bpf_prog *old_prog, *new_prog;
+          
+          switch (xdp->command) {
+          case XDP_SETUP_PROG:
+              new_prog = xdp->prog;
+              old_prog = xchg(&priv->xdp_prog, new_prog);
+              if (old_prog)
+                  bpf_prog_put(old_prog);
+              return 0;
+              
+          case XDP_SETUP_XSK_POOL:
+              /* AF_XDP 设置 */
+              return -EOPNOTSUPP;
+              
+          default:
+              return -EINVAL;
+          }
+      }
+      
+      /* ndo_xdp_xmit 回调 - XDP_REDIRECT 发送 */
+      static int my_xdp_xmit(struct net_device *dev, int n,
+                            struct xdp_frame **frames, u32 flags)
+      {
+          struct my_priv *priv = netdev_priv(dev);
+          int i, drops = 0;
+          
+          for (i = 0; i < n; i++) {
+              struct xdp_frame *xdpf = frames[i];
+              
+              /* 发送帧 */
+              if (my_tx_xdp_frame(priv, xdpf) < 0) {
+                  xdp_return_frame_rx_napi(xdpf);
+                  drops++;
+              }
+          }
+          
+          return n - drops;
+      }
+      
+      /* NAPI poll 中处理 XDP */
+      static int my_poll(struct napi_struct *napi, int budget)
+      {
+          struct my_priv *priv = container_of(napi, struct my_priv, napi);
+          struct bpf_prog *xdp_prog;
+          int work_done = 0;
+          
+          xdp_prog = READ_ONCE(priv->xdp_prog);
+          
+          while (work_done < budget) {
+              struct xdp_buff xdp;
+              u32 act;
+              
+              /* 从硬件获取数据 */
+              /* ... */
+              
+              if (xdp_prog) {
+                  xdp_init_buff(&xdp, PAGE_SIZE, &priv->xdp_rxq);
+                  xdp_prepare_buff(&xdp, data, headroom, len, true);
+                  
+                  act = bpf_prog_run_xdp(xdp_prog, &xdp);
+                  
+                  switch (act) {
+                  case XDP_PASS:
+                      /* 转换为 SKB 继续处理 */
+                      break;
+                  case XDP_DROP:
+                      /* 直接丢弃 */
+                      my_free_rx_buffer(priv);
+                      continue;
+                  case XDP_TX:
+                      /* 从同接口发回 */
+                      my_xdp_tx(priv, &xdp);
+                      continue;
+                  case XDP_REDIRECT:
+                      /* 重定向 */
+                      if (xdp_do_redirect(priv->netdev, &xdp, xdp_prog) < 0)
+                          my_free_rx_buffer(priv);
+                      continue;
+                  default:
+                      bpf_warn_invalid_xdp_action(priv->netdev, xdp_prog, act);
+                      my_free_rx_buffer(priv);
+                      continue;
+                  }
+              }
+              
+              /* 正常 SKB 处理 */
+              napi_gro_receive(napi, skb);
+              work_done++;
+          }
+          
+          /* 批量刷新重定向 */
+          if (xdp_prog)
+              xdp_do_flush();
+          
+          return work_done;
+      }
+      
+      /* Probe 时注册 XDP 队列 */
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_priv *priv;
+          /* ... */
+          
+          /* 注册 XDP 接收队列信息 */
+          xdp_rxq_info_reg(&priv->xdp_rxq, priv->netdev, 0,
+                          priv->napi.napi_id);
+          xdp_rxq_info_reg_mem_model(&priv->xdp_rxq,
+                                     MEM_TYPE_PAGE_SHARED, NULL);
+          
+          return 0;
+      }
+      
+      /* netdev_ops */
+      static const struct net_device_ops my_netdev_ops = {
+          .ndo_open       = my_open,
+          .ndo_stop       = my_stop,
+          .ndo_start_xmit = my_start_xmit,
+          .ndo_bpf        = my_xdp,
+          .ndo_xdp_xmit   = my_xdp_xmit,
+          /* ... */
+      };

@@ -1,0 +1,900 @@
+# Sysfs File System Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/filesystems/sysfs.html
+# Kernel Version: 2.6+ (current APIs)
+
+# ============================================================
+# SYSFS OVERVIEW
+# ============================================================
+
+sysfs_overview:
+  description: "Sysfs - 设备模型文件系统"
+  header: "linux/sysfs.h"
+  icon: "🔧"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  purpose:
+    - description: "导出内核对象层次结构到用户空间"
+    - description: "提供设备/驱动/总线信息"
+    - description: "实现 /sys 虚拟文件系统"
+
+  mount_point: "/sys"
+
+  key_directories:
+    - path: "/sys/devices"
+      description: "所有设备的层次结构"
+    - path: "/sys/bus"
+      description: "总线类型"
+    - path: "/sys/class"
+      description: "设备类"
+    - path: "/sys/block"
+      description: "块设备"
+    - path: "/sys/firmware"
+      description: "固件对象"
+    - path: "/sys/kernel"
+      description: "内核子系统"
+    - path: "/sys/module"
+      description: "已加载模块"
+    - path: "/sys/power"
+      description: "电源管理"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  kobject:
+    pattern: 'struct kobject\s*\{'
+    description: "内核对象基类"
+    file: "include/linux/kobject.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "对象名称"
+      - name: "entry"
+        type: "struct list_head"
+        description: "kset 链表节点"
+      - name: "parent"
+        type: "struct kobject *"
+        description: "父对象"
+      - name: "kset"
+        type: "struct kset *"
+        description: "所属 kset"
+      - name: "ktype"
+        type: "const struct kobj_type *"
+        description: "对象类型"
+      - name: "sd"
+        type: "struct kernfs_node *"
+        description: "sysfs 目录项"
+      - name: "kref"
+        type: "struct kref"
+        description: "引用计数"
+      - name: "state_initialized"
+        type: "unsigned int:1"
+        description: "是否已初始化"
+      - name: "state_in_sysfs"
+        type: "unsigned int:1"
+        description: "是否在 sysfs 中"
+      - name: "state_add_uevent_sent"
+        type: "unsigned int:1"
+        description: "ADD uevent 已发送"
+      - name: "state_remove_uevent_sent"
+        type: "unsigned int:1"
+        description: "REMOVE uevent 已发送"
+      - name: "uevent_suppress"
+        type: "unsigned int:1"
+        description: "抑制 uevent"
+
+  kset:
+    pattern: 'struct kset\s*\{'
+    description: "内核对象集合"
+    file: "include/linux/kobject.h"
+    fields:
+      - name: "list"
+        type: "struct list_head"
+        description: "kobject 链表"
+      - name: "list_lock"
+        type: "spinlock_t"
+        description: "链表锁"
+      - name: "kobj"
+        type: "struct kobject"
+        description: "嵌入的 kobject"
+      - name: "uevent_ops"
+        type: "const struct kset_uevent_ops *"
+        description: "uevent 操作"
+
+  kobj_type:
+    pattern: 'struct kobj_type\s*\{'
+    description: "内核对象类型"
+    file: "include/linux/kobject.h"
+    fields:
+      - name: "release"
+        type: "void (*)(struct kobject *)"
+        description: "释放回调"
+      - name: "sysfs_ops"
+        type: "const struct sysfs_ops *"
+        description: "sysfs 操作"
+      - name: "default_groups"
+        type: "const struct attribute_group **"
+        description: "默认属性组"
+      - name: "child_ns_type"
+        type: "const void *(*)(struct kobject *)"
+        description: "子命名空间类型"
+      - name: "namespace"
+        type: "const void *(*)(struct kobject *)"
+        description: "命名空间"
+      - name: "get_ownership"
+        type: "void (*)(struct kobject *, kuid_t *, kgid_t *)"
+        description: "获取所有者"
+
+  attribute:
+    pattern: 'struct attribute\s*\{'
+    description: "Sysfs 属性基类"
+    file: "include/linux/sysfs.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "属性名称"
+      - name: "mode"
+        type: "umode_t"
+        description: "访问权限"
+
+  attribute_group:
+    pattern: 'struct attribute_group\s*\{'
+    description: "Sysfs 属性组"
+    file: "include/linux/sysfs.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "组名称 (子目录)"
+      - name: "is_visible"
+        type: "umode_t (*)(struct kobject *, struct attribute *, int)"
+        description: "可见性回调"
+      - name: "is_bin_visible"
+        type: "umode_t (*)(struct kobject *, struct bin_attribute *, int)"
+        description: "二进制属性可见性"
+      - name: "attrs"
+        type: "struct attribute **"
+        description: "属性数组"
+      - name: "bin_attrs"
+        type: "struct bin_attribute **"
+        description: "二进制属性数组"
+
+  sysfs_ops:
+    pattern: 'struct sysfs_ops\s*\{'
+    description: "Sysfs 操作"
+    file: "include/linux/sysfs.h"
+    fields:
+      - name: "show"
+        type: "ssize_t (*)(struct kobject *, struct attribute *, char *)"
+        description: "读取属性"
+      - name: "store"
+        type: "ssize_t (*)(struct kobject *, struct attribute *, const char *, size_t)"
+        description: "写入属性"
+
+  bin_attribute:
+    pattern: 'struct bin_attribute\s*\{'
+    description: "二进制 sysfs 属性"
+    file: "include/linux/sysfs.h"
+    fields:
+      - name: "attr"
+        type: "struct attribute"
+        description: "基础属性"
+      - name: "size"
+        type: "size_t"
+        description: "数据大小"
+      - name: "private"
+        type: "void *"
+        description: "私有数据"
+      - name: "read"
+        type: "ssize_t (*)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t)"
+        description: "读取回调"
+      - name: "write"
+        type: "ssize_t (*)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t)"
+        description: "写入回调"
+      - name: "mmap"
+        type: "int (*)(struct file *, struct kobject *, struct bin_attribute *, struct vm_area_struct *)"
+        description: "mmap 回调"
+
+  device_attribute:
+    pattern: 'struct device_attribute\s*\{'
+    description: "设备属性 (device_create_file 使用)"
+    file: "include/linux/device.h"
+    fields:
+      - name: "attr"
+        type: "struct attribute"
+        description: "基础属性"
+      - name: "show"
+        type: "ssize_t (*)(struct device *, struct device_attribute *, char *)"
+        description: "读取回调"
+      - name: "store"
+        type: "ssize_t (*)(struct device *, struct device_attribute *, const char *, size_t)"
+        description: "写入回调"
+
+  class_attribute:
+    pattern: 'struct class_attribute\s*\{'
+    description: "类属性"
+    file: "include/linux/device/class.h"
+    fields:
+      - name: "attr"
+        type: "struct attribute"
+        description: "基础属性"
+      - name: "show"
+        type: "ssize_t (*)(struct class *, struct class_attribute *, char *)"
+        description: "读取回调"
+      - name: "store"
+        type: "ssize_t (*)(struct class *, struct class_attribute *, const char *, size_t)"
+        description: "写入回调"
+
+  driver_attribute:
+    pattern: 'struct driver_attribute\s*\{'
+    description: "驱动属性"
+    file: "include/linux/device/driver.h"
+    fields:
+      - name: "attr"
+        type: "struct attribute"
+        description: "基础属性"
+      - name: "show"
+        type: "ssize_t (*)(struct device_driver *, char *)"
+        description: "读取回调"
+      - name: "store"
+        type: "ssize_t (*)(struct device_driver *, const char *, size_t)"
+        description: "写入回调"
+
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # === Kobject 函数 ===
+  kobject_init:
+    pattern: 'kobject_init\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<ktype>[^)]+)\s*\)'
+    description: "初始化 kobject"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: false
+
+  kobject_add:
+    pattern: 'kobject_add\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<fmt>[^)]+)'
+    description: "添加 kobject 到层次结构"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+
+  kobject_init_and_add:
+    pattern: 'kobject_init_and_add\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<ktype>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,'
+    description: "初始化并添加 kobject"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+
+  kobject_create_and_add:
+    pattern: 'kobject_create_and_add\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "创建并添加简单 kobject"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct kobject *"
+
+  kobject_del:
+    pattern: 'kobject_del\s*\(\s*(?P<kobj>[^)]+)\s*\)'
+    description: "从层次结构删除 kobject"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+
+  kobject_put:
+    pattern: 'kobject_put\s*\(\s*(?P<kobj>[^)]+)\s*\)'
+    description: "减少 kobject 引用计数"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+
+  kobject_get:
+    pattern: 'kobject_get\s*\(\s*(?P<kobj>[^)]+)\s*\)'
+    description: "增加 kobject 引用计数"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: false
+
+  kobject_set_name:
+    pattern: 'kobject_set_name\s*\(\s*(?P<kobj>[^,]+)\s*,'
+    description: "设置 kobject 名称"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+
+  kobject_uevent:
+    pattern: 'kobject_uevent\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<action>[^)]+)\s*\)'
+    description: "发送 uevent"
+    file: "lib/kobject_uevent.c"
+    context: "process"
+    can_sleep: true
+
+  kobject_uevent_env:
+    pattern: 'kobject_uevent_env\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<action>[^,]+)\s*,\s*(?P<envp>[^)]+)\s*\)'
+    description: "发送带环境变量的 uevent"
+    file: "lib/kobject_uevent.c"
+    context: "process"
+    can_sleep: true
+
+  # === Kset 函数 ===
+  kset_create_and_add:
+    pattern: 'kset_create_and_add\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<uevent_ops>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "创建并添加 kset"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+
+  kset_unregister:
+    pattern: 'kset_unregister\s*\(\s*(?P<kset>[^)]+)\s*\)'
+    description: "注销 kset"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+
+  # === Sysfs 属性函数 ===
+  sysfs_create_file:
+    pattern: 'sysfs_create_file\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "创建 sysfs 文件"
+    file: "fs/sysfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_remove_file:
+    pattern: 'sysfs_remove_file\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "移除 sysfs 文件"
+    file: "fs/sysfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_create_group:
+    pattern: 'sysfs_create_group\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<grp>[^)]+)\s*\)'
+    description: "创建 sysfs 属性组"
+    file: "fs/sysfs/group.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_remove_group:
+    pattern: 'sysfs_remove_group\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<grp>[^)]+)\s*\)'
+    description: "移除 sysfs 属性组"
+    file: "fs/sysfs/group.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_create_groups:
+    pattern: 'sysfs_create_groups\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<groups>[^)]+)\s*\)'
+    description: "创建多个 sysfs 属性组"
+    file: "fs/sysfs/group.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_remove_groups:
+    pattern: 'sysfs_remove_groups\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<groups>[^)]+)\s*\)'
+    description: "移除多个 sysfs 属性组"
+    file: "fs/sysfs/group.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_update_group:
+    pattern: 'sysfs_update_group\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<grp>[^)]+)\s*\)'
+    description: "更新 sysfs 属性组"
+    file: "fs/sysfs/group.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_create_bin_file:
+    pattern: 'sysfs_create_bin_file\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "创建二进制 sysfs 文件"
+    file: "fs/sysfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_remove_bin_file:
+    pattern: 'sysfs_remove_bin_file\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "移除二进制 sysfs 文件"
+    file: "fs/sysfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_create_link:
+    pattern: 'sysfs_create_link\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<target>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+    description: "创建 sysfs 符号链接"
+    file: "fs/sysfs/symlink.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_remove_link:
+    pattern: 'sysfs_remove_link\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+    description: "移除 sysfs 符号链接"
+    file: "fs/sysfs/symlink.c"
+    context: "process"
+    can_sleep: true
+
+  sysfs_notify:
+    pattern: 'sysfs_notify\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<dir>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "通知 sysfs 属性变化"
+    file: "fs/sysfs/file.c"
+    context: "any"
+    can_sleep: false
+
+  # === 设备属性函数 ===
+  device_create_file:
+    pattern: 'device_create_file\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "创建设备属性文件"
+    file: "drivers/base/core.c"
+    context: "process"
+    can_sleep: true
+
+  device_remove_file:
+    pattern: 'device_remove_file\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "移除设备属性文件"
+    file: "drivers/base/core.c"
+    context: "process"
+    can_sleep: true
+
+  device_create_bin_file:
+    pattern: 'device_create_bin_file\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "创建设备二进制属性"
+    file: "drivers/base/core.c"
+    context: "process"
+    can_sleep: true
+
+  device_remove_bin_file:
+    pattern: 'device_remove_bin_file\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "移除设备二进制属性"
+    file: "drivers/base/core.c"
+    context: "process"
+    can_sleep: true
+
+
+# ============================================================
+# MACROS
+# ============================================================
+
+macros:
+  DEVICE_ATTR:
+    pattern: 'DEVICE_ATTR\s*\(\s*(?P<name>\w+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<show>[^,]+)\s*,\s*(?P<store>[^)]+)\s*\)'
+    description: "定义设备属性"
+    expansion: "struct device_attribute dev_attr_<name>"
+
+  DEVICE_ATTR_RO:
+    pattern: 'DEVICE_ATTR_RO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义只读设备属性"
+    expansion: "DEVICE_ATTR(<name>, 0444, <name>_show, NULL)"
+
+  DEVICE_ATTR_WO:
+    pattern: 'DEVICE_ATTR_WO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义只写设备属性"
+    expansion: "DEVICE_ATTR(<name>, 0200, NULL, <name>_store)"
+
+  DEVICE_ATTR_RW:
+    pattern: 'DEVICE_ATTR_RW\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义读写设备属性"
+    expansion: "DEVICE_ATTR(<name>, 0644, <name>_show, <name>_store)"
+
+  DEVICE_ATTR_ADMIN_RO:
+    pattern: 'DEVICE_ATTR_ADMIN_RO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义管理员只读属性"
+    expansion: "DEVICE_ATTR(<name>, 0400, <name>_show, NULL)"
+
+  DEVICE_ATTR_ADMIN_RW:
+    pattern: 'DEVICE_ATTR_ADMIN_RW\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义管理员读写属性"
+    expansion: "DEVICE_ATTR(<name>, 0600, <name>_show, <name>_store)"
+
+  CLASS_ATTR_RO:
+    pattern: 'CLASS_ATTR_RO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义只读类属性"
+
+  CLASS_ATTR_RW:
+    pattern: 'CLASS_ATTR_RW\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义读写类属性"
+
+  DRIVER_ATTR_RO:
+    pattern: 'DRIVER_ATTR_RO\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义只读驱动属性"
+
+  DRIVER_ATTR_RW:
+    pattern: 'DRIVER_ATTR_RW\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义读写驱动属性"
+
+  BIN_ATTR:
+    pattern: 'BIN_ATTR\s*\(\s*(?P<name>\w+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<read>[^,]+)\s*,\s*(?P<write>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+    description: "定义二进制属性"
+
+  BIN_ATTR_RO:
+    pattern: 'BIN_ATTR_RO\s*\(\s*(?P<name>\w+)\s*,\s*(?P<size>[^)]+)\s*\)'
+    description: "定义只读二进制属性"
+
+  ATTRIBUTE_GROUPS:
+    pattern: 'ATTRIBUTE_GROUPS\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义属性组数组"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  sysfs_read:
+    description: "Sysfs 文件读取路径"
+    trigger: "cat /sys/xxx"
+    chain:
+      - function: "ksys_read"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_read"
+        file: "fs/read_write.c"
+        description: "VFS 读取"
+      - function: "kernfs_fop_read_iter"
+        file: "fs/kernfs/file.c"
+        description: "kernfs 读取"
+      - function: "sysfs_kf_seq_show"
+        file: "fs/sysfs/file.c"
+        description: "sysfs 序列显示"
+      - function: "ktype->sysfs_ops->show"
+        file: "用户代码"
+        description: "用户 show 回调"
+        is_user_entry: true
+
+  sysfs_write:
+    description: "Sysfs 文件写入路径"
+    trigger: "echo xxx > /sys/xxx"
+    chain:
+      - function: "ksys_write"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_write"
+        file: "fs/read_write.c"
+        description: "VFS 写入"
+      - function: "kernfs_fop_write_iter"
+        file: "fs/kernfs/file.c"
+        description: "kernfs 写入"
+      - function: "sysfs_kf_write"
+        file: "fs/sysfs/file.c"
+        description: "sysfs 写入"
+      - function: "ktype->sysfs_ops->store"
+        file: "用户代码"
+        description: "用户 store 回调"
+        is_user_entry: true
+
+  kobject_add_path:
+    description: "Kobject 添加路径"
+    trigger: "kobject_add() 调用"
+    chain:
+      - function: "kobject_add"
+        file: "lib/kobject.c"
+        description: "添加 kobject"
+        context: "process"
+      - function: "kobject_add_internal"
+        file: "lib/kobject.c"
+        description: "内部添加"
+      - function: "create_dir"
+        file: "lib/kobject.c"
+        description: "创建目录"
+      - function: "sysfs_create_dir_ns"
+        file: "fs/sysfs/dir.c"
+        description: "sysfs 创建目录"
+      - function: "kernfs_create_dir_ns"
+        file: "fs/kernfs/dir.c"
+        description: "kernfs 创建目录"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本设备属性 (DEVICE_ATTR)"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/device.h>
+
+      /* 定义属性变量 */
+      static int my_value = 100;
+
+      /* show 回调 - 读取时调用 */
+      static ssize_t my_value_show(struct device *dev,
+                                   struct device_attribute *attr,
+                                   char *buf)
+      {
+          return sysfs_emit(buf, "%d\n", my_value);
+      }
+
+      /* store 回调 - 写入时调用 */
+      static ssize_t my_value_store(struct device *dev,
+                                    struct device_attribute *attr,
+                                    const char *buf, size_t count)
+      {
+          int ret, val;
+
+          ret = kstrtoint(buf, 10, &val);
+          if (ret)
+              return ret;
+
+          my_value = val;
+          return count;
+      }
+
+      /* 使用宏定义属性 */
+      static DEVICE_ATTR_RW(my_value);
+
+      /* 在 probe 中创建 */
+      static int my_probe(struct platform_device *pdev)
+      {
+          int ret;
+
+          ret = device_create_file(&pdev->dev, &dev_attr_my_value);
+          if (ret)
+              return ret;
+
+          return 0;
+      }
+
+      /* 在 remove 中删除 */
+      static int my_remove(struct platform_device *pdev)
+      {
+          device_remove_file(&pdev->dev, &dev_attr_my_value);
+          return 0;
+      }
+
+  - description: "属性组 (推荐方式)"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/device.h>
+
+      /* 多个属性 */
+      static ssize_t foo_show(struct device *dev,
+                              struct device_attribute *attr, char *buf)
+      {
+          return sysfs_emit(buf, "foo\n");
+      }
+
+      static ssize_t bar_show(struct device *dev,
+                              struct device_attribute *attr, char *buf)
+      {
+          return sysfs_emit(buf, "bar\n");
+      }
+
+      static ssize_t bar_store(struct device *dev,
+                               struct device_attribute *attr,
+                               const char *buf, size_t count)
+      {
+          /* 处理写入 */
+          return count;
+      }
+
+      static DEVICE_ATTR_RO(foo);
+      static DEVICE_ATTR_RW(bar);
+
+      /* 定义属性数组 */
+      static struct attribute *my_attrs[] = {
+          &dev_attr_foo.attr,
+          &dev_attr_bar.attr,
+          NULL,  /* 必须以 NULL 结尾 */
+      };
+
+      /* 定义属性组 */
+      static const struct attribute_group my_group = {
+          .name = "my_settings",  /* 创建子目录，NULL 则在设备目录下 */
+          .attrs = my_attrs,
+      };
+
+      /* 使用 ATTRIBUTE_GROUPS 宏定义组数组 */
+      ATTRIBUTE_GROUPS(my);
+
+      /* 在驱动中使用 */
+      static struct platform_driver my_driver = {
+          .driver = {
+              .name = "my_device",
+              .dev_groups = my_groups,  /* 自动创建/删除 */
+          },
+          .probe = my_probe,
+          .remove = my_remove,
+      };
+
+  - description: "二进制属性 (大数据)"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/sysfs.h>
+
+      #define EEPROM_SIZE 256
+      static u8 eeprom_data[EEPROM_SIZE];
+
+      /* 读取二进制数据 */
+      static ssize_t eeprom_read(struct file *filp, struct kobject *kobj,
+                                 struct bin_attribute *attr,
+                                 char *buf, loff_t off, size_t count)
+      {
+          if (off >= EEPROM_SIZE)
+              return 0;
+          if (off + count > EEPROM_SIZE)
+              count = EEPROM_SIZE - off;
+
+          memcpy(buf, eeprom_data + off, count);
+          return count;
+      }
+
+      /* 写入二进制数据 */
+      static ssize_t eeprom_write(struct file *filp, struct kobject *kobj,
+                                  struct bin_attribute *attr,
+                                  char *buf, loff_t off, size_t count)
+      {
+          if (off >= EEPROM_SIZE)
+              return -ENOSPC;
+          if (off + count > EEPROM_SIZE)
+              count = EEPROM_SIZE - off;
+
+          memcpy(eeprom_data + off, buf, count);
+          return count;
+      }
+
+      /* 定义二进制属性 */
+      static BIN_ATTR(eeprom, 0644, eeprom_read, eeprom_write, EEPROM_SIZE);
+
+      /* 或者使用简化宏 */
+      static BIN_ATTR_RW(eeprom, EEPROM_SIZE);
+
+      /* 创建二进制属性 */
+      static int my_probe(struct platform_device *pdev)
+      {
+          return device_create_bin_file(&pdev->dev, &bin_attr_eeprom);
+      }
+
+  - description: "Kobject 直接使用"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/kobject.h>
+      #include <linux/sysfs.h>
+
+      static struct kobject *my_kobj;
+      static int my_val = 0;
+
+      /* show/store 使用 kobject 接口 */
+      static ssize_t my_show(struct kobject *kobj,
+                             struct kobj_attribute *attr, char *buf)
+      {
+          return sysfs_emit(buf, "%d\n", my_val);
+      }
+
+      static ssize_t my_store(struct kobject *kobj,
+                              struct kobj_attribute *attr,
+                              const char *buf, size_t count)
+      {
+          int ret;
+          ret = kstrtoint(buf, 10, &my_val);
+          if (ret)
+              return ret;
+          return count;
+      }
+
+      /* 使用 kobj_attribute */
+      static struct kobj_attribute my_attr =
+          __ATTR(my_value, 0644, my_show, my_store);
+
+      /* 属性数组 */
+      static struct attribute *my_attrs[] = {
+          &my_attr.attr,
+          NULL,
+      };
+
+      static struct attribute_group my_group = {
+          .attrs = my_attrs,
+      };
+
+      static int __init my_init(void)
+      {
+          int ret;
+
+          /* 在 /sys/kernel 下创建目录 */
+          my_kobj = kobject_create_and_add("my_module", kernel_kobj);
+          if (!my_kobj)
+              return -ENOMEM;
+
+          /* 创建属性组 */
+          ret = sysfs_create_group(my_kobj, &my_group);
+          if (ret) {
+              kobject_put(my_kobj);
+              return ret;
+          }
+
+          return 0;
+      }
+
+      static void __exit my_exit(void)
+      {
+          kobject_put(my_kobj);  /* 自动删除属性 */
+      }
+
+  - description: "动态可见性属性"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/device.h>
+
+      static bool feature_enabled = false;
+
+      static ssize_t feature_show(struct device *dev,
+                                  struct device_attribute *attr, char *buf)
+      {
+          return sysfs_emit(buf, "%s\n", feature_enabled ? "on" : "off");
+      }
+
+      static DEVICE_ATTR_RO(feature);
+
+      /* 条件显示属性 */
+      static ssize_t advanced_show(struct device *dev,
+                                   struct device_attribute *attr, char *buf)
+      {
+          return sysfs_emit(buf, "advanced value\n");
+      }
+
+      static DEVICE_ATTR_RO(advanced);
+
+      static struct attribute *my_attrs[] = {
+          &dev_attr_feature.attr,
+          &dev_attr_advanced.attr,
+          NULL,
+      };
+
+      /* 可见性回调 */
+      static umode_t my_is_visible(struct kobject *kobj,
+                                   struct attribute *attr, int n)
+      {
+          if (attr == &dev_attr_advanced.attr) {
+              /* advanced 属性只在功能启用时可见 */
+              return feature_enabled ? attr->mode : 0;
+          }
+          return attr->mode;
+      }
+
+      static const struct attribute_group my_group = {
+          .attrs = my_attrs,
+          .is_visible = my_is_visible,
+      };
+
+  - description: "sysfs_notify 使用"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/sysfs.h>
+
+      static int status = 0;
+
+      static ssize_t status_show(struct device *dev,
+                                 struct device_attribute *attr, char *buf)
+      {
+          return sysfs_emit(buf, "%d\n", status);
+      }
+
+      static DEVICE_ATTR_RO(status);
+
+      /* 当状态变化时通知用户空间 */
+      static void update_status(struct device *dev, int new_status)
+      {
+          status = new_status;
+          
+          /* 通知 poll() 等待的用户空间程序 */
+          sysfs_notify(&dev->kobj, NULL, "status");
+      }
+
+      /* 用户空间可以使用 poll() 监视变化:
+       * 
+       * int fd = open("/sys/devices/.../status", O_RDONLY);
+       * struct pollfd pfd = { .fd = fd, .events = POLLPRI | POLLERR };
+       * 
+       * while (1) {
+       *     poll(&pfd, 1, -1);
+       *     lseek(fd, 0, SEEK_SET);
+       *     read(fd, buf, sizeof(buf));
+       *     printf("New status: %s\n", buf);
+       * }
+       */

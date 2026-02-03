@@ -1,0 +1,892 @@
+# Linux Kernel ARP Protocol Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/networking/
+# Kernel Version: 5.0+
+
+# ============================================================
+# ARP CORE
+# ============================================================
+
+arp_core:
+  description: "ARP Protocol Core - ARP 协议核心"
+  header: "net/ipv4/arp.c"
+  icon: "🔍"
+  kernel_version: "5.0+"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    description: "ARP 处理在软中断上下文执行"
+
+  characteristics:
+    - "Address Resolution Protocol"
+    - "将 IP 地址解析为 MAC 地址"
+    - "以太网类型: 0x0806"
+    - "链路层协议"
+    - "用于 IPv4 (IPv6 使用 NDP)"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  arphdr:
+    description: "ARP Header - ARP 头部"
+    header: "include/uapi/linux/if_arp.h"
+    pattern: 'struct arphdr\s*\{'
+    fields:
+      - name: "ar_hrd"
+        type: "__be16"
+        description: "硬件类型 (ARPHRD_ETHER = 1)"
+      - name: "ar_pro"
+        type: "__be16"
+        description: "协议类型 (ETH_P_IP = 0x0800)"
+      - name: "ar_hln"
+        type: "unsigned char"
+        description: "硬件地址长度 (以太网 = 6)"
+      - name: "ar_pln"
+        type: "unsigned char"
+        description: "协议地址长度 (IPv4 = 4)"
+      - name: "ar_op"
+        type: "__be16"
+        description: "操作码 (请求/响应)"
+    notes: "后跟发送方硬件地址、发送方 IP、目标硬件地址、目标 IP"
+
+  arp_operations:
+    description: "ARP Operation Codes - ARP 操作码"
+    header: "include/uapi/linux/if_arp.h"
+    values:
+      ARPOP_REQUEST:
+        value: 1
+        description: "ARP 请求 (谁拥有这个 IP?)"
+      ARPOP_REPLY:
+        value: 2
+        description: "ARP 响应 (这是我的 MAC)"
+      ARPOP_RREQUEST:
+        value: 3
+        description: "RARP 请求"
+      ARPOP_RREPLY:
+        value: 4
+        description: "RARP 响应"
+      ARPOP_InREQUEST:
+        value: 8
+        description: "InARP 请求"
+      ARPOP_InREPLY:
+        value: 9
+        description: "InARP 响应"
+      ARPOP_NAK:
+        value: 10
+        description: "ARP NAK"
+
+  neighbour:
+    description: "Neighbour Entry - 邻居表项"
+    header: "include/net/neighbour.h"
+    pattern: 'struct neighbour\s*\{'
+    fields:
+      - name: "next"
+        type: "struct neighbour __rcu *"
+        description: "哈希链表下一项"
+      - name: "tbl"
+        type: "struct neigh_table *"
+        description: "所属邻居表"
+      - name: "parms"
+        type: "struct neigh_parms *"
+        description: "配置参数"
+      - name: "confirmed"
+        type: "unsigned long"
+        description: "最后确认时间"
+      - name: "updated"
+        type: "unsigned long"
+        description: "最后更新时间"
+      - name: "refcnt"
+        type: "refcount_t"
+        description: "引用计数"
+      - name: "nud_state"
+        type: "u8"
+        description: "NUD 状态"
+      - name: "type"
+        type: "u8"
+        description: "类型"
+      - name: "dead"
+        type: "u8"
+        description: "是否已删除"
+      - name: "probes"
+        type: "u8"
+        description: "探测次数"
+      - name: "ha"
+        type: "u8[ALIGN(MAX_ADDR_LEN, 8)]"
+        description: "硬件地址 (MAC)"
+      - name: "hh"
+        type: "struct hh_cache"
+        description: "硬件头缓存"
+      - name: "output"
+        type: "int (*)(struct neighbour *, struct sk_buff *)"
+        description: "输出函数"
+      - name: "ops"
+        type: "const struct neigh_ops *"
+        description: "邻居操作"
+      - name: "primary_key"
+        type: "u8[0]"
+        description: "主键 (IP 地址)"
+
+  neigh_table:
+    description: "Neighbour Table - 邻居表"
+    header: "include/net/neighbour.h"
+    pattern: 'struct neigh_table\s*\{'
+    fields:
+      - name: "family"
+        type: "int"
+        description: "地址族 (AF_INET)"
+      - name: "entry_size"
+        type: "unsigned int"
+        description: "表项大小"
+      - name: "key_len"
+        type: "unsigned int"
+        description: "键长度"
+      - name: "protocol"
+        type: "__be16"
+        description: "协议类型"
+      - name: "hash"
+        type: "__u32 (*)(const void *, const struct net_device *, __u32 *)"
+        description: "哈希函数"
+      - name: "constructor"
+        type: "int (*)(struct neighbour *)"
+        description: "构造函数"
+      - name: "id"
+        type: "char *"
+        description: "表名称"
+      - name: "parms"
+        type: "struct neigh_parms"
+        description: "默认参数"
+      - name: "nht"
+        type: "struct neigh_hash_table __rcu *"
+        description: "哈希表"
+      - name: "gc_list"
+        type: "struct list_head"
+        description: "垃圾回收链表"
+      - name: "gc_interval"
+        type: "unsigned long"
+        description: "GC 间隔"
+      - name: "gc_thresh1"
+        type: "int"
+        description: "GC 阈值 1"
+      - name: "gc_thresh2"
+        type: "int"
+        description: "GC 阈值 2"
+      - name: "gc_thresh3"
+        type: "int"
+        description: "GC 阈值 3"
+
+  nud_state:
+    description: "NUD State - 邻居不可达检测状态"
+    header: "include/net/neighbour.h"
+    values:
+      NUD_INCOMPLETE:
+        value: 0x01
+        description: "解析中，尚未收到响应"
+      NUD_REACHABLE:
+        value: 0x02
+        description: "可达，最近确认过"
+      NUD_STALE:
+        value: 0x04
+        description: "过期，需要重新确认"
+      NUD_DELAY:
+        value: 0x08
+        description: "延迟探测中"
+      NUD_PROBE:
+        value: 0x10
+        description: "主动探测中"
+      NUD_FAILED:
+        value: 0x20
+        description: "解析失败"
+      NUD_NOARP:
+        value: 0x40
+        description: "不需要 ARP (如 lo)"
+      NUD_PERMANENT:
+        value: 0x80
+        description: "静态配置，永不过期"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # ========== 接收路径 ==========
+  arp_rcv:
+    pattern: 'arp_rcv\s*\('
+    description: "ARP 接收入口"
+    file: "net/ipv4/arp.c"
+    signature: "int arp_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)"
+    context: "softirq"
+    can_sleep: false
+    return_value:
+      NET_RX_SUCCESS: "处理成功"
+      NET_RX_DROP: "丢弃"
+    typical_actions:
+      - "验证 ARP 头"
+      - "检查设备是否支持 ARP"
+      - "调用 arp_process"
+
+  arp_process:
+    pattern: 'arp_process\s*\('
+    description: "ARP 处理核心"
+    file: "net/ipv4/arp.c"
+    signature: "int arp_process(struct net *net, struct sock *sk, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "解析 ARP 包"
+      - "更新 ARP 缓存"
+      - "生成 ARP 响应 (如果是请求)"
+
+  arp_is_garp:
+    pattern: 'arp_is_garp\s*\('
+    description: "检查是否为免费 ARP"
+    file: "net/ipv4/arp.c"
+    signature: "bool arp_is_garp(struct net *net, struct net_device *dev, int *addr_type, __be16 ar_op, __be32 sip, __be32 tip, unsigned char *sha, unsigned char *tha)"
+    context: "softirq"
+    can_sleep: false
+    notes: "免费 ARP 用于检测 IP 冲突和更新网络缓存"
+
+  # ========== 发送路径 ==========
+  arp_send:
+    pattern: 'arp_send\s*\('
+    description: "发送 ARP 包"
+    file: "net/ipv4/arp.c"
+    signature: "void arp_send(int type, int ptype, __be32 dest_ip, struct net_device *dev, __be32 src_ip, const unsigned char *dest_hw, const unsigned char *src_hw, const unsigned char *target_hw)"
+    context: "any"
+    can_sleep: false
+    parameters:
+      - name: "type"
+        description: "ARP 操作类型 (ARPOP_REQUEST/REPLY)"
+      - name: "ptype"
+        description: "协议类型 (ETH_P_IP)"
+      - name: "dest_ip"
+        description: "目标 IP 地址"
+      - name: "dev"
+        description: "网络设备"
+      - name: "src_ip"
+        description: "源 IP 地址"
+      - name: "dest_hw"
+        description: "目标硬件地址 (可为 NULL)"
+      - name: "src_hw"
+        description: "源硬件地址 (可为 NULL)"
+      - name: "target_hw"
+        description: "目标硬件地址 (ARP 载荷中)"
+
+  arp_xmit:
+    pattern: 'arp_xmit\s*\('
+    description: "发送 ARP SKB"
+    file: "net/ipv4/arp.c"
+    signature: "void arp_xmit(struct sk_buff *skb)"
+    context: "any"
+    can_sleep: false
+
+  arp_create:
+    pattern: 'arp_create\s*\('
+    description: "创建 ARP 包"
+    file: "net/ipv4/arp.c"
+    signature: "struct sk_buff *arp_create(int type, int ptype, __be32 dest_ip, struct net_device *dev, __be32 src_ip, const unsigned char *dest_hw, const unsigned char *src_hw, const unsigned char *target_hw)"
+    context: "any"
+    can_sleep: false
+    return_value:
+      success: "skb 指针"
+      failure: "NULL"
+
+  arp_solicit:
+    pattern: 'arp_solicit\s*\('
+    description: "发送 ARP 请求"
+    file: "net/ipv4/arp.c"
+    signature: "void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    notes: "邻居子系统调用，用于解析地址"
+
+  # ========== 邻居操作 ==========
+  neigh_create:
+    pattern: 'neigh_create\s*\('
+    description: "创建邻居表项"
+    file: "net/core/neighbour.c"
+    signature: "struct neighbour *neigh_create(struct neigh_table *tbl, const void *pkey, struct net_device *dev)"
+    context: "any"
+    can_sleep: false
+    return_value:
+      success: "neighbour 指针"
+      failure: "ERR_PTR"
+
+  neigh_lookup:
+    pattern: 'neigh_lookup\s*\('
+    description: "查找邻居表项"
+    file: "net/core/neighbour.c"
+    signature: "struct neighbour *neigh_lookup(struct neigh_table *tbl, const void *pkey, struct net_device *dev)"
+    context: "any"
+    can_sleep: false
+    return_value:
+      success: "neighbour 指针 (带引用)"
+      failure: "NULL"
+
+  __neigh_lookup:
+    pattern: '__neigh_lookup\s*\('
+    description: "查找或创建邻居表项"
+    file: "include/net/neighbour.h"
+    signature: "struct neighbour *__neigh_lookup(struct neigh_table *tbl, const void *pkey, struct net_device *dev, int creat)"
+    context: "any"
+    can_sleep: false
+    parameters:
+      - name: "creat"
+        description: "如果不存在是否创建"
+
+  neigh_update:
+    pattern: 'neigh_update\s*\('
+    description: "更新邻居表项"
+    file: "net/core/neighbour.c"
+    signature: "int neigh_update(struct neighbour *neigh, const u8 *lladdr, u8 new, u32 flags, u32 nlmsg_pid)"
+    context: "any"
+    can_sleep: false
+    parameters:
+      - name: "lladdr"
+        description: "链路层地址 (MAC)"
+      - name: "new"
+        description: "新 NUD 状态"
+      - name: "flags"
+        description: "更新标志"
+
+  neigh_resolve_output:
+    pattern: 'neigh_resolve_output\s*\('
+    description: "通过邻居发送 (需要解析)"
+    file: "net/core/neighbour.c"
+    signature: "int neigh_resolve_output(struct neighbour *neigh, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "如果地址未知，排队等待 ARP 响应"
+      - "如果地址已知，直接发送"
+
+  neigh_connected_output:
+    pattern: 'neigh_connected_output\s*\('
+    description: "通过邻居发送 (地址已知)"
+    file: "net/core/neighbour.c"
+    signature: "int neigh_connected_output(struct neighbour *neigh, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+
+  neigh_release:
+    pattern: 'neigh_release\s*\('
+    description: "释放邻居引用"
+    file: "include/net/neighbour.h"
+    signature: "void neigh_release(struct neighbour *neigh)"
+    context: "any"
+    can_sleep: false
+
+  neigh_event_ns:
+    pattern: 'neigh_event_ns\s*\('
+    description: "邻居请求事件"
+    file: "net/core/neighbour.c"
+    signature: "struct neighbour *neigh_event_ns(struct neigh_table *tbl, u8 *lladdr, void *saddr, struct net_device *dev)"
+    context: "softirq"
+    can_sleep: false
+    notes: "收到 ARP 请求时更新邻居表"
+
+  # ========== ARP 代理 ==========
+  arp_fwd_proxy:
+    pattern: 'arp_fwd_proxy\s*\('
+    description: "ARP 转发代理检查"
+    file: "net/ipv4/arp.c"
+    signature: "int arp_fwd_proxy(struct in_device *in_dev, struct net_device *dev, struct rtable *rt)"
+    context: "softirq"
+    can_sleep: false
+
+  parp_redo:
+    pattern: 'parp_redo\s*\('
+    description: "代理 ARP 重做"
+    file: "net/ipv4/arp.c"
+    signature: "void parp_redo(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+
+  # ========== ARP 缓存管理 ==========
+  arp_invalidate:
+    pattern: 'arp_invalidate\s*\('
+    description: "使 ARP 表项失效"
+    file: "net/ipv4/arp.c"
+    signature: "int arp_invalidate(struct net_device *dev, __be32 ip, bool force)"
+    context: "process"
+    can_sleep: true
+
+  neigh_ifdown:
+    pattern: 'neigh_ifdown\s*\('
+    description: "接口关闭时清理邻居"
+    file: "net/core/neighbour.c"
+    signature: "int neigh_ifdown(struct neigh_table *tbl, struct net_device *dev)"
+    context: "process"
+    can_sleep: true
+
+  neigh_flush_dev:
+    pattern: 'neigh_flush_dev\s*\('
+    description: "刷新设备的邻居表"
+    file: "net/core/neighbour.c"
+    signature: "void neigh_flush_dev(struct neigh_table *tbl, struct net_device *dev, bool skip_perm)"
+    context: "process"
+    can_sleep: true
+
+# ============================================================
+# ARP TABLE (arp_tbl)
+# ============================================================
+
+arp_table:
+  description: "ARP Table - ARP 表"
+  header: "net/ipv4/arp.c"
+  icon: "📊"
+
+  global_table:
+    name: "arp_tbl"
+    description: "全局 ARP 表"
+    file: "net/ipv4/arp.c"
+
+  parameters:
+    base_reachable_time:
+      description: "可达状态持续时间 (ms)"
+      default: 30000
+      sysctl: "net.ipv4.neigh.default.base_reachable_time_ms"
+
+    gc_stale_time:
+      description: "过期状态持续时间 (s)"
+      default: 60
+      sysctl: "net.ipv4.neigh.default.gc_stale_time"
+
+    delay_first_probe_time:
+      description: "首次探测延迟 (s)"
+      default: 5
+      sysctl: "net.ipv4.neigh.default.delay_first_probe_time"
+
+    retrans_time:
+      description: "重传间隔 (ms)"
+      default: 1000
+      sysctl: "net.ipv4.neigh.default.retrans_time_ms"
+
+    ucast_solicit:
+      description: "单播请求次数"
+      default: 3
+      sysctl: "net.ipv4.neigh.default.ucast_solicit"
+
+    mcast_solicit:
+      description: "多播/广播请求次数"
+      default: 3
+      sysctl: "net.ipv4.neigh.default.mcast_solicit"
+
+    gc_thresh1:
+      description: "GC 阈值 1 (软限制)"
+      default: 128
+      sysctl: "net.ipv4.neigh.default.gc_thresh1"
+
+    gc_thresh2:
+      description: "GC 阈值 2"
+      default: 512
+      sysctl: "net.ipv4.neigh.default.gc_thresh2"
+
+    gc_thresh3:
+      description: "GC 阈值 3 (硬限制)"
+      default: 1024
+      sysctl: "net.ipv4.neigh.default.gc_thresh3"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  arp_request_receive:
+    description: "ARP 请求接收路径"
+    trigger: "收到 ARP 请求"
+    chain:
+      - function: "netif_receive_skb"
+        file: "net/core/dev.c"
+        description: "网络接收"
+        context: "softirq"
+      - function: "__netif_receive_skb_core"
+        file: "net/core/dev.c"
+        description: "分发到协议"
+      - function: "arp_rcv"
+        file: "net/ipv4/arp.c"
+        description: "ARP 接收"
+      - function: "NF_HOOK (ARP_IN)"
+        file: "net/ipv4/arp.c"
+        description: "Netfilter ARP 输入"
+      - function: "arp_process"
+        file: "net/ipv4/arp.c"
+        description: "ARP 处理"
+      - function: "neigh_event_ns"
+        file: "net/core/neighbour.c"
+        description: "更新邻居表"
+      - function: "arp_send (ARPOP_REPLY)"
+        file: "net/ipv4/arp.c"
+        description: "发送 ARP 响应"
+
+  arp_resolution:
+    description: "ARP 地址解析路径"
+    trigger: "发送到未知 MAC 的 IP 包"
+    chain:
+      - function: "ip_finish_output2"
+        file: "net/ipv4/ip_output.c"
+        description: "IP 输出"
+        context: "process/softirq"
+      - function: "__neigh_lookup"
+        file: "include/net/neighbour.h"
+        description: "查找邻居"
+      - function: "neigh_create"
+        file: "net/core/neighbour.c"
+        description: "创建邻居 (如不存在)"
+      - function: "neigh_resolve_output"
+        file: "net/core/neighbour.c"
+        description: "解析并输出"
+      - function: "__neigh_event_send"
+        file: "net/core/neighbour.c"
+        description: "触发 ARP 请求"
+      - function: "arp_solicit"
+        file: "net/ipv4/arp.c"
+        description: "发送 ARP 请求"
+      - function: "arp_send (ARPOP_REQUEST)"
+        file: "net/ipv4/arp.c"
+        description: "广播 ARP 请求"
+
+  arp_reply_receive:
+    description: "ARP 响应接收路径"
+    trigger: "收到 ARP 响应"
+    chain:
+      - function: "arp_rcv"
+        file: "net/ipv4/arp.c"
+        description: "ARP 接收"
+        context: "softirq"
+      - function: "arp_process"
+        file: "net/ipv4/arp.c"
+        description: "ARP 处理"
+      - function: "neigh_update"
+        file: "net/core/neighbour.c"
+        description: "更新邻居状态为 REACHABLE"
+      - function: "neigh_update_notify"
+        file: "net/core/neighbour.c"
+        description: "发送 netlink 通知"
+      - function: "__skb_queue_purge"
+        file: "net/core/neighbour.c"
+        description: "发送排队的数据包"
+
+  gratuitous_arp:
+    description: "免费 ARP 发送"
+    trigger: "接口启动或 IP 变更"
+    chain:
+      - function: "inetdev_event"
+        file: "net/ipv4/devinet.c"
+        description: "网络设备事件"
+        context: "process"
+      - function: "__inet_insert_ifa"
+        file: "net/ipv4/devinet.c"
+        description: "添加 IP 地址"
+      - function: "arp_announce"
+        file: "net/ipv4/devinet.c"
+        description: "ARP 通告"
+      - function: "arp_send"
+        file: "net/ipv4/arp.c"
+        description: "发送免费 ARP"
+
+# ============================================================
+# SYSCTL PARAMETERS
+# ============================================================
+
+sysctl_parameters:
+  description: "ARP Sysctl Parameters - ARP 系统参数"
+  path_prefix: "/proc/sys/net/ipv4/"
+
+  conf_all_arp_filter:
+    path: "conf/all/arp_filter"
+    default: 0
+    description: "根据路由过滤 ARP 响应"
+    notes: "设为 1 只在收到请求的接口响应 (如果路由匹配)"
+
+  conf_all_arp_ignore:
+    path: "conf/all/arp_ignore"
+    default: 0
+    description: "ARP 请求忽略策略"
+    values:
+      0: "响应所有本地 IP 的 ARP 请求"
+      1: "只响应目标 IP 配置在接收接口上的请求"
+      2: "只响应本接口最佳地址"
+      3: "不响应作用域主机的地址"
+
+  conf_all_arp_announce:
+    path: "conf/all/arp_announce"
+    default: 0
+    description: "ARP 通告策略"
+    values:
+      0: "使用任何本地地址"
+      1: "尽量避免不在目标网段的地址"
+      2: "优先使用同网段地址"
+
+  conf_all_arp_accept:
+    path: "conf/all/arp_accept"
+    default: 0
+    description: "是否接受免费 ARP"
+    notes: "设为 1 允许接受免费 ARP 更新"
+
+  conf_all_proxy_arp:
+    path: "conf/all/proxy_arp"
+    default: 0
+    description: "是否启用 ARP 代理"
+    notes: "允许为其他主机响应 ARP 请求"
+
+  conf_all_proxy_arp_pvlan:
+    path: "conf/all/proxy_arp_pvlan"
+    default: 0
+    description: "私有 VLAN ARP 代理"
+    notes: "代理同接口的 ARP 请求"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "查看和操作 ARP 缓存 (用户空间)"
+    kernel_version: "5.0+"
+    code: |
+      /* 使用 ip 命令操作 ARP */
+      
+      /* 查看 ARP 缓存 */
+      /* $ ip neigh show */
+      /* 192.168.1.1 dev eth0 lladdr 00:11:22:33:44:55 REACHABLE */
+      
+      /* 添加静态 ARP 条目 */
+      /* $ ip neigh add 192.168.1.100 lladdr 00:11:22:33:44:55 dev eth0 */
+      
+      /* 删除 ARP 条目 */
+      /* $ ip neigh del 192.168.1.100 dev eth0 */
+      
+      /* 刷新 ARP 缓存 */
+      /* $ ip neigh flush dev eth0 */
+      
+      /* 使用 arp 命令 (已过时) */
+      /* $ arp -a */
+      /* $ arp -s 192.168.1.100 00:11:22:33:44:55 */
+      /* $ arp -d 192.168.1.100 */
+
+  - description: "通过 ioctl 操作 ARP (用户空间)"
+    kernel_version: "5.0+"
+    code: |
+      #include <sys/socket.h>
+      #include <sys/ioctl.h>
+      #include <net/if_arp.h>
+      #include <net/if.h>
+      #include <netinet/in.h>
+      #include <string.h>
+      #include <stdio.h>
+      #include <arpa/inet.h>
+      
+      /* 添加 ARP 条目 */
+      int add_arp_entry(const char *ifname, const char *ip, 
+                        const unsigned char *mac)
+      {
+          int sockfd;
+          struct arpreq req;
+          struct sockaddr_in *sin;
+          
+          sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+          if (sockfd < 0)
+              return -1;
+          
+          memset(&req, 0, sizeof(req));
+          
+          /* 设置 IP 地址 */
+          sin = (struct sockaddr_in *)&req.arp_pa;
+          sin->sin_family = AF_INET;
+          inet_pton(AF_INET, ip, &sin->sin_addr);
+          
+          /* 设置硬件地址 */
+          req.arp_ha.sa_family = ARPHRD_ETHER;
+          memcpy(req.arp_ha.sa_data, mac, 6);
+          
+          /* 设置接口 */
+          strncpy(req.arp_dev, ifname, sizeof(req.arp_dev) - 1);
+          
+          /* 设置标志 (永久条目) */
+          req.arp_flags = ATF_PERM | ATF_COM;
+          
+          /* 添加条目 */
+          if (ioctl(sockfd, SIOCSARP, &req) < 0) {
+              perror("SIOCSARP");
+              close(sockfd);
+              return -1;
+          }
+          
+          close(sockfd);
+          return 0;
+      }
+      
+      /* 删除 ARP 条目 */
+      int del_arp_entry(const char *ifname, const char *ip)
+      {
+          int sockfd;
+          struct arpreq req;
+          struct sockaddr_in *sin;
+          
+          sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+          if (sockfd < 0)
+              return -1;
+          
+          memset(&req, 0, sizeof(req));
+          
+          sin = (struct sockaddr_in *)&req.arp_pa;
+          sin->sin_family = AF_INET;
+          inet_pton(AF_INET, ip, &sin->sin_addr);
+          
+          strncpy(req.arp_dev, ifname, sizeof(req.arp_dev) - 1);
+          
+          if (ioctl(sockfd, SIOCDARP, &req) < 0) {
+              perror("SIOCDARP");
+              close(sockfd);
+              return -1;
+          }
+          
+          close(sockfd);
+          return 0;
+      }
+      
+      /* 查询 ARP 条目 */
+      int get_arp_entry(const char *ifname, const char *ip,
+                        unsigned char *mac)
+      {
+          int sockfd;
+          struct arpreq req;
+          struct sockaddr_in *sin;
+          
+          sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+          if (sockfd < 0)
+              return -1;
+          
+          memset(&req, 0, sizeof(req));
+          
+          sin = (struct sockaddr_in *)&req.arp_pa;
+          sin->sin_family = AF_INET;
+          inet_pton(AF_INET, ip, &sin->sin_addr);
+          
+          strncpy(req.arp_dev, ifname, sizeof(req.arp_dev) - 1);
+          
+          if (ioctl(sockfd, SIOCGARP, &req) < 0) {
+              close(sockfd);
+              return -1;
+          }
+          
+          memcpy(mac, req.arp_ha.sa_data, 6);
+          close(sockfd);
+          return 0;
+      }
+
+  - description: "内核中操作邻居表"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/netdevice.h>
+      #include <net/neighbour.h>
+      #include <net/arp.h>
+      
+      /* 查找邻居 */
+      struct neighbour *find_neigh(struct net_device *dev, __be32 ip)
+      {
+          return neigh_lookup(&arp_tbl, &ip, dev);
+      }
+      
+      /* 更新邻居 */
+      int update_neigh(struct net_device *dev, __be32 ip,
+                       const unsigned char *mac)
+      {
+          struct neighbour *neigh;
+          int ret;
+          
+          neigh = __neigh_lookup(&arp_tbl, &ip, dev, 1);
+          if (IS_ERR(neigh))
+              return PTR_ERR(neigh);
+          
+          ret = neigh_update(neigh, mac, NUD_PERMANENT,
+                            NEIGH_UPDATE_F_OVERRIDE, 0);
+          
+          neigh_release(neigh);
+          return ret;
+      }
+      
+      /* 发送 ARP 请求 */
+      void send_arp_request(struct net_device *dev, __be32 tip, __be32 sip)
+      {
+          arp_send(ARPOP_REQUEST, ETH_P_ARP, tip, dev, sip,
+                   NULL,  /* dest_hw */
+                   dev->dev_addr,  /* src_hw */
+                   NULL); /* target_hw */
+      }
+      
+      /* 发送免费 ARP */
+      void send_gratuitous_arp(struct net_device *dev, __be32 ip)
+      {
+          /* 免费 ARP: 发送方和目标 IP 相同 */
+          arp_send(ARPOP_REQUEST, ETH_P_ARP, ip, dev, ip,
+                   NULL, dev->dev_addr, dev->dev_addr);
+      }
+
+  - description: "自定义 ARP 处理 (netfilter)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/netfilter.h>
+      #include <linux/netfilter_arp.h>
+      #include <linux/if_arp.h>
+      
+      /* ARP 包结构 (以太网 + IPv4) */
+      struct arp_payload {
+          unsigned char ar_sha[ETH_ALEN];   /* 发送方硬件地址 */
+          unsigned char ar_sip[4];          /* 发送方 IP */
+          unsigned char ar_tha[ETH_ALEN];   /* 目标硬件地址 */
+          unsigned char ar_tip[4];          /* 目标 IP */
+      };
+      
+      static unsigned int arp_hook(void *priv,
+                                   struct sk_buff *skb,
+                                   const struct nf_hook_state *state)
+      {
+          struct arphdr *arp;
+          struct arp_payload *payload;
+          
+          arp = arp_hdr(skb);
+          if (!arp)
+              return NF_ACCEPT;
+          
+          /* 只处理以太网 IPv4 ARP */
+          if (ntohs(arp->ar_hrd) != ARPHRD_ETHER ||
+              ntohs(arp->ar_pro) != ETH_P_IP)
+              return NF_ACCEPT;
+          
+          payload = (struct arp_payload *)(arp + 1);
+          
+          if (ntohs(arp->ar_op) == ARPOP_REQUEST) {
+              pr_info("ARP Request: who has %pI4? tell %pI4\n",
+                      payload->ar_tip, payload->ar_sip);
+          } else if (ntohs(arp->ar_op) == ARPOP_REPLY) {
+              pr_info("ARP Reply: %pI4 is at %pM\n",
+                      payload->ar_sip, payload->ar_sha);
+          }
+          
+          return NF_ACCEPT;
+      }
+      
+      static struct nf_hook_ops arp_hook_ops = {
+          .hook     = arp_hook,
+          .pf       = NFPROTO_ARP,
+          .hooknum  = NF_ARP_IN,
+          .priority = NF_IP_PRI_FIRST,
+      };
+      
+      static int __init my_arp_init(void)
+      {
+          return nf_register_net_hook(&init_net, &arp_hook_ops);
+      }
+      
+      static void __exit my_arp_exit(void)
+      {
+          nf_unregister_net_hook(&init_net, &arp_hook_ops);
+      }
+      
+      module_init(my_arp_init);
+      module_exit(my_arp_exit);
+      MODULE_LICENSE("GPL");

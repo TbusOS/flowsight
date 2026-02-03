@@ -1,0 +1,835 @@
+# Linux Kernel ICMP Protocol Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/networking/
+# Kernel Version: 5.0+
+
+# ============================================================
+# ICMP CORE
+# ============================================================
+
+icmp_core:
+  description: "ICMP Protocol Core - ICMP 协议核心"
+  header: "net/ipv4/icmp.c"
+  icon: "📡"
+  kernel_version: "5.0+"
+
+  context:
+    type: "softirq"
+    can_sleep: false
+    description: "ICMP 处理在软中断上下文执行"
+
+  characteristics:
+    - "Internet Control Message Protocol"
+    - "IP 协议号: 1"
+    - "网络诊断和错误报告"
+    - "ping 和 traceroute 基础"
+    - "MTU 路径发现"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  icmphdr:
+    description: "ICMP Header - ICMP 头部"
+    header: "include/uapi/linux/icmp.h"
+    pattern: 'struct icmphdr\s*\{'
+    fields:
+      - name: "type"
+        type: "__u8"
+        description: "ICMP 消息类型"
+      - name: "code"
+        type: "__u8"
+        description: "ICMP 消息代码"
+      - name: "checksum"
+        type: "__sum16"
+        description: "校验和"
+      - name: "un"
+        type: "union"
+        description: "类型特定数据"
+        sub_fields:
+          - name: "echo"
+            description: "echo 请求/响应 (id + sequence)"
+          - name: "gateway"
+            description: "重定向网关地址"
+          - name: "frag"
+            description: "MTU 发现 (mtu)"
+          - name: "reserved"
+            description: "保留字段"
+
+  icmp_err:
+    description: "ICMP Error Types - ICMP 错误类型"
+    header: "include/linux/icmp.h"
+    values:
+      ICMP_FRAG_NEEDED:
+        description: "需要分片但设置了 DF"
+      ICMP_SR_FAILED:
+        description: "源路由失败"
+      ICMP_NET_UNREACH:
+        description: "网络不可达"
+      ICMP_HOST_UNREACH:
+        description: "主机不可达"
+      ICMP_PORT_UNREACH:
+        description: "端口不可达"
+      ICMP_PROT_UNREACH:
+        description: "协议不可达"
+
+  icmp_bxm:
+    description: "ICMP Build Xmit Message - ICMP 构建发送消息"
+    header: "net/ipv4/icmp.c"
+    pattern: 'struct icmp_bxm\s*\{'
+    fields:
+      - name: "skb"
+        type: "struct sk_buff *"
+        description: "触发错误的原始 skb"
+      - name: "offset"
+        type: "int"
+        description: "icmp 数据偏移"
+      - name: "data_len"
+        type: "int"
+        description: "ICMP 数据长度"
+      - name: "head_len"
+        type: "int"
+        description: "头部长度"
+      - name: "data"
+        type: "struct {"
+        sub_fields:
+          - name: "icmph"
+            type: "struct icmphdr"
+            description: "ICMP 头"
+          - name: "times[3]"
+            type: "__be32"
+            description: "时间戳"
+
+# ============================================================
+# ICMP MESSAGE TYPES
+# ============================================================
+
+icmp_types:
+  description: "ICMP Message Types - ICMP 消息类型"
+  header: "include/uapi/linux/icmp.h"
+  icon: "📋"
+
+  error_messages:
+    ICMP_DEST_UNREACH:
+      type: 3
+      description: "目标不可达"
+      codes:
+        ICMP_NET_UNREACH: "网络不可达"
+        ICMP_HOST_UNREACH: "主机不可达"
+        ICMP_PROT_UNREACH: "协议不可达"
+        ICMP_PORT_UNREACH: "端口不可达"
+        ICMP_FRAG_NEEDED: "需要分片但 DF 置位"
+        ICMP_SR_FAILED: "源路由失败"
+        ICMP_NET_UNKNOWN: "未知网络"
+        ICMP_HOST_UNKNOWN: "未知主机"
+        ICMP_HOST_ISOLATED: "主机隔离"
+        ICMP_NET_ANO: "网络管理禁止"
+        ICMP_HOST_ANO: "主机管理禁止"
+        ICMP_NET_UNR_TOS: "TOS 网络不可达"
+        ICMP_HOST_UNR_TOS: "TOS 主机不可达"
+        ICMP_PKT_FILTERED: "数据包被过滤"
+        ICMP_PREC_VIOLATION: "优先级违规"
+        ICMP_PREC_CUTOFF: "优先级截止"
+
+    ICMP_SOURCE_QUENCH:
+      type: 4
+      description: "源抑制 (已废弃)"
+
+    ICMP_REDIRECT:
+      type: 5
+      description: "重定向"
+      codes:
+        ICMP_REDIR_NET: "网络重定向"
+        ICMP_REDIR_HOST: "主机重定向"
+        ICMP_REDIR_NETTOS: "TOS 网络重定向"
+        ICMP_REDIR_HOSTTOS: "TOS 主机重定向"
+
+    ICMP_TIME_EXCEEDED:
+      type: 11
+      description: "超时"
+      codes:
+        ICMP_EXC_TTL: "TTL 过期"
+        ICMP_EXC_FRAGTIME: "分片重组超时"
+
+    ICMP_PARAMETERPROB:
+      type: 12
+      description: "参数问题"
+
+  query_messages:
+    ICMP_ECHO:
+      type: 8
+      description: "Echo 请求 (ping)"
+    ICMP_ECHOREPLY:
+      type: 0
+      description: "Echo 响应"
+    ICMP_TIMESTAMP:
+      type: 13
+      description: "时间戳请求"
+    ICMP_TIMESTAMPREPLY:
+      type: 14
+      description: "时间戳响应"
+    ICMP_INFO_REQUEST:
+      type: 15
+      description: "信息请求 (已废弃)"
+    ICMP_INFO_REPLY:
+      type: 16
+      description: "信息响应 (已废弃)"
+    ICMP_ADDRESS:
+      type: 17
+      description: "地址掩码请求"
+    ICMP_ADDRESSREPLY:
+      type: 18
+      description: "地址掩码响应"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # ========== 接收路径 ==========
+  icmp_rcv:
+    pattern: 'icmp_rcv\s*\('
+    description: "ICMP 接收入口"
+    file: "net/ipv4/icmp.c"
+    signature: "int icmp_rcv(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    return_value:
+      success: "0"
+      failure: "非 0"
+    typical_actions:
+      - "验证 ICMP 头"
+      - "验证校验和"
+      - "根据类型分发处理"
+
+  icmp_echo:
+    pattern: 'icmp_echo\s*\('
+    description: "处理 ICMP Echo 请求"
+    file: "net/ipv4/icmp.c"
+    signature: "bool icmp_echo(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    return_value:
+      true: "已处理 (发送回复)"
+      false: "未处理"
+    typical_actions:
+      - "构建 Echo Reply"
+      - "发送响应"
+
+  icmp_timestamp:
+    pattern: 'icmp_timestamp\s*\('
+    description: "处理 ICMP 时间戳请求"
+    file: "net/ipv4/icmp.c"
+    signature: "bool icmp_timestamp(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+
+  icmp_discard:
+    pattern: 'icmp_discard\s*\('
+    description: "丢弃 ICMP 消息"
+    file: "net/ipv4/icmp.c"
+    signature: "bool icmp_discard(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    notes: "用于不支持或废弃的 ICMP 类型"
+
+  # ========== 错误处理 ==========
+  icmp_unreach:
+    pattern: 'icmp_unreach\s*\('
+    description: "处理 ICMP 不可达消息"
+    file: "net/ipv4/icmp.c"
+    signature: "bool icmp_unreach(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "解析原始 IP 头"
+      - "通知上层协议 (TCP/UDP)"
+      - "更新 PMTU (如果是 FRAG_NEEDED)"
+
+  icmp_redirect:
+    pattern: 'icmp_redirect\s*\('
+    description: "处理 ICMP 重定向消息"
+    file: "net/ipv4/icmp.c"
+    signature: "bool icmp_redirect(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "验证重定向有效性"
+      - "更新路由缓存"
+
+  # ========== 发送路径 ==========
+  icmp_send:
+    pattern: 'icmp_send\s*\('
+    description: "发送 ICMP 消息"
+    file: "net/ipv4/icmp.c"
+    signature: "void icmp_send(struct sk_buff *skb_in, int type, int code, __be32 info)"
+    context: "any"
+    can_sleep: false
+    parameters:
+      - name: "skb_in"
+        description: "触发错误的原始数据包"
+      - name: "type"
+        description: "ICMP 类型"
+      - name: "code"
+        description: "ICMP 代码"
+      - name: "info"
+        description: "附加信息 (如 MTU, gateway)"
+    typical_actions:
+      - "速率限制检查"
+      - "构建 ICMP 消息"
+      - "发送"
+
+  __icmp_send:
+    pattern: '__icmp_send\s*\('
+    description: "发送 ICMP 消息 (内部)"
+    file: "net/ipv4/icmp.c"
+    signature: "void __icmp_send(struct sk_buff *skb_in, int type, int code, __be32 info, const struct ip_options *opt)"
+    context: "any"
+    can_sleep: false
+
+  icmp_out_count:
+    pattern: 'icmp_out_count\s*\('
+    description: "ICMP 发送统计"
+    file: "net/ipv4/icmp.c"
+    signature: "void icmp_out_count(struct net *net, unsigned char type)"
+    context: "any"
+    can_sleep: false
+
+  icmp_reply:
+    pattern: 'icmp_reply\s*\('
+    description: "发送 ICMP 回复"
+    file: "net/ipv4/icmp.c"
+    signature: "void icmp_reply(struct icmp_bxm *icmp_param, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "构建回复消息"
+      - "发送到源地址"
+
+  icmp_push_reply:
+    pattern: 'icmp_push_reply\s*\('
+    description: "推送 ICMP 回复"
+    file: "net/ipv4/icmp.c"
+    signature: "void icmp_push_reply(struct icmp_bxm *icmp_param, struct flowi4 *fl4, struct ipcm_cookie *ipc, struct rtable **rt)"
+    context: "softirq"
+    can_sleep: false
+
+  # ========== 速率限制 ==========
+  icmpv4_xrlim_allow:
+    pattern: 'icmpv4_xrlim_allow\s*\('
+    description: "ICMP 速率限制检查"
+    file: "net/ipv4/icmp.c"
+    signature: "bool icmpv4_xrlim_allow(struct net *net, struct rtable *rt, struct flowi4 *fl4, int type, int code)"
+    context: "any"
+    can_sleep: false
+    return_value:
+      true: "允许发送"
+      false: "被限流"
+    notes: "防止 ICMP 洪泛攻击"
+
+  icmp_global_allow:
+    pattern: 'icmp_global_allow\s*\('
+    description: "全局 ICMP 速率限制"
+    file: "net/ipv4/icmp.c"
+    signature: "bool icmp_global_allow(void)"
+    context: "any"
+    can_sleep: false
+
+  # ========== Ping ==========
+  ping_rcv:
+    pattern: 'ping_rcv\s*\('
+    description: "Ping socket 接收"
+    file: "net/ipv4/ping.c"
+    signature: "int ping_rcv(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    notes: "用于用户空间 ping (SOCK_DGRAM, IPPROTO_ICMP)"
+
+  ping_v4_sendmsg:
+    pattern: 'ping_v4_sendmsg\s*\('
+    description: "Ping socket 发送"
+    file: "net/ipv4/ping.c"
+    signature: "int ping_v4_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)"
+    context: "process"
+    can_sleep: true
+
+  # ========== PMTU ==========
+  icmp_err:
+    pattern: 'icmp_err\s*\('
+    description: "ICMP 错误通知"
+    file: "net/ipv4/icmp.c"
+    signature: "int icmp_err(struct sk_buff *skb, u32 info)"
+    context: "softirq"
+    can_sleep: false
+    notes: "通知传输层 ICMP 错误"
+
+# ============================================================
+# PING SOCKET
+# ============================================================
+
+ping_socket:
+  description: "Ping Socket - Ping 套接字"
+  header: "include/net/ping.h"
+  icon: "🏓"
+  kernel_version: "3.0+"
+
+  description_long: |
+    允许非 root 用户发送 ICMP Echo 请求。
+    使用 SOCK_DGRAM + IPPROTO_ICMP 创建。
+
+  functions:
+    ping_init_sock:
+      pattern: 'ping_init_sock\s*\('
+      description: "初始化 ping socket"
+      file: "net/ipv4/ping.c"
+      context: "process"
+      can_sleep: true
+
+    ping_close:
+      pattern: 'ping_close\s*\('
+      description: "关闭 ping socket"
+      file: "net/ipv4/ping.c"
+      context: "process"
+      can_sleep: true
+
+    ping_bind:
+      pattern: 'ping_bind\s*\('
+      description: "绑定 ping socket"
+      file: "net/ipv4/ping.c"
+      context: "process"
+      can_sleep: true
+
+    ping_getfrag:
+      pattern: 'ping_getfrag\s*\('
+      description: "获取 ping 数据片段"
+      file: "net/ipv4/ping.c"
+      context: "process"
+      can_sleep: false
+
+  sysctl:
+    ping_group_range:
+      path: "/proc/sys/net/ipv4/ping_group_range"
+      description: "允许使用 ping socket 的 GID 范围"
+      default: "1 0"
+      notes: "默认只有 root 可用，设置为 '0 2147483647' 允许所有用户"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  icmp_receive_path:
+    description: "ICMP 接收路径"
+    trigger: "网卡收到 ICMP 数据包"
+    chain:
+      - function: "ip_local_deliver_finish"
+        file: "net/ipv4/ip_input.c"
+        description: "IP 层投递"
+        context: "softirq"
+      - function: "icmp_rcv"
+        file: "net/ipv4/icmp.c"
+        description: "ICMP 接收入口"
+      - function: "icmp_pointers[type].handler"
+        file: "net/ipv4/icmp.c"
+        description: "根据类型分发"
+        is_user_entry: true
+      - function: "icmp_echo / icmp_unreach / ..."
+        file: "net/ipv4/icmp.c"
+        description: "具体处理函数"
+
+  icmp_echo_path:
+    description: "ICMP Echo 请求处理"
+    trigger: "收到 ping 请求"
+    chain:
+      - function: "icmp_rcv"
+        file: "net/ipv4/icmp.c"
+        description: "ICMP 接收"
+        context: "softirq"
+      - function: "icmp_echo"
+        file: "net/ipv4/icmp.c"
+        description: "处理 Echo 请求"
+      - function: "icmp_reply"
+        file: "net/ipv4/icmp.c"
+        description: "发送 Echo Reply"
+      - function: "ip_push_pending_frames"
+        file: "net/ipv4/ip_output.c"
+        description: "IP 层发送"
+
+  icmp_error_send_path:
+    description: "ICMP 错误消息发送"
+    trigger: "检测到网络错误"
+    chain:
+      - function: "icmp_send"
+        file: "net/ipv4/icmp.c"
+        description: "发送 ICMP 错误"
+        context: "any"
+      - function: "__icmp_send"
+        file: "net/ipv4/icmp.c"
+        description: "内部发送"
+      - function: "icmpv4_xrlim_allow"
+        file: "net/ipv4/icmp.c"
+        description: "速率限制检查"
+      - function: "icmp_push_reply"
+        file: "net/ipv4/icmp.c"
+        description: "推送回复"
+      - function: "ip_push_pending_frames"
+        file: "net/ipv4/ip_output.c"
+        description: "IP 层发送"
+
+  icmp_dest_unreach_path:
+    description: "ICMP 目标不可达处理"
+    trigger: "收到目标不可达消息"
+    chain:
+      - function: "icmp_rcv"
+        file: "net/ipv4/icmp.c"
+        description: "ICMP 接收"
+        context: "softirq"
+      - function: "icmp_unreach"
+        file: "net/ipv4/icmp.c"
+        description: "不可达处理"
+      - function: "icmp_socket_deliver"
+        file: "net/ipv4/icmp.c"
+        description: "投递到 socket"
+      - function: "raw_icmp_error"
+        file: "net/ipv4/raw.c"
+        description: "Raw socket 错误通知"
+      - function: "protocol->err_handler"
+        file: "net/ipv4/icmp.c"
+        description: "TCP/UDP 错误处理"
+        notes: "tcp_v4_err / udp_err"
+
+  pmtu_discovery_path:
+    description: "PMTU 路径发现"
+    trigger: "收到 ICMP FRAG_NEEDED"
+    chain:
+      - function: "icmp_rcv"
+        file: "net/ipv4/icmp.c"
+        description: "ICMP 接收"
+        context: "softirq"
+      - function: "icmp_unreach"
+        file: "net/ipv4/icmp.c"
+        description: "不可达处理"
+      - function: "ip_rt_frag_needed"
+        file: "net/ipv4/route.c"
+        description: "更新路由 MTU"
+      - function: "tcp_v4_err / udp_err"
+        file: "net/ipv4/tcp_ipv4.c"
+        description: "通知传输层"
+
+# ============================================================
+# SYSCTL PARAMETERS
+# ============================================================
+
+sysctl_parameters:
+  description: "ICMP Sysctl Parameters - ICMP 系统参数"
+  path_prefix: "/proc/sys/net/ipv4/"
+
+  icmp_echo_ignore_all:
+    path: "icmp_echo_ignore_all"
+    default: 0
+    description: "忽略所有 ICMP Echo 请求"
+    notes: "设为 1 禁用 ping 响应"
+
+  icmp_echo_ignore_broadcasts:
+    path: "icmp_echo_ignore_broadcasts"
+    default: 1
+    description: "忽略广播 ICMP Echo 请求"
+    notes: "防止 Smurf 攻击"
+
+  icmp_ratelimit:
+    path: "icmp_ratelimit"
+    default: 1000
+    description: "ICMP 发送速率限制 (ms)"
+    notes: "两个 ICMP 错误消息的最小间隔"
+
+  icmp_ratemask:
+    path: "icmp_ratemask"
+    default: 6168
+    description: "需要速率限制的 ICMP 类型掩码"
+
+  icmp_errors_use_inbound_ifaddr:
+    path: "icmp_errors_use_inbound_ifaddr"
+    default: 0
+    description: "ICMP 错误使用入接口地址作为源"
+
+  icmp_ignore_bogus_error_responses:
+    path: "icmp_ignore_bogus_error_responses"
+    default: 1
+    description: "忽略虚假 ICMP 错误响应"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "发送 ICMP 错误消息示例 (内核)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/icmp.h>
+      #include <net/icmp.h>
+      
+      /* 在网络处理代码中发送 ICMP 错误 */
+      static void my_send_icmp_error(struct sk_buff *skb)
+      {
+          /* 发送目标不可达 - 端口不可达 */
+          icmp_send(skb, ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, 0);
+          
+          /* 发送需要分片消息 (PMTU) */
+          /* info 参数包含 MTU 值 */
+          __be32 mtu = htonl(1400);
+          icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED, mtu);
+          
+          /* 发送 TTL 过期 */
+          icmp_send(skb, ICMP_TIME_EXCEEDED, ICMP_EXC_TTL, 0);
+          
+          /* 发送重定向 */
+          __be32 gateway = in_aton("192.168.1.1");
+          icmp_send(skb, ICMP_REDIRECT, ICMP_REDIR_HOST, gateway);
+      }
+
+  - description: "用户空间 ping 实现"
+    kernel_version: "3.0+"
+    code: |
+      /* 使用 ping socket (非 root) */
+      #include <sys/socket.h>
+      #include <netinet/ip_icmp.h>
+      #include <netinet/in.h>
+      #include <arpa/inet.h>
+      #include <unistd.h>
+      #include <string.h>
+      #include <stdlib.h>
+      
+      /* 计算校验和 */
+      static unsigned short checksum(void *b, int len)
+      {
+          unsigned short *buf = b;
+          unsigned int sum = 0;
+          unsigned short result;
+          
+          for (sum = 0; len > 1; len -= 2)
+              sum += *buf++;
+          if (len == 1)
+              sum += *(unsigned char *)buf;
+          sum = (sum >> 16) + (sum & 0xFFFF);
+          sum += (sum >> 16);
+          result = ~sum;
+          return result;
+      }
+      
+      int ping(const char *addr)
+      {
+          int sockfd;
+          struct sockaddr_in dest;
+          struct icmphdr icmp_hdr;
+          char sendbuf[64];
+          char recvbuf[128];
+          int seq = 0;
+          
+          /* 创建 ping socket (需要 CAP_NET_RAW 或配置 ping_group_range) */
+          sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
+          if (sockfd < 0) {
+              /* 回退到 raw socket (需要 root) */
+              sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+              if (sockfd < 0)
+                  return -1;
+          }
+          
+          /* 设置目标地址 */
+          memset(&dest, 0, sizeof(dest));
+          dest.sin_family = AF_INET;
+          inet_pton(AF_INET, addr, &dest.sin_addr);
+          
+          /* 构建 ICMP Echo 请求 */
+          memset(&icmp_hdr, 0, sizeof(icmp_hdr));
+          icmp_hdr.type = ICMP_ECHO;
+          icmp_hdr.code = 0;
+          icmp_hdr.un.echo.id = htons(getpid() & 0xFFFF);
+          icmp_hdr.un.echo.sequence = htons(seq++);
+          
+          memcpy(sendbuf, &icmp_hdr, sizeof(icmp_hdr));
+          /* 填充数据 */
+          memset(sendbuf + sizeof(icmp_hdr), 0xAA,
+                 sizeof(sendbuf) - sizeof(icmp_hdr));
+          
+          /* 计算校验和 (对于 SOCK_RAW) */
+          icmp_hdr.checksum = checksum(sendbuf, sizeof(sendbuf));
+          memcpy(sendbuf, &icmp_hdr, sizeof(icmp_hdr));
+          
+          /* 发送 */
+          sendto(sockfd, sendbuf, sizeof(sendbuf), 0,
+                (struct sockaddr *)&dest, sizeof(dest));
+          
+          /* 接收回复 */
+          struct sockaddr_in from;
+          socklen_t fromlen = sizeof(from);
+          
+          ssize_t len = recvfrom(sockfd, recvbuf, sizeof(recvbuf), 0,
+                                 (struct sockaddr *)&from, &fromlen);
+          if (len > 0) {
+              struct icmphdr *reply = (struct icmphdr *)recvbuf;
+              if (reply->type == ICMP_ECHOREPLY) {
+                  printf("Ping reply from %s\n", addr);
+              }
+          }
+          
+          close(sockfd);
+          return 0;
+      }
+
+  - description: "ICMP 处理程序注册示例 (内核)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/icmp.h>
+      #include <net/icmp.h>
+      
+      /*
+       * ICMP 处理器表 (net/ipv4/icmp.c)
+       * 
+       * static const struct icmp_control icmp_pointers[NR_ICMP_TYPES+1] = {
+       *     [ICMP_ECHOREPLY] = {
+       *         .handler = icmp_discard,
+       *     },
+       *     ...
+       *     [ICMP_ECHO] = {
+       *         .handler = icmp_echo,
+       *         .error = 0,
+       *     },
+       *     ...
+       * };
+       * 
+       * 内核不支持动态注册 ICMP 处理器，
+       * 但可以通过 raw socket 或 netfilter 处理自定义 ICMP。
+       */
+      
+      /* 使用 netfilter 拦截 ICMP */
+      #include <linux/netfilter.h>
+      #include <linux/netfilter_ipv4.h>
+      
+      static unsigned int my_icmp_hook(void *priv,
+                                       struct sk_buff *skb,
+                                       const struct nf_hook_state *state)
+      {
+          struct iphdr *iph;
+          struct icmphdr *icmph;
+          
+          iph = ip_hdr(skb);
+          if (iph->protocol != IPPROTO_ICMP)
+              return NF_ACCEPT;
+          
+          icmph = icmp_hdr(skb);
+          
+          /* 处理特定类型 */
+          if (icmph->type == ICMP_ECHO) {
+              pr_info("ICMP Echo from %pI4\n", &iph->saddr);
+          }
+          
+          return NF_ACCEPT;
+      }
+      
+      static struct nf_hook_ops icmp_hook_ops = {
+          .hook     = my_icmp_hook,
+          .pf       = NFPROTO_IPV4,
+          .hooknum  = NF_INET_LOCAL_IN,
+          .priority = NF_IP_PRI_FIRST,
+      };
+      
+      static int __init my_icmp_init(void)
+      {
+          return nf_register_net_hook(&init_net, &icmp_hook_ops);
+      }
+      
+      static void __exit my_icmp_exit(void)
+      {
+          nf_unregister_net_hook(&init_net, &icmp_hook_ops);
+      }
+      
+      module_init(my_icmp_init);
+      module_exit(my_icmp_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "traceroute 原理示例"
+    kernel_version: "5.0+"
+    code: |
+      /*
+       * Traceroute 工作原理:
+       * 
+       * 1. 发送 TTL=1 的 UDP/ICMP 包到目标
+       * 2. 第一跳路由器收到后 TTL 减为 0
+       * 3. 路由器返回 ICMP Time Exceeded
+       * 4. 从 ICMP 响应获取第一跳路由器 IP
+       * 5. 递增 TTL 重复，直到到达目标
+       * 
+       * 内核处理流程:
+       * 
+       * ip_forward() ->
+       *   ip_forward_finish() ->
+       *     ip_decrease_ttl() ->
+       *       if (ttl == 0)
+       *         icmp_send(skb, ICMP_TIME_EXCEEDED, ICMP_EXC_TTL, 0)
+       */
+      
+      #include <sys/socket.h>
+      #include <netinet/ip.h>
+      #include <netinet/udp.h>
+      #include <netinet/ip_icmp.h>
+      #include <arpa/inet.h>
+      
+      int traceroute_hop(const char *dest, int ttl)
+      {
+          int send_sock, recv_sock;
+          struct sockaddr_in dst, from;
+          char packet[64];
+          char recvbuf[512];
+          socklen_t fromlen;
+          
+          /* 发送 socket (UDP) */
+          send_sock = socket(AF_INET, SOCK_DGRAM, 0);
+          
+          /* 设置 TTL */
+          setsockopt(send_sock, IPPROTO_IP, IP_TTL, &ttl, sizeof(ttl));
+          
+          /* 接收 socket (ICMP) */
+          recv_sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+          
+          /* 目标地址 */
+          memset(&dst, 0, sizeof(dst));
+          dst.sin_family = AF_INET;
+          dst.sin_port = htons(33434 + ttl);  /* 高端口号 */
+          inet_pton(AF_INET, dest, &dst.sin_addr);
+          
+          /* 发送 UDP 包 */
+          sendto(send_sock, packet, sizeof(packet), 0,
+                (struct sockaddr *)&dst, sizeof(dst));
+          
+          /* 等待 ICMP 响应 */
+          struct timeval tv = {3, 0};
+          setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+          
+          fromlen = sizeof(from);
+          ssize_t len = recvfrom(recv_sock, recvbuf, sizeof(recvbuf), 0,
+                                 (struct sockaddr *)&from, &fromlen);
+          
+          if (len > 0) {
+              struct iphdr *ip = (struct iphdr *)recvbuf;
+              struct icmphdr *icmp = (struct icmphdr *)(recvbuf + (ip->ihl << 2));
+              
+              if (icmp->type == ICMP_TIME_EXCEEDED) {
+                  char ip_str[INET_ADDRSTRLEN];
+                  inet_ntop(AF_INET, &from.sin_addr, ip_str, sizeof(ip_str));
+                  printf("%2d  %s\n", ttl, ip_str);
+              } else if (icmp->type == ICMP_DEST_UNREACH) {
+                  printf("%2d  %s (reached)\n", ttl, dest);
+                  close(send_sock);
+                  close(recv_sock);
+                  return 1;  /* 到达目标 */
+              }
+          } else {
+              printf("%2d  *\n", ttl);
+          }
+          
+          close(send_sock);
+          close(recv_sock);
+          return 0;  /* 继续 */
+      }

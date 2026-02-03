@@ -1,0 +1,759 @@
+# Linux Kernel CPU Management and Hotplug Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/core-api/cpu_hotplug.html
+# Kernel source: kernel/cpu.c, kernel/smp.c, include/linux/cpuhotplug.h
+# Kernel Version: 4.0+
+# ============================================================
+
+# ============================================================
+# CPU MANAGEMENT OVERVIEW
+# ============================================================
+cpu_overview:
+  description: "Linux CPU 管理和热插拔子系统"
+  header: "linux/cpuhotplug.h"
+  icon: "🔧"
+  kernel_version: "4.0+"
+  
+  key_concepts:
+    cpu_hotplug:
+      description: "CPU 热插拔 - 动态上线/下线 CPU"
+      notes:
+        - "支持物理 CPU 动态添加/移除"
+        - "支持逻辑 CPU 软件开关"
+        - "用于节能、负载均衡、热管理"
+    
+    smp:
+      description: "对称多处理 (Symmetric Multi-Processing)"
+      notes:
+        - "多 CPU 共享内存"
+        - "所有 CPU 地位平等"
+        - "需要同步机制保护共享数据"
+    
+    cpu_possible:
+      description: "可能存在的 CPU 集合"
+      notes: "启动时确定，运行时不变"
+    
+    cpu_present:
+      description: "物理存在的 CPU 集合"
+      notes: "cpu_possible 的子集"
+    
+    cpu_online:
+      description: "当前在线的 CPU 集合"
+      notes: "可以执行任务的 CPU"
+    
+    cpu_active:
+      description: "可接受工作负载的 CPU 集合"
+      notes: "调度器使用"
+
+# ============================================================
+# CPU HOTPLUG STATE MACHINE
+# ============================================================
+cpuhp_state_machine:
+  description: "CPU 热插拔状态机"
+  header: "linux/cpuhotplug.h"
+  icon: "🔄"
+
+  key_states:
+    CPUHP_OFFLINE:
+      value: 0
+      description: "CPU 离线"
+      notes: "初始状态，CPU 不参与任何活动"
+
+    CPUHP_CREATE_THREADS:
+      description: "创建 per-CPU 线程"
+      notes: "CPU 上线早期阶段"
+
+    CPUHP_BRINGUP_CPU:
+      description: "CPU 启动阶段"
+      notes: "bootstrap CPU"
+
+    CPUHP_AP_IDLE_DEAD:
+      description: "AP 空闲死亡状态"
+      notes: "CPU 下线时的过渡状态"
+
+    CPUHP_AP_OFFLINE:
+      description: "AP 离线"
+      notes: "应用处理器离线"
+
+    CPUHP_AP_ONLINE:
+      description: "AP 在线基础状态"
+      notes: "CPU 可以接收中断"
+
+    CPUHP_TEARDOWN_CPU:
+      description: "CPU 拆除阶段"
+      notes: "下线过程中"
+
+    CPUHP_AP_ONLINE_IDLE:
+      description: "AP 在线空闲"
+      notes: "等待工作"
+
+    CPUHP_AP_ACTIVE:
+      description: "AP 活跃"
+      notes: "完全在线，可调度"
+
+  state_categories:
+    prepare_states:
+      description: "准备阶段状态 (BP 执行)"
+      range: "CPUHP_OFFLINE 到 CPUHP_BRINGUP_CPU"
+      context: "CPU hotplug 回调在 BP 上执行"
+
+    starting_states:
+      description: "启动阶段状态 (AP 执行，中断禁用)"
+      range: "CPUHP_AP_OFFLINE 到 CPUHP_AP_ONLINE"
+      context: "在目标 CPU 上执行，IRQ 禁用"
+
+    online_states:
+      description: "在线阶段状态 (AP 执行，中断启用)"
+      range: "CPUHP_AP_ONLINE 到 CPUHP_AP_ACTIVE"
+      context: "在目标 CPU 上执行，正常上下文"
+
+  dynamic_states:
+    CPUHP_BP_PREPARE_DYN:
+      description: "动态准备状态起始"
+      notes: "驱动程序可注册的动态状态"
+
+    CPUHP_AP_ONLINE_DYN:
+      description: "动态在线状态起始"
+      notes: "最常用的动态注册点"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+data_structures:
+  cpuhp_step:
+    description: "CPU hotplug 步骤描述"
+    file: "kernel/cpu.c"
+    pattern: 'struct cpuhp_step\s*\{'
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "步骤名称"
+      - name: "startup"
+        type: "cpuhp_state_fn"
+        description: "上线回调"
+        signature: "int (*)(unsigned int cpu)"
+      - name: "teardown"
+        type: "cpuhp_state_fn"
+        description: "下线回调"
+        signature: "int (*)(unsigned int cpu)"
+      - name: "multi_instance"
+        type: "bool"
+        description: "是否支持多实例"
+      - name: "cant_stop"
+        type: "bool"
+        description: "是否可以在此状态停止"
+
+  cpuhp_cpu_state:
+    description: "CPU hotplug 当前状态"
+    file: "kernel/cpu.c"
+    fields:
+      - name: "state"
+        type: "enum cpuhp_state"
+        description: "当前状态"
+      - name: "target"
+        type: "enum cpuhp_state"
+        description: "目标状态"
+      - name: "thread"
+        type: "struct task_struct *"
+        description: "per-CPU hotplug 线程"
+      - name: "should_run"
+        type: "bool"
+        description: "线程是否应该运行"
+      - name: "rollback"
+        type: "bool"
+        description: "是否正在回滚"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+kernel_functions:
+  state_registration:
+    cpuhp_setup_state:
+      pattern: 'cpuhp_setup_state\s*\(\s*(?P<state>\w+)\s*,\s*"(?P<name>[^"]+)"\s*,\s*(?P<startup>\w+)\s*,\s*(?P<teardown>\w+)\s*\)'
+      description: "注册 CPU hotplug 回调"
+      file: "include/linux/cpuhotplug.h"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "state"
+          type: "enum cpuhp_state"
+          description: "状态标识"
+        - name: "name"
+          type: "const char *"
+          description: "状态名称"
+        - name: "startup"
+          type: "int (*)(unsigned int cpu)"
+          description: "上线回调（可为 NULL）"
+        - name: "teardown"
+          type: "int (*)(unsigned int cpu)"
+          description: "下线回调（可为 NULL）"
+      returns: "固定状态返回 0，动态状态返回分配的状态值"
+
+    cpuhp_setup_state_nocalls:
+      pattern: 'cpuhp_setup_state_nocalls\s*\('
+      description: "注册回调但不立即调用已在线 CPU"
+      notes: "适用于已知当前状态的场景"
+
+    cpuhp_setup_state_multi:
+      pattern: 'cpuhp_setup_state_multi\s*\('
+      description: "注册多实例 CPU hotplug 回调"
+      notes: "用于多设备驱动程序"
+
+    cpuhp_remove_state:
+      pattern: 'cpuhp_remove_state\s*\(\s*(?P<state>\w+)\s*\)'
+      description: "注销 CPU hotplug 回调"
+      context: "process"
+      can_sleep: true
+
+    cpuhp_remove_state_nocalls:
+      pattern: 'cpuhp_remove_state_nocalls\s*\('
+      description: "注销回调但不调用 teardown"
+
+  cpu_control:
+    cpu_up:
+      pattern: 'cpu_up\s*\(\s*(?P<cpu>[\w\d]+)\s*\)'
+      description: "上线指定 CPU"
+      file: "kernel/cpu.c"
+      context: "process"
+      can_sleep: true
+      returns: "0 成功，负值失败"
+
+    cpu_down:
+      pattern: 'cpu_down\s*\(\s*(?P<cpu>[\w\d]+)\s*\)'
+      description: "下线指定 CPU"
+      file: "kernel/cpu.c"
+      context: "process"
+      can_sleep: true
+
+    add_cpu:
+      pattern: 'add_cpu\s*\(\s*(?P<cpu>[\w\d]+)\s*\)'
+      description: "添加 CPU（物理热插拔）"
+      notes: "设置 cpu_present 并上线"
+
+    remove_cpu:
+      pattern: 'remove_cpu\s*\(\s*(?P<cpu>[\w\d]+)\s*\)'
+      description: "移除 CPU（物理热插拔）"
+
+    disable_nonboot_cpus:
+      pattern: 'disable_nonboot_cpus\s*\(\s*\)'
+      description: "禁用所有非启动 CPU"
+      notes: "休眠/挂起时使用"
+
+    enable_nonboot_cpus:
+      pattern: 'enable_nonboot_cpus\s*\(\s*\)'
+      description: "重新启用非启动 CPU"
+      notes: "恢复时使用"
+
+  cpu_queries:
+    cpu_online:
+      pattern: 'cpu_online\s*\(\s*(?P<cpu>[\w\d]+)\s*\)'
+      description: "检查 CPU 是否在线"
+      returns: "bool"
+
+    cpu_present:
+      pattern: 'cpu_present\s*\(\s*(?P<cpu>[\w\d]+)\s*\)'
+      description: "检查 CPU 是否物理存在"
+      returns: "bool"
+
+    cpu_possible:
+      pattern: 'cpu_possible\s*\(\s*(?P<cpu>[\w\d]+)\s*\)'
+      description: "检查 CPU 是否可能存在"
+      returns: "bool"
+
+    num_online_cpus:
+      pattern: 'num_online_cpus\s*\(\s*\)'
+      description: "获取在线 CPU 数量"
+
+    num_possible_cpus:
+      pattern: 'num_possible_cpus\s*\(\s*\)'
+      description: "获取可能 CPU 数量"
+
+  iteration_macros:
+    for_each_possible_cpu:
+      pattern: 'for_each_possible_cpu\s*\(\s*(?P<cpu>\w+)\s*\)'
+      description: "遍历所有可能的 CPU"
+      example: "for_each_possible_cpu(cpu) { ... }"
+
+    for_each_online_cpu:
+      pattern: 'for_each_online_cpu\s*\(\s*(?P<cpu>\w+)\s*\)'
+      description: "遍历所有在线 CPU"
+
+    for_each_present_cpu:
+      pattern: 'for_each_present_cpu\s*\(\s*(?P<cpu>\w+)\s*\)'
+      description: "遍历所有存在的 CPU"
+
+  locking:
+    cpus_read_lock:
+      pattern: 'cpus_read_lock\s*\(\s*\)'
+      description: "获取 CPU hotplug 读锁"
+      notes: "防止 CPU 上下线"
+      alias: "get_online_cpus()"
+
+    cpus_read_unlock:
+      pattern: 'cpus_read_unlock\s*\(\s*\)'
+      description: "释放 CPU hotplug 读锁"
+      alias: "put_online_cpus()"
+
+    cpus_write_lock:
+      pattern: 'cpus_write_lock\s*\(\s*\)'
+      description: "获取 CPU hotplug 写锁"
+      notes: "内部使用"
+
+# ============================================================
+# SMP FUNCTIONS
+# ============================================================
+smp_functions:
+  description: "SMP 多处理器函数"
+  header: "linux/smp.h"
+  icon: "🔀"
+
+  ipi_functions:
+    smp_call_function:
+      pattern: 'smp_call_function\s*\(\s*(?P<func>\w+)\s*,'
+      description: "在所有其他 CPU 上执行函数"
+      file: "kernel/smp.c"
+      context: "any (需要 preempt_disable)"
+      parameters:
+        - name: "func"
+          type: "smp_call_func_t"
+          description: "要执行的函数"
+        - name: "info"
+          type: "void *"
+          description: "传递给函数的数据"
+        - name: "wait"
+          type: "int"
+          description: "是否等待完成"
+
+    smp_call_function_single:
+      pattern: 'smp_call_function_single\s*\(\s*(?P<cpu>[\w\d]+)\s*,'
+      description: "在指定 CPU 上执行函数"
+      context: "any"
+
+    smp_call_function_many:
+      pattern: 'smp_call_function_many\s*\(\s*(?P<mask>\w+)\s*,'
+      description: "在 CPU 掩码指定的 CPU 上执行函数"
+
+    on_each_cpu:
+      pattern: 'on_each_cpu\s*\(\s*(?P<func>\w+)\s*,'
+      description: "在所有在线 CPU 上执行函数（包括当前 CPU）"
+
+    on_each_cpu_mask:
+      pattern: 'on_each_cpu_mask\s*\(\s*(?P<mask>\w+)\s*,'
+      description: "在 CPU 掩码指定的 CPU 上执行函数"
+
+  startup_functions:
+    smp_prepare_cpus:
+      pattern: 'smp_prepare_cpus\s*\(\s*(?P<max_cpus>[\w\d]+)\s*\)'
+      description: "准备 SMP 启动"
+      arch_specific: true
+
+    smp_prepare_boot_cpu:
+      pattern: 'smp_prepare_boot_cpu\s*\(\s*\)'
+      description: "准备启动 CPU"
+      arch_specific: true
+
+    smp_cpus_done:
+      pattern: 'smp_cpus_done\s*\(\s*(?P<max_cpus>[\w\d]+)\s*\)'
+      description: "所有 CPU 启动完成"
+      arch_specific: true
+
+  cpu_identification:
+    smp_processor_id:
+      pattern: 'smp_processor_id\s*\(\s*\)'
+      description: "获取当前 CPU ID"
+      notes: "需要禁用抢占"
+
+    raw_smp_processor_id:
+      pattern: 'raw_smp_processor_id\s*\(\s*\)'
+      description: "获取当前 CPU ID（不检查抢占）"
+      notes: "谨慎使用"
+
+    get_cpu:
+      pattern: 'get_cpu\s*\(\s*\)'
+      description: "禁用抢占并返回 CPU ID"
+      notes: "必须配对 put_cpu()"
+
+    put_cpu:
+      pattern: 'put_cpu\s*\(\s*\)'
+      description: "重新启用抢占"
+
+# ============================================================
+# PER-CPU VARIABLES
+# ============================================================
+per_cpu:
+  description: "Per-CPU 变量"
+  header: "linux/percpu.h"
+  icon: "📦"
+
+  definition_macros:
+    DEFINE_PER_CPU:
+      pattern: 'DEFINE_PER_CPU\s*\(\s*(?P<type>[\w\s\*]+)\s*,\s*(?P<name>\w+)\s*\)'
+      description: "定义 per-CPU 变量"
+      example: "DEFINE_PER_CPU(int, my_counter);"
+
+    DEFINE_PER_CPU_SHARED_ALIGNED:
+      pattern: 'DEFINE_PER_CPU_SHARED_ALIGNED\s*\('
+      description: "定义缓存行对齐的 per-CPU 变量"
+
+    DECLARE_PER_CPU:
+      pattern: 'DECLARE_PER_CPU\s*\(\s*(?P<type>[\w\s\*]+)\s*,\s*(?P<name>\w+)\s*\)'
+      description: "声明 per-CPU 变量"
+
+  access_macros:
+    per_cpu:
+      pattern: 'per_cpu\s*\(\s*(?P<var>\w+)\s*,\s*(?P<cpu>[\w\d]+)\s*\)'
+      description: "访问指定 CPU 的变量"
+
+    this_cpu_read:
+      pattern: 'this_cpu_read\s*\(\s*(?P<var>\w+)\s*\)'
+      description: "读取当前 CPU 的变量"
+      notes: "自动禁用/启用抢占"
+
+    this_cpu_write:
+      pattern: 'this_cpu_write\s*\(\s*(?P<var>\w+)\s*,\s*(?P<val>[^)]+)\s*\)'
+      description: "写入当前 CPU 的变量"
+
+    this_cpu_inc:
+      pattern: 'this_cpu_inc\s*\(\s*(?P<var>\w+)\s*\)'
+      description: "当前 CPU 变量自增"
+
+    this_cpu_dec:
+      pattern: 'this_cpu_dec\s*\(\s*(?P<var>\w+)\s*\)'
+      description: "当前 CPU 变量自减"
+
+    this_cpu_add:
+      pattern: 'this_cpu_add\s*\(\s*(?P<var>\w+)\s*,'
+      description: "当前 CPU 变量加法"
+
+    __this_cpu_read:
+      pattern: '__this_cpu_read\s*\(\s*(?P<var>\w+)\s*\)'
+      description: "读取当前 CPU 变量（不禁用抢占）"
+      notes: "调用者需要保证抢占已禁用"
+
+    get_cpu_var:
+      pattern: 'get_cpu_var\s*\(\s*(?P<var>\w+)\s*\)'
+      description: "禁用抢占并获取当前 CPU 变量引用"
+      notes: "必须配对 put_cpu_var()"
+
+    put_cpu_var:
+      pattern: 'put_cpu_var\s*\(\s*(?P<var>\w+)\s*\)'
+      description: "重新启用抢占"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  cpu_online_flow:
+    description: "CPU 上线流程"
+    chain:
+      - caller: "cpu_up / sysfs write"
+        callee: "_cpu_up"
+        context: "process"
+        description: "CPU 上线入口"
+      - caller: "_cpu_up"
+        callee: "cpuhp_up_callbacks"
+        description: "执行 PREPARE 阶段回调"
+      - caller: "_cpu_up"
+        callee: "bringup_cpu"
+        description: "启动 CPU 硬件"
+      - caller: "bringup_cpu"
+        callee: "__cpu_up"
+        arch_specific: true
+        description: "架构相关启动"
+      - caller: "__cpu_up"
+        callee: "secondary_startup"
+        arch_specific: true
+        description: "AP CPU 启动入口"
+      - caller: "secondary_startup"
+        callee: "start_secondary"
+        description: "AP CPU 初始化"
+      - caller: "start_secondary"
+        callee: "cpuhp_online_idle"
+        description: "通知 BP 已就绪"
+      - caller: "_cpu_up"
+        callee: "cpuhp_up_callbacks (ONLINE)"
+        description: "执行 ONLINE 阶段回调"
+
+  cpu_offline_flow:
+    description: "CPU 下线流程"
+    chain:
+      - caller: "cpu_down / sysfs write"
+        callee: "_cpu_down"
+        context: "process"
+        description: "CPU 下线入口"
+      - caller: "_cpu_down"
+        callee: "cpuhp_down_callbacks (ONLINE)"
+        description: "执行 ONLINE 阶段 teardown 回调"
+      - caller: "_cpu_down"
+        callee: "cpuhp_kick_ap_work"
+        description: "通知 AP 执行下线"
+      - caller: "AP"
+        callee: "take_cpu_down"
+        context: "stop_machine"
+        description: "AP 停止自己"
+      - caller: "take_cpu_down"
+        callee: "__cpu_disable"
+        arch_specific: true
+        description: "禁用 CPU"
+      - caller: "_cpu_down"
+        callee: "cpuhp_down_callbacks (PREPARE)"
+        description: "执行 PREPARE 阶段 teardown 回调"
+      - caller: "AP"
+        callee: "play_dead"
+        arch_specific: true
+        description: "CPU 进入死循环或低功耗状态"
+
+  smp_call_flow:
+    description: "SMP 函数调用流程"
+    chain:
+      - caller: "driver"
+        callee: "smp_call_function_single"
+        context: "any"
+        description: "请求在目标 CPU 执行函数"
+      - caller: "smp_call_function_single"
+        callee: "generic_exec_single"
+        description: "准备调用数据"
+      - caller: "generic_exec_single"
+        callee: "arch_send_call_function_single_ipi"
+        arch_specific: true
+        description: "发送 IPI"
+      - caller: "target CPU"
+        callee: "call_single_queue_ipi"
+        context: "interrupt"
+        description: "IPI 处理"
+      - caller: "call_single_queue_ipi"
+        callee: "func(info)"
+        description: "执行目标函数"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "注册 CPU hotplug 回调"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/cpuhotplug.h>
+      
+      static int my_cpu_online(unsigned int cpu)
+      {
+          pr_info("CPU %u is coming online\n", cpu);
+          
+          /* 初始化 per-CPU 资源 */
+          per_cpu(my_data, cpu) = alloc_my_data();
+          if (!per_cpu(my_data, cpu))
+              return -ENOMEM;
+          
+          return 0;
+      }
+      
+      static int my_cpu_offline(unsigned int cpu)
+      {
+          pr_info("CPU %u is going offline\n", cpu);
+          
+          /* 清理 per-CPU 资源 */
+          free_my_data(per_cpu(my_data, cpu));
+          per_cpu(my_data, cpu) = NULL;
+          
+          return 0;
+      }
+      
+      static enum cpuhp_state my_cpuhp_state;
+      
+      static int __init my_init(void)
+      {
+          int ret;
+          
+          /* 注册 CPU hotplug 回调
+           * CPUHP_AP_ONLINE_DYN: 动态分配在线阶段状态
+           * 返回值是分配的状态值
+           */
+          ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
+                                  "drivers/mydriver:online",
+                                  my_cpu_online,
+                                  my_cpu_offline);
+          if (ret < 0)
+              return ret;
+          
+          my_cpuhp_state = ret;
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          cpuhp_remove_state(my_cpuhp_state);
+      }
+
+  - description: "使用 SMP 函数调用"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/smp.h>
+      
+      struct my_call_data {
+          void *buffer;
+          size_t size;
+          int result;
+      };
+      
+      static void my_remote_func(void *info)
+      {
+          struct my_call_data *data = info;
+          
+          /* 在目标 CPU 上执行 */
+          data->result = process_on_cpu(data->buffer, data->size);
+      }
+      
+      int execute_on_cpu(unsigned int cpu, void *buf, size_t size)
+      {
+          struct my_call_data data = {
+              .buffer = buf,
+              .size = size,
+              .result = 0,
+          };
+          int ret;
+          
+          /* 在指定 CPU 上执行 */
+          ret = smp_call_function_single(cpu, my_remote_func, &data, 1);
+          if (ret)
+              return ret;
+          
+          return data.result;
+      }
+      
+      void broadcast_to_all_cpus(void)
+      {
+          /* 在所有其他在线 CPU 上执行，不等待 */
+          smp_call_function(my_remote_func, NULL, 0);
+          
+          /* 或使用 on_each_cpu 在所有 CPU 上执行 */
+          on_each_cpu(my_remote_func, NULL, 1);
+      }
+
+  - description: "Per-CPU 计数器"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/percpu.h>
+      #include <linux/smp.h>
+      
+      /* 定义 per-CPU 计数器 */
+      static DEFINE_PER_CPU(unsigned long, packet_count);
+      
+      /* 在数据包处理路径中（高频） */
+      void count_packet(void)
+      {
+          /* 使用 this_cpu_inc，自动处理抢占 */
+          this_cpu_inc(packet_count);
+      }
+      
+      /* 获取总计数 */
+      unsigned long get_total_packets(void)
+      {
+          unsigned long total = 0;
+          int cpu;
+          
+          /* 遍历所有可能的 CPU */
+          for_each_possible_cpu(cpu) {
+              total += per_cpu(packet_count, cpu);
+          }
+          
+          return total;
+      }
+      
+      /* 重置所有计数器 */
+      void reset_packet_counts(void)
+      {
+          int cpu;
+          
+          /* 需要锁定 CPU hotplug 防止竞争 */
+          cpus_read_lock();
+          for_each_online_cpu(cpu) {
+              per_cpu(packet_count, cpu) = 0;
+          }
+          cpus_read_unlock();
+      }
+
+  - description: "处理 CPU hotplug 的驱动程序"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/cpuhotplug.h>
+      #include <linux/percpu.h>
+      
+      struct my_cpu_data {
+          struct list_head list;
+          void *buffer;
+          spinlock_t lock;
+      };
+      
+      static DEFINE_PER_CPU(struct my_cpu_data, cpu_data);
+      
+      /* CPU 上线时分配资源 */
+      static int my_cpu_startup(unsigned int cpu)
+      {
+          struct my_cpu_data *data = &per_cpu(cpu_data, cpu);
+          
+          spin_lock_init(&data->lock);
+          INIT_LIST_HEAD(&data->list);
+          
+          data->buffer = kmalloc(PAGE_SIZE, GFP_KERNEL);
+          if (!data->buffer)
+              return -ENOMEM;
+          
+          return 0;
+      }
+      
+      /* CPU 下线时迁移和清理 */
+      static int my_cpu_teardown(unsigned int cpu)
+      {
+          struct my_cpu_data *data = &per_cpu(cpu_data, cpu);
+          struct my_cpu_data *target_data;
+          int target_cpu;
+          
+          /* 找一个在线 CPU 迁移工作 */
+          target_cpu = cpumask_any_but(cpu_online_mask, cpu);
+          if (target_cpu < nr_cpu_ids) {
+              target_data = &per_cpu(cpu_data, target_cpu);
+              
+              /* 迁移待处理工作 */
+              spin_lock(&data->lock);
+              spin_lock(&target_data->lock);
+              list_splice_init(&data->list, &target_data->list);
+              spin_unlock(&target_data->lock);
+              spin_unlock(&data->lock);
+          }
+          
+          kfree(data->buffer);
+          data->buffer = NULL;
+          
+          return 0;
+      }
+      
+      static int __init my_init(void)
+      {
+          return cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
+                                   "drivers/mydriver:online",
+                                   my_cpu_startup,
+                                   my_cpu_teardown);
+      }
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.0":
+    - "基础 CPU hotplug 支持"
+    - "cpu_up/cpu_down"
+  "3.10":
+    - "引入 get_online_cpus/put_online_cpus"
+  "4.6":
+    - "新的 CPU hotplug 状态机"
+    - "cpuhp_setup_state API"
+  "4.8":
+    - "将大部分子系统迁移到新 API"
+  "4.10":
+    - "cpus_read_lock/cpus_read_unlock 替代旧 API"
+  "5.0":
+    - "改进的 CPU hotplug 同步"
+  "5.3":
+    - "支持更多的动态状态"
+  "5.10":
+    - "性能优化"
+    - "更好的错误处理"

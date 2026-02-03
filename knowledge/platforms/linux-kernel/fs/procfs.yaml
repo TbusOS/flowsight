@@ -1,0 +1,785 @@
+# Proc File System Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/filesystems/proc.html
+# Kernel Version: 2.6+ (current APIs)
+
+# ============================================================
+# PROCFS OVERVIEW
+# ============================================================
+
+procfs_overview:
+  description: "Procfs - 进程文件系统"
+  header: "linux/proc_fs.h"
+  icon: "📊"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  purpose:
+    - description: "导出内核和进程信息到用户空间"
+    - description: "提供调试和诊断接口"
+    - description: "实现 /proc 虚拟文件系统"
+
+  mount_point: "/proc"
+
+  key_directories:
+    - path: "/proc/[pid]"
+      description: "进程信息目录"
+    - path: "/proc/sys"
+      description: "内核参数 (sysctl)"
+    - path: "/proc/net"
+      description: "网络信息"
+    - path: "/proc/fs"
+      description: "文件系统信息"
+    - path: "/proc/driver"
+      description: "驱动信息"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  proc_dir_entry:
+    pattern: 'struct proc_dir_entry\s*\{'
+    description: "Proc 目录项结构"
+    file: "fs/proc/internal.h"
+    fields:
+      - name: "low_ino"
+        type: "unsigned int"
+        description: "inode 号"
+      - name: "mode"
+        type: "umode_t"
+        description: "文件模式"
+      - name: "nlink"
+        type: "unsigned int"
+        description: "链接计数"
+      - name: "uid"
+        type: "kuid_t"
+        description: "所有者 UID"
+      - name: "gid"
+        type: "kgid_t"
+        description: "所有者 GID"
+      - name: "size"
+        type: "loff_t"
+        description: "文件大小"
+      - name: "proc_ops"
+        type: "const struct proc_ops *"
+        description: "文件操作"
+      - name: "proc_iops"
+        type: "const struct inode_operations *"
+        description: "inode 操作"
+      - name: "parent"
+        type: "struct proc_dir_entry *"
+        description: "父目录"
+      - name: "subdir"
+        type: "struct rb_root"
+        description: "子目录红黑树"
+      - name: "data"
+        type: "void *"
+        description: "私有数据"
+      - name: "name"
+        type: "char[]"
+        description: "条目名称"
+      - name: "namelen"
+        type: "u8"
+        description: "名称长度"
+
+  proc_ops:
+    pattern: 'struct proc_ops\s*\{'
+    description: "Proc 文件操作 (5.6+)"
+    file: "include/linux/proc_fs.h"
+    fields:
+      - name: "proc_flags"
+        type: "unsigned int"
+        description: "操作标志"
+      - name: "proc_open"
+        type: "int (*)(struct inode *, struct file *)"
+        description: "打开回调"
+      - name: "proc_read"
+        type: "ssize_t (*)(struct file *, char __user *, size_t, loff_t *)"
+        description: "读取回调"
+      - name: "proc_read_iter"
+        type: "ssize_t (*)(struct kiocb *, struct iov_iter *)"
+        description: "迭代读取回调"
+      - name: "proc_write"
+        type: "ssize_t (*)(struct file *, const char __user *, size_t, loff_t *)"
+        description: "写入回调"
+      - name: "proc_lseek"
+        type: "loff_t (*)(struct file *, loff_t, int)"
+        description: "定位回调"
+      - name: "proc_release"
+        type: "int (*)(struct inode *, struct file *)"
+        description: "关闭回调"
+      - name: "proc_poll"
+        type: "unsigned int (*)(struct file *, struct poll_table_struct *)"
+        description: "轮询回调"
+      - name: "proc_ioctl"
+        type: "long (*)(struct file *, unsigned int, unsigned long)"
+        description: "ioctl 回调"
+      - name: "proc_mmap"
+        type: "int (*)(struct file *, struct vm_area_struct *)"
+        description: "mmap 回调"
+      - name: "proc_get_unmapped_area"
+        type: "unsigned long (*)(struct file *, unsigned long, unsigned long, unsigned long, unsigned long)"
+        description: "获取未映射区域"
+
+  seq_file:
+    pattern: 'struct seq_file\s*\{'
+    description: "序列文件结构 (用于大量数据输出)"
+    file: "include/linux/seq_file.h"
+    fields:
+      - name: "buf"
+        type: "char *"
+        description: "输出缓冲区"
+      - name: "size"
+        type: "size_t"
+        description: "缓冲区大小"
+      - name: "from"
+        type: "size_t"
+        description: "当前读取位置"
+      - name: "count"
+        type: "size_t"
+        description: "缓冲区中数据量"
+      - name: "pad_until"
+        type: "size_t"
+        description: "填充目标"
+      - name: "index"
+        type: "loff_t"
+        description: "当前索引"
+      - name: "read_pos"
+        type: "loff_t"
+        description: "读取位置"
+      - name: "lock"
+        type: "struct mutex"
+        description: "互斥锁"
+      - name: "op"
+        type: "const struct seq_operations *"
+        description: "序列操作"
+      - name: "poll_event"
+        type: "int"
+        description: "轮询事件"
+      - name: "file"
+        type: "const struct file *"
+        description: "关联文件"
+      - name: "private"
+        type: "void *"
+        description: "私有数据"
+
+  seq_operations:
+    pattern: 'struct seq_operations\s*\{'
+    description: "序列文件操作"
+    file: "include/linux/seq_file.h"
+    fields:
+      - name: "start"
+        type: "void *(*)(struct seq_file *, loff_t *)"
+        description: "开始迭代"
+      - name: "stop"
+        type: "void (*)(struct seq_file *, void *)"
+        description: "停止迭代"
+      - name: "next"
+        type: "void *(*)(struct seq_file *, void *, loff_t *)"
+        description: "下一个元素"
+      - name: "show"
+        type: "int (*)(struct seq_file *, void *)"
+        description: "显示元素"
+
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # === 目录/文件创建 ===
+  proc_mkdir:
+    pattern: 'proc_mkdir\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "创建 proc 目录"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct proc_dir_entry *"
+
+  proc_mkdir_data:
+    pattern: 'proc_mkdir_data\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+    description: "创建带数据的 proc 目录"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  proc_mkdir_mode:
+    pattern: 'proc_mkdir_mode\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "创建指定权限的 proc 目录"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  proc_create:
+    pattern: 'proc_create\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<proc_ops>[^)]+)\s*\)'
+    description: "创建 proc 文件"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct proc_dir_entry *"
+
+  proc_create_data:
+    pattern: 'proc_create_data\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<proc_ops>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+    description: "创建带私有数据的 proc 文件"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  proc_create_single:
+    pattern: 'proc_create_single\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<show>[^)]+)\s*\)'
+    description: "创建单次输出的 proc 文件"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  proc_create_single_data:
+    pattern: 'proc_create_single_data\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<show>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+    description: "创建带数据的单次输出 proc 文件"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  proc_create_seq:
+    pattern: 'proc_create_seq\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+    description: "创建序列文件 proc 条目"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  proc_create_seq_private:
+    pattern: 'proc_create_seq_private\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<ops>[^,]+)\s*,\s*(?P<state_size>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+    description: "创建带私有状态的序列文件"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  # === 删除 ===
+  proc_remove:
+    pattern: 'proc_remove\s*\(\s*(?P<de>[^)]+)\s*\)'
+    description: "移除 proc 条目 (递归)"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  remove_proc_entry:
+    pattern: 'remove_proc_entry\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "移除 proc 条目"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  remove_proc_subtree:
+    pattern: 'remove_proc_subtree\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "移除 proc 子树"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: true
+
+  # === 辅助函数 ===
+  PDE_DATA:
+    pattern: 'PDE_DATA\s*\(\s*(?P<inode>[^)]+)\s*\)'
+    description: "获取 proc 条目私有数据"
+    file: "include/linux/proc_fs.h"
+    context: "any"
+    can_sleep: false
+    note: "5.17+ 改名为 pde_data()"
+
+  pde_data:
+    pattern: 'pde_data\s*\(\s*(?P<inode>[^)]+)\s*\)'
+    description: "获取 proc 条目私有数据 (5.17+)"
+    file: "include/linux/proc_fs.h"
+    context: "any"
+    can_sleep: false
+
+  proc_set_size:
+    pattern: 'proc_set_size\s*\(\s*(?P<de>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+    description: "设置 proc 文件大小"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: false
+
+  proc_set_user:
+    pattern: 'proc_set_user\s*\(\s*(?P<de>[^,]+)\s*,\s*(?P<uid>[^,]+)\s*,\s*(?P<gid>[^)]+)\s*\)'
+    description: "设置 proc 文件所有者"
+    file: "fs/proc/generic.c"
+    context: "process"
+    can_sleep: false
+
+  # === seq_file 函数 ===
+  seq_open:
+    pattern: 'seq_open\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<op>[^)]+)\s*\)'
+    description: "打开序列文件"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+
+  seq_read:
+    pattern: 'seq_read\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<ppos>[^)]+)\s*\)'
+    description: "读取序列文件"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+
+  seq_lseek:
+    pattern: 'seq_lseek\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<offset>[^,]+)\s*,\s*(?P<whence>[^)]+)\s*\)'
+    description: "序列文件定位"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+
+  seq_release:
+    pattern: 'seq_release\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<file>[^)]+)\s*\)'
+    description: "释放序列文件"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+
+  single_open:
+    pattern: 'single_open\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<show>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+    description: "打开单次输出文件"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+
+  single_release:
+    pattern: 'single_release\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<file>[^)]+)\s*\)'
+    description: "释放单次输出文件"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+
+  # === seq_file 输出函数 ===
+  seq_printf:
+    pattern: 'seq_printf\s*\(\s*(?P<m>[^,]+)\s*,'
+    description: "格式化输出到序列文件"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+
+  seq_puts:
+    pattern: 'seq_puts\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<s>[^)]+)\s*\)'
+    description: "输出字符串到序列文件"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+
+  seq_putc:
+    pattern: 'seq_putc\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<c>[^)]+)\s*\)'
+    description: "输出字符到序列文件"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+
+  seq_write:
+    pattern: 'seq_write\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+    description: "输出二进制数据"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+
+  seq_hex_dump:
+    pattern: 'seq_hex_dump\s*\(\s*(?P<m>[^,]+)\s*,'
+    description: "十六进制转储"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+
+  seq_escape:
+    pattern: 'seq_escape\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<s>[^,]+)\s*,\s*(?P<esc>[^)]+)\s*\)'
+    description: "转义输出"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+
+  seq_path:
+    pattern: 'seq_path\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<path>[^,]+)\s*,\s*(?P<esc>[^)]+)\s*\)'
+    description: "输出路径"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  proc_read:
+    description: "Proc 文件读取路径"
+    trigger: "read() /proc/xxx"
+    chain:
+      - function: "ksys_read"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_read"
+        file: "fs/read_write.c"
+        description: "VFS 读取"
+      - function: "proc_reg_read"
+        file: "fs/proc/inode.c"
+        description: "Proc 读取包装"
+      - function: "pde->proc_ops->proc_read"
+        file: "用户代码"
+        description: "用户读取回调"
+        is_user_entry: true
+
+  proc_seq_read:
+    description: "Proc 序列文件读取路径"
+    trigger: "read() 使用 seq_file 的 /proc 文件"
+    chain:
+      - function: "ksys_read"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_read"
+        file: "fs/read_write.c"
+        description: "VFS 读取"
+      - function: "seq_read"
+        file: "fs/seq_file.c"
+        description: "序列文件读取"
+      - function: "seq_ops->start"
+        file: "用户代码"
+        description: "开始迭代"
+        is_user_entry: true
+      - function: "seq_ops->show"
+        file: "用户代码"
+        description: "显示当前元素"
+        is_user_entry: true
+      - function: "seq_ops->next"
+        file: "用户代码"
+        description: "移到下一个"
+        is_user_entry: true
+      - function: "seq_ops->stop"
+        file: "用户代码"
+        description: "停止迭代"
+        is_user_entry: true
+
+  proc_write:
+    description: "Proc 文件写入路径"
+    trigger: "write() /proc/xxx"
+    chain:
+      - function: "ksys_write"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_write"
+        file: "fs/read_write.c"
+        description: "VFS 写入"
+      - function: "proc_reg_write"
+        file: "fs/proc/inode.c"
+        description: "Proc 写入包装"
+      - function: "pde->proc_ops->proc_write"
+        file: "用户代码"
+        description: "用户写入回调"
+        is_user_entry: true
+
+  proc_create_path:
+    description: "Proc 条目创建路径"
+    trigger: "proc_create() 等函数"
+    chain:
+      - function: "proc_create_data"
+        file: "fs/proc/generic.c"
+        description: "创建入口"
+        context: "process"
+      - function: "__proc_create"
+        file: "fs/proc/generic.c"
+        description: "内部创建"
+      - function: "proc_alloc_inum"
+        file: "fs/proc/generic.c"
+        description: "分配 inode 号"
+      - function: "proc_register"
+        file: "fs/proc/generic.c"
+        description: "注册到父目录"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单只读 proc 文件 (proc_ops)"
+    kernel_version: "5.6+"
+    code: |
+      #include <linux/proc_fs.h>
+      #include <linux/seq_file.h>
+
+      static void *my_data;
+
+      /* 读取回调 */
+      static ssize_t my_proc_read(struct file *file, char __user *buf,
+                                  size_t count, loff_t *ppos)
+      {
+          char tmp[64];
+          int len;
+
+          if (*ppos > 0)
+              return 0;
+
+          len = snprintf(tmp, sizeof(tmp), "Hello from proc!\n");
+          if (copy_to_user(buf, tmp, len))
+              return -EFAULT;
+
+          *ppos += len;
+          return len;
+      }
+
+      static const struct proc_ops my_proc_ops = {
+          .proc_read = my_proc_read,
+      };
+
+      static int __init my_init(void)
+      {
+          proc_create("my_proc_file", 0444, NULL, &my_proc_ops);
+          return 0;
+      }
+
+      static void __exit my_exit(void)
+      {
+          remove_proc_entry("my_proc_file", NULL);
+      }
+
+  - description: "使用 seq_file 的 proc 文件"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/proc_fs.h>
+      #include <linux/seq_file.h>
+
+      struct my_item {
+          int id;
+          char name[32];
+          struct list_head list;
+      };
+
+      static LIST_HEAD(my_list);
+      static DEFINE_MUTEX(my_mutex);
+
+      /* seq_operations 回调 */
+      static void *my_seq_start(struct seq_file *s, loff_t *pos)
+      {
+          mutex_lock(&my_mutex);
+          return seq_list_start(&my_list, *pos);
+      }
+
+      static void *my_seq_next(struct seq_file *s, void *v, loff_t *pos)
+      {
+          return seq_list_next(v, &my_list, pos);
+      }
+
+      static void my_seq_stop(struct seq_file *s, void *v)
+      {
+          mutex_unlock(&my_mutex);
+      }
+
+      static int my_seq_show(struct seq_file *s, void *v)
+      {
+          struct my_item *item = list_entry(v, struct my_item, list);
+          seq_printf(s, "%d: %s\n", item->id, item->name);
+          return 0;
+      }
+
+      static const struct seq_operations my_seq_ops = {
+          .start = my_seq_start,
+          .next  = my_seq_next,
+          .stop  = my_seq_stop,
+          .show  = my_seq_show,
+      };
+
+      static int my_proc_open(struct inode *inode, struct file *file)
+      {
+          return seq_open(file, &my_seq_ops);
+      }
+
+      static const struct proc_ops my_proc_ops = {
+          .proc_open    = my_proc_open,
+          .proc_read    = seq_read,
+          .proc_lseek   = seq_lseek,
+          .proc_release = seq_release,
+      };
+
+      static int __init my_init(void)
+      {
+          proc_create("my_list", 0444, NULL, &my_proc_ops);
+          return 0;
+      }
+
+  - description: "可读写的 proc 文件"
+    kernel_version: "5.6+"
+    code: |
+      #include <linux/proc_fs.h>
+
+      static int my_value = 42;
+
+      static ssize_t my_proc_read(struct file *file, char __user *buf,
+                                  size_t count, loff_t *ppos)
+      {
+          char tmp[32];
+          int len;
+
+          if (*ppos > 0)
+              return 0;
+
+          len = snprintf(tmp, sizeof(tmp), "%d\n", my_value);
+          if (len > count)
+              len = count;
+          if (copy_to_user(buf, tmp, len))
+              return -EFAULT;
+
+          *ppos += len;
+          return len;
+      }
+
+      static ssize_t my_proc_write(struct file *file, const char __user *buf,
+                                   size_t count, loff_t *ppos)
+      {
+          char tmp[32];
+          int val;
+
+          if (count > sizeof(tmp) - 1)
+              count = sizeof(tmp) - 1;
+
+          if (copy_from_user(tmp, buf, count))
+              return -EFAULT;
+
+          tmp[count] = '\0';
+
+          if (kstrtoint(tmp, 10, &val))
+              return -EINVAL;
+
+          my_value = val;
+          return count;
+      }
+
+      static const struct proc_ops my_proc_ops = {
+          .proc_read  = my_proc_read,
+          .proc_write = my_proc_write,
+      };
+
+      static int __init my_init(void)
+      {
+          proc_create("my_value", 0644, NULL, &my_proc_ops);
+          return 0;
+      }
+
+  - description: "单次输出的 proc 文件 (proc_create_single)"
+    kernel_version: "4.18+"
+    code: |
+      #include <linux/proc_fs.h>
+      #include <linux/seq_file.h>
+
+      static int my_show(struct seq_file *m, void *v)
+      {
+          seq_puts(m, "Header:\n");
+          seq_puts(m, "-------\n");
+          seq_printf(m, "Value: %d\n", 123);
+          seq_printf(m, "Name: %s\n", "test");
+          return 0;
+      }
+
+      static int __init my_init(void)
+      {
+          /* 简化创建单次输出文件 */
+          proc_create_single("my_info", 0444, NULL, my_show);
+          return 0;
+      }
+
+      static void __exit my_exit(void)
+      {
+          remove_proc_entry("my_info", NULL);
+      }
+
+  - description: "创建 proc 目录和子文件"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/proc_fs.h>
+
+      static struct proc_dir_entry *my_dir;
+
+      /* 文件 1 回调 */
+      static int file1_show(struct seq_file *m, void *v)
+      {
+          seq_puts(m, "This is file1\n");
+          return 0;
+      }
+
+      /* 文件 2 回调 - 使用私有数据 */
+      static int file2_show(struct seq_file *m, void *v)
+      {
+          int *data = m->private;
+          seq_printf(m, "Data value: %d\n", *data);
+          return 0;
+      }
+
+      static int my_data = 100;
+
+      static int __init my_init(void)
+      {
+          /* 创建目录 */
+          my_dir = proc_mkdir("my_driver", NULL);
+          if (!my_dir)
+              return -ENOMEM;
+
+          /* 在目录下创建文件 */
+          proc_create_single("file1", 0444, my_dir, file1_show);
+          proc_create_single_data("file2", 0444, my_dir, 
+                                  file2_show, &my_data);
+
+          return 0;
+      }
+
+      static void __exit my_exit(void)
+      {
+          /* 递归移除整个目录 */
+          proc_remove(my_dir);
+      }
+
+  - description: "带私有数据的 proc 文件"
+    kernel_version: "5.17+"
+    code: |
+      #include <linux/proc_fs.h>
+
+      struct my_device {
+          int id;
+          char name[32];
+          /* ... */
+      };
+
+      static int my_proc_show(struct seq_file *m, void *v)
+      {
+          struct my_device *dev = m->private;
+          
+          seq_printf(m, "Device ID: %d\n", dev->id);
+          seq_printf(m, "Name: %s\n", dev->name);
+          return 0;
+      }
+
+      static int my_proc_open(struct inode *inode, struct file *file)
+      {
+          /* 5.17+ 使用 pde_data() */
+          return single_open(file, my_proc_show, pde_data(inode));
+      }
+
+      static const struct proc_ops my_proc_ops = {
+          .proc_open    = my_proc_open,
+          .proc_read    = seq_read,
+          .proc_lseek   = seq_lseek,
+          .proc_release = single_release,
+      };
+
+      /* 为每个设备创建 proc 文件 */
+      static int create_proc_for_device(struct my_device *dev)
+      {
+          char name[64];
+          
+          snprintf(name, sizeof(name), "device%d", dev->id);
+          
+          if (!proc_create_data(name, 0444, my_dir, &my_proc_ops, dev))
+              return -ENOMEM;
+          
+          return 0;
+      }

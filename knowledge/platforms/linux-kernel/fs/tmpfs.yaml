@@ -1,0 +1,719 @@
+# Tmpfs (Shmem) File System Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/filesystems/tmpfs.html
+# Kernel Version: 2.4+ (current APIs)
+
+# ============================================================
+# TMPFS OVERVIEW
+# ============================================================
+
+tmpfs_overview:
+  description: "Tmpfs/Shmem - 内存临时文件系统"
+  header: "linux/shmem_fs.h"
+  icon: "💾"
+  kernel_version: "2.4+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  purpose:
+    - description: "提供基于内存的临时存储"
+    - description: "支持交换到 swap 分区"
+    - description: "用于 /tmp, /dev/shm, 共享内存"
+
+  mount_point: "/tmp, /dev/shm, /run"
+
+  characteristics:
+    - "数据存储在内存/swap 中"
+    - "重启后数据丢失"
+    - "可限制大小 (mount -o size=xxx)"
+    - "支持 POSIX 共享内存"
+    - "支持 huge pages (transparent huge pages)"
+
+  mount_options:
+    - option: "size=xxx"
+      description: "最大大小 (字节/百分比)"
+    - option: "nr_blocks=xxx"
+      description: "最大块数"
+    - option: "nr_inodes=xxx"
+      description: "最大 inode 数"
+    - option: "mode=xxx"
+      description: "根目录权限"
+    - option: "uid=xxx"
+      description: "根目录 UID"
+    - option: "gid=xxx"
+      description: "根目录 GID"
+    - option: "huge=xxx"
+      description: "huge pages 策略 (never/always/within_size/advise)"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  shmem_inode_info:
+    pattern: 'struct shmem_inode_info\s*\{'
+    description: "Shmem inode 信息"
+    file: "include/linux/shmem_fs.h"
+    fields:
+      - name: "lock"
+        type: "spinlock_t"
+        description: "inode 锁"
+      - name: "seals"
+        type: "unsigned int"
+        description: "文件封印标志"
+      - name: "flags"
+        type: "unsigned long"
+        description: "状态标志"
+      - name: "alloced"
+        type: "unsigned long"
+        description: "已分配页数"
+      - name: "swapped"
+        type: "unsigned long"
+        description: "已交换页数"
+      - name: "fallocend"
+        type: "pgoff_t"
+        description: "fallocate 结束位置"
+      - name: "shrinklist"
+        type: "struct list_head"
+        description: "收缩列表"
+      - name: "swaplist"
+        type: "struct list_head"
+        description: "交换列表"
+      - name: "xattrs"
+        type: "struct simple_xattrs"
+        description: "扩展属性"
+      - name: "fsflags"
+        type: "unsigned int"
+        description: "FS_* 标志"
+      - name: "vfs_inode"
+        type: "struct inode"
+        description: "VFS inode (必须在最后)"
+
+  shmem_sb_info:
+    pattern: 'struct shmem_sb_info\s*\{'
+    description: "Shmem 超级块信息"
+    file: "include/linux/shmem_fs.h"
+    fields:
+      - name: "max_blocks"
+        type: "unsigned long"
+        description: "最大块数"
+      - name: "free_inodes"
+        type: "unsigned long"
+        description: "空闲 inode 数"
+      - name: "used_blocks"
+        type: "struct percpu_counter"
+        description: "已用块数"
+      - name: "max_inodes"
+        type: "unsigned long"
+        description: "最大 inode 数"
+      - name: "spin_lock"
+        type: "raw_spinlock_t"
+        description: "自旋锁"
+      - name: "uid"
+        type: "kuid_t"
+        description: "默认 UID"
+      - name: "gid"
+        type: "kgid_t"
+        description: "默认 GID"
+      - name: "mode"
+        type: "umode_t"
+        description: "默认权限"
+      - name: "huge"
+        type: "unsigned char"
+        description: "huge pages 策略"
+      - name: "mpol"
+        type: "struct mempolicy *"
+        description: "NUMA 内存策略"
+      - name: "shrinklist_lock"
+        type: "spinlock_t"
+        description: "收缩列表锁"
+      - name: "shrinklist"
+        type: "struct list_head"
+        description: "可收缩 inode 列表"
+      - name: "shrinklist_len"
+        type: "unsigned long"
+        description: "收缩列表长度"
+
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # === 文件创建和管理 ===
+  shmem_file_setup:
+    pattern: 'shmem_file_setup\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+    description: "创建 shmem 文件"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct file *"
+
+  shmem_file_setup_with_mnt:
+    pattern: 'shmem_file_setup_with_mnt\s*\(\s*(?P<mnt>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+    description: "在指定挂载点创建 shmem 文件"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  shmem_kernel_file_setup:
+    pattern: 'shmem_kernel_file_setup\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<size>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+    description: "内核使用的 shmem 文件创建"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  shmem_zero_setup:
+    pattern: 'shmem_zero_setup\s*\(\s*(?P<vma>[^)]+)\s*\)'
+    description: "为 VMA 设置零填充 shmem"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  # === 页面操作 ===
+  shmem_getpage:
+    pattern: 'shmem_getpage\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<pagep>[^,]+)\s*,\s*(?P<sgp>[^)]+)\s*\)'
+    description: "获取 shmem 页面"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  shmem_get_folio:
+    pattern: 'shmem_get_folio\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<foliop>[^,]+)\s*,\s*(?P<sgp>[^)]+)\s*\)'
+    description: "获取 shmem folio (5.18+)"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  shmem_read_mapping_page_gfp:
+    pattern: 'shmem_read_mapping_page_gfp\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<index>[^,]+)\s*,\s*(?P<gfp>[^)]+)\s*\)'
+    description: "读取 shmem 映射页面"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  # === Inode 操作 ===
+  shmem_get_inode:
+    pattern: 'shmem_get_inode\s*\(\s*(?P<sb>[^,]+)\s*,\s*(?P<dir>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<dev>[^,]+)\s*,\s*(?P<flags>[^)]+)\s*\)'
+    description: "获取 shmem inode"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  shmem_truncate_range:
+    pattern: 'shmem_truncate_range\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<lstart>[^,]+)\s*,\s*(?P<lend>[^)]+)\s*\)'
+    description: "截断 shmem 范围"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  shmem_unuse:
+    pattern: 'shmem_unuse\s*\(\s*(?P<type>[^,]+)\s*,\s*(?P<frontswap>[^,]+)\s*,\s*(?P<fs_pages_to_unuse>[^)]+)\s*\)'
+    description: "取消使用交换空间"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  # === 文件封印 (memfd) ===
+  shmem_add_seals:
+    pattern: 'shmem_add_seals\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<seals>[^)]+)\s*\)'
+    description: "添加文件封印"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  shmem_get_seals:
+    pattern: 'shmem_get_seals\s*\(\s*(?P<file>[^)]+)\s*\)'
+    description: "获取文件封印"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: false
+
+  # === memfd 相关 ===
+  shmem_memfd_file:
+    pattern: 'shmem_memfd_file\s*\(\s*(?P<file>[^)]+)\s*\)'
+    description: "检查是否为 memfd 文件"
+    file: "mm/shmem.c"
+    context: "any"
+    can_sleep: false
+
+  # === 辅助函数 ===
+  shmem_mapping:
+    pattern: 'shmem_mapping\s*\(\s*(?P<mapping>[^)]+)\s*\)'
+    description: "检查是否为 shmem 映射"
+    file: "mm/shmem.c"
+    context: "any"
+    can_sleep: false
+
+  shmem_partial_swap_usage:
+    pattern: 'shmem_partial_swap_usage\s*\(\s*(?P<mapping>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+    description: "获取部分交换使用量"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+  shmem_swap_usage:
+    pattern: 'shmem_swap_usage\s*\(\s*(?P<vma>[^)]+)\s*\)'
+    description: "获取 VMA 交换使用量"
+    file: "mm/shmem.c"
+    context: "process"
+    can_sleep: true
+
+
+# ============================================================
+# OPERATIONS STRUCTURES
+# ============================================================
+
+operations:
+  shmem_file_operations:
+    description: "Shmem 文件操作"
+    structure: "file_operations"
+    callbacks:
+      mmap:
+        pattern: '\.mmap\s*=\s*shmem_mmap'
+        description: "内存映射"
+      get_unmapped_area:
+        pattern: '\.get_unmapped_area\s*=\s*shmem_get_unmapped_area'
+        description: "获取未映射区域"
+      llseek:
+        pattern: '\.llseek\s*=\s*shmem_file_llseek'
+        description: "文件定位"
+      read_iter:
+        pattern: '\.read_iter\s*=\s*shmem_file_read_iter'
+        description: "读取迭代器"
+      write_iter:
+        pattern: '\.write_iter\s*=\s*generic_file_write_iter'
+        description: "写入迭代器"
+      fsync:
+        pattern: '\.fsync\s*=\s*noop_fsync'
+        description: "同步 (无操作)"
+      splice_read:
+        pattern: '\.splice_read\s*=\s*generic_file_splice_read'
+        description: "零拷贝读"
+      splice_write:
+        pattern: '\.splice_write\s*=\s*iter_file_splice_write'
+        description: "零拷贝写"
+      fallocate:
+        pattern: '\.fallocate\s*=\s*shmem_fallocate'
+        description: "预分配空间"
+
+  shmem_inode_operations:
+    description: "Shmem inode 操作"
+    structure: "inode_operations"
+    callbacks:
+      getattr:
+        pattern: '\.getattr\s*=\s*shmem_getattr'
+        description: "获取属性"
+      setattr:
+        pattern: '\.setattr\s*=\s*shmem_setattr'
+        description: "设置属性"
+
+  shmem_dir_inode_operations:
+    description: "Shmem 目录 inode 操作"
+    structure: "inode_operations"
+    callbacks:
+      create:
+        pattern: '\.create\s*=\s*shmem_create'
+        description: "创建文件"
+      lookup:
+        pattern: '\.lookup\s*=\s*simple_lookup'
+        description: "查找"
+      link:
+        pattern: '\.link\s*=\s*shmem_link'
+        description: "硬链接"
+      unlink:
+        pattern: '\.unlink\s*=\s*shmem_unlink'
+        description: "删除"
+      symlink:
+        pattern: '\.symlink\s*=\s*shmem_symlink'
+        description: "符号链接"
+      mkdir:
+        pattern: '\.mkdir\s*=\s*shmem_mkdir'
+        description: "创建目录"
+      rmdir:
+        pattern: '\.rmdir\s*=\s*shmem_rmdir'
+        description: "删除目录"
+      mknod:
+        pattern: '\.mknod\s*=\s*shmem_mknod'
+        description: "创建设备节点"
+      rename:
+        pattern: '\.rename\s*=\s*shmem_rename2'
+        description: "重命名"
+      tmpfile:
+        pattern: '\.tmpfile\s*=\s*shmem_tmpfile'
+        description: "创建临时文件"
+
+  shmem_aops:
+    description: "Shmem 地址空间操作"
+    structure: "address_space_operations"
+    callbacks:
+      writepage:
+        pattern: '\.writepage\s*=\s*shmem_writepage'
+        description: "写回页面 (到 swap)"
+      write_begin:
+        pattern: '\.write_begin\s*=\s*shmem_write_begin'
+        description: "写入开始"
+      write_end:
+        pattern: '\.write_end\s*=\s*shmem_write_end'
+        description: "写入结束"
+      migratepage:
+        pattern: '\.migratepage\s*=\s*migrate_page'
+        description: "页面迁移"
+      error_remove_page:
+        pattern: '\.error_remove_page\s*=\s*generic_error_remove_page'
+        description: "移除错误页"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  shmem_page_fault:
+    description: "Shmem 页面错误路径"
+    trigger: "访问 mmap 的 shmem 区域但页面不在内存"
+    chain:
+      - function: "handle_mm_fault"
+        file: "mm/memory.c"
+        description: "页面错误入口"
+        context: "process"
+      - function: "__handle_mm_fault"
+        file: "mm/memory.c"
+        description: "内部错误处理"
+      - function: "handle_pte_fault"
+        file: "mm/memory.c"
+        description: "PTE 错误"
+      - function: "do_fault"
+        file: "mm/memory.c"
+        description: "执行错误处理"
+      - function: "__do_fault"
+        file: "mm/memory.c"
+        description: "调用文件系统"
+      - function: "shmem_fault"
+        file: "mm/shmem.c"
+        description: "shmem 错误处理"
+      - function: "shmem_get_folio_gfp"
+        file: "mm/shmem.c"
+        description: "获取 folio"
+      - function: "shmem_alloc_folio"
+        file: "mm/shmem.c"
+        description: "分配新 folio"
+
+  shmem_swap_out:
+    description: "Shmem 页面交换出路径"
+    trigger: "内存压力触发页面回收"
+    chain:
+      - function: "shrink_page_list"
+        file: "mm/vmscan.c"
+        description: "收缩页面列表"
+        context: "kswapd/direct reclaim"
+      - function: "pageout"
+        file: "mm/vmscan.c"
+        description: "页面写出"
+      - function: "shmem_writepage"
+        file: "mm/shmem.c"
+        description: "shmem 写页面"
+      - function: "add_to_swap"
+        file: "mm/swap_state.c"
+        description: "添加到交换"
+      - function: "swap_writepage"
+        file: "mm/page_io.c"
+        description: "写入交换分区"
+
+  shmem_swap_in:
+    description: "Shmem 页面交换入路径"
+    trigger: "访问已交换出的页面"
+    chain:
+      - function: "shmem_fault"
+        file: "mm/shmem.c"
+        description: "shmem 错误处理"
+        context: "process"
+      - function: "shmem_get_folio_gfp"
+        file: "mm/shmem.c"
+        description: "获取 folio"
+      - function: "shmem_swapin_folio"
+        file: "mm/shmem.c"
+        description: "交换入 folio"
+      - function: "swap_readpage"
+        file: "mm/page_io.c"
+        description: "从交换分区读取"
+      - function: "shmem_replace_folio"
+        file: "mm/shmem.c"
+        description: "替换 folio"
+
+  shmem_file_setup_path:
+    description: "Shmem 文件创建路径"
+    trigger: "shmem_file_setup() 或 memfd_create()"
+    chain:
+      - function: "shmem_file_setup"
+        file: "mm/shmem.c"
+        description: "创建入口"
+        context: "process"
+      - function: "__shmem_file_setup"
+        file: "mm/shmem.c"
+        description: "内部创建"
+      - function: "shmem_get_inode"
+        file: "mm/shmem.c"
+        description: "获取 inode"
+      - function: "alloc_file_pseudo"
+        file: "fs/file_table.c"
+        description: "分配伪文件"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "内核中使用 shmem 文件"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/shmem_fs.h>
+      #include <linux/file.h>
+
+      /* 创建 shmem 文件 */
+      static int create_shmem_buffer(struct my_device *dev, size_t size)
+      {
+          struct file *file;
+          struct address_space *mapping;
+          struct page *page;
+          void *addr;
+          int i;
+
+          /* 创建 shmem 文件 */
+          file = shmem_file_setup("my_buffer", size, 0);
+          if (IS_ERR(file))
+              return PTR_ERR(file);
+
+          dev->shmem_file = file;
+          dev->size = size;
+
+          /* 预分配页面 */
+          mapping = file->f_mapping;
+          for (i = 0; i < size >> PAGE_SHIFT; i++) {
+              page = shmem_read_mapping_page(mapping, i);
+              if (IS_ERR(page)) {
+                  fput(file);
+                  return PTR_ERR(page);
+              }
+              /* 可以初始化页面内容 */
+              addr = kmap_atomic(page);
+              memset(addr, 0, PAGE_SIZE);
+              kunmap_atomic(addr);
+              put_page(page);
+          }
+
+          return 0;
+      }
+
+      static void destroy_shmem_buffer(struct my_device *dev)
+      {
+          if (dev->shmem_file)
+              fput(dev->shmem_file);
+      }
+
+  - description: "memfd_create 系统调用使用 (用户空间)"
+    kernel_version: "3.17+"
+    code: |
+      /* 用户空间示例 - memfd_create 使用 shmem */
+      
+      #include <sys/mman.h>
+      #include <sys/syscall.h>
+      #include <linux/memfd.h>
+      
+      int create_shared_memory(size_t size)
+      {
+          int fd;
+          void *addr;
+          
+          /* 创建 memfd */
+          fd = syscall(SYS_memfd_create, "my_shm", MFD_CLOEXEC);
+          if (fd < 0)
+              return -1;
+          
+          /* 设置大小 */
+          if (ftruncate(fd, size) < 0) {
+              close(fd);
+              return -1;
+          }
+          
+          /* 映射到进程地址空间 */
+          addr = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                      MAP_SHARED, fd, 0);
+          if (addr == MAP_FAILED) {
+              close(fd);
+              return -1;
+          }
+          
+          /* 使用内存... */
+          memset(addr, 0, size);
+          
+          /* 可以传递 fd 给其他进程 */
+          return fd;
+      }
+      
+      /* 使用封印防止修改 */
+      int seal_memfd(int fd)
+      {
+          return fcntl(fd, F_ADD_SEALS, 
+                       F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE);
+      }
+
+  - description: "POSIX 共享内存 (shm_open)"
+    kernel_version: "2.6+"
+    code: |
+      /* 用户空间示例 - POSIX 共享内存使用 tmpfs */
+      
+      #include <sys/mman.h>
+      #include <sys/stat.h>
+      #include <fcntl.h>
+      
+      #define SHM_NAME "/my_shared_mem"
+      #define SHM_SIZE (1024 * 1024)  /* 1MB */
+      
+      /* 创建者进程 */
+      int create_shared_memory(void)
+      {
+          int fd;
+          void *addr;
+          
+          /* 在 /dev/shm 下创建 (tmpfs) */
+          fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0644);
+          if (fd < 0)
+              return -1;
+          
+          /* 设置大小 */
+          ftruncate(fd, SHM_SIZE);
+          
+          /* 映射 */
+          addr = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE,
+                      MAP_SHARED, fd, 0);
+          close(fd);
+          
+          if (addr == MAP_FAILED)
+              return -1;
+          
+          /* 初始化共享数据 */
+          struct shared_data *data = addr;
+          data->counter = 0;
+          
+          return 0;
+      }
+      
+      /* 使用者进程 */
+      void *open_shared_memory(void)
+      {
+          int fd;
+          void *addr;
+          
+          fd = shm_open(SHM_NAME, O_RDWR, 0);
+          if (fd < 0)
+              return NULL;
+          
+          addr = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE,
+                      MAP_SHARED, fd, 0);
+          close(fd);
+          
+          return addr != MAP_FAILED ? addr : NULL;
+      }
+      
+      /* 清理 */
+      void cleanup_shared_memory(void)
+      {
+          shm_unlink(SHM_NAME);
+      }
+
+  - description: "内核 DRM/GPU 驱动中的 shmem 使用"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/shmem_fs.h>
+      #include <drm/drm_gem_shmem_helper.h>
+
+      /* DRM GEM shmem 对象创建 (简化版) */
+      struct drm_gem_shmem_object *create_gem_shmem(struct drm_device *drm,
+                                                    size_t size)
+      {
+          struct drm_gem_shmem_object *shmem;
+          struct file *filp;
+
+          shmem = kzalloc(sizeof(*shmem), GFP_KERNEL);
+          if (!shmem)
+              return ERR_PTR(-ENOMEM);
+
+          /* 使用 shmem 作为后端存储 */
+          filp = shmem_file_setup("drm_gem", size, VM_NORESERVE);
+          if (IS_ERR(filp)) {
+              kfree(shmem);
+              return ERR_CAST(filp);
+          }
+
+          shmem->base.filp = filp;
+          shmem->pages_use_count = 0;
+
+          return shmem;
+      }
+
+      /* 获取 shmem 页面用于 GPU 访问 */
+      int gem_shmem_get_pages(struct drm_gem_shmem_object *shmem)
+      {
+          struct file *filp = shmem->base.filp;
+          struct address_space *mapping = filp->f_mapping;
+          struct page **pages;
+          int i, npages;
+
+          npages = shmem->base.size >> PAGE_SHIFT;
+          pages = kvmalloc_array(npages, sizeof(*pages), GFP_KERNEL);
+          if (!pages)
+              return -ENOMEM;
+
+          for (i = 0; i < npages; i++) {
+              pages[i] = shmem_read_mapping_page(mapping, i);
+              if (IS_ERR(pages[i])) {
+                  while (--i >= 0)
+                      put_page(pages[i]);
+                  kvfree(pages);
+                  return PTR_ERR(pages[i]);
+              }
+          }
+
+          shmem->pages = pages;
+          return 0;
+      }
+
+  - description: "tmpfs 挂载选项"
+    kernel_version: "2.6+"
+    code: |
+      /* tmpfs 挂载示例 (用户空间) */
+      
+      /* 基本挂载 */
+      mount("tmpfs", "/mnt/tmp", "tmpfs", 0, "");
+      
+      /* 限制大小 */
+      mount("tmpfs", "/mnt/tmp", "tmpfs", 0, "size=100M");
+      
+      /* 限制 inode 数量 */
+      mount("tmpfs", "/mnt/tmp", "tmpfs", 0, "nr_inodes=1000");
+      
+      /* 设置权限和所有者 */
+      mount("tmpfs", "/mnt/tmp", "tmpfs", 0, 
+            "mode=1777,uid=1000,gid=1000");
+      
+      /* 使用 huge pages */
+      mount("tmpfs", "/mnt/tmp", "tmpfs", 0, "huge=always");
+      
+      /* /etc/fstab 示例 */
+      /* tmpfs /tmp tmpfs defaults,noatime,size=512M 0 0 */
+      /* tmpfs /dev/shm tmpfs defaults,size=2G 0 0 */
+      
+      /* 内核挂载 (在驱动中) */
+      #include <linux/fs.h>
+      #include <linux/mount.h>
+      
+      static struct vfsmount *my_tmpfs_mount(void)
+      {
+          return kern_mount(&shmem_fs_type);
+      }

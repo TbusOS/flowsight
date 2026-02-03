@@ -1,0 +1,819 @@
+# x86/x86_64 Architecture Core Knowledge Base
+#
+# Reference: arch/x86/
+# Reference: Documentation/x86/
+# Reference: Intel/AMD Software Developer Manuals
+
+kernel_version:
+  minimum: "4.14"
+  recommended: "5.10+"
+  tested_on: "6.1"
+
+# ============================================================
+# x86 ARCHITECTURE OVERVIEW
+# ============================================================
+
+x86_overview:
+  description: "x86/x86_64 架构核心"
+  header: "arch/x86/include/asm/"
+  icon: "💻"
+
+  modes:
+    - name: "Real Mode"
+      bits: 16
+      description: "实模式 - 启动时初始状态"
+      features: ["1MB 地址空间", "无内存保护", "直接硬件访问"]
+    - name: "Protected Mode"
+      bits: 32
+      description: "保护模式 - 32位操作"
+      features: ["4GB 地址空间", "分段保护", "特权级"]
+    - name: "Long Mode"
+      bits: 64
+      description: "长模式 - 64位操作"
+      features: ["理论 16EB 地址空间", "实际 48/57位 VA", "兼容模式"]
+
+  privilege_levels:
+    - ring: "Ring 0"
+      name: "Kernel"
+      description: "最高特权 - 内核代码"
+    - ring: "Ring 1"
+      name: "Unused"
+      description: "Linux 未使用"
+    - ring: "Ring 2"
+      name: "Unused"
+      description: "Linux 未使用"
+    - ring: "Ring 3"
+      name: "User"
+      description: "最低特权 - 用户代码"
+
+
+# ============================================================
+# x86_64 REGISTERS
+# ============================================================
+
+registers:
+  general_purpose:
+    description: "通用寄存器 (64位)"
+    registers:
+      - name: "RAX"
+        description: "累加器 / 系统调用返回值"
+        parts: ["EAX (32)", "AX (16)", "AH/AL (8)"]
+      - name: "RBX"
+        description: "基址寄存器 (被调用者保存)"
+      - name: "RCX"
+        description: "计数器 / 第4参数"
+      - name: "RDX"
+        description: "数据 / 第3参数"
+      - name: "RSI"
+        description: "源索引 / 第2参数"
+      - name: "RDI"
+        description: "目的索引 / 第1参数"
+      - name: "RBP"
+        description: "基指针/帧指针 (被调用者保存)"
+      - name: "RSP"
+        description: "栈指针"
+      - name: "R8"
+        description: "第5参数"
+      - name: "R9"
+        description: "第6参数"
+      - name: "R10"
+        description: "临时寄存器"
+      - name: "R11"
+        description: "临时寄存器"
+      - name: "R12-R15"
+        description: "被调用者保存寄存器"
+      - name: "RIP"
+        description: "指令指针"
+
+  flags_register:
+    name: "RFLAGS"
+    description: "标志寄存器"
+    flags:
+      - name: "CF"
+        bit: 0
+        description: "进位标志"
+      - name: "PF"
+        bit: 2
+        description: "奇偶标志"
+      - name: "AF"
+        bit: 4
+        description: "辅助进位标志"
+      - name: "ZF"
+        bit: 6
+        description: "零标志"
+      - name: "SF"
+        bit: 7
+        description: "符号标志"
+      - name: "TF"
+        bit: 8
+        description: "陷阱标志 (单步)"
+      - name: "IF"
+        bit: 9
+        description: "中断使能标志"
+      - name: "DF"
+        bit: 10
+        description: "方向标志"
+      - name: "OF"
+        bit: 11
+        description: "溢出标志"
+      - name: "IOPL"
+        bits: "[13:12]"
+        description: "I/O 特权级"
+      - name: "NT"
+        bit: 14
+        description: "嵌套任务标志"
+      - name: "RF"
+        bit: 16
+        description: "恢复标志"
+      - name: "VM"
+        bit: 17
+        description: "虚拟8086模式"
+      - name: "AC"
+        bit: 18
+        description: "对齐检查"
+      - name: "VIF"
+        bit: 19
+        description: "虚拟中断标志"
+      - name: "VIP"
+        bit: 20
+        description: "虚拟中断挂起"
+      - name: "ID"
+        bit: 21
+        description: "CPUID 标志"
+
+  control_registers:
+    description: "控制寄存器"
+    registers:
+      - name: "CR0"
+        description: "系统控制"
+        fields: ["PE: 保护模式使能", "PG: 分页使能", "WP: 写保护"]
+      - name: "CR2"
+        description: "页故障线性地址"
+      - name: "CR3"
+        description: "页目录基址 (PDBR)"
+      - name: "CR4"
+        description: "扩展功能"
+        fields: ["PAE: 物理地址扩展", "PSE: 页大小扩展", "PCIDE: PCID使能"]
+      - name: "CR8"
+        description: "任务优先级寄存器 (仅64位)"
+
+  segment_registers:
+    description: "段寄存器"
+    registers:
+      - name: "CS"
+        description: "代码段 - 包含 CPL"
+      - name: "DS, ES, SS"
+        description: "数据段 (64位模式下基址为0)"
+      - name: "FS"
+        description: "TLS / per-CPU 数据 (内核)"
+      - name: "GS"
+        description: "内核使用 - current_task 指针"
+
+  msr_registers:
+    description: "模型特定寄存器 (MSR)"
+    registers:
+      - name: "MSR_LSTAR"
+        value: "0xC0000082"
+        description: "SYSCALL 目标地址 (64位)"
+      - name: "MSR_STAR"
+        value: "0xC0000081"
+        description: "SYSCALL CS/SS"
+      - name: "MSR_SYSCALL_MASK"
+        value: "0xC0000084"
+        description: "SYSCALL RFLAGS 掩码"
+      - name: "MSR_FS_BASE"
+        value: "0xC0000100"
+        description: "FS 基址"
+      - name: "MSR_GS_BASE"
+        value: "0xC0000101"
+        description: "GS 基址"
+      - name: "MSR_KERNEL_GS_BASE"
+        value: "0xC0000102"
+        description: "SWAPGS 用"
+      - name: "MSR_EFER"
+        value: "0xC0000080"
+        description: "扩展功能使能寄存器"
+
+
+# ============================================================
+# x86 INTERRUPT/EXCEPTION HANDLING
+# ============================================================
+
+x86_interrupts:
+  description: "x86 中断和异常处理"
+  header: "arch/x86/include/asm/idtentry.h"
+  icon: "⚡"
+
+  idt:
+    description: "中断描述符表 (IDT)"
+    entry_format:
+      - field: "offset_low"
+        bits: "[15:0]"
+        description: "处理程序偏移低16位"
+      - field: "segment"
+        bits: "[31:16]"
+        description: "段选择子"
+      - field: "ist"
+        bits: "[34:32]"
+        description: "中断栈表索引"
+      - field: "type"
+        bits: "[43:40]"
+        description: "门类型 (中断/陷阱)"
+      - field: "dpl"
+        bits: "[46:45]"
+        description: "描述符特权级"
+      - field: "present"
+        bit: 47
+        description: "存在位"
+      - field: "offset_mid"
+        bits: "[63:48]"
+        description: "处理程序偏移中16位"
+      - field: "offset_high"
+        bits: "[95:64]"
+        description: "处理程序偏移高32位"
+
+  exceptions:
+    - vector: 0
+      name: "#DE"
+      description: "除法错误"
+    - vector: 1
+      name: "#DB"
+      description: "调试异常"
+    - vector: 2
+      name: "NMI"
+      description: "不可屏蔽中断"
+    - vector: 3
+      name: "#BP"
+      description: "断点"
+    - vector: 4
+      name: "#OF"
+      description: "溢出"
+    - vector: 5
+      name: "#BR"
+      description: "边界检查"
+    - vector: 6
+      name: "#UD"
+      description: "无效操作码"
+    - vector: 7
+      name: "#NM"
+      description: "设备不可用"
+    - vector: 8
+      name: "#DF"
+      description: "双重故障"
+    - vector: 10
+      name: "#TS"
+      description: "无效 TSS"
+    - vector: 11
+      name: "#NP"
+      description: "段不存在"
+    - vector: 12
+      name: "#SS"
+      description: "栈段故障"
+    - vector: 13
+      name: "#GP"
+      description: "一般保护故障"
+    - vector: 14
+      name: "#PF"
+      description: "页故障"
+    - vector: 16
+      name: "#MF"
+      description: "x87 FPU 错误"
+    - vector: 17
+      name: "#AC"
+      description: "对齐检查"
+    - vector: 18
+      name: "#MC"
+      description: "机器检查"
+    - vector: 19
+      name: "#XM"
+      description: "SIMD 浮点异常"
+    - vector: 20
+      name: "#VE"
+      description: "虚拟化异常"
+
+  irq_vectors:
+    - range: "0x20-0x2F"
+      description: "传统 PIC IRQ 0-15"
+    - range: "0x30-0xEF"
+      description: "设备中断 (APIC)"
+    - range: "0xF0-0xFF"
+      description: "系统保留"
+
+  kernel_call_chain:
+    trigger: "中断/异常发生"
+    chain:
+      - function: "asm_common_interrupt"
+        file: "arch/x86/entry/entry_64.S"
+        description: "通用中断入口"
+      - function: "common_interrupt"
+        file: "arch/x86/kernel/irq.c"
+        description: "C 语言中断处理"
+      - function: "handle_irq"
+        file: "arch/x86/kernel/irq_64.c"
+        description: "IRQ 分发"
+      - function: "generic_handle_irq_desc"
+        file: "kernel/irq/irqdesc.c"
+        description: "通用处理"
+      - function: "my_irq_handler()"
+        file: "用户代码"
+        is_user_entry: true
+
+
+# ============================================================
+# x86 SYSTEM CALL
+# ============================================================
+
+x86_syscall:
+  description: "x86_64 系统调用机制"
+  header: "arch/x86/entry/entry_64.S"
+  icon: "📞"
+
+  methods:
+    - name: "SYSCALL (64位)"
+      instruction: "syscall"
+      description: "快速系统调用 (推荐)"
+      registers:
+        syscall_number: "RAX"
+        arguments: ["RDI", "RSI", "RDX", "R10", "R8", "R9"]
+        return_value: "RAX"
+        clobbered: ["RCX", "R11"]
+    - name: "SYSENTER (32位)"
+      instruction: "sysenter"
+      description: "32位快速系统调用"
+    - name: "INT 0x80 (兼容)"
+      instruction: "int $0x80"
+      description: "传统系统调用 (慢)"
+
+  kernel_call_chain:
+    trigger: "SYSCALL 指令"
+    chain:
+      - function: "entry_SYSCALL_64"
+        file: "arch/x86/entry/entry_64.S"
+        description: "系统调用入口"
+      - function: "do_syscall_64"
+        file: "arch/x86/entry/common.c"
+        description: "系统调用分发"
+      - function: "sys_call_table[nr]"
+        file: "arch/x86/entry/syscall_64.c"
+        description: "系统调用表查找"
+      - function: "__x64_sys_xxx"
+        file: "kernel/"
+        description: "具体系统调用"
+        is_user_entry: true
+
+  context:
+    type: "syscall"
+    can_sleep: true
+    preemptible: true
+
+  notes:
+    - "SYSCALL 不切换栈，内核从 MSR 获取栈地址"
+    - "RCX 保存返回地址，R11 保存 RFLAGS"
+    - "SYSRET 返回用户态"
+
+
+# ============================================================
+# x86 PAGE TABLE
+# ============================================================
+
+x86_pagetable:
+  description: "x86_64 页表结构"
+  header: "arch/x86/include/asm/pgtable_types.h"
+  icon: "📄"
+
+  paging_modes:
+    - name: "4-Level Paging"
+      config: "默认"
+      va_bits: 48
+      pa_bits: 52
+      levels: ["PML4", "PDPT", "PD", "PT"]
+    - name: "5-Level Paging"
+      config: "CONFIG_X86_5LEVEL"
+      va_bits: 57
+      pa_bits: 52
+      levels: ["PML5", "PML4", "PDPT", "PD", "PT"]
+
+  translation_levels:
+    description: "4级页表转换"
+    levels:
+      - level: "PML4"
+        name: "Page Map Level 4"
+        bits: "[47:39]"
+        entries: 512
+      - level: "PDPT"
+        name: "Page Directory Pointer Table"
+        bits: "[38:30]"
+        entries: 512
+        note: "可映射 1GB 大页"
+      - level: "PD"
+        name: "Page Directory"
+        bits: "[29:21]"
+        entries: 512
+        note: "可映射 2MB 大页"
+      - level: "PT"
+        name: "Page Table"
+        bits: "[20:12]"
+        entries: 512
+        page_size: "4KB"
+
+  pte_format:
+    description: "页表项格式"
+    fields:
+      - name: "P"
+        bit: 0
+        description: "存在位"
+      - name: "R/W"
+        bit: 1
+        description: "读/写"
+      - name: "U/S"
+        bit: 2
+        description: "用户/管理员"
+      - name: "PWT"
+        bit: 3
+        description: "写透"
+      - name: "PCD"
+        bit: 4
+        description: "缓存禁用"
+      - name: "A"
+        bit: 5
+        description: "访问位"
+      - name: "D"
+        bit: 6
+        description: "脏位"
+      - name: "PS/PAT"
+        bit: 7
+        description: "页大小/PAT"
+      - name: "G"
+        bit: 8
+        description: "全局页"
+      - name: "NX"
+        bit: 63
+        description: "不可执行"
+
+  address_space:
+    canonical_address: "地址必须是规范形式"
+    user_space:
+      range: "0x0000_0000_0000_0000 - 0x0000_7FFF_FFFF_FFFF"
+      size: "128TB (48位)"
+    kernel_space:
+      range: "0xFFFF_8000_0000_0000 - 0xFFFF_FFFF_FFFF_FFFF"
+      size: "128TB (48位)"
+    hole:
+      range: "0x0000_8000_0000_0000 - 0xFFFF_7FFF_FFFF_FFFF"
+      description: "非规范地址空洞"
+
+
+# ============================================================
+# x86 APIC
+# ============================================================
+
+x86_apic:
+  description: "x86 高级可编程中断控制器"
+  header: "arch/x86/include/asm/apic.h"
+  icon: "🎯"
+
+  types:
+    - name: "Local APIC"
+      description: "每 CPU 本地 APIC"
+      functions: ["定时器", "IPI", "本地中断"]
+    - name: "I/O APIC"
+      description: "I/O 中断路由"
+      functions: ["外设中断路由", "中断重映射"]
+    - name: "x2APIC"
+      description: "扩展 APIC (MSR 访问)"
+      features: ["更大 APIC ID", "更快的 MSR 访问"]
+
+  local_apic_registers:
+    - name: "APIC_ID"
+      offset: "0x020"
+      description: "APIC ID 寄存器"
+    - name: "APIC_LVR"
+      offset: "0x030"
+      description: "版本寄存器"
+    - name: "APIC_TPR"
+      offset: "0x080"
+      description: "任务优先级寄存器"
+    - name: "APIC_EOI"
+      offset: "0x0B0"
+      description: "中断结束寄存器"
+    - name: "APIC_SVR"
+      offset: "0x0F0"
+      description: "伪中断向量寄存器"
+    - name: "APIC_ICR"
+      offset: "0x300"
+      description: "中断命令寄存器 (发送 IPI)"
+    - name: "APIC_LVTT"
+      offset: "0x320"
+      description: "定时器 LVT"
+    - name: "APIC_TMICT"
+      offset: "0x380"
+      description: "初始计数寄存器"
+    - name: "APIC_TMCCT"
+      offset: "0x390"
+      description: "当前计数寄存器"
+
+  kernel_call_chain:
+    trigger: "APIC 中断"
+    chain:
+      - function: "asm_common_interrupt"
+        file: "arch/x86/entry/entry_64.S"
+        description: "中断入口"
+      - function: "apic_timer_interrupt"
+        file: "arch/x86/kernel/apic/apic.c"
+        description: "APIC 定时器中断"
+      - function: "local_apic_timer_interrupt"
+        file: "arch/x86/kernel/apic/apic.c"
+        description: "本地 APIC 定时器"
+      - function: "hrtimer_interrupt"
+        file: "kernel/time/hrtimer.c"
+        description: "高精度定时器"
+        is_user_entry: true
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  pt_regs:
+    description: "x86_64 寄存器上下文"
+    header: "arch/x86/include/asm/ptrace.h"
+    fields:
+      - name: "r15, r14, r13, r12, bp, bx"
+        type: "unsigned long"
+        description: "被调用者保存寄存器"
+      - name: "r11, r10, r9, r8"
+        type: "unsigned long"
+        description: "参数/临时寄存器"
+      - name: "ax"
+        type: "unsigned long"
+        description: "系统调用号/返回值"
+      - name: "cx, dx, si, di"
+        type: "unsigned long"
+        description: "参数寄存器"
+      - name: "orig_ax"
+        type: "unsigned long"
+        description: "原始 RAX (系统调用号)"
+      - name: "ip"
+        type: "unsigned long"
+        description: "指令指针"
+      - name: "cs"
+        type: "unsigned long"
+        description: "代码段"
+      - name: "flags"
+        type: "unsigned long"
+        description: "RFLAGS"
+      - name: "sp"
+        type: "unsigned long"
+        description: "用户栈指针"
+      - name: "ss"
+        type: "unsigned long"
+        description: "栈段"
+
+  thread_struct:
+    description: "x86_64 线程硬件上下文"
+    header: "arch/x86/include/asm/processor.h"
+    fields:
+      - name: "sp"
+        type: "unsigned long"
+        description: "内核栈指针"
+      - name: "es, ds"
+        type: "unsigned short"
+        description: "段寄存器"
+      - name: "fsbase"
+        type: "unsigned long"
+        description: "FS 基址"
+      - name: "gsbase"
+        type: "unsigned long"
+        description: "GS 基址"
+      - name: "fsindex, gsindex"
+        type: "unsigned short"
+        description: "FS/GS 索引"
+      - name: "io_bitmap"
+        type: "struct io_bitmap *"
+        description: "I/O 位图"
+      - name: "iopl_emul"
+        type: "unsigned int"
+        description: "IOPL 模拟"
+
+  tss_struct:
+    description: "任务状态段"
+    header: "arch/x86/include/asm/processor.h"
+    fields:
+      - name: "rsp0"
+        type: "u64"
+        description: "Ring 0 栈指针"
+      - name: "rsp1"
+        type: "u64"
+        description: "Ring 1 栈指针"
+      - name: "rsp2"
+        type: "u64"
+        description: "Ring 2 栈指针"
+      - name: "ist[7]"
+        type: "u64"
+        description: "中断栈表"
+      - name: "io_bitmap_base"
+        type: "u16"
+        description: "I/O 位图基址"
+
+  desc_struct:
+    description: "段描述符"
+    header: "arch/x86/include/asm/desc_defs.h"
+
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  context_switch:
+    description: "上下文切换"
+    functions:
+      - name: "__switch_to_asm"
+        file: "arch/x86/entry/entry_64.S"
+        description: "汇编级上下文切换"
+      - name: "__switch_to"
+        file: "arch/x86/kernel/process_64.c"
+        description: "C 语言上下文切换"
+      - name: "switch_fpu_return"
+        file: "arch/x86/kernel/fpu/context.h"
+        description: "FPU 上下文恢复"
+
+  exception_handling:
+    description: "异常处理"
+    functions:
+      - name: "exc_page_fault"
+        file: "arch/x86/mm/fault.c"
+        description: "页故障处理"
+      - name: "exc_general_protection"
+        file: "arch/x86/kernel/traps.c"
+        description: "一般保护故障"
+      - name: "exc_divide_error"
+        file: "arch/x86/kernel/traps.c"
+        description: "除法错误"
+      - name: "exc_debug"
+        file: "arch/x86/kernel/traps.c"
+        description: "调试异常"
+
+  mm_functions:
+    description: "内存管理"
+    functions:
+      - name: "init_mem_mapping"
+        file: "arch/x86/mm/init.c"
+        description: "初始化内存映射"
+      - name: "kernel_physical_mapping_init"
+        file: "arch/x86/mm/init_64.c"
+        description: "内核物理映射初始化"
+      - name: "__set_pte_vaddr"
+        file: "arch/x86/mm/pgtable.c"
+        description: "设置 PTE"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "x86_64 系统调用示例"
+    kernel_version: "5.0+"
+    code: |
+      /* 用户空间汇编 */
+      mov $1, %rax           /* __NR_write */
+      mov $1, %rdi           /* fd = STDOUT */
+      lea message(%rip), %rsi /* buf */
+      mov $13, %rdx          /* len */
+      syscall                /* 系统调用 */
+      
+      /* 内核空间系统调用定义 */
+      SYSCALL_DEFINE3(write, unsigned int, fd,
+                      const char __user *, buf,
+                      size_t, count)
+      {
+          return ksys_write(fd, buf, count);
+      }
+
+  - description: "x86 中断处理程序"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/interrupt.h>
+      
+      static irqreturn_t my_x86_irq_handler(int irq, void *dev_id)
+      {
+          struct my_device *dev = dev_id;
+          u32 status;
+          
+          /* 读取状态 */
+          status = inl(dev->io_base + STATUS_REG);
+          if (!(status & IRQ_PENDING))
+              return IRQ_NONE;
+          
+          /* 清除中断 */
+          outl(status, dev->io_base + STATUS_REG);
+          
+          /* 唤醒等待队列 */
+          wake_up(&dev->wait_queue);
+          
+          return IRQ_HANDLED;
+      }
+      
+      static int my_x86_probe(struct pci_dev *pdev,
+                              const struct pci_device_id *id)
+      {
+          int ret;
+          
+          /* 请求 MSI 中断 */
+          ret = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_MSI);
+          if (ret < 0)
+              return ret;
+          
+          ret = request_irq(pci_irq_vector(pdev, 0),
+                            my_x86_irq_handler,
+                            0, "my-x86-device", dev);
+          return ret;
+      }
+
+  - description: "x86 内联汇编和 MSR 操作"
+    kernel_version: "5.0+"
+    code: |
+      #include <asm/msr.h>
+      
+      /* 读取 MSR */
+      static inline u64 read_msr(u32 msr)
+      {
+          u32 low, high;
+          asm volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(msr));
+          return ((u64)high << 32) | low;
+      }
+      
+      /* 写入 MSR */
+      static inline void write_msr(u32 msr, u64 val)
+      {
+          u32 low = val;
+          u32 high = val >> 32;
+          asm volatile("wrmsr" : : "c"(msr), "a"(low), "d"(high));
+      }
+      
+      /* 读取 TSC */
+      static inline u64 rdtsc(void)
+      {
+          u32 low, high;
+          asm volatile("rdtsc" : "=a"(low), "=d"(high));
+          return ((u64)high << 32) | low;
+      }
+      
+      /* 发送 IPI */
+      static inline void send_ipi(int cpu, int vector)
+      {
+          u32 icr_low = vector | APIC_DEST_PHYSICAL;
+          u32 icr_high = cpu << 24;
+          
+          /* 写入 ICR */
+          apic_write(APIC_ICR2, icr_high);
+          apic_write(APIC_ICR, icr_low);
+      }
+
+  - description: "x86 页表操作"
+    kernel_version: "5.0+"
+    code: |
+      #include <asm/pgtable.h>
+      #include <asm/tlbflush.h>
+      
+      /* 设置 PTE */
+      static void set_pte_at_example(struct mm_struct *mm,
+                                     unsigned long addr,
+                                     pte_t *ptep, pte_t pte)
+      {
+          set_pte(ptep, pte);
+      }
+      
+      /* 刷新单个页的 TLB */
+      static inline void flush_tlb_one(unsigned long addr)
+      {
+          asm volatile("invlpg (%0)" : : "r"(addr) : "memory");
+      }
+      
+      /* 刷新所有 TLB (切换 CR3) */
+      static inline void flush_tlb_all(void)
+      {
+          unsigned long cr3 = __read_cr3();
+          write_cr3(cr3);
+      }
+      
+      /* 内存屏障 */
+      #define mb()    asm volatile("mfence" ::: "memory")
+      #define rmb()   asm volatile("lfence" ::: "memory")
+      #define wmb()   asm volatile("sfence" ::: "memory")
+
+
+# ============================================================
+# NOTES
+# ============================================================
+
+notes:
+  - "x86_64 使用 System V AMD64 ABI"
+  - "SYSCALL/SYSRET 比 INT 0x80 快很多"
+  - "KPTI (Meltdown 缓解) 需要两套页表"
+  - "Spectre 缓解影响分支预测性能"
+  - "PCID 可减少 TLB 刷新开销"
+  - "5级页表支持 57位虚拟地址 (128PB)"
+  - "x2APIC 通过 MSR 访问，更快更大"

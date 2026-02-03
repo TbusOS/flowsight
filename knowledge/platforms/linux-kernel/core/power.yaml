@@ -1,0 +1,919 @@
+# Linux Kernel Power Management Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/pm/
+# Kernel source: kernel/power/, include/linux/suspend.h, include/linux/pm.h
+# Kernel Version: 2.6.0+
+# ============================================================
+
+# ============================================================
+# POWER MANAGEMENT OVERVIEW
+# ============================================================
+power_overview:
+  description: "Linux 电源管理子系统"
+  header: "linux/pm.h"
+  icon: "🔋"
+  kernel_version: "2.6.0+"
+  
+  key_concepts:
+    system_sleep:
+      description: "系统睡眠状态"
+      states:
+        - "S0 - 正常运行"
+        - "S1 - 待机 (Standby)"
+        - "S2 - CPU 断电"
+        - "S3 - 挂起到内存 (Suspend to RAM)"
+        - "S4 - 休眠 (Hibernate/Suspend to Disk)"
+        - "S5 - 关机"
+    
+    runtime_pm:
+      description: "运行时电源管理"
+      notes:
+        - "设备级别的动态电源管理"
+        - "自动空闲时挂起"
+        - "按需唤醒"
+    
+    wakeup_source:
+      description: "唤醒源"
+      notes:
+        - "可以阻止系统睡眠"
+        - "可以将系统从睡眠中唤醒"
+        - "需要注册到 PM 子系统"
+
+# ============================================================
+# SUSPEND STATES
+# ============================================================
+suspend_states:
+  description: "系统挂起状态"
+  header: "linux/suspend.h"
+  icon: "💤"
+
+  state_types:
+    PM_SUSPEND_ON:
+      value: 0
+      description: "正常运行状态"
+
+    PM_SUSPEND_TO_IDLE:
+      value: 1
+      description: "挂起到空闲 (S2idle/Freeze)"
+      notes:
+        - "最浅的睡眠状态"
+        - "CPU 进入最深空闲状态"
+        - "外设可选择性挂起"
+        - "唤醒延迟最低"
+
+    PM_SUSPEND_STANDBY:
+      value: 2
+      description: "待机模式 (S1)"
+      notes:
+        - "CPU 时钟关闭"
+        - "主存仍供电"
+        - "部分平台支持"
+
+    PM_SUSPEND_MEM:
+      value: 3
+      description: "挂起到内存 (S3/STR)"
+      notes:
+        - "只有内存供电"
+        - "所有 CPU/外设断电"
+        - "唤醒时从内存恢复"
+
+  suspend_steps:
+    SUSPEND_FREEZE:
+      description: "冻结用户空间进程"
+    SUSPEND_PREPARE:
+      description: "准备挂起"
+    SUSPEND_SUSPEND:
+      description: "挂起设备"
+    SUSPEND_SUSPEND_LATE:
+      description: "后期设备挂起"
+    SUSPEND_SUSPEND_NOIRQ:
+      description: "无中断设备挂起"
+    SUSPEND_RESUME_NOIRQ:
+      description: "无中断设备恢复"
+    SUSPEND_RESUME_EARLY:
+      description: "早期设备恢复"
+    SUSPEND_RESUME:
+      description: "设备恢复"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+data_structures:
+  platform_suspend_ops:
+    description: "平台挂起操作"
+    file: "include/linux/suspend.h"
+    pattern: 'struct platform_suspend_ops\s*\{'
+    fields:
+      - name: "valid"
+        type: "int (*)(suspend_state_t state)"
+        description: "检查状态是否有效"
+      - name: "begin"
+        type: "int (*)(suspend_state_t state)"
+        description: "挂起开始时调用"
+      - name: "prepare"
+        type: "int (*)(void)"
+        description: "准备挂起"
+      - name: "prepare_late"
+        type: "int (*)(void)"
+        description: "后期准备"
+      - name: "enter"
+        type: "int (*)(suspend_state_t state)"
+        description: "进入睡眠状态"
+      - name: "wake"
+        type: "void (*)(void)"
+        description: "从睡眠中唤醒"
+      - name: "finish"
+        type: "void (*)(void)"
+        description: "挂起完成清理"
+      - name: "suspend_again"
+        type: "bool (*)(void)"
+        description: "是否应该再次挂起"
+      - name: "end"
+        type: "void (*)(void)"
+        description: "挂起流程结束"
+      - name: "recover"
+        type: "void (*)(void)"
+        description: "错误恢复"
+
+  platform_s2idle_ops:
+    description: "S2idle 操作"
+    file: "include/linux/suspend.h"
+    pattern: 'struct platform_s2idle_ops\s*\{'
+    fields:
+      - name: "begin"
+        type: "int (*)(void)"
+        description: "S2idle 开始"
+      - name: "prepare"
+        type: "int (*)(void)"
+        description: "准备"
+      - name: "wake"
+        type: "void (*)(void)"
+        description: "唤醒处理"
+      - name: "sync"
+        type: "void (*)(void)"
+        description: "同步状态"
+      - name: "restore"
+        type: "void (*)(void)"
+        description: "恢复状态"
+      - name: "end"
+        type: "void (*)(void)"
+        description: "结束"
+
+  wakeup_source:
+    description: "唤醒源结构"
+    file: "include/linux/pm_wakeup.h"
+    pattern: 'struct wakeup_source\s*\{'
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "唤醒源名称"
+      - name: "entry"
+        type: "struct list_head"
+        description: "链表节点"
+      - name: "lock"
+        type: "spinlock_t"
+        description: "保护此结构的锁"
+      - name: "wakeirq"
+        type: "struct wake_irq *"
+        description: "关联的唤醒 IRQ"
+      - name: "timer"
+        type: "struct timer_list"
+        description: "超时定时器"
+      - name: "timer_expires"
+        type: "unsigned long"
+        description: "定时器过期时间"
+      - name: "total_time"
+        type: "ktime_t"
+        description: "总活跃时间"
+      - name: "max_time"
+        type: "ktime_t"
+        description: "最大活跃时间"
+      - name: "last_time"
+        type: "ktime_t"
+        description: "上次活跃时间"
+      - name: "event_count"
+        type: "unsigned long"
+        description: "事件计数"
+      - name: "active_count"
+        type: "unsigned long"
+        description: "活跃次数"
+      - name: "active"
+        type: "bool"
+        description: "当前是否活跃"
+
+  dev_pm_ops:
+    description: "设备电源管理操作"
+    file: "include/linux/pm.h"
+    pattern: 'struct dev_pm_ops\s*\{'
+    fields:
+      - name: "prepare"
+        type: "int (*)(struct device *dev)"
+        description: "挂起准备"
+      - name: "complete"
+        type: "void (*)(struct device *dev)"
+        description: "恢复完成"
+      - name: "suspend"
+        type: "int (*)(struct device *dev)"
+        description: "挂起设备"
+      - name: "resume"
+        type: "int (*)(struct device *dev)"
+        description: "恢复设备"
+      - name: "freeze"
+        type: "int (*)(struct device *dev)"
+        description: "休眠冻结"
+      - name: "thaw"
+        type: "int (*)(struct device *dev)"
+        description: "休眠解冻"
+      - name: "poweroff"
+        type: "int (*)(struct device *dev)"
+        description: "断电"
+      - name: "restore"
+        type: "int (*)(struct device *dev)"
+        description: "休眠恢复"
+      - name: "suspend_late"
+        type: "int (*)(struct device *dev)"
+        description: "后期挂起"
+      - name: "resume_early"
+        type: "int (*)(struct device *dev)"
+        description: "早期恢复"
+      - name: "suspend_noirq"
+        type: "int (*)(struct device *dev)"
+        description: "无中断挂起"
+      - name: "resume_noirq"
+        type: "int (*)(struct device *dev)"
+        description: "无中断恢复"
+      - name: "runtime_suspend"
+        type: "int (*)(struct device *dev)"
+        description: "运行时挂起"
+      - name: "runtime_resume"
+        type: "int (*)(struct device *dev)"
+        description: "运行时恢复"
+      - name: "runtime_idle"
+        type: "int (*)(struct device *dev)"
+        description: "运行时空闲"
+
+# ============================================================
+# KERNEL FUNCTIONS - SYSTEM SUSPEND
+# ============================================================
+suspend_functions:
+  description: "系统挂起函数"
+  header: "linux/suspend.h"
+  icon: "⏸️"
+
+  core_functions:
+    pm_suspend:
+      pattern: 'pm_suspend\s*\(\s*(?P<state>\w+)\s*\)'
+      description: "执行系统挂起"
+      file: "kernel/power/suspend.c"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "state"
+          type: "suspend_state_t"
+          description: "目标挂起状态"
+      returns: "0 成功，负值失败"
+
+    suspend_set_ops:
+      pattern: 'suspend_set_ops\s*\(\s*(?P<ops>\w+)\s*\)'
+      description: "设置平台挂起操作"
+      context: "process"
+
+    suspend_valid_only_mem:
+      pattern: 'suspend_valid_only_mem\s*\('
+      description: "只支持 S3 的验证函数"
+
+  freeze_functions:
+    freeze_processes:
+      pattern: 'freeze_processes\s*\(\s*\)'
+      description: "冻结所有用户空间进程"
+      file: "kernel/power/process.c"
+      context: "process"
+      can_sleep: true
+
+    freeze_kernel_threads:
+      pattern: 'freeze_kernel_threads\s*\(\s*\)'
+      description: "冻结可冻结的内核线程"
+
+    thaw_processes:
+      pattern: 'thaw_processes\s*\(\s*\)'
+      description: "解冻所有进程"
+
+    thaw_kernel_threads:
+      pattern: 'thaw_kernel_threads\s*\(\s*\)'
+      description: "解冻内核线程"
+
+  device_pm_functions:
+    dpm_suspend:
+      pattern: 'dpm_suspend\s*\(\s*(?P<state>\w+)\s*\)'
+      description: "挂起所有设备"
+      file: "drivers/base/power/main.c"
+
+    dpm_resume:
+      pattern: 'dpm_resume\s*\(\s*(?P<state>\w+)\s*\)'
+      description: "恢复所有设备"
+
+    dpm_suspend_late:
+      pattern: 'dpm_suspend_late\s*\('
+      description: "后期设备挂起"
+
+    dpm_resume_early:
+      pattern: 'dpm_resume_early\s*\('
+      description: "早期设备恢复"
+
+    dpm_suspend_noirq:
+      pattern: 'dpm_suspend_noirq\s*\('
+      description: "无中断设备挂起"
+
+    dpm_resume_noirq:
+      pattern: 'dpm_resume_noirq\s*\('
+      description: "无中断设备恢复"
+
+# ============================================================
+# KERNEL FUNCTIONS - WAKEUP SOURCE
+# ============================================================
+wakeup_functions:
+  description: "唤醒源管理函数"
+  header: "linux/pm_wakeup.h"
+  icon: "⏰"
+
+  registration:
+    wakeup_source_register:
+      pattern: 'wakeup_source_register\s*\(\s*(?P<dev>[^,]+)\s*,\s*"(?P<name>[^"]+)"\s*\)'
+      description: "注册唤醒源"
+      context: "process"
+      can_sleep: true
+      returns: "struct wakeup_source *"
+
+    wakeup_source_unregister:
+      pattern: 'wakeup_source_unregister\s*\(\s*(?P<ws>\w+)\s*\)'
+      description: "注销唤醒源"
+      context: "process"
+
+    device_init_wakeup:
+      pattern: 'device_init_wakeup\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<enable>\w+)\s*\)'
+      description: "初始化设备唤醒能力"
+      context: "process"
+      parameters:
+        - name: "dev"
+          type: "struct device *"
+          description: "设备"
+        - name: "enable"
+          type: "bool"
+          description: "是否启用唤醒"
+
+    device_set_wakeup_capable:
+      pattern: 'device_set_wakeup_capable\s*\('
+      description: "设置设备可唤醒能力"
+
+    device_set_wakeup_enable:
+      pattern: 'device_set_wakeup_enable\s*\('
+      description: "启用/禁用设备唤醒"
+
+  activation:
+    __pm_stay_awake:
+      pattern: '__pm_stay_awake\s*\(\s*(?P<ws>\w+)\s*\)'
+      description: "标记唤醒源为活跃（阻止睡眠）"
+      context: "any"
+      can_sleep: false
+
+    __pm_relax:
+      pattern: '__pm_relax\s*\(\s*(?P<ws>\w+)\s*\)'
+      description: "标记唤醒源为不活跃"
+      context: "any"
+
+    __pm_wakeup_event:
+      pattern: '__pm_wakeup_event\s*\(\s*(?P<ws>\w+)\s*,\s*(?P<msec>[\w\d]+)\s*\)'
+      description: "报告唤醒事件（带超时）"
+      parameters:
+        - name: "msec"
+          type: "unsigned int"
+          description: "保持活跃的毫秒数"
+
+    pm_stay_awake:
+      pattern: 'pm_stay_awake\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "设备级别保持唤醒"
+      context: "any"
+
+    pm_relax:
+      pattern: 'pm_relax\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "设备级别释放唤醒"
+
+    pm_wakeup_event:
+      pattern: 'pm_wakeup_event\s*\(\s*(?P<dev>[^,]+)\s*,'
+      description: "设备级别唤醒事件"
+
+  query:
+    pm_wakeup_pending:
+      pattern: 'pm_wakeup_pending\s*\(\s*\)'
+      description: "检查是否有待处理的唤醒事件"
+      returns: "bool"
+
+    device_may_wakeup:
+      pattern: 'device_may_wakeup\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "检查设备是否可以唤醒系统"
+      returns: "bool"
+
+    device_can_wakeup:
+      pattern: 'device_can_wakeup\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "检查设备是否有唤醒能力"
+      returns: "bool"
+
+# ============================================================
+# KERNEL FUNCTIONS - RUNTIME PM
+# ============================================================
+runtime_pm:
+  description: "运行时电源管理"
+  header: "linux/pm_runtime.h"
+  icon: "⚡"
+
+  enable_disable:
+    pm_runtime_enable:
+      pattern: 'pm_runtime_enable\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "启用设备运行时 PM"
+      context: "process"
+
+    pm_runtime_disable:
+      pattern: 'pm_runtime_disable\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "禁用设备运行时 PM"
+      context: "process"
+
+    pm_runtime_set_active:
+      pattern: 'pm_runtime_set_active\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "设置设备为活跃状态"
+
+    pm_runtime_set_suspended:
+      pattern: 'pm_runtime_set_suspended\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "设置设备为挂起状态"
+
+  suspend_resume:
+    pm_runtime_suspend:
+      pattern: 'pm_runtime_suspend\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "同步挂起设备"
+      context: "process"
+      can_sleep: true
+
+    pm_runtime_resume:
+      pattern: 'pm_runtime_resume\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "同步恢复设备"
+      context: "process"
+      can_sleep: true
+
+    pm_runtime_autosuspend:
+      pattern: 'pm_runtime_autosuspend\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "请求自动挂起"
+      notes: "会根据 autosuspend_delay 延迟执行"
+
+  get_put:
+    pm_runtime_get:
+      pattern: 'pm_runtime_get\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "增加使用计数（异步）"
+      context: "any"
+      returns: "int"
+
+    pm_runtime_get_sync:
+      pattern: 'pm_runtime_get_sync\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "增加使用计数并恢复（同步）"
+      context: "process"
+      can_sleep: true
+      returns: "int"
+
+    pm_runtime_put:
+      pattern: 'pm_runtime_put\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "减少使用计数（异步挂起）"
+      context: "any"
+
+    pm_runtime_put_sync:
+      pattern: 'pm_runtime_put_sync\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "减少使用计数（同步挂起）"
+      context: "process"
+      can_sleep: true
+
+    pm_runtime_put_autosuspend:
+      pattern: 'pm_runtime_put_autosuspend\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "减少使用计数（延迟自动挂起）"
+      notes: "推荐使用此函数"
+
+  configuration:
+    pm_runtime_set_autosuspend_delay:
+      pattern: 'pm_runtime_set_autosuspend_delay\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<delay>[\w\d\-]+)\s*\)'
+      description: "设置自动挂起延迟"
+      parameters:
+        - name: "delay"
+          type: "int"
+          description: "延迟毫秒数（负值禁用）"
+
+    pm_runtime_use_autosuspend:
+      pattern: 'pm_runtime_use_autosuspend\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "启用自动挂起功能"
+
+    pm_runtime_dont_use_autosuspend:
+      pattern: 'pm_runtime_dont_use_autosuspend\s*\('
+      description: "禁用自动挂起功能"
+
+    pm_runtime_mark_last_busy:
+      pattern: 'pm_runtime_mark_last_busy\s*\(\s*(?P<dev>\w+)\s*\)'
+      description: "更新最后活跃时间戳"
+      notes: "与 autosuspend 配合使用"
+
+# ============================================================
+# PM NOTIFIER
+# ============================================================
+pm_notifier:
+  description: "电源管理通知器"
+  header: "linux/suspend.h"
+  icon: "📣"
+
+  events:
+    PM_HIBERNATION_PREPARE:
+      description: "休眠准备"
+    PM_POST_HIBERNATION:
+      description: "休眠后"
+    PM_SUSPEND_PREPARE:
+      description: "挂起准备"
+    PM_POST_SUSPEND:
+      description: "挂起后"
+    PM_RESTORE_PREPARE:
+      description: "恢复准备"
+    PM_POST_RESTORE:
+      description: "恢复后"
+
+  functions:
+    register_pm_notifier:
+      pattern: 'register_pm_notifier\s*\(\s*(?P<nb>\w+)\s*\)'
+      description: "注册电源管理通知器"
+      file: "kernel/power/main.c"
+      context: "process"
+
+    unregister_pm_notifier:
+      pattern: 'unregister_pm_notifier\s*\(\s*(?P<nb>\w+)\s*\)'
+      description: "注销电源管理通知器"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  suspend_flow:
+    description: "系统挂起流程"
+    chain:
+      - caller: "user/kernel"
+        callee: "pm_suspend"
+        context: "process"
+        description: "挂起入口"
+      - caller: "pm_suspend"
+        callee: "enter_state"
+        description: "进入挂起状态"
+      - caller: "enter_state"
+        callee: "suspend_prepare"
+        description: "挂起准备"
+      - caller: "suspend_prepare"
+        callee: "pm_notifier_call_chain(PM_SUSPEND_PREPARE)"
+        description: "通知订阅者"
+      - caller: "suspend_prepare"
+        callee: "suspend_freeze_processes"
+        description: "冻结进程"
+      - caller: "enter_state"
+        callee: "suspend_devices_and_enter"
+        description: "挂起设备并进入"
+      - caller: "suspend_devices_and_enter"
+        callee: "dpm_suspend_start"
+        description: "开始设备挂起"
+      - caller: "suspend_devices_and_enter"
+        callee: "suspend_enter"
+        description: "进入睡眠"
+      - caller: "suspend_enter"
+        callee: "suspend_ops->enter"
+        arch_specific: true
+        description: "平台进入睡眠"
+      - caller: "suspend_enter"
+        callee: "dpm_resume_end"
+        description: "恢复设备"
+      - caller: "enter_state"
+        callee: "suspend_finish"
+        description: "挂起完成"
+      - caller: "suspend_finish"
+        callee: "thaw_processes"
+        description: "解冻进程"
+
+  runtime_pm_flow:
+    description: "运行时 PM 流程"
+    chain:
+      - caller: "driver"
+        callee: "pm_runtime_get_sync"
+        context: "process"
+        description: "请求设备活跃"
+      - caller: "pm_runtime_get_sync"
+        callee: "__pm_runtime_resume"
+        description: "执行恢复"
+      - caller: "__pm_runtime_resume"
+        callee: "rpm_resume"
+        description: "运行时恢复"
+      - caller: "rpm_resume"
+        callee: "dev->pm->runtime_resume"
+        description: "调用驱动回调"
+      - caller: "driver"
+        callee: "pm_runtime_put_autosuspend"
+        description: "释放设备"
+      - caller: "pm_runtime_put_autosuspend"
+        callee: "__pm_runtime_suspend"
+        description: "延迟后挂起"
+
+  wakeup_flow:
+    description: "唤醒事件流程"
+    chain:
+      - caller: "IRQ handler"
+        callee: "pm_wakeup_event"
+        context: "interrupt"
+        description: "报告唤醒事件"
+      - caller: "pm_wakeup_event"
+        callee: "__pm_wakeup_event"
+        description: "处理唤醒事件"
+      - caller: "__pm_wakeup_event"
+        callee: "wakeup_source_activate"
+        description: "激活唤醒源"
+      - caller: "suspend path"
+        callee: "pm_wakeup_pending"
+        description: "检查待处理唤醒"
+      - caller: "pm_wakeup_pending"
+        callee: "中止挂起或唤醒系统"
+        description: "根据状态处理"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "驱动程序实现系统 PM"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/pm.h>
+      #include <linux/platform_device.h>
+      
+      struct my_device {
+          void __iomem *regs;
+          struct clk *clk;
+          u32 saved_config;
+      };
+      
+      static int my_suspend(struct device *dev)
+      {
+          struct my_device *priv = dev_get_drvdata(dev);
+          
+          /* 保存硬件状态 */
+          priv->saved_config = readl(priv->regs + CONFIG_REG);
+          
+          /* 停止 DMA 和中断 */
+          writel(0, priv->regs + CTRL_REG);
+          
+          /* 关闭时钟 */
+          clk_disable_unprepare(priv->clk);
+          
+          return 0;
+      }
+      
+      static int my_resume(struct device *dev)
+      {
+          struct my_device *priv = dev_get_drvdata(dev);
+          int ret;
+          
+          /* 启用时钟 */
+          ret = clk_prepare_enable(priv->clk);
+          if (ret)
+              return ret;
+          
+          /* 恢复硬件状态 */
+          writel(priv->saved_config, priv->regs + CONFIG_REG);
+          
+          /* 重新启用中断 */
+          writel(CTRL_IRQ_EN, priv->regs + CTRL_REG);
+          
+          return 0;
+      }
+      
+      static const struct dev_pm_ops my_pm_ops = {
+          SET_SYSTEM_SLEEP_PM_OPS(my_suspend, my_resume)
+      };
+      
+      static struct platform_driver my_driver = {
+          .probe  = my_probe,
+          .remove = my_remove,
+          .driver = {
+              .name = "my_device",
+              .pm   = &my_pm_ops,
+          },
+      };
+
+  - description: "运行时电源管理"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/pm_runtime.h>
+      
+      static int my_runtime_suspend(struct device *dev)
+      {
+          struct my_device *priv = dev_get_drvdata(dev);
+          
+          /* 关闭不必要的硬件 */
+          clk_disable_unprepare(priv->clk);
+          
+          return 0;
+      }
+      
+      static int my_runtime_resume(struct device *dev)
+      {
+          struct my_device *priv = dev_get_drvdata(dev);
+          
+          return clk_prepare_enable(priv->clk);
+      }
+      
+      static const struct dev_pm_ops my_pm_ops = {
+          SET_RUNTIME_PM_OPS(my_runtime_suspend,
+                            my_runtime_resume,
+                            NULL)
+          SET_SYSTEM_SLEEP_PM_OPS(my_suspend, my_resume)
+      };
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          struct my_device *priv;
+          
+          priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+          
+          /* 启用运行时 PM */
+          pm_runtime_set_active(dev);
+          pm_runtime_enable(dev);
+          
+          /* 设置自动挂起延迟（例如 1 秒） */
+          pm_runtime_set_autosuspend_delay(dev, 1000);
+          pm_runtime_use_autosuspend(dev);
+          
+          return 0;
+      }
+      
+      static int my_remove(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          
+          pm_runtime_disable(dev);
+          pm_runtime_set_suspended(dev);
+          
+          return 0;
+      }
+      
+      /* 在需要使用硬件时 */
+      static void my_operation(struct my_device *priv)
+      {
+          struct device *dev = priv->dev;
+          
+          /* 确保设备活跃 */
+          pm_runtime_get_sync(dev);
+          
+          /* 使用硬件 */
+          do_hardware_operation(priv);
+          
+          /* 标记最后活跃时间并释放 */
+          pm_runtime_mark_last_busy(dev);
+          pm_runtime_put_autosuspend(dev);
+      }
+
+  - description: "使用唤醒源"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/pm_wakeup.h>
+      
+      struct my_device {
+          struct wakeup_source *ws;
+          spinlock_t lock;
+          bool event_pending;
+      };
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *priv;
+          struct device *dev = &pdev->dev;
+          
+          priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+          
+          /* 注册唤醒源 */
+          priv->ws = wakeup_source_register(dev, "my_wakeup");
+          if (!priv->ws)
+              return -ENOMEM;
+          
+          /* 或使用设备级别 API */
+          device_init_wakeup(dev, true);
+          
+          return 0;
+      }
+      
+      static irqreturn_t my_irq_handler(int irq, void *data)
+      {
+          struct my_device *priv = data;
+          
+          /* 有重要事件，阻止系统睡眠直到处理完成 */
+          __pm_stay_awake(priv->ws);
+          
+          spin_lock(&priv->lock);
+          priv->event_pending = true;
+          spin_unlock(&priv->lock);
+          
+          /* 调度工作处理事件 */
+          schedule_work(&priv->work);
+          
+          return IRQ_HANDLED;
+      }
+      
+      static void my_work_handler(struct work_struct *work)
+      {
+          struct my_device *priv = container_of(work, 
+                                                struct my_device, work);
+          
+          /* 处理事件 */
+          process_event(priv);
+          
+          spin_lock(&priv->lock);
+          priv->event_pending = false;
+          spin_unlock(&priv->lock);
+          
+          /* 事件处理完成，允许系统睡眠 */
+          __pm_relax(priv->ws);
+      }
+      
+      static int my_remove(struct platform_device *pdev)
+      {
+          struct my_device *priv = platform_get_drvdata(pdev);
+          
+          wakeup_source_unregister(priv->ws);
+          device_init_wakeup(&pdev->dev, false);
+          
+          return 0;
+      }
+
+  - description: "注册 PM 通知器"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/suspend.h>
+      #include <linux/notifier.h>
+      
+      static int my_pm_notifier(struct notifier_block *nb,
+                                unsigned long event, void *data)
+      {
+          switch (event) {
+          case PM_SUSPEND_PREPARE:
+              pr_info("System is preparing to suspend\n");
+              /* 准备挂起，例如保存状态 */
+              return NOTIFY_OK;
+              
+          case PM_POST_SUSPEND:
+              pr_info("System has resumed from suspend\n");
+              /* 恢复后处理 */
+              return NOTIFY_OK;
+              
+          case PM_HIBERNATION_PREPARE:
+              pr_info("System is preparing to hibernate\n");
+              return NOTIFY_OK;
+              
+          case PM_POST_HIBERNATION:
+              pr_info("System has restored from hibernation\n");
+              return NOTIFY_OK;
+          }
+          
+          return NOTIFY_DONE;
+      }
+      
+      static struct notifier_block my_pm_nb = {
+          .notifier_call = my_pm_notifier,
+          .priority = 0,
+      };
+      
+      static int __init my_init(void)
+      {
+          return register_pm_notifier(&my_pm_nb);
+      }
+      
+      static void __exit my_exit(void)
+      {
+          unregister_pm_notifier(&my_pm_nb);
+      }
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.0":
+    - "基础挂起/恢复支持"
+    - "dev_pm_ops 引入"
+  "2.6.32":
+    - "运行时 PM 框架"
+  "3.0":
+    - "自动挂起支持改进"
+  "3.9":
+    - "S2idle (Suspend-to-Idle) 引入"
+  "4.0":
+    - "唤醒源 API 稳定"
+    - "改进的运行时 PM"
+  "4.15":
+    - "dev_pm_ops 宏简化"
+  "5.0":
+    - "改进的 S2idle 支持"
+  "5.4":
+    - "运行时 PM 性能优化"
+  "5.10":
+    - "更好的唤醒源统计"

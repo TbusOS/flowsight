@@ -1,0 +1,558 @@
+# Debugfs File System Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/filesystems/debugfs.html
+# Kernel Version: 2.6.10+ (current APIs)
+
+# ============================================================
+# DEBUGFS OVERVIEW
+# ============================================================
+
+debugfs_overview:
+  description: "Debugfs - 内核调试文件系统"
+  header: "linux/debugfs.h"
+  icon: "🔍"
+  kernel_version: "2.6.10+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  purpose:
+    - description: "提供内核调试接口"
+    - description: "导出调试信息到用户空间"
+    - description: "简化调试文件创建"
+
+  mount_point: "/sys/kernel/debug"
+  mount_command: "mount -t debugfs none /sys/kernel/debug"
+
+  characteristics:
+    - "无 API 稳定性保证 (仅供调试)"
+    - "不应用于生产环境的用户空间接口"
+    - "可通过 CONFIG_DEBUG_FS 禁用"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  debugfs_blob_wrapper:
+    pattern: 'struct debugfs_blob_wrapper\s*\{'
+    description: "二进制数据包装器"
+    file: "include/linux/debugfs.h"
+    fields:
+      - name: "data"
+        type: "void *"
+        description: "数据指针"
+      - name: "size"
+        type: "unsigned long"
+        description: "数据大小"
+
+  debugfs_reg32:
+    pattern: 'struct debugfs_reg32\s*\{'
+    description: "32位寄存器描述"
+    file: "include/linux/debugfs.h"
+    fields:
+      - name: "name"
+        type: "char *"
+        description: "寄存器名称"
+      - name: "offset"
+        type: "unsigned long"
+        description: "寄存器偏移"
+
+  debugfs_regset32:
+    pattern: 'struct debugfs_regset32\s*\{'
+    description: "32位寄存器集合"
+    file: "include/linux/debugfs.h"
+    fields:
+      - name: "regs"
+        type: "const struct debugfs_reg32 *"
+        description: "寄存器数组"
+      - name: "nregs"
+        type: "int"
+        description: "寄存器数量"
+      - name: "base"
+        type: "void __iomem *"
+        description: "基地址"
+      - name: "dev"
+        type: "struct device *"
+        description: "关联设备"
+
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # === 目录创建 ===
+  debugfs_create_dir:
+    pattern: 'debugfs_create_dir\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "创建 debugfs 目录"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct dentry *"
+
+  # === 文件创建 (通用) ===
+  debugfs_create_file:
+    pattern: 'debugfs_create_file\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fops>[^)]+)\s*\)'
+    description: "创建 debugfs 文件"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_file_unsafe:
+    pattern: 'debugfs_create_file_unsafe\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<fops>[^)]+)\s*\)'
+    description: "创建 debugfs 文件 (无生命周期管理)"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+
+  # === 简化数值文件 ===
+  debugfs_create_u8:
+    pattern: 'debugfs_create_u8\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建 u8 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_u16:
+    pattern: 'debugfs_create_u16\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建 u16 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_u32:
+    pattern: 'debugfs_create_u32\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建 u32 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_u64:
+    pattern: 'debugfs_create_u64\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建 u64 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_x8:
+    pattern: 'debugfs_create_x8\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建十六进制 u8 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_x16:
+    pattern: 'debugfs_create_x16\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建十六进制 u16 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_x32:
+    pattern: 'debugfs_create_x32\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建十六进制 u32 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_x64:
+    pattern: 'debugfs_create_x64\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建十六进制 u64 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_size_t:
+    pattern: 'debugfs_create_size_t\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建 size_t 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_atomic_t:
+    pattern: 'debugfs_create_atomic_t\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建 atomic_t 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_bool:
+    pattern: 'debugfs_create_bool\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<value>[^)]+)\s*\)'
+    description: "创建布尔文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  # === 特殊文件 ===
+  debugfs_create_blob:
+    pattern: 'debugfs_create_blob\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<blob>[^)]+)\s*\)'
+    description: "创建二进制 blob 文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_regset32:
+    pattern: 'debugfs_create_regset32\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<regset>[^)]+)\s*\)'
+    description: "创建寄存器集合文件"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_devm_seqfile:
+    pattern: 'debugfs_create_devm_seqfile\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<show>[^)]+)\s*\)'
+    description: "创建设备管理的 seq_file"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_create_symlink:
+    pattern: 'debugfs_create_symlink\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<target>[^)]+)\s*\)'
+    description: "创建符号链接"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+
+  # === 删除 ===
+  debugfs_remove:
+    pattern: 'debugfs_remove\s*\(\s*(?P<dentry>[^)]+)\s*\)'
+    description: "移除 debugfs 条目"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_remove_recursive:
+    pattern: 'debugfs_remove_recursive\s*\(\s*(?P<dentry>[^)]+)\s*\)'
+    description: "递归移除 debugfs 条目"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+
+  # === 辅助函数 ===
+  debugfs_lookup:
+    pattern: 'debugfs_lookup\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "查找 debugfs 条目"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_lookup_and_remove:
+    pattern: 'debugfs_lookup_and_remove\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "查找并移除 debugfs 条目"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_rename:
+    pattern: 'debugfs_rename\s*\(\s*(?P<old_dir>[^,]+)\s*,\s*(?P<old_dentry>[^,]+)\s*,\s*(?P<new_dir>[^,]+)\s*,\s*(?P<new_name>[^)]+)\s*\)'
+    description: "重命名 debugfs 条目"
+    file: "fs/debugfs/inode.c"
+    context: "process"
+    can_sleep: true
+
+  debugfs_file_get:
+    pattern: 'debugfs_file_get\s*\(\s*(?P<dentry>[^)]+)\s*\)'
+    description: "获取 debugfs 文件引用"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: false
+
+  debugfs_file_put:
+    pattern: 'debugfs_file_put\s*\(\s*(?P<dentry>[^)]+)\s*\)'
+    description: "释放 debugfs 文件引用"
+    file: "fs/debugfs/file.c"
+    context: "process"
+    can_sleep: false
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  debugfs_read:
+    description: "Debugfs 文件读取路径"
+    trigger: "cat /sys/kernel/debug/xxx"
+    chain:
+      - function: "ksys_read"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_read"
+        file: "fs/read_write.c"
+        description: "VFS 读取"
+      - function: "full_proxy_read"
+        file: "fs/debugfs/file.c"
+        description: "debugfs 代理读取"
+      - function: "debugfs_file_get"
+        file: "fs/debugfs/file.c"
+        description: "获取文件引用"
+      - function: "real_fops->read"
+        file: "用户代码"
+        description: "用户读取回调"
+        is_user_entry: true
+      - function: "debugfs_file_put"
+        file: "fs/debugfs/file.c"
+        description: "释放文件引用"
+
+  debugfs_write:
+    description: "Debugfs 文件写入路径"
+    trigger: "echo xxx > /sys/kernel/debug/xxx"
+    chain:
+      - function: "ksys_write"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_write"
+        file: "fs/read_write.c"
+        description: "VFS 写入"
+      - function: "full_proxy_write"
+        file: "fs/debugfs/file.c"
+        description: "debugfs 代理写入"
+      - function: "real_fops->write"
+        file: "用户代码"
+        description: "用户写入回调"
+        is_user_entry: true
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单数值 debugfs 文件"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/debugfs.h>
+
+      static struct dentry *my_debugfs_dir;
+      static u32 my_counter = 0;
+      static bool my_enabled = true;
+
+      static int __init my_init(void)
+      {
+          /* 创建目录 */
+          my_debugfs_dir = debugfs_create_dir("my_driver", NULL);
+          if (IS_ERR(my_debugfs_dir))
+              return PTR_ERR(my_debugfs_dir);
+
+          /* 创建数值文件 */
+          debugfs_create_u32("counter", 0644, my_debugfs_dir, &my_counter);
+          debugfs_create_bool("enabled", 0644, my_debugfs_dir, &my_enabled);
+          
+          /* 创建十六进制显示的值 */
+          debugfs_create_x32("flags", 0444, my_debugfs_dir, &my_counter);
+
+          return 0;
+      }
+
+      static void __exit my_exit(void)
+      {
+          debugfs_remove_recursive(my_debugfs_dir);
+      }
+
+  - description: "自定义 debugfs 文件 (使用 file_operations)"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/debugfs.h>
+      #include <linux/seq_file.h>
+
+      static struct dentry *my_debugfs_dir;
+
+      /* 使用 seq_file 显示复杂信息 */
+      static int my_show(struct seq_file *s, void *unused)
+      {
+          struct my_device *dev = s->private;
+
+          seq_printf(s, "Device: %s\n", dev->name);
+          seq_printf(s, "Status: %d\n", dev->status);
+          seq_printf(s, "Errors: %lu\n", dev->error_count);
+          seq_puts(s, "\nRegisters:\n");
+          seq_printf(s, "  REG0: 0x%08x\n", readl(dev->regs + 0x00));
+          seq_printf(s, "  REG1: 0x%08x\n", readl(dev->regs + 0x04));
+
+          return 0;
+      }
+
+      DEFINE_SHOW_ATTRIBUTE(my);
+
+      /* 创建文件 */
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev = platform_get_drvdata(pdev);
+
+          dev->debugfs = debugfs_create_dir(dev_name(&pdev->dev), 
+                                            my_debugfs_dir);
+
+          /* 使用 DEFINE_SHOW_ATTRIBUTE 生成的 my_fops */
+          debugfs_create_file("info", 0444, dev->debugfs, dev, &my_fops);
+
+          return 0;
+      }
+
+  - description: "可写 debugfs 文件"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/debugfs.h>
+
+      static u32 debug_level = 0;
+
+      static ssize_t debug_write(struct file *file, const char __user *buf,
+                                 size_t count, loff_t *ppos)
+      {
+          char tmp[32];
+          u32 val;
+
+          if (count >= sizeof(tmp))
+              return -EINVAL;
+
+          if (copy_from_user(tmp, buf, count))
+              return -EFAULT;
+
+          tmp[count] = '\0';
+
+          if (kstrtou32(tmp, 0, &val))
+              return -EINVAL;
+
+          if (val > 10)
+              return -EINVAL;
+
+          debug_level = val;
+          pr_info("Debug level set to %u\n", debug_level);
+
+          return count;
+      }
+
+      static ssize_t debug_read(struct file *file, char __user *buf,
+                                size_t count, loff_t *ppos)
+      {
+          char tmp[32];
+          int len;
+
+          len = snprintf(tmp, sizeof(tmp), "%u\n", debug_level);
+          return simple_read_from_buffer(buf, count, ppos, tmp, len);
+      }
+
+      static const struct file_operations debug_fops = {
+          .owner = THIS_MODULE,
+          .read = debug_read,
+          .write = debug_write,
+      };
+
+      static int __init my_init(void)
+      {
+          debugfs_create_file("debug_level", 0644, my_dir, 
+                              NULL, &debug_fops);
+          return 0;
+      }
+
+  - description: "寄存器转储 debugfs"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/debugfs.h>
+
+      /* 定义寄存器 */
+      static const struct debugfs_reg32 my_regs[] = {
+          { "CTRL",   0x00 },
+          { "STATUS", 0x04 },
+          { "DATA",   0x08 },
+          { "IRQ",    0x0C },
+          { "CONFIG", 0x10 },
+      };
+
+      static struct debugfs_regset32 my_regset = {
+          .regs = my_regs,
+          .nregs = ARRAY_SIZE(my_regs),
+      };
+
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev = platform_get_drvdata(pdev);
+
+          /* 设置基地址 */
+          my_regset.base = dev->regs;
+          my_regset.dev = &pdev->dev;
+
+          /* 创建 regdump 文件 */
+          debugfs_create_regset32("regdump", 0444, dev->debugfs, 
+                                  &my_regset);
+
+          return 0;
+      }
+
+      /* 读取输出示例:
+       * CTRL     = 0x00000001
+       * STATUS   = 0x00000000
+       * DATA     = 0xdeadbeef
+       * IRQ      = 0x00000004
+       * CONFIG   = 0x00001234
+       */
+
+  - description: "二进制 blob debugfs"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/debugfs.h>
+
+      #define FIRMWARE_SIZE 4096
+      static u8 firmware_data[FIRMWARE_SIZE];
+
+      static struct debugfs_blob_wrapper firmware_blob = {
+          .data = firmware_data,
+          .size = FIRMWARE_SIZE,
+      };
+
+      static int __init my_init(void)
+      {
+          /* 只读二进制文件 */
+          debugfs_create_blob("firmware", 0444, my_dir, &firmware_blob);
+          return 0;
+      }
+
+      /* 用户空间可以用 hexdump 查看:
+       * hexdump -C /sys/kernel/debug/my_driver/firmware
+       */
+
+  - description: "设备管理的 debugfs (devm)"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/debugfs.h>
+
+      static int status_show(struct seq_file *s, void *unused)
+      {
+          struct my_device *dev = s->private;
+          seq_printf(s, "Status: %d\n", dev->status);
+          return 0;
+      }
+
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_device *dev;
+          struct dentry *dir;
+
+          dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return -ENOMEM;
+
+          /* 创建目录 */
+          dir = debugfs_create_dir(dev_name(&pdev->dev), NULL);
+
+          /* 使用 devm 版本 - 自动清理 */
+          debugfs_create_devm_seqfile(&pdev->dev, "status", 
+                                      dir, status_show);
+
+          /* 注意: 目录仍需手动删除 */
+          dev->debugfs_dir = dir;
+          platform_set_drvdata(pdev, dev);
+
+          return 0;
+      }
+
+      static int my_remove(struct platform_device *pdev)
+      {
+          struct my_device *dev = platform_get_drvdata(pdev);
+          debugfs_remove_recursive(dev->debugfs_dir);
+          return 0;
+      }

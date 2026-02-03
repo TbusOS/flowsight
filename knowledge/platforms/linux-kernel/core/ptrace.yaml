@@ -1,0 +1,746 @@
+# Linux Kernel Ptrace Subsystem Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/admin-guide/ptrace.html
+# Kernel source: kernel/ptrace.c, include/linux/ptrace.h
+# Kernel Version: 2.6.0+
+# ============================================================
+
+# ============================================================
+# PTRACE OVERVIEW
+# ============================================================
+ptrace_overview:
+  description: "Linux 进程跟踪子系统"
+  header: "linux/ptrace.h"
+  icon: "🔍"
+  kernel_version: "2.6.0+"
+  
+  key_concepts:
+    purpose:
+      description: "进程跟踪和调试"
+      notes:
+        - "允许一个进程控制另一个进程"
+        - "读写被跟踪进程的内存和寄存器"
+        - "实现断点和单步执行"
+        - "被 GDB、strace 等工具使用"
+    
+    tracer_tracee:
+      description: "跟踪者和被跟踪者"
+      tracer: "执行 PTRACE_ATTACH 的进程"
+      tracee: "被跟踪的进程"
+      relationship: "形成父子般的跟踪关系"
+
+    security:
+      description: "安全限制"
+      notes:
+        - "需要 CAP_SYS_PTRACE 或为父进程"
+        - "受 YAMA LSM 模块控制"
+        - "某些进程不可跟踪 (如 init)"
+
+# ============================================================
+# PTRACE REQUESTS
+# ============================================================
+ptrace_requests:
+  description: "ptrace 请求类型"
+  header: "linux/ptrace.h"
+  icon: "📋"
+
+  attach_detach:
+    PTRACE_TRACEME:
+      value: 0
+      description: "允许父进程跟踪自己"
+      context: "被跟踪进程调用"
+      notes: "子进程调用，使父进程成为跟踪者"
+
+    PTRACE_ATTACH:
+      value: 16
+      description: "附加到进程"
+      context: "跟踪者调用"
+      notes: "发送 SIGSTOP 给目标进程"
+
+    PTRACE_SEIZE:
+      value: 0x4206
+      description: "附加但不停止进程"
+      kernel_version: "3.4+"
+      notes: "更现代的附加方式"
+
+    PTRACE_DETACH:
+      value: 17
+      description: "分离跟踪"
+      context: "跟踪者调用"
+      notes: "被跟踪进程继续执行"
+
+    PTRACE_INTERRUPT:
+      value: 0x4207
+      description: "中断被跟踪进程"
+      kernel_version: "3.4+"
+      notes: "与 PTRACE_SEIZE 配合使用"
+
+  execution_control:
+    PTRACE_CONT:
+      value: 7
+      description: "继续执行"
+      parameters:
+        data: "要发送的信号（0 表示无）"
+
+    PTRACE_SYSCALL:
+      value: 24
+      description: "继续执行，在系统调用入口/出口停止"
+      notes: "用于 strace"
+
+    PTRACE_SINGLESTEP:
+      value: 9
+      description: "单步执行"
+      arch_dependent: true
+      notes: "执行一条指令后停止"
+
+    PTRACE_SYSEMU:
+      value: 31
+      description: "继续执行，模拟系统调用"
+      notes: "用于 UML (User Mode Linux)"
+
+    PTRACE_SYSEMU_SINGLESTEP:
+      value: 32
+      description: "单步 + 系统调用模拟"
+
+    PTRACE_LISTEN:
+      value: 0x4208
+      description: "监听被跟踪进程"
+      kernel_version: "3.4+"
+      notes: "让停止的进程进入可被信号唤醒状态"
+
+  memory_access:
+    PTRACE_PEEKTEXT:
+      value: 1
+      description: "读取进程代码段"
+      returns: "word 大小的数据"
+
+    PTRACE_PEEKDATA:
+      value: 2
+      description: "读取进程数据段"
+      returns: "word 大小的数据"
+
+    PTRACE_PEEKUSER:
+      value: 3
+      description: "读取 USER 区域"
+      notes: "访问寄存器等信息"
+
+    PTRACE_POKETEXT:
+      value: 4
+      description: "写入进程代码段"
+
+    PTRACE_POKEDATA:
+      value: 5
+      description: "写入进程数据段"
+
+    PTRACE_POKEUSER:
+      value: 6
+      description: "写入 USER 区域"
+
+  register_access:
+    PTRACE_GETREGS:
+      value: 12
+      description: "获取通用寄存器"
+      arch_dependent: true
+      data_structure: "struct pt_regs"
+
+    PTRACE_SETREGS:
+      value: 13
+      description: "设置通用寄存器"
+      arch_dependent: true
+
+    PTRACE_GETFPREGS:
+      value: 14
+      description: "获取浮点寄存器"
+      arch_dependent: true
+
+    PTRACE_SETFPREGS:
+      value: 15
+      description: "设置浮点寄存器"
+      arch_dependent: true
+
+    PTRACE_GETREGSET:
+      value: 0x4204
+      description: "获取寄存器集"
+      kernel_version: "2.6.34+"
+      notes: "使用 iovec 结构"
+
+    PTRACE_SETREGSET:
+      value: 0x4205
+      description: "设置寄存器集"
+      kernel_version: "2.6.34+"
+
+  options:
+    PTRACE_SETOPTIONS:
+      value: 0x4200
+      description: "设置跟踪选项"
+      options:
+        PTRACE_O_TRACESYSGOOD: "系统调用停止时设置 bit 7"
+        PTRACE_O_TRACEFORK: "跟踪 fork"
+        PTRACE_O_TRACEVFORK: "跟踪 vfork"
+        PTRACE_O_TRACECLONE: "跟踪 clone"
+        PTRACE_O_TRACEEXEC: "跟踪 exec"
+        PTRACE_O_TRACEVFORKDONE: "vfork 完成时通知"
+        PTRACE_O_TRACEEXIT: "跟踪退出"
+        PTRACE_O_TRACESECCOMP: "跟踪 seccomp"
+        PTRACE_O_EXITKILL: "跟踪者退出时杀死被跟踪进程"
+        PTRACE_O_SUSPEND_SECCOMP: "暂停 seccomp"
+
+    PTRACE_GETEVENTMSG:
+      value: 0x4201
+      description: "获取事件消息"
+      notes: "获取 clone/fork/vfork 的子进程 PID"
+
+    PTRACE_GETSIGINFO:
+      value: 0x4202
+      description: "获取信号信息"
+
+    PTRACE_SETSIGINFO:
+      value: 0x4203
+      description: "设置信号信息"
+
+    PTRACE_GETSIGMASK:
+      value: 0x420a
+      description: "获取被跟踪进程的信号掩码"
+      kernel_version: "3.11+"
+
+    PTRACE_SETSIGMASK:
+      value: 0x420b
+      description: "设置被跟踪进程的信号掩码"
+      kernel_version: "3.11+"
+
+# ============================================================
+# PTRACE DATA STRUCTURES
+# ============================================================
+data_structures:
+  description: "ptrace 数据结构"
+  header: "linux/ptrace.h"
+  icon: "🏗️"
+
+  structures:
+    ptrace_syscall_info:
+      pattern: 'struct ptrace_syscall_info\s*\{'
+      description: "系统调用信息（5.3+）"
+      file: "include/uapi/linux/ptrace.h"
+      kernel_version: "5.3+"
+      fields:
+        - name: "op"
+          type: "__u8"
+          description: "操作类型"
+          values:
+            PTRACE_SYSCALL_INFO_NONE: "无"
+            PTRACE_SYSCALL_INFO_ENTRY: "系统调用入口"
+            PTRACE_SYSCALL_INFO_EXIT: "系统调用出口"
+            PTRACE_SYSCALL_INFO_SECCOMP: "seccomp 停止"
+        - name: "arch"
+          type: "__u32"
+          description: "架构标识"
+        - name: "instruction_pointer"
+          type: "__u64"
+          description: "指令指针"
+        - name: "stack_pointer"
+          type: "__u64"
+          description: "栈指针"
+        - name: "entry"
+          type: "struct"
+          description: "入口信息（nr, args）"
+        - name: "exit"
+          type: "struct"
+          description: "出口信息（rval, is_error）"
+        - name: "seccomp"
+          type: "struct"
+          description: "seccomp 信息"
+
+    pt_regs:
+      pattern: 'struct pt_regs\s*\{'
+      description: "寄存器状态"
+      arch_specific: true
+      notes: "每个架构定义不同"
+      file: "arch/*/include/asm/ptrace.h"
+
+    user_regs_struct:
+      pattern: 'struct user_regs_struct\s*\{'
+      description: "用户空间寄存器结构"
+      arch_specific: true
+      notes: "用于 PTRACE_GETREGS/SETREGS"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+kernel_functions:
+  description: "ptrace 内核函数"
+  header: "linux/ptrace.h"
+  icon: "⚙️"
+  kernel_source: "kernel/ptrace.c"
+
+  core_functions:
+    ptrace_attach:
+      pattern: 'ptrace_attach\s*\(\s*(?P<task>\w+)\s*,'
+      description: "附加到进程"
+      context: "process"
+      can_sleep: true
+      internal: true
+
+    ptrace_detach:
+      pattern: 'ptrace_detach\s*\(\s*(?P<child>\w+)\s*,'
+      description: "分离跟踪"
+      context: "process"
+      can_sleep: true
+
+    ptrace_check_attach:
+      pattern: 'ptrace_check_attach\s*\(\s*(?P<child>\w+)\s*,'
+      description: "检查跟踪状态"
+      context: "process"
+
+    ptrace_request:
+      pattern: 'ptrace_request\s*\(\s*(?P<child>\w+)\s*,'
+      description: "处理 ptrace 请求"
+      context: "process"
+      notes: "通用请求处理"
+
+    arch_ptrace:
+      pattern: 'arch_ptrace\s*\(\s*(?P<child>\w+)\s*,'
+      description: "架构特定 ptrace 处理"
+      arch_specific: true
+
+  signal_related:
+    ptrace_signal_deliver:
+      pattern: 'ptrace_signal_deliver\s*\('
+      description: "信号投递时的 ptrace 通知"
+      context: "process"
+
+    ptrace_stop:
+      pattern: 'ptrace_stop\s*\(\s*(?P<exit_code>\w+)\s*,'
+      description: "ptrace 停止点"
+      context: "process"
+
+    ptrace_notify:
+      pattern: 'ptrace_notify\s*\(\s*(?P<exit_code>\w+)\s*\)'
+      description: "ptrace 通知"
+      context: "process"
+
+    ptrace_event:
+      pattern: 'ptrace_event\s*\(\s*(?P<event>\w+)\s*,'
+      description: "发送 ptrace 事件"
+      events:
+        PTRACE_EVENT_FORK: "fork 事件"
+        PTRACE_EVENT_VFORK: "vfork 事件"
+        PTRACE_EVENT_CLONE: "clone 事件"
+        PTRACE_EVENT_EXEC: "exec 事件"
+        PTRACE_EVENT_VFORK_DONE: "vfork 完成"
+        PTRACE_EVENT_EXIT: "退出事件"
+        PTRACE_EVENT_SECCOMP: "seccomp 事件"
+        PTRACE_EVENT_STOP: "停止事件"
+
+  memory_access:
+    access_process_vm:
+      pattern: 'access_process_vm\s*\(\s*(?P<tsk>\w+)\s*,'
+      description: "访问进程虚拟内存"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "tsk"
+          type: "struct task_struct *"
+          description: "目标进程"
+        - name: "addr"
+          type: "unsigned long"
+          description: "虚拟地址"
+        - name: "buf"
+          type: "void *"
+          description: "缓冲区"
+        - name: "len"
+          type: "int"
+          description: "长度"
+        - name: "gup_flags"
+          type: "unsigned int"
+          description: "GUP 标志"
+
+    ptrace_access_vm:
+      pattern: 'ptrace_access_vm\s*\('
+      description: "ptrace 内存访问"
+      notes: "包含权限检查"
+
+# ============================================================
+# SECURITY
+# ============================================================
+security:
+  description: "ptrace 安全机制"
+  header: "linux/security.h"
+  icon: "🔒"
+
+  checks:
+    may_ptrace:
+      description: "ptrace 权限检查"
+      requirements:
+        - "目标进程是调用者的子进程"
+        - "或调用者具有 CAP_SYS_PTRACE"
+        - "通过 LSM 安全检查"
+
+    cap_ptrace_access_check:
+      description: "capability 检查"
+      capabilities:
+        CAP_SYS_PTRACE: "允许 ptrace 任意进程"
+
+  yama:
+    description: "YAMA 安全模块"
+    kernel_config: "CONFIG_SECURITY_YAMA"
+    sysctl: "/proc/sys/kernel/yama/ptrace_scope"
+    levels:
+      0: "经典 ptrace 权限"
+      1: "受限 ptrace（只能跟踪子进程或使用 prctl）"
+      2: "仅管理员（需要 CAP_SYS_PTRACE）"
+      3: "完全禁止 ptrace"
+
+  prctl:
+    PR_SET_PTRACER:
+      description: "设置允许的跟踪者"
+      values:
+        PR_SET_PTRACER_ANY: "允许任何进程跟踪"
+        pid: "只允许指定进程跟踪"
+      example: |
+        /* 允许特定进程跟踪自己 */
+        prctl(PR_SET_PTRACER, debugger_pid, 0, 0, 0);
+        
+        /* 允许任何进程跟踪 */
+        prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  ptrace_attach_flow:
+    description: "ptrace 附加流程"
+    chain:
+      - caller: "userspace"
+        callee: "sys_ptrace (PTRACE_ATTACH)"
+        context: "syscall"
+        description: "系统调用入口"
+      - caller: "sys_ptrace"
+        callee: "ptrace_attach"
+        description: "执行附加"
+      - caller: "ptrace_attach"
+        callee: "security_ptrace_access_check"
+        description: "安全检查"
+      - caller: "ptrace_attach"
+        callee: "__ptrace_link"
+        description: "建立跟踪关系"
+      - caller: "ptrace_attach"
+        callee: "send_sig_info (SIGSTOP)"
+        description: "发送 SIGSTOP"
+
+  ptrace_syscall_flow:
+    description: "系统调用跟踪流程"
+    chain:
+      - caller: "do_syscall_*"
+        callee: "ptrace_report_syscall_entry"
+        context: "syscall entry"
+        description: "入口点报告"
+      - caller: "ptrace_report_syscall_entry"
+        callee: "ptrace_stop"
+        description: "停止并通知跟踪者"
+      - caller: "tracee resumes"
+        callee: "syscall execution"
+        description: "执行系统调用"
+      - caller: "syscall exit"
+        callee: "ptrace_report_syscall_exit"
+        description: "出口点报告"
+
+  ptrace_signal_flow:
+    description: "信号跟踪流程"
+    chain:
+      - caller: "signal delivery"
+        callee: "ptrace_signal_deliver"
+        context: "process"
+        description: "信号投递通知"
+      - caller: "ptrace_signal_deliver"
+        callee: "ptrace_stop"
+        description: "停止并报告"
+      - caller: "tracer"
+        callee: "PTRACE_CONT"
+        description: "跟踪者决定是否继续"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "基本 ptrace 跟踪器"
+    kernel_version: "2.6.0+"
+    code: |
+      /* 用户空间跟踪器示例 */
+      #include <sys/ptrace.h>
+      #include <sys/wait.h>
+      #include <sys/user.h>
+      #include <unistd.h>
+      #include <stdio.h>
+      
+      int main(int argc, char *argv[])
+      {
+          pid_t child;
+          int status;
+          
+          child = fork();
+          if (child == 0) {
+              /* 子进程：允许被跟踪 */
+              ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+              execvp(argv[1], argv + 1);
+              return 1;
+          }
+          
+          /* 父进程：跟踪子进程 */
+          waitpid(child, &status, 0);
+          
+          /* 设置选项 */
+          ptrace(PTRACE_SETOPTIONS, child, NULL, 
+                 PTRACE_O_TRACESYSGOOD);
+          
+          while (1) {
+              /* 运行到下一个系统调用 */
+              ptrace(PTRACE_SYSCALL, child, NULL, NULL);
+              waitpid(child, &status, 0);
+              
+              if (WIFEXITED(status))
+                  break;
+              
+              if (WIFSTOPPED(status)) {
+                  int sig = WSTOPSIG(status);
+                  if (sig == (SIGTRAP | 0x80)) {
+                      /* 系统调用停止 */
+                      printf("Syscall detected\n");
+                  }
+              }
+          }
+          
+          return 0;
+      }
+
+  - description: "读取/写入寄存器"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <sys/ptrace.h>
+      #include <sys/user.h>
+      
+      void read_registers(pid_t pid)
+      {
+          struct user_regs_struct regs;
+          
+          /* 获取所有通用寄存器 */
+          ptrace(PTRACE_GETREGS, pid, NULL, &regs);
+          
+          #ifdef __x86_64__
+          printf("RIP: %llx\n", regs.rip);
+          printf("RSP: %llx\n", regs.rsp);
+          printf("RAX: %llx\n", regs.rax);
+          #elif __i386__
+          printf("EIP: %lx\n", regs.eip);
+          printf("ESP: %lx\n", regs.esp);
+          printf("EAX: %lx\n", regs.eax);
+          #endif
+      }
+      
+      void modify_syscall_return(pid_t pid, long new_val)
+      {
+          struct user_regs_struct regs;
+          
+          ptrace(PTRACE_GETREGS, pid, NULL, &regs);
+          
+          #ifdef __x86_64__
+          regs.rax = new_val;  /* 修改返回值 */
+          #endif
+          
+          ptrace(PTRACE_SETREGS, pid, NULL, &regs);
+      }
+
+  - description: "单步执行"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <sys/ptrace.h>
+      #include <sys/wait.h>
+      
+      void single_step_trace(pid_t pid)
+      {
+          int status;
+          unsigned long instruction_count = 0;
+          
+          while (1) {
+              /* 执行单条指令 */
+              ptrace(PTRACE_SINGLESTEP, pid, NULL, NULL);
+              waitpid(pid, &status, 0);
+              
+              if (WIFEXITED(status)) {
+                  printf("Process exited\n");
+                  break;
+              }
+              
+              if (WIFSTOPPED(status) && 
+                  WSTOPSIG(status) == SIGTRAP) {
+                  instruction_count++;
+                  
+                  /* 可以在这里检查寄存器状态 */
+                  if (instruction_count % 1000 == 0) {
+                      printf("Executed %lu instructions\n",
+                             instruction_count);
+                  }
+              }
+          }
+      }
+
+  - description: "内存读写"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <sys/ptrace.h>
+      #include <errno.h>
+      
+      long read_word(pid_t pid, void *addr)
+      {
+          long data;
+          
+          errno = 0;
+          data = ptrace(PTRACE_PEEKDATA, pid, addr, NULL);
+          if (errno != 0) {
+              perror("PTRACE_PEEKDATA");
+              return -1;
+          }
+          
+          return data;
+      }
+      
+      int write_word(pid_t pid, void *addr, long data)
+      {
+          if (ptrace(PTRACE_POKEDATA, pid, addr, data) < 0) {
+              perror("PTRACE_POKEDATA");
+              return -1;
+          }
+          return 0;
+      }
+      
+      /* 读取字符串 */
+      void read_string(pid_t pid, void *addr, char *buf, size_t len)
+      {
+          size_t i;
+          long *ptr = (long *)buf;
+          
+          for (i = 0; i < len; i += sizeof(long)) {
+              *ptr++ = ptrace(PTRACE_PEEKDATA, pid, 
+                              addr + i, NULL);
+          }
+      }
+
+  - description: "跟踪 fork/exec"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <sys/ptrace.h>
+      #include <sys/wait.h>
+      
+      void trace_with_fork_follow(pid_t pid)
+      {
+          int status;
+          
+          /* 设置跟踪选项 */
+          ptrace(PTRACE_SETOPTIONS, pid, NULL,
+                 PTRACE_O_TRACEFORK |
+                 PTRACE_O_TRACEVFORK |
+                 PTRACE_O_TRACECLONE |
+                 PTRACE_O_TRACEEXEC);
+          
+          ptrace(PTRACE_CONT, pid, NULL, NULL);
+          
+          while (1) {
+              pid_t waited = waitpid(-1, &status, __WALL);
+              
+              if (waited < 0)
+                  break;
+              
+              if (WIFEXITED(status)) {
+                  printf("PID %d exited\n", waited);
+                  continue;
+              }
+              
+              if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_FORK << 8))) {
+                  unsigned long new_pid;
+                  ptrace(PTRACE_GETEVENTMSG, waited, NULL, &new_pid);
+                  printf("PID %d forked new process %lu\n", 
+                         waited, new_pid);
+              }
+              
+              if (status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8))) {
+                  printf("PID %d called exec\n", waited);
+              }
+              
+              ptrace(PTRACE_CONT, waited, NULL, NULL);
+          }
+      }
+
+  - description: "YAMA 配置绕过"
+    kernel_version: "3.4+"
+    code: |
+      #include <sys/prctl.h>
+      
+      /* 被调试进程调用，允许特定进程跟踪 */
+      void allow_debugging(pid_t debugger_pid)
+      {
+          /* 允许特定进程跟踪 */
+          prctl(PR_SET_PTRACER, debugger_pid, 0, 0, 0);
+      }
+      
+      /* 允许任何进程跟踪（谨慎使用） */
+      void allow_any_debugging(void)
+      {
+          prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
+      }
+      
+      /* 撤销跟踪许可 */
+      void disallow_debugging(void)
+      {
+          prctl(PR_SET_PTRACER, 0, 0, 0, 0);
+      }
+
+# ============================================================
+# KERNEL DEBUGGING
+# ============================================================
+kernel_debugging:
+  description: "内核中的 ptrace 调试支持"
+  icon: "🐛"
+
+  kprobe_integration:
+    description: "与 kprobe 集成"
+    notes: "uprobe 使用 ptrace 机制"
+
+  seccomp_integration:
+    description: "与 seccomp 集成"
+    notes: "SECCOMP_RET_TRACE 触发 ptrace 停止"
+    kernel_version: "3.5+"
+
+  gdb_support:
+    description: "GDB 调试支持"
+    features:
+      - "断点（通过 PTRACE_POKETEXT 写入 int3）"
+      - "单步执行（PTRACE_SINGLESTEP）"
+      - "寄存器读写（PTRACE_GETREGS/SETREGS）"
+      - "内存读写（PTRACE_PEEK*/POKE*）"
+      - "进程控制（PTRACE_CONT/SYSCALL）"
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.0":
+    - "基础 ptrace 支持"
+    - "PTRACE_ATTACH/DETACH"
+    - "PTRACE_PEEK*/POKE*"
+  "2.6.34":
+    - "PTRACE_GETREGSET/SETREGSET"
+  "3.4":
+    - "PTRACE_SEIZE"
+    - "PTRACE_INTERRUPT"
+    - "PTRACE_LISTEN"
+    - "PTRACE_O_EXITKILL"
+  "3.5":
+    - "PTRACE_O_TRACESECCOMP"
+  "3.11":
+    - "PTRACE_GETSIGMASK/SETSIGMASK"
+  "4.8":
+    - "PTRACE_O_SUSPEND_SECCOMP"
+  "5.3":
+    - "PTRACE_GET_SYSCALL_INFO"
+    - "struct ptrace_syscall_info"
+  "5.11":
+    - "PTRACE_GET_RSEQ_CONFIGURATION"

@@ -1,0 +1,747 @@
+# Linux Kernel Panic Subsystem Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/admin-guide/bug-hunting.html
+# Kernel source: kernel/panic.c, include/linux/kernel.h
+# Kernel Version: 2.6.0+
+# ============================================================
+
+# ============================================================
+# PANIC OVERVIEW
+# ============================================================
+panic_overview:
+  description: "Linux 内核崩溃处理子系统"
+  header: "linux/kernel.h"
+  icon: "💥"
+  kernel_version: "2.6.0+"
+  
+  key_concepts:
+    panic:
+      description: "不可恢复的内核错误"
+      notes:
+        - "系统完全停止运行"
+        - "可配置为自动重启"
+        - "调用注册的 panic notifier"
+        - "可触发 kdump 内存转储"
+    
+    oops:
+      description: "可恢复的内核错误"
+      notes:
+        - "通常杀死当前进程继续运行"
+        - "打印堆栈跟踪和寄存器状态"
+        - "可配置为升级为 panic"
+
+    bug_types:
+      description: "内核 Bug 类型"
+      types:
+        panic: "不可恢复，系统停止"
+        oops: "可能恢复，杀死进程"
+        warn: "警告，继续执行"
+        bug: "断言失败，触发 oops"
+
+# ============================================================
+# PANIC FUNCTION
+# ============================================================
+panic_function:
+  description: "panic 核心函数"
+  header: "linux/kernel.h"
+  icon: "🚨"
+  kernel_source: "kernel/panic.c"
+
+  kernel_functions:
+    panic:
+      pattern: 'panic\s*\(\s*"'
+      description: "触发内核 panic"
+      context: "any"
+      can_sleep: false
+      noreturn: true
+      parameters:
+        - name: "fmt"
+          type: "const char *"
+          description: "格式字符串"
+        - name: "..."
+          type: "variadic"
+          description: "格式参数"
+      notes:
+        - "永不返回"
+        - "禁用所有中断"
+        - "调用 panic notifier 链"
+        - "可能触发 kdump"
+      example: |
+        if (critical_failure)
+            panic("Unrecoverable error: %s\n", error_msg);
+
+    panic_notifier_call_chain:
+      description: "调用 panic 通知链"
+      internal: true
+
+    nmi_panic:
+      pattern: 'nmi_panic\s*\(\s*(?P<regs>\w+)\s*,\s*"'
+      description: "NMI 上下文中触发 panic"
+      context: "nmi"
+      notes: "用于 NMI 看门狗等"
+
+    add_taint:
+      pattern: 'add_taint\s*\(\s*(?P<flag>\w+)\s*,\s*(?P<lockdep>\w+)\s*\)'
+      description: "设置内核污染标志"
+      flags:
+        TAINT_PROPRIETARY_MODULE: "加载了专有模块"
+        TAINT_FORCED_MODULE: "强制加载了模块"
+        TAINT_CPU_OUT_OF_SPEC: "CPU 运行在规格外"
+        TAINT_FORCED_RMMOD: "强制卸载了模块"
+        TAINT_MACHINE_CHECK: "发生了机器检查异常"
+        TAINT_BAD_PAGE: "发现坏页"
+        TAINT_USER: "用户空间请求污染"
+        TAINT_DIE: "发生了内核 oops"
+        TAINT_OVERRIDDEN_ACPI_TABLE: "覆盖了 ACPI 表"
+        TAINT_WARN: "触发了内核警告"
+        TAINT_CRAP: "加载了质量差的模块"
+        TAINT_FIRMWARE_WORKAROUND: "应用了固件变通"
+        TAINT_OOT_MODULE: "加载了树外模块"
+        TAINT_UNSIGNED_MODULE: "加载了未签名模块"
+        TAINT_SOFTLOCKUP: "检测到软锁定"
+        TAINT_LIVEPATCH: "应用了实时补丁"
+        TAINT_AUX: "辅助污染"
+        TAINT_RANDSTRUCT: "randstruct 插件"
+
+# ============================================================
+# BUG AND WARN MACROS
+# ============================================================
+bug_warn_macros:
+  description: "BUG 和 WARN 宏"
+  header: "linux/bug.h"
+  icon: "⚠️"
+
+  macros:
+    BUG:
+      pattern: 'BUG\s*\(\s*\)'
+      description: "触发无条件 oops"
+      context: "any"
+      notes: "应避免使用，优先用 WARN"
+      example: |
+        /* 不推荐 */
+        BUG();
+
+    BUG_ON:
+      pattern: 'BUG_ON\s*\(\s*(?P<condition>[^)]+)\s*\)'
+      description: "条件为真时触发 oops"
+      context: "any"
+      notes: "断言失败时触发"
+      example: |
+        /* 不推荐，优先使用 WARN_ON */
+        BUG_ON(ptr == NULL);
+
+    WARN:
+      pattern: 'WARN\s*\(\s*(?P<condition>[^,]+)\s*,\s*"'
+      description: "条件为真时打印警告和堆栈"
+      context: "any"
+      returns: "condition 的值"
+      notes: "推荐替代 BUG"
+      example: |
+        if (WARN(count < 0, "Invalid count: %d\n", count))
+            return -EINVAL;
+
+    WARN_ON:
+      pattern: 'WARN_ON\s*\(\s*(?P<condition>[^)]+)\s*\)'
+      description: "条件为真时打印警告"
+      context: "any"
+      returns: "condition 的值"
+      example: |
+        if (WARN_ON(!ptr))
+            return -EINVAL;
+
+    WARN_ON_ONCE:
+      pattern: 'WARN_ON_ONCE\s*\(\s*(?P<condition>[^)]+)\s*\)'
+      description: "条件为真时只警告一次"
+      context: "any"
+      notes: "避免日志泛滥"
+      example: |
+        WARN_ON_ONCE(unexpected_state);
+
+    WARN_ONCE:
+      pattern: 'WARN_ONCE\s*\(\s*(?P<condition>[^,]+)\s*,\s*"'
+      description: "带消息的单次警告"
+      context: "any"
+
+    BUILD_BUG_ON:
+      pattern: 'BUILD_BUG_ON\s*\(\s*(?P<condition>[^)]+)\s*\)'
+      description: "编译时断言"
+      context: "compile-time"
+      notes: "条件为真时编译失败"
+      example: |
+        /* 确保结构大小不超过 PAGE_SIZE */
+        BUILD_BUG_ON(sizeof(struct my_struct) > PAGE_SIZE);
+
+    BUILD_BUG_ON_MSG:
+      pattern: 'BUILD_BUG_ON_MSG\s*\(\s*(?P<condition>[^,]+)\s*,\s*"'
+      description: "带消息的编译时断言"
+      kernel_version: "3.9+"
+
+    BUILD_BUG:
+      pattern: 'BUILD_BUG\s*\(\s*\)'
+      description: "无条件编译时错误"
+
+# ============================================================
+# OOPS HANDLING
+# ============================================================
+oops_handling:
+  description: "Oops 处理机制"
+  header: "linux/kernel.h"
+  icon: "💢"
+  kernel_source: "kernel/panic.c"
+
+  kernel_functions:
+    oops_enter:
+      pattern: 'oops_enter\s*\(\s*\)'
+      description: "进入 oops 处理"
+      internal: true
+
+    oops_exit:
+      pattern: 'oops_exit\s*\(\s*\)'
+      description: "退出 oops 处理"
+      internal: true
+
+    oops_may_print:
+      pattern: 'oops_may_print\s*\(\s*\)'
+      description: "检查是否可以打印 oops"
+      returns: "bool"
+
+    print_oops_end_marker:
+      description: "打印 oops 结束标记"
+      internal: true
+
+  oops_output:
+    description: "Oops 输出内容"
+    sections:
+      - "BUG/Unable to handle 错误描述"
+      - "IP (指令指针) 地址"
+      - "PGD (页全局目录) 状态"
+      - "Oops 代码和污染标志"
+      - "CPU 和进程信息"
+      - "寄存器状态"
+      - "调用堆栈 (Call Trace)"
+      - "代码字节 (Code)"
+
+  data_structures:
+    die_args:
+      pattern: 'struct die_args\s*\{'
+      description: "die 通知参数"
+      file: "include/linux/kdebug.h"
+      fields:
+        - name: "regs"
+          type: "struct pt_regs *"
+          description: "寄存器状态"
+        - name: "str"
+          type: "const char *"
+          description: "错误描述"
+        - name: "err"
+          type: "long"
+          description: "错误码"
+        - name: "trapnr"
+          type: "int"
+          description: "陷阱号"
+        - name: "signr"
+          type: "int"
+          description: "信号号"
+
+# ============================================================
+# PANIC NOTIFIER
+# ============================================================
+panic_notifier:
+  description: "Panic 通知机制"
+  header: "linux/notifier.h"
+  icon: "📢"
+
+  kernel_functions:
+    atomic_notifier_chain_register:
+      pattern: 'atomic_notifier_chain_register\s*\(\s*&panic_notifier_list\s*,'
+      description: "注册 panic 通知器"
+      context: "process"
+      example: |
+        static struct notifier_block my_panic_notifier = {
+            .notifier_call = my_panic_handler,
+            .priority = 200,
+        };
+        atomic_notifier_chain_register(&panic_notifier_list, 
+                                       &my_panic_notifier);
+
+    atomic_notifier_chain_unregister:
+      pattern: 'atomic_notifier_chain_unregister\s*\(\s*&panic_notifier_list\s*,'
+      description: "注销 panic 通知器"
+
+  notifier_callback:
+    description: "通知器回调原型"
+    prototype: "int (*notifier_call)(struct notifier_block *nb, unsigned long action, void *data)"
+    return_values:
+      NOTIFY_DONE: "不关心此通知"
+      NOTIFY_OK: "处理成功"
+      NOTIFY_STOP: "停止通知链"
+      NOTIFY_BAD: "处理失败"
+
+# ============================================================
+# KDUMP
+# ============================================================
+kdump:
+  description: "内核崩溃转储 (kdump)"
+  header: "linux/kexec.h"
+  icon: "💾"
+  kernel_config: "CONFIG_CRASH_DUMP"
+
+  concepts:
+    kexec:
+      description: "在运行中的内核上启动新内核"
+      notes: "kdump 使用 kexec 加载捕获内核"
+
+    crash_kernel:
+      description: "为捕获内核预留的内存"
+      cmdline: "crashkernel=256M"
+
+    vmcore:
+      description: "崩溃内核的内存映像"
+      path: "/proc/vmcore"
+
+  kernel_functions:
+    crash_kexec:
+      pattern: 'crash_kexec\s*\(\s*(?P<regs>\w+)\s*\)'
+      description: "触发 kdump 转储"
+      context: "panic"
+      notes: "由 panic() 调用"
+
+    crash_setup_regs:
+      pattern: 'crash_setup_regs\s*\('
+      description: "设置崩溃寄存器状态"
+      arch_specific: true
+
+    crash_save_cpu:
+      pattern: 'crash_save_cpu\s*\('
+      description: "保存 CPU 状态"
+
+  setup:
+    description: "kdump 配置步骤"
+    steps:
+      - "启用 CONFIG_CRASH_DUMP 和 CONFIG_KEXEC"
+      - "添加 crashkernel=XXM 启动参数"
+      - "加载捕获内核: kexec -p /boot/vmlinuz --initrd=/boot/initrd"
+      - "崩溃后访问 /proc/vmcore 分析"
+
+# ============================================================
+# WATCHDOG
+# ============================================================
+watchdog:
+  description: "看门狗和锁定检测"
+  header: "linux/nmi.h"
+  icon: "🐕"
+
+  types:
+    softlockup:
+      description: "软锁定检测"
+      kernel_config: "CONFIG_SOFTLOCKUP_DETECTOR"
+      notes: "内核长时间不调度"
+      threshold: "默认 20 秒"
+      sysctl: "/proc/sys/kernel/watchdog_thresh"
+
+    hardlockup:
+      description: "硬锁定检测"
+      kernel_config: "CONFIG_HARDLOCKUP_DETECTOR"
+      notes: "CPU 长时间不响应中断"
+      mechanism: "NMI 看门狗"
+
+    hung_task:
+      description: "挂起任务检测"
+      kernel_config: "CONFIG_DETECT_HUNG_TASK"
+      notes: "进程长时间处于 D 状态"
+      threshold: "默认 120 秒"
+      sysctl: "/proc/sys/kernel/hung_task_timeout_secs"
+
+  kernel_functions:
+    touch_softlockup_watchdog:
+      pattern: 'touch_softlockup_watchdog\s*\(\s*\)'
+      description: "重置软锁定检测器"
+      context: "any"
+      notes: "在长时间操作中调用避免误报"
+
+    touch_nmi_watchdog:
+      pattern: 'touch_nmi_watchdog\s*\(\s*\)'
+      description: "重置 NMI 看门狗"
+      context: "any"
+
+    touch_all_softlockup_watchdogs:
+      pattern: 'touch_all_softlockup_watchdogs\s*\(\s*\)'
+      description: "重置所有 CPU 的软锁定检测器"
+
+# ============================================================
+# SYSRQ
+# ============================================================
+sysrq:
+  description: "魔术 SysRq 键"
+  header: "linux/sysrq.h"
+  icon: "⌨️"
+  kernel_config: "CONFIG_MAGIC_SYSRQ"
+
+  keys:
+    b: "立即重启（不同步/卸载）"
+    c: "触发 crash dump (kexec)"
+    d: "显示所有持有的锁"
+    e: "发送 SIGTERM 到所有进程（init 除外）"
+    f: "调用 OOM killer"
+    g: "用于 kgdb 调试"
+    h: "显示帮助"
+    i: "发送 SIGKILL 到所有进程（init 除外）"
+    j: "解冻被 FIFREEZE ioctl 冻结的文件系统"
+    k: "安全访问键（SAK）- 杀死当前 VT 所有进程"
+    l: "显示所有活动 CPU 的堆栈跟踪"
+    m: "将内存信息转储到控制台"
+    n: "重置 nice 级别"
+    o: "关机"
+    p: "将寄存器和标志转储到控制台"
+    q: "显示所有定时器"
+    r: "关闭键盘原始模式"
+    s: "同步所有挂载的文件系统"
+    t: "将当前任务列表转储到控制台"
+    u: "以只读方式重新挂载所有文件系统"
+    v: "强制恢复帧缓冲控制台"
+    w: "显示处于阻塞（D）状态的任务"
+    x: "用于 xmon 接口"
+    z: "转储 ftrace 缓冲区"
+
+  kernel_functions:
+    register_sysrq_key:
+      pattern: 'register_sysrq_key\s*\(\s*(?P<key>\w+)\s*,\s*(?P<op>\w+)\s*\)'
+      description: "注册 SysRq 键处理器"
+      context: "process"
+
+    unregister_sysrq_key:
+      pattern: 'unregister_sysrq_key\s*\(\s*(?P<key>\w+)\s*,\s*(?P<op>\w+)\s*\)'
+      description: "注销 SysRq 键处理器"
+
+    handle_sysrq:
+      pattern: 'handle_sysrq\s*\(\s*(?P<key>\w+)\s*\)'
+      description: "程序化触发 SysRq"
+
+  sysctl:
+    sysrq:
+      path: "/proc/sys/kernel/sysrq"
+      values:
+        0: "完全禁用"
+        1: "启用所有功能"
+        bitmap: "位图控制各功能"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  panic_flow:
+    description: "panic 执行流程"
+    chain:
+      - caller: "BUG / direct call"
+        callee: "panic"
+        context: "any"
+        description: "触发 panic"
+      - caller: "panic"
+        callee: "local_irq_disable"
+        description: "禁用本地中断"
+      - caller: "panic"
+        callee: "atomic_notifier_call_chain"
+        description: "调用 panic notifier"
+      - caller: "panic"
+        callee: "crash_kexec"
+        description: "尝试 kdump"
+      - caller: "panic"
+        callee: "kmsg_dump"
+        description: "转储日志"
+      - caller: "panic"
+        callee: "panic_blink / emergency_restart"
+        description: "闪烁 LED 或重启"
+
+  oops_flow:
+    description: "oops 处理流程"
+    chain:
+      - caller: "exception handler"
+        callee: "die"
+        arch_specific: true
+        description: "架构特定的 die 函数"
+      - caller: "die"
+        callee: "oops_enter"
+        description: "进入 oops 处理"
+      - caller: "die"
+        callee: "notify_die"
+        description: "调用 die notifier"
+      - caller: "die"
+        callee: "show_regs / show_stack"
+        description: "打印寄存器和堆栈"
+      - caller: "die"
+        callee: "oops_exit"
+        description: "退出 oops 处理"
+      - caller: "die"
+        callee: "do_exit / panic"
+        description: "杀死进程或升级为 panic"
+
+  warn_flow:
+    description: "WARN 处理流程"
+    chain:
+      - caller: "WARN / WARN_ON"
+        callee: "__warn"
+        context: "any"
+        description: "警告入口"
+      - caller: "__warn"
+        callee: "add_taint"
+        description: "设置污染标志"
+      - caller: "__warn"
+        callee: "print_modules"
+        description: "打印已加载模块"
+      - caller: "__warn"
+        callee: "show_regs"
+        description: "打印寄存器状态"
+      - caller: "__warn"
+        callee: "dump_stack"
+        description: "打印堆栈跟踪"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "使用 WARN 替代 BUG"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/bug.h>
+      
+      static int my_function(void *ptr, int count)
+      {
+          /* 推荐：使用 WARN_ON 检查条件 */
+          if (WARN_ON(!ptr))
+              return -EINVAL;
+          
+          if (WARN_ON(count < 0))
+              return -EINVAL;
+          
+          /* 带消息的警告 */
+          if (WARN(count > MAX_COUNT, 
+                   "Count %d exceeds maximum %d\n", 
+                   count, MAX_COUNT))
+              return -EINVAL;
+          
+          /* 只警告一次，避免日志泛滥 */
+          WARN_ON_ONCE(unlikely_condition);
+          
+          return 0;
+      }
+
+  - description: "注册 panic 通知器"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/notifier.h>
+      #include <linux/reboot.h>
+      
+      static int my_panic_handler(struct notifier_block *nb,
+                                  unsigned long action, void *data)
+      {
+          /* 在 panic 时保存关键状态 */
+          save_critical_state();
+          
+          /* 通知外部设备 */
+          notify_external_watchdog();
+          
+          return NOTIFY_OK;
+      }
+      
+      static struct notifier_block my_panic_notifier = {
+          .notifier_call = my_panic_handler,
+          .priority = 200,  /* 较高优先级，早执行 */
+      };
+      
+      static int __init my_init(void)
+      {
+          atomic_notifier_chain_register(&panic_notifier_list,
+                                         &my_panic_notifier);
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          atomic_notifier_chain_unregister(&panic_notifier_list,
+                                           &my_panic_notifier);
+      }
+
+  - description: "编译时断言"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/bug.h>
+      #include <linux/build_bug.h>
+      
+      /* 确保结构大小符合预期 */
+      BUILD_BUG_ON(sizeof(struct my_struct) != 64);
+      
+      /* 确保数组大小足够 */
+      BUILD_BUG_ON(ARRAY_SIZE(my_array) < MIN_ENTRIES);
+      
+      /* 带消息的断言 */
+      BUILD_BUG_ON_MSG(sizeof(long) != 8,
+                       "This code requires 64-bit architecture");
+      
+      /* 在函数中使用 */
+      static void my_function(void)
+      {
+          /* 确保类型大小 */
+          BUILD_BUG_ON(sizeof(u32) != 4);
+          
+          /* 确保对齐 */
+          BUILD_BUG_ON(__alignof__(struct my_struct) < 8);
+      }
+
+  - description: "避免软锁定误报"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/nmi.h>
+      #include <linux/sched.h>
+      
+      static int long_running_operation(void)
+      {
+          int i;
+          
+          for (i = 0; i < VERY_LARGE_NUMBER; i++) {
+              /* 每隔一段时间重置看门狗 */
+              if ((i % 10000) == 0) {
+                  /* 重置软锁定检测器 */
+                  touch_softlockup_watchdog();
+                  
+                  /* 也重置 NMI 看门狗 */
+                  touch_nmi_watchdog();
+                  
+                  /* 允许调度其他任务 */
+                  cond_resched();
+              }
+              
+              do_work(i);
+          }
+          
+          return 0;
+      }
+
+  - description: "自定义 SysRq 处理"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/sysrq.h>
+      
+      static void my_sysrq_handler(int key)
+      {
+          pr_info("My SysRq handler triggered\n");
+          /* 执行调试操作 */
+          dump_my_driver_state();
+      }
+      
+      static const struct sysrq_key_op my_sysrq_op = {
+          .handler = my_sysrq_handler,
+          .help_msg = "my-debug(y)",
+          .action_msg = "Dump my driver state",
+          .enable_mask = SYSRQ_ENABLE_DUMP,
+      };
+      
+      static int __init my_init(void)
+      {
+          /* 注册 'y' 键 */
+          return register_sysrq_key('y', &my_sysrq_op);
+      }
+      
+      static void __exit my_exit(void)
+      {
+          unregister_sysrq_key('y', &my_sysrq_op);
+      }
+
+  - description: "触发人为 panic（测试用）"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/kernel.h>
+      
+      /* 通过 SysRq 触发 panic */
+      /* echo c > /proc/sysrq-trigger */
+      
+      /* 在代码中触发 */
+      static void trigger_test_panic(void)
+      {
+          /* 仅用于测试 kdump 等功能 */
+          panic("Test panic for kdump verification");
+      }
+      
+      /* 或使用 BUG() */
+      static void trigger_bug(void)
+      {
+          BUG();  /* 触发 oops，可能升级为 panic */
+      }
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+configuration:
+  description: "Panic 相关内核配置"
+  icon: "⚙️"
+
+  kernel_options:
+    PANIC_ON_OOPS:
+      description: "oops 时升级为 panic"
+      default: "n"
+      
+    PANIC_TIMEOUT:
+      description: "panic 后自动重启延迟（秒）"
+      default: "0 (不重启)"
+
+    SOFTLOCKUP_DETECTOR:
+      description: "启用软锁定检测"
+      default: "y"
+
+    HARDLOCKUP_DETECTOR:
+      description: "启用硬锁定检测"
+      requires: "NMI 支持"
+
+    DETECT_HUNG_TASK:
+      description: "启用挂起任务检测"
+      default: "y"
+
+    CRASH_DUMP:
+      description: "启用 kdump 支持"
+      default: "n"
+
+    KEXEC:
+      description: "启用 kexec 系统调用"
+      default: "y"
+
+  boot_parameters:
+    panic:
+      description: "panic 超时（秒）"
+      example: "panic=30"
+
+    oops:
+      description: "oops 行为"
+      values:
+        panic: "oops 升级为 panic"
+
+    crashkernel:
+      description: "为 kdump 预留内存"
+      example: "crashkernel=256M"
+
+    softlockup_panic:
+      description: "软锁定触发 panic"
+      example: "softlockup_panic=1"
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.0":
+    - "基础 panic 和 oops 机制"
+    - "BUG/WARN 宏"
+    - "SysRq 支持"
+  "2.6.13":
+    - "kdump 支持"
+  "2.6.20":
+    - "软锁定检测器"
+  "2.6.26":
+    - "硬锁定检测器"
+  "3.9":
+    - "BUILD_BUG_ON_MSG"
+  "4.0":
+    - "改进的看门狗配置"
+  "5.0":
+    - "WARN 输出改进"
+    - "污染标志扩展"
+  "5.15":
+    - "panic_print 参数"
+    - "改进的 panic 信息"

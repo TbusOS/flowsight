@@ -1,0 +1,834 @@
+# Ext4 File System Knowledge Base
+# Reference: https://www.kernel.org/doc/html/latest/filesystems/ext4/
+# Kernel Version: 2.6.28+ (ext4), 4.0+ (current APIs)
+
+# ============================================================
+# EXT4 OVERVIEW
+# ============================================================
+
+ext4_overview:
+  description: "Ext4 - 第四代扩展文件系统"
+  header: "fs/ext4/ext4.h"
+  icon: "📦"
+  kernel_version: "2.6.28+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  features:
+    - name: "extent"
+      description: "基于 extent 的块分配，替代间接块"
+    - name: "journal"
+      description: "JBD2 日志系统保证一致性"
+    - name: "delayed_allocation"
+      description: "延迟分配，提高性能"
+    - name: "inline_data"
+      description: "小文件内联存储"
+    - name: "bigalloc"
+      description: "大块分配 (多个块为一个簇)"
+    - name: "project_quota"
+      description: "项目配额支持"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  ext4_sb_info:
+    pattern: 'struct ext4_sb_info\s*\{'
+    description: "Ext4 超级块信息 (内存结构)"
+    file: "fs/ext4/ext4.h"
+    fields:
+      - name: "s_es"
+        type: "struct ext4_super_block *"
+        description: "磁盘超级块"
+      - name: "s_sbh"
+        type: "struct buffer_head *"
+        description: "超级块 buffer_head"
+      - name: "s_groups_count"
+        type: "ext4_group_t"
+        description: "块组数量"
+      - name: "s_blocksize"
+        type: "unsigned long"
+        description: "块大小"
+      - name: "s_inode_size"
+        type: "int"
+        description: "inode 大小"
+      - name: "s_inodes_per_group"
+        type: "unsigned long"
+        description: "每组 inode 数"
+      - name: "s_blocks_per_group"
+        type: "ext4_fsblk_t"
+        description: "每组块数"
+      - name: "s_journal"
+        type: "struct journal_s *"
+        description: "JBD2 日志句柄"
+      - name: "s_mount_state"
+        type: "unsigned int"
+        description: "挂载状态"
+      - name: "s_mb_stats"
+        type: "unsigned int"
+        description: "多块分配统计"
+      - name: "s_flex_groups"
+        type: "struct flex_groups *"
+        description: "flex 块组数组"
+      - name: "s_mballoc"
+        type: "struct ext4_locality_group *"
+        description: "多块分配数据"
+
+  ext4_inode_info:
+    pattern: 'struct ext4_inode_info\s*\{'
+    description: "Ext4 inode 信息 (内存结构)"
+    file: "fs/ext4/ext4.h"
+    fields:
+      - name: "vfs_inode"
+        type: "struct inode"
+        description: "VFS inode (必须在最后)"
+      - name: "i_data"
+        type: "__le32[EXT4_N_BLOCKS]"
+        description: "块指针/extent 根"
+      - name: "i_flags"
+        type: "__u32"
+        description: "inode 标志"
+      - name: "i_file_acl"
+        type: "ext4_fsblk_t"
+        description: "扩展属性块"
+      - name: "i_disksize"
+        type: "loff_t"
+        description: "磁盘大小"
+      - name: "i_reserved_data_blocks"
+        type: "unsigned int"
+        description: "延迟分配保留块"
+      - name: "i_reserved_meta_blocks"
+        type: "unsigned int"
+        description: "保留元数据块"
+      - name: "i_allocated_meta_blocks"
+        type: "unsigned int"
+        description: "已分配元数据块"
+      - name: "i_es_tree"
+        type: "struct rb_root"
+        description: "extent 状态树"
+      - name: "i_es_lock"
+        type: "rwlock_t"
+        description: "extent 状态锁"
+      - name: "jinode"
+        type: "struct jbd2_inode"
+        description: "JBD2 inode"
+
+  ext4_extent:
+    pattern: 'struct ext4_extent\s*\{'
+    description: "Ext4 extent 结构 (磁盘)"
+    file: "fs/ext4/ext4_extents.h"
+    fields:
+      - name: "ee_block"
+        type: "__le32"
+        description: "逻辑块号"
+      - name: "ee_len"
+        type: "__le16"
+        description: "extent 长度 (块数)"
+      - name: "ee_start_hi"
+        type: "__le16"
+        description: "物理块号高16位"
+      - name: "ee_start_lo"
+        type: "__le32"
+        description: "物理块号低32位"
+
+  ext4_extent_header:
+    pattern: 'struct ext4_extent_header\s*\{'
+    description: "Ext4 extent 头"
+    file: "fs/ext4/ext4_extents.h"
+    fields:
+      - name: "eh_magic"
+        type: "__le16"
+        description: "魔数 (0xF30A)"
+      - name: "eh_entries"
+        type: "__le16"
+        description: "有效条目数"
+      - name: "eh_max"
+        type: "__le16"
+        description: "最大条目数"
+      - name: "eh_depth"
+        type: "__le16"
+        description: "树深度 (0=叶节点)"
+      - name: "eh_generation"
+        type: "__le32"
+        description: "代次号"
+
+  ext4_extent_idx:
+    pattern: 'struct ext4_extent_idx\s*\{'
+    description: "Ext4 extent 索引节点"
+    file: "fs/ext4/ext4_extents.h"
+    fields:
+      - name: "ei_block"
+        type: "__le32"
+        description: "覆盖的逻辑块"
+      - name: "ei_leaf_lo"
+        type: "__le32"
+        description: "子节点块号低32位"
+      - name: "ei_leaf_hi"
+        type: "__le16"
+        description: "子节点块号高16位"
+      - name: "ei_unused"
+        type: "__u16"
+        description: "保留"
+
+  ext4_group_desc:
+    pattern: 'struct ext4_group_desc\s*\{'
+    description: "块组描述符"
+    file: "fs/ext4/ext4.h"
+    fields:
+      - name: "bg_block_bitmap_lo"
+        type: "__le32"
+        description: "块位图块号低32位"
+      - name: "bg_inode_bitmap_lo"
+        type: "__le32"
+        description: "inode 位图块号低32位"
+      - name: "bg_inode_table_lo"
+        type: "__le32"
+        description: "inode 表块号低32位"
+      - name: "bg_free_blocks_count_lo"
+        type: "__le16"
+        description: "空闲块数低16位"
+      - name: "bg_free_inodes_count_lo"
+        type: "__le16"
+        description: "空闲 inode 数低16位"
+      - name: "bg_used_dirs_count_lo"
+        type: "__le16"
+        description: "目录数低16位"
+      - name: "bg_flags"
+        type: "__le16"
+        description: "块组标志"
+      - name: "bg_checksum"
+        type: "__le16"
+        description: "校验和"
+
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # === 超级块操作 ===
+  ext4_fill_super:
+    pattern: 'ext4_fill_super\s*\(\s*(?P<sb>[^,]+)\s*,'
+    description: "填充 ext4 超级块"
+    file: "fs/ext4/super.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_put_super:
+    pattern: 'ext4_put_super\s*\(\s*(?P<sb>[^)]+)\s*\)'
+    description: "释放 ext4 超级块"
+    file: "fs/ext4/super.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_sync_fs:
+    pattern: 'ext4_sync_fs\s*\(\s*(?P<sb>[^,]+)\s*,\s*(?P<wait>[^)]+)\s*\)'
+    description: "同步 ext4 文件系统"
+    file: "fs/ext4/super.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_statfs:
+    pattern: 'ext4_statfs\s*\(\s*(?P<dentry>[^,]+)\s*,\s*(?P<buf>[^)]+)\s*\)'
+    description: "获取 ext4 统计信息"
+    file: "fs/ext4/super.c"
+    context: "process"
+    can_sleep: true
+
+  # === Inode 操作 ===
+  ext4_iget:
+    pattern: 'ext4_iget\s*\(\s*(?P<sb>[^,]+)\s*,\s*(?P<ino>[^,]+)\s*,'
+    description: "获取 ext4 inode"
+    file: "fs/ext4/inode.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_write_inode:
+    pattern: 'ext4_write_inode\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<wbc>[^)]+)\s*\)'
+    description: "写入 ext4 inode"
+    file: "fs/ext4/inode.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_evict_inode:
+    pattern: 'ext4_evict_inode\s*\(\s*(?P<inode>[^)]+)\s*\)'
+    description: "驱逐 ext4 inode"
+    file: "fs/ext4/inode.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_setattr:
+    pattern: 'ext4_setattr\s*\(\s*(?P<dentry>[^,]+)\s*,\s*(?P<attr>[^)]+)\s*\)'
+    description: "设置 ext4 inode 属性"
+    file: "fs/ext4/inode.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_getattr:
+    pattern: 'ext4_getattr\s*\(\s*(?P<path>[^,]+)\s*,\s*(?P<stat>[^,]+)\s*,'
+    description: "获取 ext4 inode 属性"
+    file: "fs/ext4/inode.c"
+    context: "process"
+    can_sleep: true
+
+  # === Extent 操作 ===
+  ext4_ext_map_blocks:
+    pattern: 'ext4_ext_map_blocks\s*\(\s*(?P<handle>[^,]+)\s*,\s*(?P<inode>[^,]+)\s*,\s*(?P<map>[^,]+)\s*,'
+    description: "映射 extent 到块"
+    file: "fs/ext4/extents.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_ext_truncate:
+    pattern: 'ext4_ext_truncate\s*\(\s*(?P<handle>[^,]+)\s*,\s*(?P<inode>[^)]+)\s*\)'
+    description: "截断 extent"
+    file: "fs/ext4/extents.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_ext_insert_extent:
+    pattern: 'ext4_ext_insert_extent\s*\(\s*(?P<handle>[^,]+)\s*,\s*(?P<inode>[^,]+)\s*,'
+    description: "插入 extent"
+    file: "fs/ext4/extents.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_ext_remove_space:
+    pattern: 'ext4_ext_remove_space\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<start>[^,]+)\s*,\s*(?P<end>[^)]+)\s*\)'
+    description: "移除 extent 空间"
+    file: "fs/ext4/extents.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_find_extent:
+    pattern: 'ext4_find_extent\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<block>[^,]+)\s*,'
+    description: "查找 extent"
+    file: "fs/ext4/extents.c"
+    context: "process"
+    can_sleep: true
+
+  # === 日志操作 ===
+  ext4_journal_start:
+    pattern: 'ext4_journal_start\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<type>[^,]+)\s*,\s*(?P<blocks>[^)]+)\s*\)'
+    description: "开始 ext4 日志事务"
+    file: "fs/ext4/ext4_jbd2.h"
+    context: "process"
+    can_sleep: true
+
+  ext4_journal_stop:
+    pattern: 'ext4_journal_stop\s*\(\s*(?P<handle>[^)]+)\s*\)'
+    description: "停止 ext4 日志事务"
+    file: "fs/ext4/ext4_jbd2.h"
+    context: "process"
+    can_sleep: true
+
+  ext4_journal_get_write_access:
+    pattern: 'ext4_journal_get_write_access\s*\(\s*(?P<handle>[^,]+)\s*,\s*(?P<bh>[^)]+)\s*\)'
+    description: "获取日志写访问权限"
+    file: "fs/ext4/ext4_jbd2.h"
+    context: "process"
+    can_sleep: true
+
+  ext4_handle_dirty_metadata:
+    pattern: 'ext4_handle_dirty_metadata\s*\(\s*(?P<handle>[^,]+)\s*,\s*(?P<inode>[^,]+)\s*,\s*(?P<bh>[^)]+)\s*\)'
+    description: "标记元数据脏"
+    file: "fs/ext4/ext4_jbd2.h"
+    context: "process"
+    can_sleep: true
+
+  # === 块分配 ===
+  ext4_mb_new_blocks:
+    pattern: 'ext4_mb_new_blocks\s*\(\s*(?P<handle>[^,]+)\s*,\s*(?P<ar>[^,]+)\s*,'
+    description: "多块分配器分配块"
+    file: "fs/ext4/mballoc.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_mb_release_context:
+    pattern: 'ext4_mb_release_context\s*\(\s*(?P<ac>[^)]+)\s*\)'
+    description: "释放分配上下文"
+    file: "fs/ext4/mballoc.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_free_blocks:
+    pattern: 'ext4_free_blocks\s*\(\s*(?P<handle>[^,]+)\s*,\s*(?P<inode>[^,]+)\s*,'
+    description: "释放块"
+    file: "fs/ext4/mballoc.c"
+    context: "process"
+    can_sleep: true
+
+  # === 目录操作 ===
+  ext4_lookup:
+    pattern: 'ext4_lookup\s*\(\s*(?P<dir>[^,]+)\s*,\s*(?P<dentry>[^,]+)\s*,'
+    description: "ext4 目录查找"
+    file: "fs/ext4/namei.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_create:
+    pattern: 'ext4_create\s*\(\s*(?P<dir>[^,]+)\s*,\s*(?P<dentry>[^,]+)\s*,\s*(?P<mode>[^,]+)\s*,'
+    description: "ext4 创建文件"
+    file: "fs/ext4/namei.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_mkdir:
+    pattern: 'ext4_mkdir\s*\(\s*(?P<dir>[^,]+)\s*,\s*(?P<dentry>[^,]+)\s*,\s*(?P<mode>[^)]+)\s*\)'
+    description: "ext4 创建目录"
+    file: "fs/ext4/namei.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_unlink:
+    pattern: 'ext4_unlink\s*\(\s*(?P<dir>[^,]+)\s*,\s*(?P<dentry>[^)]+)\s*\)'
+    description: "ext4 删除链接"
+    file: "fs/ext4/namei.c"
+    context: "process"
+    can_sleep: true
+
+  ext4_rename:
+    pattern: 'ext4_rename2\s*\(\s*(?P<old_dir>[^,]+)\s*,\s*(?P<old_dentry>[^,]+)\s*,'
+    description: "ext4 重命名"
+    file: "fs/ext4/namei.c"
+    context: "process"
+    can_sleep: true
+
+
+# ============================================================
+# OPERATIONS STRUCTURES
+# ============================================================
+
+operations:
+  ext4_file_operations:
+    description: "Ext4 文件操作"
+    structure: "file_operations"
+    callbacks:
+      open:
+        pattern: '\.open\s*=\s*ext4_file_open'
+        description: "打开文件"
+      release:
+        pattern: '\.release\s*=\s*ext4_release_file'
+        description: "关闭文件"
+      read_iter:
+        pattern: '\.read_iter\s*=\s*ext4_file_read_iter'
+        description: "读取文件"
+      write_iter:
+        pattern: '\.write_iter\s*=\s*ext4_file_write_iter'
+        description: "写入文件"
+      mmap:
+        pattern: '\.mmap\s*=\s*ext4_file_mmap'
+        description: "内存映射"
+      fsync:
+        pattern: '\.fsync\s*=\s*ext4_sync_file'
+        description: "同步文件"
+      llseek:
+        pattern: '\.llseek\s*=\s*ext4_llseek'
+        description: "定位"
+      splice_read:
+        pattern: '\.splice_read\s*=\s*generic_file_splice_read'
+        description: "零拷贝读"
+
+  ext4_dir_operations:
+    description: "Ext4 目录操作"
+    structure: "file_operations"
+    callbacks:
+      read:
+        pattern: '\.read\s*=\s*generic_read_dir'
+        description: "读取目录"
+      iterate_shared:
+        pattern: '\.iterate_shared\s*=\s*ext4_readdir'
+        description: "遍历目录"
+      fsync:
+        pattern: '\.fsync\s*=\s*ext4_sync_file'
+        description: "同步目录"
+      release:
+        pattern: '\.release\s*=\s*ext4_release_dir'
+        description: "关闭目录"
+
+  ext4_file_inode_operations:
+    description: "Ext4 文件 inode 操作"
+    structure: "inode_operations"
+    callbacks:
+      setattr:
+        pattern: '\.setattr\s*=\s*ext4_setattr'
+        description: "设置属性"
+      getattr:
+        pattern: '\.getattr\s*=\s*ext4_file_getattr'
+        description: "获取属性"
+      listxattr:
+        pattern: '\.listxattr\s*=\s*ext4_listxattr'
+        description: "列出扩展属性"
+      fiemap:
+        pattern: '\.fiemap\s*=\s*ext4_fiemap'
+        description: "文件映射"
+
+  ext4_dir_inode_operations:
+    description: "Ext4 目录 inode 操作"
+    structure: "inode_operations"
+    callbacks:
+      create:
+        pattern: '\.create\s*=\s*ext4_create'
+        description: "创建文件"
+      lookup:
+        pattern: '\.lookup\s*=\s*ext4_lookup'
+        description: "查找"
+      link:
+        pattern: '\.link\s*=\s*ext4_link'
+        description: "硬链接"
+      unlink:
+        pattern: '\.unlink\s*=\s*ext4_unlink'
+        description: "删除"
+      symlink:
+        pattern: '\.symlink\s*=\s*ext4_symlink'
+        description: "符号链接"
+      mkdir:
+        pattern: '\.mkdir\s*=\s*ext4_mkdir'
+        description: "创建目录"
+      rmdir:
+        pattern: '\.rmdir\s*=\s*ext4_rmdir'
+        description: "删除目录"
+      rename:
+        pattern: '\.rename\s*=\s*ext4_rename2'
+        description: "重命名"
+
+  ext4_aops:
+    description: "Ext4 地址空间操作"
+    structure: "address_space_operations"
+    callbacks:
+      readpage:
+        pattern: '\.readpage\s*=\s*ext4_readpage'
+        description: "读取页面"
+      readahead:
+        pattern: '\.readahead\s*=\s*ext4_readahead'
+        description: "预读"
+      writepage:
+        pattern: '\.writepage\s*=\s*ext4_writepage'
+        description: "写回页面"
+      writepages:
+        pattern: '\.writepages\s*=\s*ext4_writepages'
+        description: "批量写回"
+      write_begin:
+        pattern: '\.write_begin\s*=\s*ext4_write_begin'
+        description: "写入开始"
+      write_end:
+        pattern: '\.write_end\s*=\s*ext4_write_end'
+        description: "写入结束"
+      direct_IO:
+        pattern: '\.direct_IO\s*=\s*ext4_direct_IO'
+        description: "直接 I/O"
+      bmap:
+        pattern: '\.bmap\s*=\s*ext4_bmap'
+        description: "块映射"
+
+  ext4_sops:
+    description: "Ext4 超级块操作"
+    structure: "super_operations"
+    callbacks:
+      alloc_inode:
+        pattern: '\.alloc_inode\s*=\s*ext4_alloc_inode'
+        description: "分配 inode"
+      free_inode:
+        pattern: '\.free_inode\s*=\s*ext4_free_in_core_inode'
+        description: "释放 inode"
+      write_inode:
+        pattern: '\.write_inode\s*=\s*ext4_write_inode'
+        description: "写入 inode"
+      evict_inode:
+        pattern: '\.evict_inode\s*=\s*ext4_evict_inode'
+        description: "驱逐 inode"
+      put_super:
+        pattern: '\.put_super\s*=\s*ext4_put_super'
+        description: "释放超级块"
+      sync_fs:
+        pattern: '\.sync_fs\s*=\s*ext4_sync_fs'
+        description: "同步文件系统"
+      statfs:
+        pattern: '\.statfs\s*=\s*ext4_statfs'
+        description: "文件系统统计"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  ext4_file_write:
+    description: "Ext4 文件写入路径"
+    trigger: "write() 系统调用"
+    chain:
+      - function: "ksys_write"
+        file: "fs/read_write.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "vfs_write"
+        file: "fs/read_write.c"
+        description: "VFS 写入"
+      - function: "ext4_file_write_iter"
+        file: "fs/ext4/file.c"
+        description: "Ext4 写入迭代器"
+      - function: "ext4_buffered_write_iter"
+        file: "fs/ext4/file.c"
+        description: "缓冲写入"
+      - function: "generic_perform_write"
+        file: "mm/filemap.c"
+        description: "通用写入"
+      - function: "ext4_write_begin"
+        file: "fs/ext4/inode.c"
+        description: "准备页面"
+        is_user_entry: true
+      - function: "ext4_journal_start"
+        file: "fs/ext4/ext4_jbd2.h"
+        description: "开始日志事务"
+      - function: "grab_cache_page_write_begin"
+        file: "mm/filemap.c"
+        description: "获取页面"
+      - function: "ext4_write_end"
+        file: "fs/ext4/inode.c"
+        description: "完成写入"
+        is_user_entry: true
+      - function: "ext4_journal_stop"
+        file: "fs/ext4/ext4_jbd2.h"
+        description: "提交事务"
+
+  ext4_writeback:
+    description: "Ext4 写回路径"
+    trigger: "sync 或内存压力"
+    chain:
+      - function: "do_writepages"
+        file: "mm/page-writeback.c"
+        description: "写回入口"
+        context: "process"
+      - function: "ext4_writepages"
+        file: "fs/ext4/inode.c"
+        description: "Ext4 批量写回"
+      - function: "ext4_io_submit_init"
+        file: "fs/ext4/page-io.c"
+        description: "初始化 I/O 提交"
+      - function: "mpage_prepare_extent_to_map"
+        file: "fs/ext4/inode.c"
+        description: "准备 extent"
+      - function: "ext4_map_blocks"
+        file: "fs/ext4/inode.c"
+        description: "映射块"
+      - function: "ext4_ext_map_blocks"
+        file: "fs/ext4/extents.c"
+        description: "extent 映射"
+      - function: "ext4_io_submit"
+        file: "fs/ext4/page-io.c"
+        description: "提交 I/O"
+      - function: "submit_bio"
+        file: "block/blk-core.c"
+        description: "提交到块层"
+
+  ext4_extent_insert:
+    description: "Ext4 extent 插入路径"
+    trigger: "分配新块"
+    chain:
+      - function: "ext4_map_blocks"
+        file: "fs/ext4/inode.c"
+        description: "映射块入口"
+        context: "process"
+      - function: "ext4_ext_map_blocks"
+        file: "fs/ext4/extents.c"
+        description: "extent 映射"
+      - function: "ext4_find_extent"
+        file: "fs/ext4/extents.c"
+        description: "查找 extent"
+      - function: "ext4_ext_search_left"
+        file: "fs/ext4/extents.c"
+        description: "搜索左边界"
+      - function: "ext4_ext_search_right"
+        file: "fs/ext4/extents.c"
+        description: "搜索右边界"
+      - function: "ext4_mb_new_blocks"
+        file: "fs/ext4/mballoc.c"
+        description: "分配块"
+      - function: "ext4_ext_insert_extent"
+        file: "fs/ext4/extents.c"
+        description: "插入 extent"
+      - function: "ext4_ext_dirty"
+        file: "fs/ext4/extents.c"
+        description: "标记脏"
+
+  ext4_journal_commit:
+    description: "Ext4 日志提交路径"
+    trigger: "事务超时或 sync"
+    chain:
+      - function: "jbd2_journal_commit_transaction"
+        file: "fs/jbd2/commit.c"
+        description: "提交事务"
+        context: "process (kjournald)"
+      - function: "jbd2_journal_write_metadata_buffer"
+        file: "fs/jbd2/journal.c"
+        description: "写元数据"
+      - function: "submit_bh"
+        file: "fs/buffer.c"
+        description: "提交 buffer_head"
+      - function: "journal_finish_inode_data_buffers"
+        file: "fs/jbd2/commit.c"
+        description: "完成 inode 数据"
+      - function: "jbd2_journal_wait_for_commit"
+        file: "fs/jbd2/journal.c"
+        description: "等待提交完成"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "Ext4 extent 读取示例"
+    kernel_version: "4.0+"
+    code: |
+      /* 查找 extent 并读取 */
+      static int ext4_read_extent(struct inode *inode, ext4_lblk_t lblk)
+      {
+          struct ext4_ext_path *path = NULL;
+          struct ext4_extent *ex;
+          ext4_fsblk_t pblk;
+          int depth;
+          int err;
+
+          /* 查找 extent */
+          path = ext4_find_extent(inode, lblk, NULL, 0);
+          if (IS_ERR(path))
+              return PTR_ERR(path);
+
+          depth = ext_depth(inode);
+          ex = path[depth].p_ext;
+
+          if (!ex) {
+              /* 没有找到 extent，是空洞 */
+              ext4_ext_drop_refs(path);
+              kfree(path);
+              return 0;
+          }
+
+          /* 获取物理块号 */
+          pblk = ext4_ext_pblock(ex) + (lblk - le32_to_cpu(ex->ee_block));
+          
+          ext4_ext_drop_refs(path);
+          kfree(path);
+          
+          return pblk;
+      }
+
+  - description: "Ext4 日志事务示例"
+    kernel_version: "4.0+"
+    code: |
+      /* 在日志中修改元数据 */
+      static int ext4_modify_metadata(struct inode *inode,
+                                      struct buffer_head *bh)
+      {
+          handle_t *handle;
+          int err;
+
+          /* 开始事务，预留 2 个块 */
+          handle = ext4_journal_start(inode, EXT4_HT_INODE, 2);
+          if (IS_ERR(handle))
+              return PTR_ERR(handle);
+
+          /* 获取写访问权限 */
+          err = ext4_journal_get_write_access(handle, bh);
+          if (err)
+              goto out;
+
+          /* 修改数据 */
+          /* ... 在 bh->b_data 中修改 ... */
+
+          /* 标记脏 */
+          err = ext4_handle_dirty_metadata(handle, inode, bh);
+
+      out:
+          ext4_journal_stop(handle);
+          return err;
+      }
+
+  - description: "Ext4 块分配示例"
+    kernel_version: "4.0+"
+    code: |
+      /* 分配新块 */
+      static int ext4_alloc_block(struct inode *inode, 
+                                  ext4_lblk_t lblk,
+                                  ext4_fsblk_t *pblk)
+      {
+          struct ext4_map_blocks map;
+          handle_t *handle;
+          int ret;
+
+          map.m_lblk = lblk;
+          map.m_len = 1;
+          map.m_flags = 0;
+
+          handle = ext4_journal_start(inode, EXT4_HT_WRITE_PAGE, 
+                                      EXT4_DATA_TRANS_BLOCKS(inode->i_sb));
+          if (IS_ERR(handle))
+              return PTR_ERR(handle);
+
+          /* 分配块 */
+          ret = ext4_map_blocks(handle, inode, &map, 
+                                EXT4_GET_BLOCKS_CREATE);
+          
+          ext4_journal_stop(handle);
+          
+          if (ret > 0) {
+              *pblk = map.m_pblk;
+              return 0;
+          }
+          return ret;
+      }
+
+  - description: "Ext4 目录遍历示例"
+    kernel_version: "4.0+"
+    code: |
+      /* 遍历目录条目 */
+      static int ext4_iterate_dir(struct file *file, 
+                                  struct dir_context *ctx)
+      {
+          struct inode *inode = file_inode(file);
+          struct ext4_dir_entry_2 *de;
+          struct buffer_head *bh = NULL;
+          ext4_lblk_t block;
+          unsigned int offset;
+          int err = 0;
+
+          while (ctx->pos < inode->i_size) {
+              block = ctx->pos >> inode->i_blkbits;
+              offset = ctx->pos & (inode->i_sb->s_blocksize - 1);
+
+              bh = ext4_bread(NULL, inode, block, 0);
+              if (IS_ERR(bh)) {
+                  err = PTR_ERR(bh);
+                  break;
+              }
+              if (!bh) {
+                  ctx->pos += inode->i_sb->s_blocksize - offset;
+                  continue;
+              }
+
+              de = (struct ext4_dir_entry_2 *)(bh->b_data + offset);
+              
+              while (offset < inode->i_sb->s_blocksize) {
+                  if (de->inode) {
+                      if (!dir_emit(ctx, de->name, de->name_len,
+                                    le32_to_cpu(de->inode),
+                                    get_dtype(de->file_type))) {
+                          brelse(bh);
+                          return 0;
+                      }
+                  }
+                  ctx->pos += ext4_rec_len(de);
+                  offset += ext4_rec_len(de);
+                  de = (void *)de + ext4_rec_len(de);
+              }
+              brelse(bh);
+          }
+          return err;
+      }

@@ -1,0 +1,746 @@
+# Linux Kernel Printk Subsystem Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/core-api/printk-basics.html
+# Kernel source: kernel/printk/, include/linux/printk.h
+# Kernel Version: 2.6.0+
+# ============================================================
+
+# ============================================================
+# PRINTK OVERVIEW
+# ============================================================
+printk_overview:
+  description: "Linux 内核打印子系统"
+  header: "linux/printk.h"
+  icon: "📝"
+  kernel_version: "2.6.0+"
+  
+  key_concepts:
+    purpose:
+      description: "内核日志记录机制"
+      notes:
+        - "向控制台和日志缓冲区输出消息"
+        - "支持多级日志级别"
+        - "支持结构化日志（5.0+）"
+        - "可在任何上下文中调用（包括中断）"
+    
+    log_levels:
+      description: "日志级别（0-7，数字越小优先级越高）"
+      levels:
+        KERN_EMERG: "0 - 系统不可用"
+        KERN_ALERT: "1 - 必须立即采取行动"
+        KERN_CRIT: "2 - 严重条件"
+        KERN_ERR: "3 - 错误条件"
+        KERN_WARNING: "4 - 警告条件"
+        KERN_NOTICE: "5 - 正常但重要的条件"
+        KERN_INFO: "6 - 信息性消息"
+        KERN_DEBUG: "7 - 调试级别消息"
+
+# ============================================================
+# PRINTK FUNCTIONS
+# ============================================================
+printk_functions:
+  description: "printk 核心函数"
+  header: "linux/printk.h"
+  icon: "🖨️"
+
+  kernel_functions:
+    printk:
+      pattern: 'printk\s*\(\s*(?P<level>KERN_\w+)?\s*"'
+      description: "内核基础打印函数"
+      context: "any"
+      can_sleep: false
+      parameters:
+        - name: "fmt"
+          type: "const char *"
+          description: "格式字符串（可带级别前缀）"
+        - name: "..."
+          type: "variadic"
+          description: "可变参数"
+      notes:
+        - "可在任何上下文调用，包括中断"
+        - "使用 ring buffer 存储日志"
+        - "可能会很慢，避免在热路径使用"
+
+    vprintk:
+      pattern: 'vprintk\s*\(\s*(?P<fmt>\w+)\s*,\s*(?P<args>\w+)\s*\)'
+      description: "使用 va_list 的 printk"
+      context: "any"
+      can_sleep: false
+
+    printk_ratelimit:
+      pattern: 'printk_ratelimit\s*\(\s*\)'
+      description: "检查是否应该限流打印"
+      context: "any"
+      returns: "bool - 可以打印返回 true"
+      example: |
+        if (printk_ratelimit())
+            printk(KERN_WARNING "Warning message\n");
+
+    printk_ratelimited:
+      pattern: 'printk_ratelimited\s*\('
+      description: "自动限流的 printk"
+      context: "any"
+      notes: "内置限流逻辑"
+
+    printk_once:
+      pattern: 'printk_once\s*\('
+      description: "只打印一次的 printk"
+      context: "any"
+      notes: "使用静态变量跟踪是否已打印"
+
+    printk_deferred:
+      pattern: 'printk_deferred\s*\('
+      description: "延迟打印（用于不安全上下文）"
+      context: "any"
+      notes: "在 NMI 等上下文中安全使用"
+
+# ============================================================
+# PR_* MACROS
+# ============================================================
+pr_macros:
+  description: "pr_* 便捷宏"
+  header: "linux/printk.h"
+  icon: "📋"
+  notes: "推荐使用，比直接 printk 更简洁"
+
+  macros:
+    pr_emerg:
+      pattern: 'pr_emerg\s*\(\s*"'
+      description: "系统紧急消息"
+      level: "KERN_EMERG"
+      example: 'pr_emerg("System is going down!\n");'
+
+    pr_alert:
+      pattern: 'pr_alert\s*\(\s*"'
+      description: "需立即处理的消息"
+      level: "KERN_ALERT"
+      example: 'pr_alert("Action required immediately!\n");'
+
+    pr_crit:
+      pattern: 'pr_crit\s*\(\s*"'
+      description: "严重错误消息"
+      level: "KERN_CRIT"
+      example: 'pr_crit("Critical error occurred!\n");'
+
+    pr_err:
+      pattern: 'pr_err\s*\(\s*"'
+      description: "错误消息"
+      level: "KERN_ERR"
+      example: 'pr_err("Error: operation failed\n");'
+
+    pr_warn:
+      pattern: 'pr_warn\s*\(\s*"'
+      description: "警告消息"
+      level: "KERN_WARNING"
+      example: 'pr_warn("Warning: low memory\n");'
+
+    pr_notice:
+      pattern: 'pr_notice\s*\(\s*"'
+      description: "重要通知"
+      level: "KERN_NOTICE"
+      example: 'pr_notice("Device initialized\n");'
+
+    pr_info:
+      pattern: 'pr_info\s*\(\s*"'
+      description: "信息消息"
+      level: "KERN_INFO"
+      example: 'pr_info("Module loaded\n");'
+
+    pr_debug:
+      pattern: 'pr_debug\s*\(\s*"'
+      description: "调试消息"
+      level: "KERN_DEBUG"
+      notes: "需要定义 DEBUG 或启用动态调试"
+      example: 'pr_debug("Entering function\n");'
+
+    pr_cont:
+      pattern: 'pr_cont\s*\(\s*"'
+      description: "继续上一行打印"
+      notes: "不添加时间戳和前缀"
+      example: |
+        pr_info("Status: ");
+        pr_cont("OK\n");
+
+    pr_devel:
+      pattern: 'pr_devel\s*\(\s*"'
+      description: "开发调试消息"
+      notes: "默认编译时移除"
+
+    pr_fmt:
+      pattern: '#define\s+pr_fmt\s*\(\s*fmt\s*\)'
+      description: "定义 pr_* 消息前缀"
+      example: |
+        #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
+# ============================================================
+# DEV_* MACROS
+# ============================================================
+dev_macros:
+  description: "dev_* 设备相关打印宏"
+  header: "linux/dev_printk.h"
+  icon: "🔌"
+  notes: "自动添加设备信息前缀"
+
+  macros:
+    dev_emerg:
+      pattern: 'dev_emerg\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "设备紧急消息"
+      level: "KERN_EMERG"
+      example: 'dev_emerg(dev, "Device critical failure!\n");'
+
+    dev_alert:
+      pattern: 'dev_alert\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "设备警报消息"
+      level: "KERN_ALERT"
+
+    dev_crit:
+      pattern: 'dev_crit\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "设备严重错误"
+      level: "KERN_CRIT"
+
+    dev_err:
+      pattern: 'dev_err\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "设备错误消息"
+      level: "KERN_ERR"
+      example: 'dev_err(&pdev->dev, "Failed to initialize: %d\n", ret);'
+
+    dev_warn:
+      pattern: 'dev_warn\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "设备警告消息"
+      level: "KERN_WARNING"
+
+    dev_notice:
+      pattern: 'dev_notice\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "设备通知"
+      level: "KERN_NOTICE"
+
+    dev_info:
+      pattern: 'dev_info\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "设备信息消息"
+      level: "KERN_INFO"
+      example: 'dev_info(&pdev->dev, "Device probed successfully\n");'
+
+    dev_dbg:
+      pattern: 'dev_dbg\s*\(\s*(?P<dev>\w+)\s*,'
+      description: "设备调试消息"
+      level: "KERN_DEBUG"
+      notes: "需要启用动态调试或定义 DEBUG"
+
+    dev_err_probe:
+      pattern: 'dev_err_probe\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<err>\w+)\s*,'
+      description: "probe 错误消息（处理 -EPROBE_DEFER）"
+      kernel_version: "5.9+"
+      notes: "如果错误是 -EPROBE_DEFER 则不打印错误"
+      example: |
+        clk = devm_clk_get(dev, "input");
+        if (IS_ERR(clk))
+            return dev_err_probe(dev, PTR_ERR(clk), "Failed to get clock\n");
+
+# ============================================================
+# RING BUFFER
+# ============================================================
+ring_buffer:
+  description: "内核日志环形缓冲区"
+  header: "linux/printk.h"
+  icon: "🔄"
+  kernel_source: "kernel/printk/printk.c"
+
+  data_structures:
+    printk_ringbuffer:
+      description: "printk 环形缓冲区（5.10+）"
+      file: "kernel/printk/printk_ringbuffer.h"
+      notes: "无锁环形缓冲区实现"
+
+    log:
+      description: "旧日志记录结构（5.10 前）"
+      file: "kernel/printk/printk.c"
+      fields:
+        - name: "ts_nsec"
+          type: "u64"
+          description: "时间戳（纳秒）"
+        - name: "len"
+          type: "u16"
+          description: "消息长度"
+        - name: "text_len"
+          type: "u16"
+          description: "文本长度"
+        - name: "dict_len"
+          type: "u16"
+          description: "字典长度"
+        - name: "facility"
+          type: "u8"
+          description: "设施"
+        - name: "flags"
+          type: "u8"
+          description: "标志"
+        - name: "level"
+          type: "u8"
+          description: "日志级别"
+
+  kernel_functions:
+    log_buf_len_get:
+      description: "获取日志缓冲区大小"
+      notes: "默认大小由 CONFIG_LOG_BUF_SHIFT 控制"
+
+    kmsg_dump_register:
+      pattern: 'kmsg_dump_register\s*\(\s*(?P<dumper>\w+)\s*\)'
+      description: "注册 kmsg 转储处理器"
+      context: "process"
+      can_sleep: true
+      example: |
+        static struct kmsg_dumper my_dumper = {
+            .dump = my_dump_func,
+        };
+        kmsg_dump_register(&my_dumper);
+
+    kmsg_dump_unregister:
+      pattern: 'kmsg_dump_unregister\s*\(\s*(?P<dumper>\w+)\s*\)'
+      description: "注销 kmsg 转储处理器"
+
+# ============================================================
+# CONSOLE SUBSYSTEM
+# ============================================================
+console:
+  description: "控制台子系统"
+  header: "linux/console.h"
+  icon: "🖥️"
+  kernel_source: "kernel/printk/printk.c"
+
+  data_structures:
+    console:
+      pattern: 'struct console\s*\{'
+      description: "控制台结构"
+      file: "include/linux/console.h"
+      fields:
+        - name: "name"
+          type: "char[16]"
+          description: "控制台名称"
+        - name: "write"
+          type: "void (*)(struct console *, const char *, unsigned)"
+          description: "输出函数"
+        - name: "read"
+          type: "int (*)(struct console *, char *, unsigned)"
+          description: "输入函数"
+        - name: "device"
+          type: "struct tty_driver *(*)(struct console *, int *)"
+          description: "获取 tty 设备"
+        - name: "unblank"
+          type: "void (*)(void)"
+          description: "解除空白"
+        - name: "setup"
+          type: "int (*)(struct console *, char *)"
+          description: "设置函数"
+        - name: "flags"
+          type: "short"
+          description: "控制台标志"
+        - name: "index"
+          type: "short"
+          description: "控制台索引"
+
+  console_flags:
+    CON_PRINTBUFFER: "启动时打印缓冲区内容"
+    CON_CONSDEV: "首选控制台"
+    CON_ENABLED: "控制台已启用"
+    CON_BOOT: "启动控制台"
+    CON_ANYTIME: "可在任何时候安全调用"
+    CON_BRL: "盲文控制台"
+
+  kernel_functions:
+    register_console:
+      pattern: 'register_console\s*\(\s*(?P<con>\w+)\s*\)'
+      description: "注册控制台"
+      context: "process"
+      can_sleep: true
+
+    unregister_console:
+      pattern: 'unregister_console\s*\(\s*(?P<con>\w+)\s*\)'
+      description: "注销控制台"
+      context: "process"
+
+    console_lock:
+      pattern: 'console_lock\s*\(\s*\)'
+      description: "获取控制台锁"
+      context: "process"
+      can_sleep: true
+
+    console_unlock:
+      pattern: 'console_unlock\s*\(\s*\)'
+      description: "释放控制台锁"
+      notes: "可能会刷新待输出的消息"
+
+    console_trylock:
+      pattern: 'console_trylock\s*\(\s*\)'
+      description: "尝试获取控制台锁"
+      returns: "int - 成功返回 1"
+
+# ============================================================
+# DYNAMIC DEBUG
+# ============================================================
+dynamic_debug:
+  description: "动态调试子系统"
+  header: "linux/dynamic_debug.h"
+  icon: "🔧"
+  kernel_config: "CONFIG_DYNAMIC_DEBUG"
+  kernel_source: "lib/dynamic_debug.c"
+
+  control_file:
+    path: "/sys/kernel/debug/dynamic_debug/control"
+    description: "动态调试控制文件"
+    operations:
+      enable_file: 'echo "file xxx.c +p" > control'
+      enable_func: 'echo "func xxx +p" > control'
+      enable_module: 'echo "module xxx +p" > control'
+      disable: 'echo "file xxx.c -p" > control'
+    flags:
+      p: "启用打印"
+      f: "包含函数名"
+      l: "包含行号"
+      m: "包含模块名"
+      t: "包含线程 ID"
+
+  kernel_functions:
+    dynamic_pr_debug:
+      pattern: 'dynamic_pr_debug\s*\('
+      description: "动态 pr_debug 实现"
+      notes: "当 CONFIG_DYNAMIC_DEBUG 启用时替换 pr_debug"
+
+    dynamic_dev_dbg:
+      pattern: 'dynamic_dev_dbg\s*\('
+      description: "动态 dev_dbg 实现"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  printk_flow:
+    description: "printk 执行流程"
+    chain:
+      - caller: "pr_* / dev_* / printk"
+        callee: "vprintk_emit"
+        context: "any"
+        description: "格式化并记录消息"
+      - caller: "vprintk_emit"
+        callee: "vprintk_store"
+        description: "存储到环形缓冲区"
+      - caller: "vprintk_emit"
+        callee: "console_unlock"
+        description: "尝试输出到控制台"
+      - caller: "console_unlock"
+        callee: "console->write"
+        description: "调用控制台驱动写函数"
+
+  early_printk_flow:
+    description: "早期 printk 流程"
+    chain:
+      - caller: "early_printk"
+        callee: "early_console->write"
+        context: "early boot"
+        description: "控制台未初始化时的打印"
+
+  console_registration:
+    description: "控制台注册流程"
+    chain:
+      - caller: "driver init"
+        callee: "register_console"
+        context: "process"
+        description: "注册新控制台"
+      - caller: "register_console"
+        callee: "try_enable_new_console"
+        description: "尝试启用控制台"
+      - caller: "register_console"
+        callee: "console_unlock"
+        description: "刷新已缓冲的消息"
+
+# ============================================================
+# SYSCTL AND PROC
+# ============================================================
+sysctl_proc:
+  description: "系统控制接口"
+  icon: "⚙️"
+
+  proc_files:
+    kmsg:
+      path: "/proc/kmsg"
+      description: "内核消息读取接口"
+      notes: "通常由 klogd/syslogd 读取"
+
+  sysctl:
+    printk:
+      path: "/proc/sys/kernel/printk"
+      description: "控制台日志级别"
+      format: "console_loglevel default_message_loglevel minimum_console_loglevel default_console_loglevel"
+      
+    printk_delay:
+      path: "/proc/sys/kernel/printk_delay"
+      description: "printk 延迟（毫秒）"
+      notes: "调试用，增加消息间延迟"
+
+    printk_ratelimit:
+      path: "/proc/sys/kernel/printk_ratelimit"
+      description: "printk 限流间隔（秒）"
+
+    printk_ratelimit_burst:
+      path: "/proc/sys/kernel/printk_ratelimit_burst"
+      description: "限流突发允许数量"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "基本 printk 使用"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/printk.h>
+      
+      /* 推荐：定义模块前缀 */
+      #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+      
+      static int __init my_init(void)
+      {
+          /* 使用 pr_* 宏 */
+          pr_info("Module initializing\n");
+          pr_debug("Debug info: value=%d\n", 42);
+          
+          /* 带参数的打印 */
+          pr_err("Error code: %d\n", -EINVAL);
+          
+          return 0;
+      }
+
+  - description: "设备驱动打印"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/device.h>
+      #include <linux/platform_device.h>
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct device *dev = &pdev->dev;
+          int ret;
+          
+          dev_info(dev, "Probing device\n");
+          
+          ret = do_something();
+          if (ret) {
+              dev_err(dev, "Operation failed: %d\n", ret);
+              return ret;
+          }
+          
+          /* 5.9+ 推荐用于 probe 错误 */
+          ret = devm_request_resource(dev);
+          if (ret)
+              return dev_err_probe(dev, ret, "Failed to get resource\n");
+          
+          dev_dbg(dev, "Debug: internal state=%d\n", state);
+          
+          return 0;
+      }
+
+  - description: "限流打印"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/printk.h>
+      #include <linux/ratelimit.h>
+      
+      /* 方式1：使用 printk_ratelimited */
+      static void handle_event(void)
+      {
+          /* 自动限流，避免日志泛滥 */
+          printk_ratelimited(KERN_WARNING "Event occurred\n");
+          
+          /* 或使用 pr_* 版本 */
+          pr_warn_ratelimited("Another event\n");
+      }
+      
+      /* 方式2：自定义限流状态 */
+      static DEFINE_RATELIMIT_STATE(my_ratelimit, 5 * HZ, 10);
+      
+      static void handle_frequent_event(void)
+      {
+          if (__ratelimit(&my_ratelimit))
+              pr_warn("Frequent event (limited)\n");
+      }
+      
+      /* 方式3：只打印一次 */
+      static void handle_once(void)
+      {
+          pr_warn_once("This message appears only once\n");
+      }
+
+  - description: "动态调试配置"
+    kernel_version: "2.6.30+"
+    code: |
+      /* 在代码中使用 pr_debug / dev_dbg */
+      #include <linux/printk.h>
+      
+      static void my_function(void)
+      {
+          pr_debug("Entering function\n");
+          
+          /* 处理... */
+          
+          pr_debug("Variable value: %d\n", var);
+      }
+      
+      /* 运行时启用调试：
+       * 
+       * # 启用文件中所有 pr_debug
+       * echo "file mydriver.c +p" > /sys/kernel/debug/dynamic_debug/control
+       * 
+       * # 启用特定函数
+       * echo "func my_function +p" > /sys/kernel/debug/dynamic_debug/control
+       * 
+       * # 启用模块所有调试
+       * echo "module mydriver +p" > /sys/kernel/debug/dynamic_debug/control
+       * 
+       * # 添加函数名和行号
+       * echo "file mydriver.c +pfl" > /sys/kernel/debug/dynamic_debug/control
+       * 
+       * # 禁用
+       * echo "file mydriver.c -p" > /sys/kernel/debug/dynamic_debug/control
+       */
+
+  - description: "自定义控制台驱动"
+    kernel_version: "2.6.0+"
+    code: |
+      #include <linux/console.h>
+      #include <linux/init.h>
+      
+      static void my_console_write(struct console *con, 
+                                   const char *s, unsigned n)
+      {
+          /* 输出到自定义设备 */
+          while (n-- > 0)
+              my_hw_write_char(*s++);
+      }
+      
+      static struct console my_console = {
+          .name   = "mycon",
+          .write  = my_console_write,
+          .flags  = CON_PRINTBUFFER | CON_ENABLED,
+          .index  = -1,
+      };
+      
+      static int __init my_console_init(void)
+      {
+          register_console(&my_console);
+          return 0;
+      }
+      console_initcall(my_console_init);
+
+  - description: "kmsg 转储器"
+    kernel_version: "2.6.37+"
+    code: |
+      #include <linux/kmsg_dump.h>
+      
+      static void my_dump(struct kmsg_dumper *dumper,
+                          enum kmsg_dump_reason reason)
+      {
+          char buf[1024];
+          size_t len;
+          
+          /* 获取日志内容 */
+          while (kmsg_dump_get_line(dumper, true, buf, sizeof(buf), &len)) {
+              /* 保存到持久存储 */
+              save_to_flash(buf, len);
+          }
+      }
+      
+      static struct kmsg_dumper my_dumper = {
+          .dump = my_dump,
+      };
+      
+      static int __init my_init(void)
+      {
+          return kmsg_dump_register(&my_dumper);
+      }
+      
+      static void __exit my_exit(void)
+      {
+          kmsg_dump_unregister(&my_dumper);
+      }
+
+# ============================================================
+# FORMAT SPECIFIERS
+# ============================================================
+format_specifiers:
+  description: "printk 格式说明符"
+  icon: "📐"
+
+  kernel_specific:
+    "%pS":
+      description: "符号名 + 偏移"
+      example: 'printk("Function: %pS\n", func_ptr);'
+      output: "my_function+0x10/0x100 [module]"
+
+    "%ps":
+      description: "仅符号名"
+      example: 'printk("Function: %ps\n", func_ptr);'
+
+    "%pB":
+      description: "回溯符号"
+      notes: "用于堆栈跟踪"
+
+    "%pI4":
+      description: "IPv4 地址"
+      example: 'printk("IP: %pI4\n", &ip_addr);'
+
+    "%pI6":
+      description: "IPv6 地址"
+
+    "%pM":
+      description: "MAC 地址（冒号分隔）"
+      example: 'printk("MAC: %pM\n", mac_addr);'
+
+    "%pm":
+      description: "MAC 地址（无分隔符）"
+
+    "%pUb":
+      description: "UUID（大写）"
+
+    "%pUl":
+      description: "UUID（小写）"
+
+    "%pV":
+      description: "va_format 结构"
+
+    "%pK":
+      description: "内核指针（根据权限隐藏）"
+      notes: "受 kptr_restrict sysctl 控制"
+
+    "%px":
+      description: "原始指针值（调试用）"
+      notes: "会泄露内核地址，仅调试使用"
+
+    "%pOF":
+      description: "设备树节点完整路径"
+      kernel_version: "4.9+"
+
+    "%pfw":
+      description: "固件节点名"
+      kernel_version: "5.5+"
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.0":
+    - "基础 printk 机制"
+    - "控制台子系统"
+  "2.6.30":
+    - "动态调试 (CONFIG_DYNAMIC_DEBUG)"
+  "2.6.37":
+    - "kmsg_dump 接口"
+  "3.5":
+    - "pr_* 宏改进"
+  "4.9":
+    - "%pOF 设备树格式说明符"
+  "5.0":
+    - "结构化日志记录"
+  "5.5":
+    - "%pfw 固件节点格式"
+  "5.9":
+    - "dev_err_probe() 添加"
+  "5.10":
+    - "新的无锁环形缓冲区实现"
+    - "printk 线程化"

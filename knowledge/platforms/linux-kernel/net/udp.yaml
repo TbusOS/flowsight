@@ -1,0 +1,755 @@
+# Linux Kernel UDP Protocol Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/networking/
+# Kernel Version: 5.0+
+
+# ============================================================
+# UDP CORE
+# ============================================================
+
+udp_core:
+  description: "UDP Protocol Core - UDP 协议核心"
+  header: "net/ipv4/udp.c"
+  icon: "📨"
+  kernel_version: "5.0+"
+
+  context:
+    type: "process/softirq"
+    can_sleep: "depends on context"
+    description: "发送在进程上下文，接收在软中断上下文"
+
+  characteristics:
+    - "无连接协议"
+    - "不保证可靠传输"
+    - "不保证顺序"
+    - "无拥塞控制"
+    - "低开销，低延迟"
+    - "支持广播和多播"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  udp_sock:
+    description: "UDP Socket Structure - UDP 套接字结构"
+    header: "include/linux/udp.h"
+    pattern: 'struct udp_sock\s*\{'
+    fields:
+      # 继承自 inet_sock
+      - name: "inet"
+        type: "struct inet_sock"
+        description: "继承的 inet socket"
+
+      # UDP 特有字段
+      - name: "pending"
+        type: "unsigned int"
+        description: "待处理的数据类型 (AF_INET/AF_INET6)"
+      - name: "corkflag"
+        type: "unsigned int"
+        description: "cork 模式标志"
+      - name: "encap_type"
+        type: "__u8"
+        description: "封装类型 (UDP_ENCAP_*)"
+      - name: "len"
+        type: "__u16"
+        description: "cork 模式下的总长度"
+      - name: "gro_enabled"
+        type: "__u8"
+        description: "是否启用 GRO"
+      - name: "gro_receive"
+        type: "struct sk_buff *(*)(struct sock *, struct list_head *, struct sk_buff *)"
+        description: "GRO 接收回调"
+
+      # 封装回调
+      - name: "encap_rcv"
+        type: "int (*)(struct sock *, struct sk_buff *)"
+        description: "封装接收回调"
+      - name: "encap_err_lookup"
+        type: "int (*)(struct sock *, struct sk_buff *)"
+        description: "封装错误查找回调"
+      - name: "encap_destroy"
+        type: "void (*)(struct sock *)"
+        description: "封装销毁回调"
+
+      # 发送相关
+      - name: "pcslen"
+        type: "__u16"
+        description: "部分校验和长度"
+      - name: "pcrlen"
+        type: "__u16"
+        description: "部分校验和结果长度"
+
+  udphdr:
+    description: "UDP Header - UDP 头部"
+    header: "include/linux/udp.h"
+    pattern: 'struct udphdr\s*\{'
+    fields:
+      - name: "source"
+        type: "__be16"
+        description: "源端口"
+      - name: "dest"
+        type: "__be16"
+        description: "目的端口"
+      - name: "len"
+        type: "__be16"
+        description: "UDP 数据报长度 (头部 + 数据)"
+      - name: "check"
+        type: "__sum16"
+        description: "校验和"
+    notes: "UDP 头部固定 8 字节"
+
+  udp_table:
+    description: "UDP Hash Table - UDP 哈希表"
+    header: "include/net/udp.h"
+    pattern: 'struct udp_table\s*\{'
+    fields:
+      - name: "hash"
+        type: "struct udp_hslot *"
+        description: "按端口哈希的槽位"
+      - name: "hash2"
+        type: "struct udp_hslot *"
+        description: "按地址+端口哈希的槽位"
+      - name: "mask"
+        type: "unsigned int"
+        description: "哈希表掩码"
+      - name: "log"
+        type: "unsigned int"
+        description: "哈希表大小的对数"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  # ========== 发送路径 ==========
+  udp_sendmsg:
+    pattern: 'udp_sendmsg\s*\('
+    description: "UDP 发送消息入口"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)"
+    context: "process"
+    can_sleep: true
+    return_value:
+      success: "发送的字节数"
+      failure: "-ERRNO"
+    typical_actions:
+      - "检查消息长度"
+      - "获取目标地址"
+      - "路由查找"
+      - "构建 UDP 头"
+      - "调用 IP 层发送"
+    parameters:
+      - name: "sk"
+        description: "UDP socket"
+      - name: "msg"
+        description: "消息头 (包含数据和控制信息)"
+      - name: "len"
+        description: "数据长度"
+
+  udp_send_skb:
+    pattern: 'udp_send_skb\s*\('
+    description: "UDP 发送 SKB"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_send_skb(struct sk_buff *skb, struct flowi4 *fl4, struct inet_cork *cork)"
+    context: "process"
+    can_sleep: false
+    typical_actions:
+      - "构建 UDP 头"
+      - "计算校验和"
+      - "调用 ip_send_skb"
+
+  udp_push_pending_frames:
+    pattern: 'udp_push_pending_frames\s*\('
+    description: "推送待发送的 UDP 帧"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_push_pending_frames(struct sock *sk)"
+    context: "process"
+    can_sleep: false
+    notes: "用于 cork 模式"
+
+  udp_cmsg_send:
+    pattern: 'udp_cmsg_send\s*\('
+    description: "处理 UDP 控制消息"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_cmsg_send(struct sock *sk, struct msghdr *msg, u16 *gso_size)"
+    context: "process"
+    can_sleep: false
+    typical_actions:
+      - "解析 cmsg"
+      - "处理 UDP_SEGMENT (GSO)"
+
+  # ========== 接收路径 ==========
+  udp_recvmsg:
+    pattern: 'udp_recvmsg\s*\('
+    description: "UDP 接收消息入口"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int noblock, int flags, int *addr_len)"
+    context: "process"
+    can_sleep: true
+    return_value:
+      success: "接收的字节数"
+      failure: "-ERRNO"
+    typical_actions:
+      - "等待数据到达"
+      - "从接收队列取出 skb"
+      - "复制数据到用户空间"
+      - "处理 cmsg"
+
+  udp_rcv:
+    pattern: 'udp_rcv\s*\('
+    description: "UDP 接收入口 (IPv4)"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_rcv(struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    return_value:
+      success: "0"
+      failure: "非 0"
+    typical_actions:
+      - "验证 UDP 头"
+      - "验证校验和"
+      - "查找 socket"
+      - "投递到 socket"
+
+  __udp4_lib_rcv:
+    pattern: '__udp4_lib_rcv\s*\('
+    description: "UDP IPv4 接收 (内部)"
+    file: "net/ipv4/udp.c"
+    signature: "int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable, int proto)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "拉取 UDP 头"
+      - "验证校验和"
+      - "多播/广播处理"
+      - "单播 socket 查找"
+      - "投递到 socket"
+
+  udp_queue_rcv_skb:
+    pattern: 'udp_queue_rcv_skb\s*\('
+    description: "UDP 将 SKB 入队"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "封装处理 (如果启用)"
+      - "入队到 socket 接收队列"
+      - "唤醒等待进程"
+
+  udp_queue_rcv_one_skb:
+    pattern: 'udp_queue_rcv_one_skb\s*\('
+    description: "UDP 入队单个 SKB"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_queue_rcv_one_skb(struct sock *sk, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+
+  __udp_queue_rcv_skb:
+    pattern: '__udp_queue_rcv_skb\s*\('
+    description: "UDP 入队 SKB (最终)"
+    file: "net/ipv4/udp.c"
+    signature: "int __udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "调用 sock_queue_rcv_skb"
+      - "或 sk_add_backlog"
+
+  # ========== Socket 查找 ==========
+  __udp4_lib_lookup:
+    pattern: '__udp4_lib_lookup\s*\('
+    description: "UDP IPv4 socket 查找"
+    file: "net/ipv4/udp.c"
+    signature: "struct sock *__udp4_lib_lookup(struct net *net, __be32 saddr, __be16 sport, __be32 daddr, __be16 dport, int dif, int sdif, struct udp_table *udptable, struct sk_buff *skb)"
+    context: "softirq"
+    can_sleep: false
+    return_value:
+      success: "找到的 sock 指针"
+      failure: "NULL"
+
+  udp4_lib_lookup_skb:
+    pattern: 'udp4_lib_lookup_skb\s*\('
+    description: "根据 SKB 查找 UDP socket"
+    file: "net/ipv4/udp.c"
+    signature: "struct sock *udp4_lib_lookup_skb(struct sk_buff *skb, __be16 sport, __be16 dport)"
+    context: "softirq"
+    can_sleep: false
+
+  # ========== 端口管理 ==========
+  udp_lib_get_port:
+    pattern: 'udp_lib_get_port\s*\('
+    description: "获取 UDP 端口"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_lib_get_port(struct sock *sk, unsigned short snum, unsigned int hash2_nulladdr)"
+    context: "process"
+    can_sleep: true
+    return_value:
+      success: "0"
+      failure: "-EADDRINUSE"
+    typical_actions:
+      - "检查端口是否可用"
+      - "分配端口号 (如果为 0)"
+      - "加入哈希表"
+
+  udp_lib_unhash:
+    pattern: 'udp_lib_unhash\s*\('
+    description: "从哈希表移除 UDP socket"
+    file: "net/ipv4/udp.c"
+    signature: "void udp_lib_unhash(struct sock *sk)"
+    context: "process"
+    can_sleep: false
+
+  udp_lib_rehash:
+    pattern: 'udp_lib_rehash\s*\('
+    description: "重新哈希 UDP socket"
+    file: "net/ipv4/udp.c"
+    signature: "void udp_lib_rehash(struct sock *sk, u16 newhash)"
+    context: "process"
+    can_sleep: false
+
+  # ========== 校验和 ==========
+  udp4_csum_init:
+    pattern: 'udp4_csum_init\s*\('
+    description: "初始化 UDP 校验和验证"
+    file: "net/ipv4/udp.c"
+    signature: "int udp4_csum_init(struct sk_buff *skb, struct udphdr *uh, int proto)"
+    context: "softirq"
+    can_sleep: false
+
+  udp_csum:
+    pattern: 'udp_csum\s*\('
+    description: "计算 UDP 校验和"
+    file: "include/net/udp.h"
+    signature: "__wsum udp_csum(struct sk_buff *skb)"
+    context: "any"
+    can_sleep: false
+
+  udp_set_csum:
+    pattern: 'udp_set_csum\s*\('
+    description: "设置 UDP 校验和"
+    file: "net/ipv4/udp.c"
+    signature: "void udp_set_csum(bool nocheck, struct sk_buff *skb, __be32 saddr, __be32 daddr, int len)"
+    context: "any"
+    can_sleep: false
+    parameters:
+      - name: "nocheck"
+        description: "是否禁用校验和"
+      - name: "skb"
+        description: "数据包"
+      - name: "saddr"
+        description: "源 IP"
+      - name: "daddr"
+        description: "目的 IP"
+      - name: "len"
+        description: "UDP 数据报长度"
+
+  # ========== 错误处理 ==========
+  udp_err:
+    pattern: 'udp_err\s*\('
+    description: "UDP ICMP 错误处理"
+    file: "net/ipv4/udp.c"
+    signature: "int udp_err(struct sk_buff *skb, u32 info)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "查找相关 socket"
+      - "报告错误给应用"
+
+  __udp4_lib_err:
+    pattern: '__udp4_lib_err\s*\('
+    description: "UDP IPv4 错误处理 (内部)"
+    file: "net/ipv4/udp.c"
+    signature: "int __udp4_lib_err(struct sk_buff *skb, u32 info, struct udp_table *udptable)"
+    context: "softirq"
+    can_sleep: false
+
+  # ========== GRO/GSO ==========
+  udp_gro_receive:
+    pattern: 'udp_gro_receive\s*\('
+    description: "UDP GRO 接收"
+    file: "net/ipv4/udp_offload.c"
+    signature: "struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb, struct udphdr *uh, struct sock *sk)"
+    context: "softirq"
+    can_sleep: false
+    notes: "Generic Receive Offload 聚合多个 UDP 包"
+
+  udp_gro_complete:
+    pattern: 'udp_gro_complete\s*\('
+    description: "UDP GRO 完成"
+    file: "net/ipv4/udp_offload.c"
+    signature: "int udp_gro_complete(struct sk_buff *skb, int nhoff, udp_lookup_t lookup)"
+    context: "softirq"
+    can_sleep: false
+
+  udp4_gso_segment:
+    pattern: 'udp4_gso_segment\s*\('
+    description: "UDP IPv4 GSO 分段"
+    file: "net/ipv4/udp_offload.c"
+    signature: "struct sk_buff *udp4_gso_segment(struct sk_buff *skb, netdev_features_t features)"
+    context: "softirq"
+    can_sleep: false
+    notes: "Generic Segmentation Offload 分割大 UDP 包"
+
+  # ========== 多播 ==========
+  __udp4_lib_mcast_deliver:
+    pattern: '__udp4_lib_mcast_deliver\s*\('
+    description: "UDP IPv4 多播投递"
+    file: "net/ipv4/udp.c"
+    signature: "int __udp4_lib_mcast_deliver(struct net *net, struct sk_buff *skb, struct udphdr *uh, __be32 saddr, __be32 daddr, struct udp_table *udptable, int proto)"
+    context: "softirq"
+    can_sleep: false
+    typical_actions:
+      - "复制 SKB 给每个监听的 socket"
+      - "投递到所有匹配的 socket"
+
+# ============================================================
+# UDP ENCAPSULATION
+# ============================================================
+
+udp_encapsulation:
+  description: "UDP Encapsulation - UDP 封装"
+  header: "include/net/udp.h"
+  icon: "📦"
+  kernel_version: "5.0+"
+
+  types:
+    UDP_ENCAP_ESPINUDP_NON_IKE:
+      value: 1
+      description: "ESP over UDP (非 IKE)"
+    UDP_ENCAP_ESPINUDP:
+      value: 2
+      description: "ESP over UDP"
+    UDP_ENCAP_L2TPINUDP:
+      value: 3
+      description: "L2TP over UDP"
+    UDP_ENCAP_GTP0:
+      value: 4
+      description: "GTP v0 over UDP"
+    UDP_ENCAP_GTP1U:
+      value: 5
+      description: "GTP v1 U-plane over UDP"
+    UDP_ENCAP_RXRPC:
+      value: 6
+      description: "RxRPC over UDP"
+
+  functions:
+    udp_encap_enable:
+      pattern: 'udp_encap_enable\s*\('
+      description: "启用 UDP 封装"
+      signature: "void udp_encap_enable(void)"
+      context: "process"
+
+    setup_udp_tunnel_sock:
+      pattern: 'setup_udp_tunnel_sock\s*\('
+      description: "设置 UDP 隧道 socket"
+      file: "net/ipv4/udp_tunnel_core.c"
+      signature: "void setup_udp_tunnel_sock(struct net *net, struct socket *sock, struct udp_tunnel_sock_cfg *cfg)"
+      context: "process"
+      can_sleep: true
+
+    udp_tunnel_xmit_skb:
+      pattern: 'udp_tunnel_xmit_skb\s*\('
+      description: "UDP 隧道发送 SKB"
+      file: "net/ipv4/udp_tunnel_core.c"
+      signature: "int udp_tunnel_xmit_skb(struct rtable *rt, struct sock *sk, struct sk_buff *skb, __be32 src, __be32 dst, __u8 tos, __u8 ttl, __be16 df, __be16 src_port, __be16 dst_port, bool xnet, bool nocheck)"
+      context: "any"
+      can_sleep: false
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  udp_send_path:
+    description: "UDP 发送路径"
+    trigger: "应用调用 sendto/sendmsg"
+    chain:
+      - function: "sys_sendto"
+        file: "net/socket.c"
+        description: "系统调用入口"
+        context: "process"
+      - function: "__sys_sendto"
+        file: "net/socket.c"
+      - function: "sock_sendmsg"
+        file: "net/socket.c"
+        description: "socket 发送消息"
+      - function: "inet_sendmsg"
+        file: "net/ipv4/af_inet.c"
+        description: "INET 发送消息"
+      - function: "udp_sendmsg"
+        file: "net/ipv4/udp.c"
+        description: "UDP 发送入口"
+      - function: "ip_make_skb"
+        file: "net/ipv4/ip_output.c"
+        description: "创建 SKB"
+      - function: "udp_send_skb"
+        file: "net/ipv4/udp.c"
+        description: "发送 SKB"
+      - function: "ip_send_skb"
+        file: "net/ipv4/ip_output.c"
+        description: "IP 层发送"
+
+  udp_receive_path:
+    description: "UDP 接收路径"
+    trigger: "网卡收到 UDP 数据包"
+    chain:
+      - function: "ip_local_deliver_finish"
+        file: "net/ipv4/ip_input.c"
+        description: "IP 层投递"
+        context: "softirq"
+      - function: "udp_rcv"
+        file: "net/ipv4/udp.c"
+        description: "UDP 接收入口"
+      - function: "__udp4_lib_rcv"
+        file: "net/ipv4/udp.c"
+        description: "UDP 接收处理"
+      - function: "__udp4_lib_lookup_skb"
+        file: "net/ipv4/udp.c"
+        description: "查找 socket"
+      - function: "udp_queue_rcv_skb"
+        file: "net/ipv4/udp.c"
+        description: "入队到 socket"
+      - function: "__udp_queue_rcv_skb"
+        file: "net/ipv4/udp.c"
+        description: "最终入队"
+      - function: "sock_queue_rcv_skb"
+        file: "net/core/sock.c"
+        description: "加入接收队列"
+      - function: "sk->sk_data_ready"
+        file: "net/core/sock.c"
+        description: "唤醒等待进程"
+
+  udp_multicast_receive:
+    description: "UDP 多播接收路径"
+    trigger: "网卡收到多播 UDP 数据包"
+    chain:
+      - function: "ip_local_deliver_finish"
+        file: "net/ipv4/ip_input.c"
+        description: "IP 层投递"
+        context: "softirq"
+      - function: "udp_rcv"
+        file: "net/ipv4/udp.c"
+        description: "UDP 接收入口"
+      - function: "__udp4_lib_rcv"
+        file: "net/ipv4/udp.c"
+        description: "UDP 接收处理"
+      - function: "__udp4_lib_mcast_deliver"
+        file: "net/ipv4/udp.c"
+        description: "多播投递"
+      - function: "udp_queue_rcv_skb"
+        file: "net/ipv4/udp.c"
+        description: "投递给每个监听 socket"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "UDP 发送示例 (用户空间)"
+    kernel_version: "5.0+"
+    code: |
+      /* 用户空间 UDP 客户端 */
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+      #include <arpa/inet.h>
+      #include <unistd.h>
+      #include <string.h>
+      
+      int udp_send(const char *ip, int port, const char *data, size_t len)
+      {
+          int sockfd;
+          struct sockaddr_in servaddr;
+          
+          /* 创建 UDP socket */
+          sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+          if (sockfd < 0)
+              return -1;
+          
+          /* 设置目标地址 */
+          memset(&servaddr, 0, sizeof(servaddr));
+          servaddr.sin_family = AF_INET;
+          servaddr.sin_port = htons(port);
+          inet_pton(AF_INET, ip, &servaddr.sin_addr);
+          
+          /* 发送数据 */
+          ssize_t sent = sendto(sockfd, data, len, 0,
+                               (struct sockaddr *)&servaddr,
+                               sizeof(servaddr));
+          
+          close(sockfd);
+          return sent;
+      }
+
+  - description: "UDP 接收示例 (用户空间)"
+    kernel_version: "5.0+"
+    code: |
+      /* 用户空间 UDP 服务器 */
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+      #include <unistd.h>
+      #include <string.h>
+      
+      int udp_recv_server(int port)
+      {
+          int sockfd;
+          char buffer[4096];
+          struct sockaddr_in servaddr, cliaddr;
+          socklen_t len;
+          
+          /* 创建 UDP socket */
+          sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+          if (sockfd < 0)
+              return -1;
+          
+          /* 绑定地址 */
+          memset(&servaddr, 0, sizeof(servaddr));
+          servaddr.sin_family = AF_INET;
+          servaddr.sin_addr.s_addr = INADDR_ANY;
+          servaddr.sin_port = htons(port);
+          
+          if (bind(sockfd, (struct sockaddr *)&servaddr,
+                   sizeof(servaddr)) < 0) {
+              close(sockfd);
+              return -1;
+          }
+          
+          /* 接收循环 */
+          while (1) {
+              len = sizeof(cliaddr);
+              ssize_t n = recvfrom(sockfd, buffer, sizeof(buffer), 0,
+                                   (struct sockaddr *)&cliaddr, &len);
+              if (n > 0) {
+                  /* 处理数据 */
+                  buffer[n] = '\0';
+                  printf("Received: %s\n", buffer);
+                  
+                  /* 回复 */
+                  sendto(sockfd, buffer, n, 0,
+                        (struct sockaddr *)&cliaddr, len);
+              }
+          }
+          
+          close(sockfd);
+          return 0;
+      }
+
+  - description: "UDP 封装设置示例 (内核)"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/socket.h>
+      #include <linux/udp.h>
+      #include <net/udp.h>
+      #include <net/udp_tunnel.h>
+      
+      static struct socket *my_sock;
+      
+      /* 封装接收回调 */
+      static int my_encap_rcv(struct sock *sk, struct sk_buff *skb)
+      {
+          struct udphdr *uh;
+          
+          uh = udp_hdr(skb);
+          pr_info("Received encapsulated packet, len=%d\n",
+                  ntohs(uh->len));
+          
+          /* 处理封装数据 */
+          /* ... */
+          
+          /* 消费 skb */
+          kfree_skb(skb);
+          return 0;
+      }
+      
+      /* 封装销毁回调 */
+      static void my_encap_destroy(struct sock *sk)
+      {
+          pr_info("Encap socket destroyed\n");
+      }
+      
+      static int __init my_tunnel_init(void)
+      {
+          struct udp_tunnel_sock_cfg cfg = {
+              .sk_user_data = NULL,
+              .encap_type = UDP_ENCAP_L2TPINUDP,
+              .encap_rcv = my_encap_rcv,
+              .encap_destroy = my_encap_destroy,
+          };
+          int ret;
+          
+          /* 创建 UDP socket */
+          ret = sock_create_kern(&init_net, AF_INET, SOCK_DGRAM,
+                                 IPPROTO_UDP, &my_sock);
+          if (ret)
+              return ret;
+          
+          /* 设置封装 */
+          setup_udp_tunnel_sock(&init_net, my_sock, &cfg);
+          
+          pr_info("UDP tunnel socket created\n");
+          return 0;
+      }
+      
+      static void __exit my_tunnel_exit(void)
+      {
+          if (my_sock)
+              sock_release(my_sock);
+      }
+      
+      module_init(my_tunnel_init);
+      module_exit(my_tunnel_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "UDP socket 选项示例"
+    kernel_version: "5.0+"
+    code: |
+      /* 用户空间 UDP socket 配置 */
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+      #include <netinet/udp.h>
+      
+      int setup_udp_socket(int sockfd)
+      {
+          int optval;
+          
+          /* 允许地址重用 */
+          optval = 1;
+          setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
+                    &optval, sizeof(optval));
+          
+          /* 允许端口重用 */
+          optval = 1;
+          setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT,
+                    &optval, sizeof(optval));
+          
+          /* 设置接收缓冲区大小 */
+          optval = 1024 * 1024;  /* 1MB */
+          setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF,
+                    &optval, sizeof(optval));
+          
+          /* 设置发送缓冲区大小 */
+          optval = 1024 * 1024;  /* 1MB */
+          setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF,
+                    &optval, sizeof(optval));
+          
+          /* 禁用校验和 (慎用!) */
+          optval = 1;
+          setsockopt(sockfd, SOL_SOCKET, SO_NO_CHECK,
+                    &optval, sizeof(optval));
+          
+          /* 启用 UDP_CORK (聚合多个小包) */
+          optval = 1;
+          setsockopt(sockfd, IPPROTO_UDP, UDP_CORK,
+                    &optval, sizeof(optval));
+          
+          /* 加入多播组 */
+          struct ip_mreq mreq;
+          mreq.imr_multiaddr.s_addr = inet_addr("224.0.0.1");
+          mreq.imr_interface.s_addr = INADDR_ANY;
+          setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+                    &mreq, sizeof(mreq));
+          
+          return 0;
+      }

@@ -1,0 +1,862 @@
+# Linux Kernel Probes (KProbes) Knowledge Base
+#
+# Reference: https://www.kernel.org/doc/html/latest/trace/kprobes.html
+# Kernel source: kernel/kprobes.c, include/linux/kprobes.h
+# Kernel Version: 2.6.9+
+# ============================================================
+
+# ============================================================
+# KPROBES OVERVIEW
+# ============================================================
+kprobes_overview:
+  description: "Linux 内核探针子系统 (KProbes)"
+  header: "linux/kprobes.h"
+  icon: "🔍"
+  kernel_version: "2.6.9+"
+  
+  key_concepts:
+    kprobe:
+      description: "内核探针 - 可以在几乎任何内核函数上设置"
+      notes:
+        - "可在函数入口处设置断点"
+        - "执行用户定义的处理函数"
+        - "用于调试、跟踪、性能分析"
+    
+    kretprobe:
+      description: "返回探针 - 在函数返回时触发"
+      notes:
+        - "捕获函数返回值"
+        - "测量函数执行时间"
+        - "支持多实例并发"
+    
+    jprobe:
+      description: "跳转探针 - 访问函数参数（已废弃）"
+      deprecated: true
+      notes: "使用 kprobe 的 pre_handler 替代"
+
+    optprobe:
+      description: "优化探针 - 使用跳转指令替代断点"
+      notes:
+        - "性能更高"
+        - "需要架构支持"
+        - "自动优化符合条件的探针"
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+data_structures:
+  kprobe:
+    description: "内核探针结构"
+    file: "include/linux/kprobes.h"
+    pattern: 'struct kprobe\s*\{'
+    fields:
+      - name: "hlist"
+        type: "struct hlist_node"
+        description: "哈希表节点"
+      - name: "list"
+        type: "struct list_head"
+        description: "多处理器支持的链表"
+      - name: "nmissed"
+        type: "unsigned long"
+        description: "因重入而错过的次数"
+      - name: "addr"
+        type: "kprobe_opcode_t *"
+        description: "探针地址"
+      - name: "symbol_name"
+        type: "const char *"
+        description: "符号名称（替代 addr）"
+      - name: "offset"
+        type: "unsigned int"
+        description: "符号内偏移"
+      - name: "pre_handler"
+        type: "kprobe_pre_handler_t"
+        description: "执行前处理函数"
+        signature: "int (*)(struct kprobe *, struct pt_regs *)"
+      - name: "post_handler"
+        type: "kprobe_post_handler_t"
+        description: "执行后处理函数"
+        signature: "void (*)(struct kprobe *, struct pt_regs *, unsigned long)"
+      - name: "fault_handler"
+        type: "kprobe_fault_handler_t"
+        description: "故障处理函数"
+        signature: "int (*)(struct kprobe *, struct pt_regs *, int)"
+      - name: "break_handler"
+        type: "kprobe_break_handler_t"
+        description: "断点处理函数"
+      - name: "opcode"
+        type: "kprobe_opcode_t"
+        description: "保存的原始指令"
+      - name: "ainsn"
+        type: "struct arch_specific_insn"
+        description: "架构相关指令信息"
+      - name: "flags"
+        type: "u32"
+        description: "状态标志"
+
+  kretprobe:
+    description: "返回探针结构"
+    file: "include/linux/kprobes.h"
+    pattern: 'struct kretprobe\s*\{'
+    fields:
+      - name: "kp"
+        type: "struct kprobe"
+        description: "嵌入的 kprobe"
+      - name: "handler"
+        type: "kretprobe_handler_t"
+        description: "返回处理函数"
+        signature: "int (*)(struct kretprobe_instance *, struct pt_regs *)"
+      - name: "entry_handler"
+        type: "kretprobe_handler_t"
+        description: "入口处理函数（可选）"
+      - name: "maxactive"
+        type: "int"
+        description: "最大并发实例数"
+      - name: "nmissed"
+        type: "int"
+        description: "因实例不足而错过的次数"
+      - name: "data_size"
+        type: "size_t"
+        description: "私有数据大小"
+      - name: "free_instances"
+        type: "struct hlist_head"
+        description: "空闲实例列表"
+      - name: "lock"
+        type: "raw_spinlock_t"
+        description: "保护实例列表的锁"
+
+  kretprobe_instance:
+    description: "返回探针实例"
+    file: "include/linux/kprobes.h"
+    pattern: 'struct kretprobe_instance\s*\{'
+    fields:
+      - name: "hlist"
+        type: "struct hlist_node"
+        description: "链表节点"
+      - name: "rp"
+        type: "struct kretprobe *"
+        description: "所属的 kretprobe"
+      - name: "ret_addr"
+        type: "kprobe_opcode_t *"
+        description: "原始返回地址"
+      - name: "task"
+        type: "struct task_struct *"
+        description: "调用任务"
+      - name: "fp"
+        type: "void *"
+        description: "帧指针（部分架构）"
+      - name: "data"
+        type: "char[0]"
+        description: "私有数据（柔性数组）"
+
+  kprobe_blacklist_entry:
+    description: "探针黑名单项"
+    file: "include/linux/kprobes.h"
+    pattern: 'struct kprobe_blacklist_entry\s*\{'
+    fields:
+      - name: "list"
+        type: "struct list_head"
+        description: "链表节点"
+      - name: "start_addr"
+        type: "unsigned long"
+        description: "黑名单区域起始"
+      - name: "end_addr"
+        type: "unsigned long"
+        description: "黑名单区域结束"
+
+# ============================================================
+# KPROBE FLAGS
+# ============================================================
+kprobe_flags:
+  description: "Kprobe 状态标志"
+  
+  KPROBE_FLAG_GONE:
+    value: 1
+    description: "探针已被移除"
+    
+  KPROBE_FLAG_DISABLED:
+    value: 2
+    description: "探针已禁用"
+    
+  KPROBE_FLAG_OPTIMIZED:
+    value: 4
+    description: "探针已优化（使用跳转）"
+    
+  KPROBE_FLAG_FTRACE:
+    value: 8
+    description: "探针使用 ftrace 实现"
+
+# ============================================================
+# KPROBE STATUS
+# ============================================================
+kprobe_status:
+  description: "探针执行状态"
+  
+  KPROBE_HIT_ACTIVE:
+    value: 0x01
+    description: "探针正在执行"
+    
+  KPROBE_HIT_SS:
+    value: 0x02
+    description: "单步执行中"
+    
+  KPROBE_REENTER:
+    value: 0x04
+    description: "重入（在处理函数中触发）"
+    
+  KPROBE_HIT_SSDONE:
+    value: 0x08
+    description: "单步执行完成"
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+kernel_functions:
+  registration:
+    register_kprobe:
+      pattern: 'register_kprobe\s*\(\s*(?P<kp>&?\w+)\s*\)'
+      description: "注册 kprobe"
+      file: "kernel/kprobes.c"
+      context: "process"
+      can_sleep: true
+      parameters:
+        - name: "p"
+          type: "struct kprobe *"
+          description: "kprobe 结构"
+      returns: "0 成功，负值失败"
+      notes:
+        - "可以使用 addr 或 symbol_name 指定位置"
+        - "symbol_name 方式更可靠"
+
+    unregister_kprobe:
+      pattern: 'unregister_kprobe\s*\(\s*(?P<kp>&?\w+)\s*\)'
+      description: "注销 kprobe"
+      context: "process"
+      can_sleep: true
+      notes: "注销后 kprobe 结构可重用"
+
+    register_kprobes:
+      pattern: 'register_kprobes\s*\(\s*(?P<kps>\w+)\s*,\s*(?P<num>\w+)\s*\)'
+      description: "批量注册 kprobe"
+      parameters:
+        - name: "kps"
+          type: "struct kprobe **"
+          description: "kprobe 指针数组"
+        - name: "num"
+          type: "int"
+          description: "数组大小"
+
+    unregister_kprobes:
+      pattern: 'unregister_kprobes\s*\('
+      description: "批量注销 kprobe"
+
+    register_kretprobe:
+      pattern: 'register_kretprobe\s*\(\s*(?P<rp>&?\w+)\s*\)'
+      description: "注册 kretprobe"
+      context: "process"
+      can_sleep: true
+      notes: "需要设置 maxactive 为预期的并发数"
+
+    unregister_kretprobe:
+      pattern: 'unregister_kretprobe\s*\(\s*(?P<rp>&?\w+)\s*\)'
+      description: "注销 kretprobe"
+      context: "process"
+      can_sleep: true
+
+    register_kretprobes:
+      pattern: 'register_kretprobes\s*\('
+      description: "批量注册 kretprobe"
+
+    unregister_kretprobes:
+      pattern: 'unregister_kretprobes\s*\('
+      description: "批量注销 kretprobe"
+
+  control:
+    enable_kprobe:
+      pattern: 'enable_kprobe\s*\(\s*(?P<kp>&?\w+)\s*\)'
+      description: "启用已禁用的 kprobe"
+      context: "process"
+
+    disable_kprobe:
+      pattern: 'disable_kprobe\s*\(\s*(?P<kp>&?\w+)\s*\)'
+      description: "禁用 kprobe（不注销）"
+      context: "process"
+
+    enable_kretprobe:
+      pattern: 'enable_kretprobe\s*\(\s*(?P<rp>&?\w+)\s*\)'
+      description: "启用 kretprobe"
+
+    disable_kretprobe:
+      pattern: 'disable_kretprobe\s*\(\s*(?P<rp>&?\w+)\s*\)'
+      description: "禁用 kretprobe"
+
+  query:
+    kprobe_disabled:
+      pattern: 'kprobe_disabled\s*\(\s*(?P<kp>\w+)\s*\)'
+      description: "检查 kprobe 是否禁用"
+      returns: "bool"
+
+    kprobe_gone:
+      pattern: 'kprobe_gone\s*\(\s*(?P<kp>\w+)\s*\)'
+      description: "检查 kprobe 是否已移除"
+      returns: "bool"
+
+    kprobe_optimized:
+      pattern: 'kprobe_optimized\s*\(\s*(?P<kp>\w+)\s*\)'
+      description: "检查 kprobe 是否已优化"
+      returns: "bool"
+
+  address_lookup:
+    kallsyms_lookup_name:
+      pattern: 'kallsyms_lookup_name\s*\(\s*"(?P<name>[^"]+)"\s*\)'
+      description: "查找符号地址"
+      returns: "unsigned long"
+      notes: "5.7+ 版本不再导出"
+
+    kprobe_lookup_name:
+      pattern: 'kprobe_lookup_name\s*\('
+      description: "查找 kprobe 可用的符号地址"
+      kernel_version: "5.7+"
+
+# ============================================================
+# HANDLER SIGNATURES
+# ============================================================
+handler_signatures:
+  pre_handler:
+    description: "探针执行前处理函数"
+    signature: "int pre_handler(struct kprobe *p, struct pt_regs *regs)"
+    context: "interrupt/process（取决于被探测代码）"
+    can_sleep: false
+    notes:
+      - "返回 0 继续正常执行"
+      - "返回非零跳过被探测指令"
+      - "可访问寄存器和内存"
+      - "必须非常快速"
+
+  post_handler:
+    description: "探针执行后处理函数"
+    signature: "void post_handler(struct kprobe *p, struct pt_regs *regs, unsigned long flags)"
+    context: "interrupt/process"
+    can_sleep: false
+    notes:
+      - "flags 是处理后的标志"
+      - "可观察指令执行结果"
+
+  fault_handler:
+    description: "探针故障处理函数"
+    signature: "int fault_handler(struct kprobe *p, struct pt_regs *regs, int trapnr)"
+    context: "interrupt"
+    notes:
+      - "返回 1 表示已处理故障"
+      - "返回 0 让内核处理"
+
+  kretprobe_handler:
+    description: "返回探针处理函数"
+    signature: "int handler(struct kretprobe_instance *ri, struct pt_regs *regs)"
+    context: "interrupt/process"
+    can_sleep: false
+    notes:
+      - "ri->data 可存储私有数据"
+      - "regs 包含返回时的寄存器"
+      - "返回值的获取方式依赖架构"
+
+  kretprobe_entry_handler:
+    description: "返回探针入口处理函数"
+    signature: "int entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)"
+    context: "interrupt/process"
+    notes:
+      - "在函数入口调用"
+      - "可以在 ri->data 中保存数据供返回时使用"
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+call_chains:
+  kprobe_hit_flow:
+    description: "Kprobe 触发流程"
+    chain:
+      - caller: "CPU 执行到探针地址"
+        callee: "int3 (x86) / brk (ARM)"
+        context: "interrupt"
+        description: "触发断点异常"
+      - caller: "断点异常处理"
+        callee: "kprobe_handler"
+        arch_specific: true
+        description: "kprobe 处理入口"
+      - caller: "kprobe_handler"
+        callee: "kprobe_pre_handler_t()"
+        description: "调用 pre_handler"
+      - caller: "kprobe_handler"
+        callee: "setup_singlestep"
+        description: "设置单步执行"
+      - caller: "单步异常"
+        callee: "kprobe_handler (单步完成)"
+        description: "单步执行完成"
+      - caller: "kprobe_handler"
+        callee: "kprobe_post_handler_t()"
+        description: "调用 post_handler"
+      - caller: "kprobe_handler"
+        callee: "恢复正常执行"
+        description: "返回被探测代码"
+
+  kretprobe_flow:
+    description: "Kretprobe 触发流程"
+    chain:
+      - caller: "register_kretprobe"
+        callee: "在函数入口设置 kprobe"
+        description: "安装入口探针"
+      - caller: "函数入口探针"
+        callee: "pre_handler_kretprobe"
+        description: "kretprobe 入口处理"
+      - caller: "pre_handler_kretprobe"
+        callee: "分配 kretprobe_instance"
+        description: "分配实例"
+      - caller: "pre_handler_kretprobe"
+        callee: "保存返回地址，替换为 trampoline"
+        description: "劫持返回地址"
+      - caller: "pre_handler_kretprobe"
+        callee: "entry_handler (可选)"
+        description: "调用入口处理"
+      - caller: "函数返回到 trampoline"
+        callee: "trampoline_handler"
+        description: "跳板处理"
+      - caller: "trampoline_handler"
+        callee: "kretprobe_handler_t()"
+        description: "调用返回处理"
+      - caller: "trampoline_handler"
+        callee: "返回到真实调用者"
+        description: "恢复执行"
+
+  kprobe_register_flow:
+    description: "Kprobe 注册流程"
+    chain:
+      - caller: "driver"
+        callee: "register_kprobe"
+        context: "process"
+        description: "注册探针"
+      - caller: "register_kprobe"
+        callee: "check_kprobe_address_safe"
+        description: "检查地址是否安全"
+      - caller: "register_kprobe"
+        callee: "arch_prepare_kprobe"
+        arch_specific: true
+        description: "架构相关准备"
+      - caller: "arch_prepare_kprobe"
+        callee: "保存原始指令"
+        description: "备份被替换的指令"
+      - caller: "register_kprobe"
+        callee: "arm_kprobe"
+        description: "激活探针"
+      - caller: "arm_kprobe"
+        callee: "arch_arm_kprobe"
+        arch_specific: true
+        description: "写入断点指令"
+
+# ============================================================
+# BLACKLIST
+# ============================================================
+kprobe_blacklist:
+  description: "不能设置探针的函数/区域"
+  
+  categories:
+    kprobes_code:
+      description: "kprobes 自身代码"
+      reason: "防止递归"
+    
+    do_page_fault:
+      description: "页错误处理"
+      reason: "避免嵌套错误"
+    
+    notifier_call_chain:
+      description: "通知链代码"
+      reason: "kprobe 内部使用"
+    
+    arch_specific:
+      description: "架构特定的低级代码"
+      examples:
+        - "中断处理入口"
+        - "上下文切换"
+        - "异常处理器"
+    
+    __kprobes:
+      description: "标记为 __kprobes 的函数"
+      note: "放入 .kprobes.text 段"
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+examples:
+  - description: "基本 kprobe 使用"
+    kernel_version: "2.6.9+"
+    code: |
+      #include <linux/kernel.h>
+      #include <linux/module.h>
+      #include <linux/kprobes.h>
+      
+      /* 定义探针 */
+      static struct kprobe kp = {
+          .symbol_name = "do_fork",
+      };
+      
+      /* 执行前处理函数 */
+      static int handler_pre(struct kprobe *p, struct pt_regs *regs)
+      {
+          pr_info("do_fork called\n");
+          
+      #ifdef CONFIG_X86
+          /* x86: 打印第一个参数（clone_flags） */
+          pr_info("  clone_flags = 0x%lx\n", regs->di);
+      #endif
+      
+      #ifdef CONFIG_ARM
+          /* ARM: 打印第一个参数 */
+          pr_info("  clone_flags = 0x%lx\n", regs->ARM_r0);
+      #endif
+      
+          return 0;  /* 继续执行 */
+      }
+      
+      /* 执行后处理函数 */
+      static void handler_post(struct kprobe *p, struct pt_regs *regs,
+                               unsigned long flags)
+      {
+          pr_info("do_fork returned\n");
+      }
+      
+      /* 故障处理函数 */
+      static int handler_fault(struct kprobe *p, struct pt_regs *regs,
+                               int trapnr)
+      {
+          pr_err("Fault in kprobe handler, trap %d\n", trapnr);
+          return 0;  /* 让内核处理 */
+      }
+      
+      static int __init kprobe_init(void)
+      {
+          int ret;
+          
+          kp.pre_handler = handler_pre;
+          kp.post_handler = handler_post;
+          kp.fault_handler = handler_fault;
+          
+          ret = register_kprobe(&kp);
+          if (ret < 0) {
+              pr_err("register_kprobe failed: %d\n", ret);
+              return ret;
+          }
+          
+          pr_info("Planted kprobe at %p\n", kp.addr);
+          return 0;
+      }
+      
+      static void __exit kprobe_exit(void)
+      {
+          unregister_kprobe(&kp);
+          pr_info("kprobe unregistered\n");
+      }
+      
+      module_init(kprobe_init);
+      module_exit(kprobe_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "kretprobe 测量函数执行时间"
+    kernel_version: "2.6.9+"
+    code: |
+      #include <linux/kernel.h>
+      #include <linux/module.h>
+      #include <linux/kprobes.h>
+      #include <linux/ktime.h>
+      
+      /* 私有数据结构 */
+      struct my_data {
+          ktime_t entry_time;
+      };
+      
+      static struct kretprobe my_kretprobe = {
+          .kp.symbol_name = "do_sys_open",
+          .maxactive = 20,  /* 最多 20 个并发实例 */
+          .data_size = sizeof(struct my_data),
+      };
+      
+      /* 函数入口处理 */
+      static int entry_handler(struct kretprobe_instance *ri,
+                               struct pt_regs *regs)
+      {
+          struct my_data *data;
+          
+          data = (struct my_data *)ri->data;
+          data->entry_time = ktime_get();
+          
+          return 0;
+      }
+      
+      /* 函数返回处理 */
+      static int return_handler(struct kretprobe_instance *ri,
+                                struct pt_regs *regs)
+      {
+          struct my_data *data;
+          ktime_t now;
+          s64 duration_ns;
+          unsigned long retval;
+          
+          data = (struct my_data *)ri->data;
+          now = ktime_get();
+          duration_ns = ktime_to_ns(ktime_sub(now, data->entry_time));
+          
+          /* 获取返回值（架构相关） */
+      #ifdef CONFIG_X86_64
+          retval = regs->ax;
+      #else
+          retval = regs_return_value(regs);
+      #endif
+          
+          pr_info("do_sys_open returned %ld, took %lld ns\n",
+                  retval, duration_ns);
+          
+          return 0;
+      }
+      
+      static int __init kretprobe_init(void)
+      {
+          int ret;
+          
+          my_kretprobe.entry_handler = entry_handler;
+          my_kretprobe.handler = return_handler;
+          
+          ret = register_kretprobe(&my_kretprobe);
+          if (ret < 0) {
+              pr_err("register_kretprobe failed: %d\n", ret);
+              return ret;
+          }
+          
+          pr_info("Planted kretprobe at %s\n",
+                  my_kretprobe.kp.symbol_name);
+          return 0;
+      }
+      
+      static void __exit kretprobe_exit(void)
+      {
+          unregister_kretprobe(&my_kretprobe);
+          
+          /* 打印统计信息 */
+          pr_info("Missed probing %d instances of %s\n",
+                  my_kretprobe.nmissed,
+                  my_kretprobe.kp.symbol_name);
+      }
+      
+      module_init(kretprobe_init);
+      module_exit(kretprobe_exit);
+      MODULE_LICENSE("GPL");
+
+  - description: "使用偏移设置探针"
+    kernel_version: "2.6.9+"
+    code: |
+      #include <linux/kprobes.h>
+      
+      /* 在函数内部某个位置设置探针 */
+      static struct kprobe kp = {
+          .symbol_name = "do_filp_open",
+          .offset = 0x40,  /* 函数内偏移 */
+      };
+      
+      static int handler_pre(struct kprobe *p, struct pt_regs *regs)
+      {
+          /* 在函数中间位置被调用 */
+          pr_info("Hit at offset 0x%x in do_filp_open\n", kp.offset);
+          return 0;
+      }
+
+  - description: "批量注册多个探针"
+    kernel_version: "2.6.11+"
+    code: |
+      #include <linux/kprobes.h>
+      
+      static struct kprobe kp_fork = {
+          .symbol_name = "do_fork",
+      };
+      
+      static struct kprobe kp_exit = {
+          .symbol_name = "do_exit",
+      };
+      
+      static struct kprobe kp_exec = {
+          .symbol_name = "do_execve",
+      };
+      
+      static struct kprobe *kps[] = {
+          &kp_fork,
+          &kp_exit,
+          &kp_exec,
+      };
+      
+      static int handler_pre(struct kprobe *p, struct pt_regs *regs)
+      {
+          pr_info("%s called\n", p->symbol_name);
+          return 0;
+      }
+      
+      static int __init multi_kprobe_init(void)
+      {
+          int i, ret;
+          
+          for (i = 0; i < ARRAY_SIZE(kps); i++)
+              kps[i]->pre_handler = handler_pre;
+          
+          ret = register_kprobes(kps, ARRAY_SIZE(kps));
+          if (ret < 0) {
+              pr_err("register_kprobes failed: %d\n", ret);
+              return ret;
+          }
+          
+          pr_info("Planted %zu kprobes\n", ARRAY_SIZE(kps));
+          return 0;
+      }
+      
+      static void __exit multi_kprobe_exit(void)
+      {
+          unregister_kprobes(kps, ARRAY_SIZE(kps));
+      }
+
+  - description: "动态启用/禁用探针"
+    kernel_version: "2.6.11+"
+    code: |
+      #include <linux/kprobes.h>
+      #include <linux/debugfs.h>
+      
+      static struct kprobe my_kprobe = {
+          .symbol_name = "vfs_read",
+      };
+      
+      static bool probe_enabled = true;
+      static struct dentry *debugfs_dir;
+      
+      static int handler_pre(struct kprobe *p, struct pt_regs *regs)
+      {
+          pr_info("vfs_read called\n");
+          return 0;
+      }
+      
+      /* debugfs 控制接口 */
+      static int enable_set(void *data, u64 val)
+      {
+          int ret = 0;
+          
+          if (val && !probe_enabled) {
+              ret = enable_kprobe(&my_kprobe);
+              if (ret == 0)
+                  probe_enabled = true;
+          } else if (!val && probe_enabled) {
+              ret = disable_kprobe(&my_kprobe);
+              if (ret == 0)
+                  probe_enabled = false;
+          }
+          
+          return ret;
+      }
+      
+      static int enable_get(void *data, u64 *val)
+      {
+          *val = probe_enabled ? 1 : 0;
+          return 0;
+      }
+      
+      DEFINE_SIMPLE_ATTRIBUTE(enable_fops, enable_get, enable_set, "%llu\n");
+      
+      static int __init my_init(void)
+      {
+          int ret;
+          
+          my_kprobe.pre_handler = handler_pre;
+          
+          ret = register_kprobe(&my_kprobe);
+          if (ret < 0)
+              return ret;
+          
+          /* 创建 debugfs 控制文件 */
+          debugfs_dir = debugfs_create_dir("my_kprobe", NULL);
+          debugfs_create_file("enable", 0644, debugfs_dir,
+                             NULL, &enable_fops);
+          
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          debugfs_remove_recursive(debugfs_dir);
+          unregister_kprobe(&my_kprobe);
+      }
+
+# ============================================================
+# ARCHITECTURE SUPPORT
+# ============================================================
+arch_support:
+  description: "架构支持情况"
+  
+  x86_64:
+    kprobe: true
+    kretprobe: true
+    optprobe: true
+    ftrace_based: true
+    notes: "完整支持，包括优化探针"
+  
+  x86_32:
+    kprobe: true
+    kretprobe: true
+    optprobe: true
+    notes: "完整支持"
+  
+  arm:
+    kprobe: true
+    kretprobe: true
+    optprobe: false
+    notes: "不支持优化探针"
+  
+  arm64:
+    kprobe: true
+    kretprobe: true
+    optprobe: true
+    kernel_version: "3.16+"
+    notes: "需要 CONFIG_KPROBES"
+  
+  powerpc:
+    kprobe: true
+    kretprobe: true
+    optprobe: true
+    notes: "完整支持"
+  
+  mips:
+    kprobe: true
+    kretprobe: true
+    optprobe: false
+    notes: "基本支持"
+
+# ============================================================
+# KERNEL VERSION NOTES
+# ============================================================
+kernel_version_notes:
+  "2.6.9":
+    - "引入 kprobes 基础设施"
+    - "支持 x86"
+  "2.6.11":
+    - "添加 kretprobe"
+    - "批量注册 API"
+  "2.6.12":
+    - "添加 jprobe（后废弃）"
+  "2.6.20":
+    - "支持模块卸载时自动清理"
+  "2.6.25":
+    - "支持黑名单"
+  "3.5":
+    - "引入优化探针 (optprobe)"
+  "3.16":
+    - "ARM64 支持"
+  "4.10":
+    - "基于 ftrace 的 kprobe"
+  "4.15":
+    - "jprobe 标记为废弃"
+  "5.0":
+    - "移除 jprobe"
+  "5.7":
+    - "kallsyms_lookup_name 不再导出"
+    - "需要使用其他方式查找符号"
+  "5.11":
+    - "改进的安全检查"

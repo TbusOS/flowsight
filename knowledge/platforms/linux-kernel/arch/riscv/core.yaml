@@ -1,0 +1,884 @@
+# RISC-V Architecture Core Knowledge Base
+#
+# Reference: arch/riscv/
+# Reference: Documentation/riscv/
+# Reference: RISC-V Unprivileged/Privileged Specifications
+
+kernel_version:
+  minimum: "5.0"
+  recommended: "5.10+"
+  tested_on: "6.1"
+
+# ============================================================
+# RISC-V ARCHITECTURE OVERVIEW
+# ============================================================
+
+riscv_overview:
+  description: "RISC-V 开源指令集架构"
+  header: "arch/riscv/include/asm/"
+  icon: "🔧"
+
+  features:
+    - "模块化指令集设计"
+    - "32/64/128位变体 (RV32/RV64/RV128)"
+    - "基础整数指令集 (I) + 可选扩展"
+    - "三级特权模式 (M/S/U)"
+    - "硬件线程 (Hart)"
+    - "Sv39/Sv48/Sv57 虚拟内存"
+
+  base_isa:
+    - name: "RV32I"
+      description: "32位基础整数指令集"
+      registers: 32
+      xlen: 32
+    - name: "RV64I"
+      description: "64位基础整数指令集"
+      registers: 32
+      xlen: 64
+
+  extensions:
+    - name: "M"
+      description: "整数乘除法"
+    - name: "A"
+      description: "原子操作"
+    - name: "F"
+      description: "单精度浮点"
+    - name: "D"
+      description: "双精度浮点"
+    - name: "C"
+      description: "压缩指令 (16位)"
+    - name: "V"
+      description: "向量扩展"
+    - name: "Zicsr"
+      description: "CSR 指令"
+    - name: "Zifencei"
+      description: "指令缓存同步"
+    - name: "H"
+      description: "虚拟化扩展"
+
+  privilege_levels:
+    - level: "M-mode"
+      name: "Machine"
+      value: 3
+      description: "最高特权级 - 固件/SBI"
+    - level: "S-mode"
+      name: "Supervisor"
+      value: 1
+      description: "监管模式 - 操作系统内核"
+    - level: "U-mode"
+      name: "User"
+      value: 0
+      description: "用户模式 - 应用程序"
+
+
+# ============================================================
+# RISC-V REGISTERS
+# ============================================================
+
+registers:
+  general_purpose:
+    description: "通用寄存器 (x0-x31)"
+    registers:
+      - name: "x0 / zero"
+        description: "硬连线零寄存器"
+        abi: "zero"
+      - name: "x1 / ra"
+        description: "返回地址"
+        abi: "ra"
+      - name: "x2 / sp"
+        description: "栈指针"
+        abi: "sp"
+      - name: "x3 / gp"
+        description: "全局指针"
+        abi: "gp"
+      - name: "x4 / tp"
+        description: "线程指针"
+        abi: "tp"
+        notes: "Linux 用于 current_task"
+      - name: "x5-x7 / t0-t2"
+        description: "临时寄存器"
+        abi: "t0-t2"
+      - name: "x8 / s0/fp"
+        description: "保存寄存器/帧指针"
+        abi: "s0/fp"
+      - name: "x9 / s1"
+        description: "保存寄存器"
+        abi: "s1"
+      - name: "x10-x11 / a0-a1"
+        description: "参数/返回值"
+        abi: "a0-a1"
+      - name: "x12-x17 / a2-a7"
+        description: "函数参数"
+        abi: "a2-a7"
+      - name: "x18-x27 / s2-s11"
+        description: "被调用者保存寄存器"
+        abi: "s2-s11"
+      - name: "x28-x31 / t3-t6"
+        description: "临时寄存器"
+        abi: "t3-t6"
+      - name: "pc"
+        description: "程序计数器"
+        notes: "不在 x 寄存器中"
+
+  csr_registers:
+    description: "控制状态寄存器 (CSR)"
+    machine_mode:
+      - name: "mstatus"
+        description: "机器状态寄存器"
+        fields: ["MIE: 中断使能", "MPIE: 之前中断使能", "MPP: 之前特权级"]
+      - name: "misa"
+        description: "ISA 和扩展信息"
+      - name: "medeleg"
+        description: "异常委托寄存器"
+      - name: "mideleg"
+        description: "中断委托寄存器"
+      - name: "mie"
+        description: "机器中断使能"
+        fields: ["MSIE: 软件中断", "MTIE: 定时器中断", "MEIE: 外部中断"]
+      - name: "mtvec"
+        description: "机器陷阱向量"
+      - name: "mscratch"
+        description: "机器暂存寄存器"
+      - name: "mepc"
+        description: "机器异常 PC"
+      - name: "mcause"
+        description: "机器陷阱原因"
+      - name: "mtval"
+        description: "机器陷阱值"
+      - name: "mip"
+        description: "机器中断挂起"
+      - name: "mhartid"
+        description: "硬件线程 ID"
+
+    supervisor_mode:
+      - name: "sstatus"
+        description: "监管状态寄存器"
+        fields: ["SIE: 中断使能", "SPIE: 之前中断使能", "SPP: 之前特权级"]
+      - name: "sie"
+        description: "监管中断使能"
+        fields: ["SSIE: 软件中断", "STIE: 定时器中断", "SEIE: 外部中断"]
+      - name: "stvec"
+        description: "监管陷阱向量"
+      - name: "sscratch"
+        description: "监管暂存寄存器"
+        notes: "Linux 用于保存内核栈指针"
+      - name: "sepc"
+        description: "监管异常 PC"
+      - name: "scause"
+        description: "监管陷阱原因"
+      - name: "stval"
+        description: "监管陷阱值 (故障地址等)"
+      - name: "sip"
+        description: "监管中断挂起"
+      - name: "satp"
+        description: "监管地址转换和保护"
+        fields: ["MODE: 分页模式", "ASID: 地址空间 ID", "PPN: 页表根物理页号"]
+
+    user_mode:
+      - name: "cycle"
+        description: "周期计数器"
+      - name: "time"
+        description: "实时时钟"
+      - name: "instret"
+        description: "已退休指令计数"
+
+
+# ============================================================
+# RISC-V EXCEPTION/INTERRUPT HANDLING
+# ============================================================
+
+riscv_trap:
+  description: "RISC-V 陷阱处理 (异常和中断)"
+  header: "arch/riscv/kernel/entry.S"
+  icon: "⚡"
+
+  trap_types:
+    interrupts:
+      description: "中断 (mcause/scause 最高位为1)"
+      types:
+        - code: 1
+          name: "Supervisor software interrupt"
+          description: "监管软件中断 (IPI)"
+        - code: 3
+          name: "Machine software interrupt"
+          description: "机器软件中断"
+        - code: 5
+          name: "Supervisor timer interrupt"
+          description: "监管定时器中断"
+        - code: 7
+          name: "Machine timer interrupt"
+          description: "机器定时器中断"
+        - code: 9
+          name: "Supervisor external interrupt"
+          description: "监管外部中断"
+        - code: 11
+          name: "Machine external interrupt"
+          description: "机器外部中断"
+
+    exceptions:
+      description: "异常 (mcause/scause 最高位为0)"
+      types:
+        - code: 0
+          name: "Instruction address misaligned"
+          description: "指令地址未对齐"
+        - code: 1
+          name: "Instruction access fault"
+          description: "指令访问故障"
+        - code: 2
+          name: "Illegal instruction"
+          description: "非法指令"
+        - code: 3
+          name: "Breakpoint"
+          description: "断点"
+        - code: 4
+          name: "Load address misaligned"
+          description: "加载地址未对齐"
+        - code: 5
+          name: "Load access fault"
+          description: "加载访问故障"
+        - code: 6
+          name: "Store address misaligned"
+          description: "存储地址未对齐"
+        - code: 7
+          name: "Store access fault"
+          description: "存储访问故障"
+        - code: 8
+          name: "Environment call from U-mode"
+          description: "用户态 ECALL (系统调用)"
+        - code: 9
+          name: "Environment call from S-mode"
+          description: "监管态 ECALL (SBI 调用)"
+        - code: 11
+          name: "Environment call from M-mode"
+          description: "机器态 ECALL"
+        - code: 12
+          name: "Instruction page fault"
+          description: "指令页故障"
+        - code: 13
+          name: "Load page fault"
+          description: "加载页故障"
+        - code: 15
+          name: "Store page fault"
+          description: "存储页故障"
+
+  trap_vector:
+    description: "陷阱向量 (stvec/mtvec)"
+    modes:
+      - name: "Direct"
+        value: 0
+        description: "所有陷阱跳转到 BASE"
+      - name: "Vectored"
+        value: 1
+        description: "中断跳转到 BASE + 4*cause"
+
+  kernel_call_chain:
+    trigger: "陷阱发生"
+    chain:
+      - function: "handle_exception"
+        file: "arch/riscv/kernel/entry.S"
+        description: "异常入口 (汇编)"
+      - function: "do_trap_unknown"
+        file: "arch/riscv/kernel/traps.c"
+        description: "未知陷阱处理"
+      - function: "do_trap_insn_illegal"
+        file: "arch/riscv/kernel/traps.c"
+        description: "非法指令陷阱"
+      - function: "do_page_fault"
+        file: "arch/riscv/mm/fault.c"
+        description: "页故障处理"
+        is_user_entry: true
+
+
+# ============================================================
+# RISC-V SYSTEM CALL (ECALL)
+# ============================================================
+
+riscv_syscall:
+  description: "RISC-V 系统调用机制"
+  header: "arch/riscv/kernel/syscall_table.c"
+  icon: "📞"
+
+  context:
+    type: "syscall"
+    can_sleep: true
+    preemptible: true
+
+  abi:
+    instruction: "ecall"
+    syscall_number: "a7"
+    arguments: ["a0", "a1", "a2", "a3", "a4", "a5"]
+    return_value: "a0"
+    error_return: "a0 (负数表示错误)"
+    preserved: ["s0-s11", "sp", "gp", "tp"]
+
+  kernel_call_chain:
+    trigger: "ECALL from U-mode"
+    chain:
+      - function: "handle_exception"
+        file: "arch/riscv/kernel/entry.S"
+        description: "异常入口"
+      - function: "do_trap_ecall_u"
+        file: "arch/riscv/kernel/traps.c"
+        description: "用户态 ECALL 处理"
+      - function: "syscall_handler"
+        file: "arch/riscv/kernel/syscall.c"
+        description: "系统调用分发"
+      - function: "sys_call_table[nr]"
+        file: "arch/riscv/kernel/syscall_table.c"
+        description: "系统调用表"
+      - function: "sys_xxx"
+        file: "kernel/"
+        description: "具体系统调用"
+        is_user_entry: true
+
+  sbi_call:
+    description: "SBI (Supervisor Binary Interface) 调用"
+    instruction: "ecall (from S-mode)"
+    extension_id: "a7"
+    function_id: "a6"
+    arguments: ["a0", "a1", "a2", "a3", "a4", "a5"]
+    return:
+      error: "a0"
+      value: "a1"
+    common_extensions:
+      - eid: "0x10"
+        name: "SBI Base Extension"
+      - eid: "0x54494D45"
+        name: "Timer Extension"
+      - eid: "0x735049"
+        name: "IPI Extension"
+      - eid: "0x52464E43"
+        name: "RFENCE Extension"
+      - eid: "0x48534D"
+        name: "HSM (Hart State Management)"
+
+
+# ============================================================
+# RISC-V PAGE TABLE
+# ============================================================
+
+riscv_pagetable:
+  description: "RISC-V 页表结构"
+  header: "arch/riscv/include/asm/pgtable.h"
+  icon: "📄"
+
+  paging_modes:
+    - name: "Sv32"
+      xlen: 32
+      va_bits: 32
+      pa_bits: 34
+      levels: 2
+      page_size: "4KB"
+    - name: "Sv39"
+      xlen: 64
+      va_bits: 39
+      pa_bits: 56
+      levels: 3
+      page_size: "4KB"
+      description: "Linux 默认 (512GB VA)"
+    - name: "Sv48"
+      xlen: 64
+      va_bits: 48
+      pa_bits: 56
+      levels: 4
+      page_size: "4KB"
+      description: "256TB VA"
+    - name: "Sv57"
+      xlen: 64
+      va_bits: 57
+      pa_bits: 56
+      levels: 5
+      page_size: "4KB"
+      description: "128PB VA"
+
+  sv39_levels:
+    description: "Sv39 三级页表"
+    levels:
+      - level: "VPN[2]"
+        bits: "[38:30]"
+        entries: 512
+        coverage: "1GB"
+      - level: "VPN[1]"
+        bits: "[29:21]"
+        entries: 512
+        coverage: "2MB (可作为大页)"
+      - level: "VPN[0]"
+        bits: "[20:12]"
+        entries: 512
+        coverage: "4KB"
+
+  pte_format:
+    description: "页表项格式 (Sv39/Sv48/Sv57)"
+    fields:
+      - name: "V"
+        bit: 0
+        description: "有效位"
+      - name: "R"
+        bit: 1
+        description: "可读"
+      - name: "W"
+        bit: 2
+        description: "可写"
+      - name: "X"
+        bit: 3
+        description: "可执行"
+      - name: "U"
+        bit: 4
+        description: "用户可访问"
+      - name: "G"
+        bit: 5
+        description: "全局映射"
+      - name: "A"
+        bit: 6
+        description: "已访问"
+      - name: "D"
+        bit: 7
+        description: "已修改 (脏)"
+      - name: "RSW"
+        bits: "[9:8]"
+        description: "软件保留"
+      - name: "PPN"
+        bits: "[53:10]"
+        description: "物理页号"
+      - name: "Reserved"
+        bits: "[63:54]"
+        description: "保留"
+
+  satp_format:
+    description: "satp 寄存器格式 (RV64)"
+    fields:
+      - name: "MODE"
+        bits: "[63:60]"
+        values:
+          - "0: Bare (无分页)"
+          - "8: Sv39"
+          - "9: Sv48"
+          - "10: Sv57"
+      - name: "ASID"
+        bits: "[59:44]"
+        description: "地址空间 ID"
+      - name: "PPN"
+        bits: "[43:0]"
+        description: "根页表物理页号"
+
+
+# ============================================================
+# RISC-V INTERRUPT CONTROLLER (PLIC/CLINT)
+# ============================================================
+
+riscv_interrupt_controller:
+  description: "RISC-V 中断控制器"
+  header: "drivers/irqchip/irq-riscv-intc.h"
+  icon: "🎯"
+
+  controllers:
+    clint:
+      name: "CLINT (Core Local Interruptor)"
+      description: "核心本地中断控制器"
+      provides:
+        - "软件中断 (MSIP)"
+        - "定时器中断 (MTIP)"
+      registers:
+        - name: "msip"
+          offset: "0x0000"
+          description: "机器软件中断挂起 (每 hart)"
+        - name: "mtimecmp"
+          offset: "0x4000"
+          description: "定时器比较值 (每 hart)"
+        - name: "mtime"
+          offset: "0xBFF8"
+          description: "定时器值 (全局)"
+
+    plic:
+      name: "PLIC (Platform-Level Interrupt Controller)"
+      description: "平台级中断控制器"
+      max_sources: 1024
+      max_contexts: 15872
+      registers:
+        - name: "priority"
+          offset: "0x000000"
+          description: "中断源优先级"
+        - name: "pending"
+          offset: "0x001000"
+          description: "中断挂起位"
+        - name: "enable"
+          offset: "0x002000"
+          description: "中断使能 (每 context)"
+        - name: "threshold"
+          offset: "0x200000"
+          description: "优先级阈值 (每 context)"
+        - name: "claim/complete"
+          offset: "0x200004"
+          description: "声明/完成寄存器 (每 context)"
+
+    aia:
+      name: "AIA (Advanced Interrupt Architecture)"
+      description: "高级中断架构 (新标准)"
+      components:
+        - "IMSIC (Incoming MSI Controller)"
+        - "APLIC (Advanced Platform-Level Interrupt Controller)"
+
+  kernel_call_chain:
+    trigger: "外部中断"
+    chain:
+      - function: "handle_exception"
+        file: "arch/riscv/kernel/entry.S"
+        description: "异常入口"
+      - function: "riscv_intc_irq"
+        file: "drivers/irqchip/irq-riscv-intc.c"
+        description: "RISC-V 中断控制器处理"
+      - function: "plic_handle_irq"
+        file: "drivers/irqchip/irq-sifive-plic.c"
+        description: "PLIC 中断处理"
+      - function: "generic_handle_domain_irq"
+        file: "kernel/irq/irqdesc.c"
+        description: "通用中断处理"
+      - function: "my_irq_handler()"
+        file: "用户代码"
+        is_user_entry: true
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  pt_regs:
+    description: "RISC-V 寄存器上下文"
+    header: "arch/riscv/include/asm/ptrace.h"
+    fields:
+      - name: "epc"
+        type: "unsigned long"
+        description: "异常 PC"
+      - name: "ra"
+        type: "unsigned long"
+        description: "返回地址"
+      - name: "sp"
+        type: "unsigned long"
+        description: "栈指针"
+      - name: "gp"
+        type: "unsigned long"
+        description: "全局指针"
+      - name: "tp"
+        type: "unsigned long"
+        description: "线程指针"
+      - name: "t0-t6"
+        type: "unsigned long"
+        description: "临时寄存器"
+      - name: "s0-s11"
+        type: "unsigned long"
+        description: "保存寄存器"
+      - name: "a0-a7"
+        type: "unsigned long"
+        description: "参数寄存器"
+      - name: "status"
+        type: "unsigned long"
+        description: "sstatus"
+      - name: "badaddr"
+        type: "unsigned long"
+        description: "stval (故障地址)"
+      - name: "cause"
+        type: "unsigned long"
+        description: "scause"
+      - name: "orig_a0"
+        type: "unsigned long"
+        description: "原始 a0 (系统调用号)"
+
+  thread_struct:
+    description: "RISC-V 线程硬件上下文"
+    header: "arch/riscv/include/asm/processor.h"
+    fields:
+      - name: "ra"
+        type: "unsigned long"
+        description: "返回地址"
+      - name: "sp"
+        type: "unsigned long"
+        description: "内核栈指针"
+      - name: "s[12]"
+        type: "unsigned long"
+        description: "s0-s11 保存寄存器"
+      - name: "bad_cause"
+        type: "unsigned long"
+        description: "上次故障原因"
+      - name: "fstate"
+        type: "struct __riscv_f_ext_state"
+        description: "FPU 状态"
+      - name: "vstate"
+        type: "struct __riscv_v_ext_state"
+        description: "向量状态"
+
+  sbi_ret:
+    description: "SBI 调用返回值"
+    header: "arch/riscv/include/asm/sbi.h"
+    fields:
+      - name: "error"
+        type: "long"
+        description: "错误码 (0 = 成功)"
+      - name: "value"
+        type: "long"
+        description: "返回值"
+
+
+# ============================================================
+# KERNEL FUNCTIONS
+# ============================================================
+
+kernel_functions:
+  context_switch:
+    description: "上下文切换"
+    functions:
+      - name: "__switch_to"
+        file: "arch/riscv/kernel/process.c"
+        description: "进程上下文切换"
+      - name: "switch_to"
+        file: "arch/riscv/include/asm/switch_to.h"
+        description: "上下文切换宏"
+      - name: "fpu_state_restore"
+        file: "arch/riscv/kernel/fpu.c"
+        description: "FPU 状态恢复"
+
+  trap_handling:
+    description: "陷阱处理"
+    functions:
+      - name: "handle_exception"
+        file: "arch/riscv/kernel/entry.S"
+        description: "通用异常入口"
+      - name: "do_page_fault"
+        file: "arch/riscv/mm/fault.c"
+        description: "页故障处理"
+      - name: "do_trap_ecall_u"
+        file: "arch/riscv/kernel/traps.c"
+        description: "用户 ECALL 处理"
+      - name: "do_trap_break"
+        file: "arch/riscv/kernel/traps.c"
+        description: "断点处理"
+
+  sbi_functions:
+    description: "SBI 接口函数"
+    functions:
+      - name: "sbi_set_timer"
+        file: "arch/riscv/kernel/sbi.c"
+        description: "设置定时器"
+      - name: "sbi_send_ipi"
+        file: "arch/riscv/kernel/sbi.c"
+        description: "发送 IPI"
+      - name: "sbi_remote_fence_i"
+        file: "arch/riscv/kernel/sbi.c"
+        description: "远程指令缓存同步"
+      - name: "sbi_remote_sfence_vma"
+        file: "arch/riscv/kernel/sbi.c"
+        description: "远程 TLB 刷新"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "RISC-V 系统调用示例"
+    kernel_version: "5.0+"
+    code: |
+      /* 用户空间汇编 */
+      li a7, 64          /* __NR_write */
+      li a0, 1           /* fd = STDOUT */
+      la a1, message     /* buf */
+      li a2, 13          /* len */
+      ecall              /* 系统调用 */
+      
+      /* 内核系统调用定义 */
+      SYSCALL_DEFINE3(write, unsigned int, fd,
+                      const char __user *, buf,
+                      size_t, count)
+      {
+          return ksys_write(fd, buf, count);
+      }
+
+  - description: "RISC-V 中断处理程序"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/interrupt.h>
+      
+      static irqreturn_t my_riscv_irq_handler(int irq, void *dev_id)
+      {
+          struct my_device *dev = dev_id;
+          u32 status;
+          
+          /* 读取状态 */
+          status = readl(dev->regs + IRQ_STATUS);
+          if (!(status & IRQ_PENDING))
+              return IRQ_NONE;
+          
+          /* 清除中断 */
+          writel(status, dev->regs + IRQ_CLEAR);
+          
+          /* 处理 */
+          complete(&dev->completion);
+          
+          return IRQ_HANDLED;
+      }
+      
+      static int my_riscv_probe(struct platform_device *pdev)
+      {
+          int irq, ret;
+          
+          irq = platform_get_irq(pdev, 0);
+          if (irq < 0)
+              return irq;
+          
+          ret = devm_request_irq(&pdev->dev, irq,
+                                 my_riscv_irq_handler,
+                                 IRQF_SHARED,
+                                 "my-riscv-device", dev);
+          return ret;
+      }
+
+  - description: "RISC-V CSR 操作"
+    kernel_version: "5.0+"
+    code: |
+      #include <asm/csr.h>
+      
+      /* 读取 CSR */
+      static inline unsigned long csr_read_sstatus(void)
+      {
+          unsigned long val;
+          asm volatile("csrr %0, sstatus" : "=r"(val));
+          return val;
+      }
+      
+      /* 写入 CSR */
+      static inline void csr_write_stvec(unsigned long val)
+      {
+          asm volatile("csrw stvec, %0" : : "r"(val));
+      }
+      
+      /* 设置 CSR 位 */
+      static inline void csr_set_sstatus(unsigned long bits)
+      {
+          asm volatile("csrs sstatus, %0" : : "r"(bits));
+      }
+      
+      /* 清除 CSR 位 */
+      static inline void csr_clear_sstatus(unsigned long bits)
+      {
+          asm volatile("csrc sstatus, %0" : : "r"(bits));
+      }
+      
+      /* 示例: 禁用中断 */
+      static inline unsigned long local_irq_save(void)
+      {
+          unsigned long flags;
+          asm volatile(
+              "csrrc %0, sstatus, %1"
+              : "=r"(flags) : "r"(SR_SIE)
+          );
+          return flags;
+      }
+
+  - description: "RISC-V SBI 调用"
+    kernel_version: "5.0+"
+    code: |
+      #include <asm/sbi.h>
+      
+      /* 设置定时器 */
+      void riscv_set_timer(u64 next_event)
+      {
+          sbi_set_timer(next_event);
+      }
+      
+      /* 发送 IPI */
+      void riscv_send_ipi(const struct cpumask *mask)
+      {
+          sbi_send_ipi(mask);
+      }
+      
+      /* 远程 TLB 刷新 */
+      void riscv_remote_sfence_vma(const struct cpumask *mask,
+                                   unsigned long start,
+                                   unsigned long size)
+      {
+          sbi_remote_sfence_vma(mask, start, size);
+      }
+      
+      /* 直接 SBI 调用 */
+      struct sbiret sbi_ecall(int ext, int fid,
+                              unsigned long arg0,
+                              unsigned long arg1,
+                              unsigned long arg2,
+                              unsigned long arg3,
+                              unsigned long arg4,
+                              unsigned long arg5)
+      {
+          struct sbiret ret;
+          
+          register unsigned long a0 asm("a0") = arg0;
+          register unsigned long a1 asm("a1") = arg1;
+          register unsigned long a2 asm("a2") = arg2;
+          register unsigned long a3 asm("a3") = arg3;
+          register unsigned long a4 asm("a4") = arg4;
+          register unsigned long a5 asm("a5") = arg5;
+          register unsigned long a6 asm("a6") = fid;
+          register unsigned long a7 asm("a7") = ext;
+          
+          asm volatile("ecall"
+              : "+r"(a0), "+r"(a1)
+              : "r"(a2), "r"(a3), "r"(a4), "r"(a5),
+                "r"(a6), "r"(a7)
+              : "memory");
+          
+          ret.error = a0;
+          ret.value = a1;
+          return ret;
+      }
+
+  - description: "RISC-V 页表操作"
+    kernel_version: "5.0+"
+    code: |
+      #include <asm/pgtable.h>
+      #include <asm/tlbflush.h>
+      
+      /* 设置 PTE */
+      static inline void set_pte(pte_t *ptep, pte_t pte)
+      {
+          *ptep = pte;
+      }
+      
+      /* 刷新本地 TLB (单地址) */
+      static inline void local_flush_tlb_page(unsigned long addr)
+      {
+          asm volatile("sfence.vma %0" : : "r"(addr) : "memory");
+      }
+      
+      /* 刷新本地 TLB (所有) */
+      static inline void local_flush_tlb_all(void)
+      {
+          asm volatile("sfence.vma" : : : "memory");
+      }
+      
+      /* 刷新本地 TLB (ASID) */
+      static inline void local_flush_tlb_all_asid(unsigned long asid)
+      {
+          asm volatile("sfence.vma x0, %0" : : "r"(asid) : "memory");
+      }
+      
+      /* 内存屏障 */
+      #define mb()    asm volatile("fence iorw, iorw" ::: "memory")
+      #define rmb()   asm volatile("fence ir, ir" ::: "memory")
+      #define wmb()   asm volatile("fence ow, ow" ::: "memory")
+      
+      /* 指令屏障 */
+      #define fence_i() asm volatile("fence.i" ::: "memory")
+
+
+# ============================================================
+# NOTES
+# ============================================================
+
+notes:
+  - "RISC-V 使用 ECALL 触发所有特权级转换"
+  - "M-mode 通常由 OpenSBI 固件处理"
+  - "Linux 主要运行在 S-mode"
+  - "SBI 是 S-mode 与 M-mode 的标准接口"
+  - "PLIC 处理外部中断，CLINT 处理定时器/软件中断"
+  - "Sv39 是 Linux 的默认分页模式 (512GB VA)"
+  - "RISC-V 没有 ARM/x86 的复杂历史包袱"
+  - "向量扩展 (V) 类似 ARM SVE"
