@@ -1,0 +1,947 @@
+# Linux Kernel - 串口/UART 驱动框架知识库
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/serial/
+#
+# 本文件专注于 UART 驱动框架的核心 API，包括：
+# - UART 驱动注册和端口管理
+# - UART 端口操作回调
+# - 8250/16550 驱动特定 API
+# - 早期控制台 (earlycon) 支持
+
+kernel_version:
+  minimum: "4.9"
+  recommended: "5.10+"
+  tested: "6.1"
+  notes:
+    - "serial_core.h 是所有 UART 驱动的核心头文件"
+    - "8250 驱动是最常用的 PC 串口驱动"
+    - "earlycon 用于内核启动早期的控制台输出"
+
+# ============================================================
+# UART DRIVER REGISTRATION
+# ============================================================
+
+serial_driver:
+  description: "串口/UART 驱动框架"
+  header: "linux/serial_core.h"
+  icon: "📟"
+  
+  registration:
+    bind_patterns:
+      # 注册 UART 驱动
+      - pattern: 'uart_register_driver\s*\(\s*&?(?P<drv>\w+)\s*\)'
+        variable_capture: "drv"
+        description: "注册 UART 驱动"
+        context: "process"
+        can_sleep: true
+        returns: "int (0 成功，负数错误码)"
+        
+      # 注销 UART 驱动
+      - pattern: 'uart_unregister_driver\s*\(\s*&?(?P<drv>\w+)\s*\)'
+        variable_capture: "drv"
+        description: "注销 UART 驱动"
+        context: "process"
+        can_sleep: true
+        
+      # 添加 UART 端口
+      - pattern: 'uart_add_one_port\s*\(\s*&?(?P<drv>\w+)\s*,\s*&?(?P<port>\w+)\s*\)'
+        variable_capture: "port"
+        description: "添加 UART 端口到驱动"
+        context: "process"
+        can_sleep: true
+        returns: "int (0 成功，负数错误码)"
+        extra_captures:
+          - name: "drv"
+            description: "UART 驱动结构"
+        
+      # 移除 UART 端口
+      - pattern: 'uart_remove_one_port\s*\(\s*&?(?P<drv>\w+)\s*,\s*&?(?P<port>\w+)\s*\)'
+        variable_capture: "port"
+        description: "从驱动移除 UART 端口"
+        context: "process"
+        can_sleep: true
+        extra_captures:
+          - name: "drv"
+            description: "UART 驱动结构"
+
+  driver_structure:
+    - pattern: 'static struct uart_driver\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "UART 驱动结构体定义"
+      
+    - pattern: 'static const struct uart_driver\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "UART 驱动结构体定义 (const)"
+
+
+# ============================================================
+# UART PORT OPERATIONS
+# ============================================================
+
+port_ops:
+  description: "UART 端口操作函数"
+  header: "linux/serial_core.h"
+
+  bind_patterns:
+    # 波特率计算
+    - pattern: 'uart_get_baud_rate\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "获取波特率"
+      context: "process"
+      returns: "unsigned int (波特率值)"
+      
+    # 超时更新
+    - pattern: 'uart_update_timeout\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "更新端口超时值"
+      context: "process/atomic"
+      
+    # 控制台写入
+    - pattern: 'uart_console_write\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "控制台输出写入"
+      context: "atomic"
+      can_sleep: false
+      
+    # 发送唤醒
+    - pattern: 'uart_write_wakeup\s*\(\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "唤醒等待发送的进程"
+      context: "atomic"
+      can_sleep: false
+      
+    # 插入字符
+    - pattern: 'uart_insert_char\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "插入接收字符到缓冲区"
+      context: "atomic/hardirq"
+      can_sleep: false
+      
+    # 处理 break 信号
+    - pattern: 'uart_handle_break\s*\(\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "处理 break 信号"
+      context: "atomic/hardirq"
+      can_sleep: false
+      
+    # 处理 CTS 变化
+    - pattern: 'uart_handle_cts_change\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "处理 CTS 信号变化"
+      context: "atomic/hardirq"
+      can_sleep: false
+      
+    # 处理 DCD 变化
+    - pattern: 'uart_handle_dcd_change\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "处理 DCD 信号变化"
+      context: "atomic/hardirq"
+      can_sleep: false
+      
+    # 获取分频器
+    - pattern: 'uart_get_divisor\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "获取波特率分频器值"
+      context: "process"
+      
+    # 端口挂起
+    - pattern: 'uart_suspend_port\s*\(\s*(?P<drv>[^,]+)\s*,\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "挂起 UART 端口"
+      context: "process"
+      can_sleep: true
+      
+    # 端口恢复
+    - pattern: 'uart_resume_port\s*\(\s*(?P<drv>[^,]+)\s*,\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "恢复 UART 端口"
+      context: "process"
+      can_sleep: true
+
+
+# ============================================================
+# UART PORT CALLBACKS
+# ============================================================
+
+callbacks:
+  description: "UART 端口操作回调函数"
+  header: "linux/serial_core.h"
+  
+  startup:
+    pattern: '\.startup\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "int (*startup)(struct uart_port *port)"
+    description: "端口打开时调用，初始化硬件"
+    context: "process"
+    can_sleep: true
+    returns: "0 成功，负数错误码"
+    
+  shutdown:
+    pattern: '\.shutdown\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*shutdown)(struct uart_port *port)"
+    description: "端口关闭时调用，清理硬件"
+    context: "process"
+    can_sleep: true
+    
+  start_tx:
+    pattern: '\.start_tx\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*start_tx)(struct uart_port *port)"
+    description: "启动发送，通常启用 TX 中断"
+    context: "atomic"
+    can_sleep: false
+    notes: "可能在中断上下文调用"
+    
+  stop_tx:
+    pattern: '\.stop_tx\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*stop_tx)(struct uart_port *port)"
+    description: "停止发送，禁用 TX 中断"
+    context: "atomic"
+    can_sleep: false
+    
+  stop_rx:
+    pattern: '\.stop_rx\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*stop_rx)(struct uart_port *port)"
+    description: "停止接收"
+    context: "atomic"
+    can_sleep: false
+    
+  tx_empty:
+    pattern: '\.tx_empty\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "unsigned int (*tx_empty)(struct uart_port *port)"
+    description: "检查发送缓冲区是否为空"
+    context: "atomic"
+    can_sleep: false
+    returns: "TIOCSER_TEMT (空) 或 0 (非空)"
+    
+  set_termios:
+    pattern: '\.set_termios\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*set_termios)(struct uart_port *port, struct ktermios *new, const struct ktermios *old)"
+    description: "设置终端属性（波特率、数据位等）"
+    context: "process"
+    can_sleep: true
+    
+  set_mctrl:
+    pattern: '\.set_mctrl\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*set_mctrl)(struct uart_port *port, unsigned int mctrl)"
+    description: "设置调制解调器控制信号 (RTS, DTR)"
+    context: "atomic"
+    can_sleep: false
+    
+  get_mctrl:
+    pattern: '\.get_mctrl\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "unsigned int (*get_mctrl)(struct uart_port *port)"
+    description: "获取调制解调器状态 (CTS, DCD, DSR, RI)"
+    context: "atomic"
+    can_sleep: false
+    
+  enable_ms:
+    pattern: '\.enable_ms\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*enable_ms)(struct uart_port *port)"
+    description: "启用调制解调器状态中断"
+    context: "atomic"
+    can_sleep: false
+    
+  break_ctl:
+    pattern: '\.break_ctl\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*break_ctl)(struct uart_port *port, int ctl)"
+    description: "控制 break 信号"
+    context: "process"
+    
+  flush_buffer:
+    pattern: '\.flush_buffer\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*flush_buffer)(struct uart_port *port)"
+    description: "刷新发送缓冲区"
+    context: "atomic"
+    
+  type:
+    pattern: '\.type\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "const char *(*type)(struct uart_port *port)"
+    description: "返回端口类型字符串"
+    context: "process"
+    
+  request_port:
+    pattern: '\.request_port\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "int (*request_port)(struct uart_port *port)"
+    description: "请求端口资源 (I/O, 内存)"
+    context: "process"
+    can_sleep: true
+    
+  release_port:
+    pattern: '\.release_port\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*release_port)(struct uart_port *port)"
+    description: "释放端口资源"
+    context: "process"
+    can_sleep: true
+    
+  config_port:
+    pattern: '\.config_port\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*config_port)(struct uart_port *port, int flags)"
+    description: "自动配置端口"
+    context: "process"
+    
+  verify_port:
+    pattern: '\.verify_port\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "int (*verify_port)(struct uart_port *port, struct serial_struct *ser)"
+    description: "验证端口配置"
+    context: "process"
+    
+  pm:
+    pattern: '\.pm\s*=\s*(?P<handler>\w+)'
+    handler_capture: "handler"
+    signature: "void (*pm)(struct uart_port *port, unsigned int state, unsigned int oldstate)"
+    description: "电源管理回调"
+    context: "process"
+    can_sleep: true
+
+
+# ============================================================
+# 8250/16550 UART SPECIFIC
+# ============================================================
+
+serial_8250:
+  description: "8250/16550 UART 驱动框架"
+  header: "linux/serial_8250.h"
+  icon: "🔌"
+  
+  bind_patterns:
+    # 注册 8250 端口
+    - pattern: 'serial8250_register_8250_port\s*\(\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "注册 8250 UART 端口"
+      context: "process"
+      can_sleep: true
+      returns: "int (端口行号或负数错误码)"
+      
+    # 注销 8250 端口
+    - pattern: 'serial8250_unregister_port\s*\(\s*(?P<line>\w+)\s*\)'
+      variable_capture: "line"
+      description: "注销 8250 UART 端口"
+      context: "process"
+      can_sleep: true
+      
+    # 默认 startup 实现
+    - pattern: 'serial8250_do_startup\s*\(\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "8250 默认 startup 实现"
+      context: "process"
+      can_sleep: true
+      
+    # 默认 shutdown 实现
+    - pattern: 'serial8250_do_shutdown\s*\(\s*(?P<port>[^)]+)\s*\)'
+      variable_capture: "port"
+      description: "8250 默认 shutdown 实现"
+      context: "process"
+      can_sleep: true
+      
+    # 中断处理
+    - pattern: 'serial8250_handle_irq\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "8250 中断处理函数"
+      context: "hardirq"
+      can_sleep: false
+      
+    # 接收字符
+    - pattern: 'serial8250_rx_chars\s*\(\s*(?P<up>[^,]+)\s*,'
+      variable_capture: "up"
+      description: "8250 接收字符处理"
+      context: "hardirq"
+      can_sleep: false
+      
+    # 发送字符
+    - pattern: 'serial8250_tx_chars\s*\(\s*(?P<up>[^)]+)\s*\)'
+      variable_capture: "up"
+      description: "8250 发送字符处理"
+      context: "hardirq"
+      can_sleep: false
+      
+    # 默认 set_termios 实现
+    - pattern: 'serial8250_do_set_termios\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "8250 默认 set_termios 实现"
+      context: "process"
+      
+    # PM 操作
+    - pattern: 'serial8250_do_pm\s*\(\s*(?P<port>[^,]+)\s*,'
+      variable_capture: "port"
+      description: "8250 电源管理操作"
+      context: "process"
+      can_sleep: true
+      
+    # 获取私有数据
+    - pattern: 'serial8250_get_port\s*\(\s*(?P<line>\w+)\s*\)'
+      variable_capture: "line"
+      description: "获取 8250 端口结构"
+      context: "any"
+      
+    # EM485 相关
+    - pattern: 'serial8250_em485_init\s*\(\s*(?P<up>[^)]+)\s*\)'
+      variable_capture: "up"
+      description: "初始化 RS485 支持"
+      context: "process"
+      
+    - pattern: 'serial8250_em485_destroy\s*\(\s*(?P<up>[^)]+)\s*\)'
+      variable_capture: "up"
+      description: "销毁 RS485 支持"
+      context: "process"
+
+  uart_8250_port_structure:
+    - pattern: 'static struct uart_8250_port\s+(?P<name>\w+)'
+      variable_capture: "name"
+      description: "8250 端口结构体定义"
+      
+    - pattern: 'struct uart_8250_port\s*\{'
+      description: "8250 端口结构体"
+
+
+# ============================================================
+# EARLYCON (EARLY CONSOLE)
+# ============================================================
+
+earlycon:
+  description: "早期控制台支持"
+  header: "linux/serial_core.h"
+  icon: "🖥️"
+  notes:
+    - "用于内核启动早期的控制台输出"
+    - "在 tty 子系统初始化之前工作"
+    - "通过命令行参数 earlycon=xxx 启用"
+  
+  bind_patterns:
+    # 声明 earlycon
+    - pattern: 'EARLYCON_DECLARE\s*\(\s*(?P<name>\w+)\s*,\s*(?P<setup>\w+)\s*\)'
+      variable_capture: "name"
+      description: "声明早期控制台"
+      extra_captures:
+        - name: "setup"
+          description: "设置函数"
+          
+    # 设备树声明 earlycon
+    - pattern: 'OF_EARLYCON_DECLARE\s*\(\s*(?P<name>\w+)\s*,\s*"(?P<compatible>[^"]+)"\s*,\s*(?P<setup>\w+)\s*\)'
+      variable_capture: "name"
+      description: "声明设备树兼容的早期控制台"
+      extra_captures:
+        - name: "compatible"
+          description: "设备树兼容字符串"
+        - name: "setup"
+          description: "设置函数"
+          
+    # earlycon 设置函数
+    - pattern: 'static int __init\s+(?P<name>\w+)_earlycon_setup\s*\('
+      variable_capture: "name"
+      description: "earlycon 设置函数定义"
+      
+    - pattern: 'int __init\s+(?P<name>\w+)_early_console_setup\s*\('
+      variable_capture: "name"
+      description: "早期控制台设置函数"
+      
+  earlycon_device_structure:
+    - pattern: 'struct earlycon_device\s*\{'
+      description: "早期控制台设备结构"
+      
+  earlycon_setup_signature:
+    return_type: "int"
+    parameters:
+      - name: "device"
+        type: "struct earlycon_device *"
+        description: "早期控制台设备"
+      - name: "options"
+        type: "const char *"
+        description: "命令行选项"
+
+
+# ============================================================
+# SERIAL CONSOLE
+# ============================================================
+
+serial_console:
+  description: "串口控制台支持"
+  header: "linux/console.h"
+  
+  bind_patterns:
+    # 注册控制台
+    - pattern: 'register_console\s*\(\s*&?(?P<con>\w+)\s*\)'
+      variable_capture: "con"
+      description: "注册控制台"
+      context: "process"
+      can_sleep: true
+      
+    # 注销控制台
+    - pattern: 'unregister_console\s*\(\s*&?(?P<con>\w+)\s*\)'
+      variable_capture: "con"
+      description: "注销控制台"
+      context: "process"
+      can_sleep: true
+      
+    # 控制台结构定义
+    - pattern: 'static struct console\s+(?P<name>\w+)\s*=\s*\{'
+      variable_capture: "name"
+      description: "控制台结构体定义"
+      
+  console_callbacks:
+    write:
+      pattern: '\.write\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      signature: "void (*write)(struct console *co, const char *s, unsigned count)"
+      description: "控制台写入回调"
+      context: "atomic"
+      can_sleep: false
+      
+    setup:
+      pattern: '\.setup\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      signature: "int (*setup)(struct console *co, char *options)"
+      description: "控制台设置回调"
+      context: "process"
+      
+    device:
+      pattern: '\.device\s*=\s*(?P<handler>\w+)'
+      handler_capture: "handler"
+      signature: "struct tty_driver *(*device)(struct console *co, int *index)"
+      description: "获取关联的 TTY 驱动"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  uart_driver:
+    pattern: 'struct uart_driver\s*\{'
+    description: "UART 驱动结构"
+    file: "include/linux/serial_core.h"
+    fields:
+      - name: "owner"
+        type: "struct module *"
+        description: "驱动所属模块"
+      - name: "driver_name"
+        type: "const char *"
+        description: "驱动名称"
+      - name: "dev_name"
+        type: "const char *"
+        description: "设备名称前缀（如 ttyS）"
+      - name: "major"
+        type: "int"
+        description: "主设备号"
+      - name: "minor"
+        type: "int"
+        description: "起始次设备号"
+      - name: "nr"
+        type: "int"
+        description: "支持的端口数量"
+      - name: "cons"
+        type: "struct console *"
+        description: "关联的控制台"
+        
+  uart_port:
+    pattern: 'struct uart_port\s*\{'
+    description: "UART 端口结构"
+    file: "include/linux/serial_core.h"
+    fields:
+      - name: "lock"
+        type: "spinlock_t"
+        description: "端口自旋锁"
+      - name: "iobase"
+        type: "unsigned long"
+        description: "IO 端口基地址"
+      - name: "membase"
+        type: "unsigned char __iomem *"
+        description: "内存映射基地址"
+      - name: "irq"
+        type: "unsigned int"
+        description: "中断号"
+      - name: "uartclk"
+        type: "unsigned int"
+        description: "UART 时钟频率"
+      - name: "fifosize"
+        type: "unsigned int"
+        description: "FIFO 大小"
+      - name: "ops"
+        type: "const struct uart_ops *"
+        description: "端口操作函数"
+      - name: "line"
+        type: "unsigned int"
+        description: "端口号"
+      - name: "type"
+        type: "unsigned int"
+        description: "端口类型"
+      - name: "flags"
+        type: "upf_t"
+        description: "端口标志"
+      - name: "mapbase"
+        type: "resource_size_t"
+        description: "物理地址"
+      - name: "mapsize"
+        type: "resource_size_t"
+        description: "映射大小"
+      - name: "private_data"
+        type: "void *"
+        description: "私有数据"
+        
+  uart_ops:
+    pattern: 'struct uart_ops\s*\{'
+    description: "UART 端口操作结构"
+    file: "include/linux/serial_core.h"
+    fields:
+      - name: "tx_empty"
+        type: "unsigned int (*)(struct uart_port *)"
+        description: "检查 TX 是否为空"
+      - name: "set_mctrl"
+        type: "void (*)(struct uart_port *, unsigned int)"
+        description: "设置调制解调器控制"
+      - name: "get_mctrl"
+        type: "unsigned int (*)(struct uart_port *)"
+        description: "获取调制解调器状态"
+      - name: "stop_tx"
+        type: "void (*)(struct uart_port *)"
+        description: "停止发送"
+      - name: "start_tx"
+        type: "void (*)(struct uart_port *)"
+        description: "开始发送"
+      - name: "startup"
+        type: "int (*)(struct uart_port *)"
+        description: "启动端口"
+      - name: "shutdown"
+        type: "void (*)(struct uart_port *)"
+        description: "关闭端口"
+      - name: "set_termios"
+        type: "void (*)(struct uart_port *, struct ktermios *, const struct ktermios *)"
+        description: "设置终端参数"
+
+  uart_8250_port:
+    pattern: 'struct uart_8250_port\s*\{'
+    description: "8250 UART 端口结构"
+    file: "include/linux/serial_8250.h"
+    fields:
+      - name: "port"
+        type: "struct uart_port"
+        description: "嵌入的 uart_port 结构"
+      - name: "timer"
+        type: "struct timer_list"
+        description: "轮询定时器"
+      - name: "ier"
+        type: "unsigned char"
+        description: "中断使能寄存器缓存"
+      - name: "lcr"
+        type: "unsigned char"
+        description: "线控寄存器缓存"
+      - name: "mcr"
+        type: "unsigned char"
+        description: "调制解调器控制寄存器"
+      - name: "acr"
+        type: "unsigned char"
+        description: "附加控制寄存器"
+      - name: "fcr"
+        type: "unsigned char"
+        description: "FIFO 控制寄存器"
+      - name: "capabilities"
+        type: "unsigned int"
+        description: "端口能力标志"
+      - name: "bugs"
+        type: "unsigned short"
+        description: "已知的硬件 bug"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  uart_probe_flow:
+    description: "UART 驱动 probe 流程"
+    chain:
+      - caller: "platform_bus"
+        callee: "driver.probe"
+        context: "process"
+        description: "平台总线匹配后调用 probe"
+      - caller: "probe"
+        callee: "uart_add_one_port"
+        description: "将端口添加到驱动"
+      - caller: "uart_add_one_port"
+        callee: "tty_port_register_device"
+        description: "注册 TTY 设备"
+
+  uart_open_flow:
+    description: "UART 设备打开流程"
+    chain:
+      - caller: "user space"
+        callee: "tty_open"
+        context: "process"
+        description: "打开 TTY 设备"
+      - caller: "tty_open"
+        callee: "uart_open"
+        description: "UART 层打开"
+      - caller: "uart_open"
+        callee: "uart_startup"
+        description: "启动 UART"
+      - caller: "uart_startup"
+        callee: "uart_ops->startup"
+        description: "驱动 startup 回调"
+        is_user_entry: true
+
+  uart_tx_flow:
+    description: "UART 发送数据流程"
+    chain:
+      - caller: "user space"
+        callee: "tty_write"
+        context: "process"
+        description: "写入 TTY"
+      - caller: "tty_write"
+        callee: "uart_write"
+        description: "UART 写入"
+      - caller: "uart_write"
+        callee: "uart_ops->start_tx"
+        context: "atomic"
+        description: "启动发送"
+        is_user_entry: true
+      - caller: "hardware"
+        callee: "tx_irq_handler"
+        context: "hardirq"
+        description: "TX 中断"
+        async: true
+      - caller: "tx_irq_handler"
+        callee: "uart_write_wakeup"
+        description: "唤醒写入进程"
+
+  uart_rx_flow:
+    description: "UART 接收数据流程"
+    chain:
+      - caller: "hardware"
+        callee: "rx_irq_handler"
+        context: "hardirq"
+        description: "RX 中断"
+      - caller: "rx_irq_handler"
+        callee: "uart_insert_char"
+        description: "插入字符"
+      - caller: "rx_irq_handler"
+        callee: "tty_flip_buffer_push"
+        async: true
+        mechanism: "workqueue"
+        description: "推送到 TTY 层"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单 UART 驱动"
+    kernel_version: "5.0+"
+    code: |
+      #include <linux/module.h>
+      #include <linux/platform_device.h>
+      #include <linux/serial_core.h>
+      #include <linux/tty_flip.h>
+      
+      struct my_uart_port {
+          struct uart_port port;
+          void __iomem *base;
+          struct clk *clk;
+      };
+      
+      static unsigned int my_tx_empty(struct uart_port *port)
+      {
+          struct my_uart_port *up = container_of(port, struct my_uart_port, port);
+          return (readl(up->base + SR) & TX_EMPTY) ? TIOCSER_TEMT : 0;
+      }
+      
+      static void my_start_tx(struct uart_port *port)
+      {
+          struct my_uart_port *up = container_of(port, struct my_uart_port, port);
+          writel(TX_IRQ_EN, up->base + IER);
+      }
+      
+      static void my_stop_tx(struct uart_port *port)
+      {
+          struct my_uart_port *up = container_of(port, struct my_uart_port, port);
+          writel(readl(up->base + IER) & ~TX_IRQ_EN, up->base + IER);
+      }
+      
+      static int my_startup(struct uart_port *port)
+      {
+          struct my_uart_port *up = container_of(port, struct my_uart_port, port);
+          int ret;
+          
+          ret = request_irq(port->irq, my_irq_handler, 0, "my_uart", up);
+          if (ret)
+              return ret;
+          
+          writel(UART_EN | RX_IRQ_EN, up->base + CR);
+          return 0;
+      }
+      
+      static void my_shutdown(struct uart_port *port)
+      {
+          struct my_uart_port *up = container_of(port, struct my_uart_port, port);
+          
+          writel(0, up->base + CR);
+          free_irq(port->irq, up);
+      }
+      
+      static void my_set_termios(struct uart_port *port,
+                                 struct ktermios *termios,
+                                 const struct ktermios *old)
+      {
+          unsigned int baud = uart_get_baud_rate(port, termios, old, 0, 4000000);
+          unsigned int divisor = uart_get_divisor(port, baud);
+          
+          /* 设置波特率 */
+          writel(divisor, port->membase + BAUD_DIV);
+          
+          /* 更新超时 */
+          uart_update_timeout(port, termios->c_cflag, baud);
+      }
+      
+      static const struct uart_ops my_uart_ops = {
+          .tx_empty    = my_tx_empty,
+          .set_mctrl   = my_set_mctrl,
+          .get_mctrl   = my_get_mctrl,
+          .stop_tx     = my_stop_tx,
+          .start_tx    = my_start_tx,
+          .stop_rx     = my_stop_rx,
+          .startup     = my_startup,
+          .shutdown    = my_shutdown,
+          .set_termios = my_set_termios,
+          .type        = my_type,
+          .config_port = my_config_port,
+      };
+      
+      static struct uart_driver my_uart_driver = {
+          .owner       = THIS_MODULE,
+          .driver_name = "my_uart",
+          .dev_name    = "ttyMY",
+          .major       = 0,
+          .minor       = 0,
+          .nr          = 4,
+      };
+      
+      static int my_probe(struct platform_device *pdev)
+      {
+          struct my_uart_port *up;
+          struct resource *res;
+          
+          up = devm_kzalloc(&pdev->dev, sizeof(*up), GFP_KERNEL);
+          if (!up)
+              return -ENOMEM;
+          
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          up->base = devm_ioremap_resource(&pdev->dev, res);
+          if (IS_ERR(up->base))
+              return PTR_ERR(up->base);
+          
+          up->port.membase = up->base;
+          up->port.mapbase = res->start;
+          up->port.irq = platform_get_irq(pdev, 0);
+          up->port.ops = &my_uart_ops;
+          up->port.dev = &pdev->dev;
+          up->port.type = PORT_16550A;
+          up->port.fifosize = 16;
+          
+          platform_set_drvdata(pdev, up);
+          
+          return uart_add_one_port(&my_uart_driver, &up->port);
+      }
+      
+      static int my_remove(struct platform_device *pdev)
+      {
+          struct my_uart_port *up = platform_get_drvdata(pdev);
+          uart_remove_one_port(&my_uart_driver, &up->port);
+          return 0;
+      }
+
+  - description: "8250 驱动注册示例"
+    code: |
+      #include <linux/serial_8250.h>
+      
+      static int my_8250_probe(struct platform_device *pdev)
+      {
+          struct uart_8250_port uart = {};
+          struct resource *res;
+          int line;
+          
+          res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+          if (!res)
+              return -ENODEV;
+          
+          uart.port.mapbase = res->start;
+          uart.port.irq = platform_get_irq(pdev, 0);
+          uart.port.uartclk = 24000000;
+          uart.port.flags = UPF_SHARE_IRQ | UPF_BOOT_AUTOCONF;
+          uart.port.type = PORT_16550A;
+          uart.port.iotype = UPIO_MEM;
+          uart.port.regshift = 2;
+          uart.port.fifosize = 16;
+          
+          line = serial8250_register_8250_port(&uart);
+          if (line < 0)
+              return line;
+          
+          platform_set_drvdata(pdev, (void *)(long)line);
+          return 0;
+      }
+      
+      static int my_8250_remove(struct platform_device *pdev)
+      {
+          int line = (long)platform_get_drvdata(pdev);
+          serial8250_unregister_port(line);
+          return 0;
+      }
+
+  - description: "Earlycon 实现示例"
+    code: |
+      static void my_early_write(struct console *con, const char *s, unsigned n)
+      {
+          struct earlycon_device *dev = con->data;
+          
+          while (n--) {
+              if (*s == '\n')
+                  writeb('\r', dev->port.membase + TX_REG);
+              writeb(*s++, dev->port.membase + TX_REG);
+              
+              /* 等待 TX FIFO 就绪 */
+              while (!(readb(dev->port.membase + SR) & TX_READY))
+                  cpu_relax();
+          }
+      }
+      
+      static int __init my_earlycon_setup(struct earlycon_device *device,
+                                          const char *options)
+      {
+          if (!device->port.membase)
+              return -ENODEV;
+          
+          device->con->write = my_early_write;
+          return 0;
+      }
+      
+      EARLYCON_DECLARE(my_uart, my_earlycon_setup);
+      OF_EARLYCON_DECLARE(my_uart, "vendor,my-uart", my_earlycon_setup);
+
+
+# ============================================================
+# PATTERN STATISTICS
+# ============================================================
+
+statistics:
+  total_patterns: 52
+  categories:
+    registration: 4
+    port_ops: 12
+    callbacks: 20
+    8250_specific: 10
+    earlycon: 4
+    console: 2

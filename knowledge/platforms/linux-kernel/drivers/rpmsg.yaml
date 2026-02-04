@@ -1,0 +1,63 @@
+# Linux Kernel - RPMsg (Remote Processor Messaging)
+rpmsg:
+  description: "远程处理器消息框架，用于异构多核通信"
+  header: "linux/rpmsg.h"
+  
+  driver_registration:
+    bind_patterns:
+      - pattern: 'register_rpmsg_driver\s*\(\s*&?(?P<drv>\w+)\s*\)'
+        description: "注册 RPMsg 驱动"
+        
+      - pattern: 'unregister_rpmsg_driver\s*\('
+      - pattern: 'module_rpmsg_driver\s*\(\s*(?P<drv>\w+)\s*\)'
+        description: "模块级驱动注册"
+        
+  endpoint:
+    bind_patterns:
+      - pattern: 'rpmsg_create_ept\s*\('
+        description: "创建端点"
+        
+      - pattern: 'rpmsg_destroy_ept\s*\('
+      
+  send_recv:
+    bind_patterns:
+      - pattern: 'rpmsg_send\s*\(\s*(?P<ept>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+        description: "发送消息"
+        can_sleep: true
+        
+      - pattern: 'rpmsg_sendto\s*\('
+      - pattern: 'rpmsg_send_offchannel\s*\('
+      - pattern: 'rpmsg_trysend\s*\('
+        can_sleep: false
+        
+      - pattern: 'rpmsg_trysendto\s*\('
+      - pattern: 'rpmsg_poll\s*\('
+      
+  callbacks:
+    - name: "probe"
+      signature: "int (*probe)(struct rpmsg_device *rpdev)"
+      context: "process"
+      can_sleep: true
+      
+    - name: "remove"
+      signature: "void (*remove)(struct rpmsg_device *rpdev)"
+      
+    - name: "callback"
+      signature: "int (*callback)(struct rpmsg_device *, void *data, int len, void *priv, u32 src)"
+      description: "接收消息回调"
+      context: "可能在中断上下文"
+      
+  virtio_backend:
+    bind_patterns:
+      - pattern: 'rpmsg_virtio_\w+'
+      - pattern: 'virtio_rpmsg_bus'
+      
+  remoteproc_integration:
+    bind_patterns:
+      - pattern: 'rproc_boot\s*\('
+      - pattern: 'rproc_shutdown\s*\('
+      - pattern: 'rproc_add\s*\('
+      - pattern: 'rproc_del\s*\('
+      - pattern: 'rproc_alloc\s*\('
+      - pattern: 'rproc_free\s*\('
+      - pattern: 'devm_rproc_alloc\s*\('

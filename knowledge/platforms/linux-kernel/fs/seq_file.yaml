@@ -1,0 +1,763 @@
+# Linux Kernel - seq_file 序列文件接口知识库
+# Reference: https://www.kernel.org/doc/html/latest/filesystems/seq_file.html
+# Kernel Version: 2.6+ (current APIs)
+
+# ============================================================
+# SEQ_FILE OVERVIEW
+# ============================================================
+
+seq_file_overview:
+  description: "seq_file - 用于生成虚拟文件内容的迭代器接口"
+  header: "linux/seq_file.h"
+  icon: "📄"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  purpose:
+    - description: "简化 /proc 和 /sys 文件的内容生成"
+    - description: "处理大量数据的分页读取"
+    - description: "提供标准化的迭代器接口"
+    - description: "自动处理缓冲区溢出和重试"
+
+  use_cases:
+    - description: "遍历链表/数组生成输出"
+    - description: "生成多行文本信息"
+    - description: "导出内核数据结构"
+
+
+# ============================================================
+# OPERATIONS - 打开/关闭
+# ============================================================
+
+operations:
+  # === 打开函数 ===
+  seq_open:
+    pattern: 'seq_open\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<ops>[^)]+)\s*\)'
+    description: "打开 seq_file，关联迭代器操作"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+    parameters:
+      - name: "file"
+        type: "struct file *"
+        description: "文件指针"
+      - name: "ops"
+        type: "const struct seq_operations *"
+        description: "迭代器操作"
+
+  seq_open_private:
+    pattern: 'seq_open_private\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<ops>[^,]+)\s*,\s*(?P<psize>[^)]+)\s*\)'
+    description: "打开 seq_file 并分配私有数据空间"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+    parameters:
+      - name: "file"
+        type: "struct file *"
+        description: "文件指针"
+      - name: "ops"
+        type: "const struct seq_operations *"
+        description: "迭代器操作"
+      - name: "psize"
+        type: "int"
+        description: "私有数据大小"
+
+  __seq_open_private:
+    pattern: '__seq_open_private\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<ops>[^,]+)\s*,\s*(?P<psize>[^)]+)\s*\)'
+    description: "打开 seq_file 并分配私有数据（返回 seq_file 指针）"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct seq_file *"
+
+  # === 关闭函数 ===
+  seq_release:
+    pattern: 'seq_release\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<file>[^)]+)\s*\)'
+    description: "释放 seq_file 资源"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+  seq_release_private:
+    pattern: 'seq_release_private\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<file>[^)]+)\s*\)'
+    description: "释放 seq_file 及其私有数据"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+  # === 单次输出简化接口 ===
+  single_open:
+    pattern: 'single_open\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<show>[^,]+)\s*,\s*(?P<data>[^)]+)\s*\)'
+    description: "打开单次输出的 seq_file（无需迭代）"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+    note: "适用于一次性输出所有内容的场景"
+
+  single_open_size:
+    pattern: 'single_open_size\s*\(\s*(?P<file>[^,]+)\s*,\s*(?P<show>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+    description: "打开单次输出的 seq_file，预设缓冲区大小"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+  single_release:
+    pattern: 'single_release\s*\(\s*(?P<inode>[^,]+)\s*,\s*(?P<file>[^)]+)\s*\)'
+    description: "释放 single_open 创建的 seq_file"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+
+# ============================================================
+# OUTPUT - 输出函数
+# ============================================================
+
+output:
+  seq_printf:
+    pattern: 'seq_printf\s*\(\s*(?P<m>[^,]+)\s*,'
+    description: "格式化输出到 seq_file"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+    return_type: "void"
+    note: "类似 printf，但输出到 seq_file 缓冲区"
+
+  seq_puts:
+    pattern: 'seq_puts\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<s>[^)]+)\s*\)'
+    description: "输出字符串到 seq_file"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+    return_type: "void"
+
+  seq_putc:
+    pattern: 'seq_putc\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<c>[^)]+)\s*\)'
+    description: "输出单个字符到 seq_file"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+    return_type: "void"
+
+  seq_write:
+    pattern: 'seq_write\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<data>[^,]+)\s*,\s*(?P<len>[^)]+)\s*\)'
+    description: "输出二进制数据到 seq_file"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+    return_type: "int"
+
+  seq_hex_dump:
+    pattern: 'seq_hex_dump\s*\(\s*(?P<m>[^,]+)\s*,'
+    description: "十六进制转储到 seq_file"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+    return_type: "void"
+
+  seq_escape:
+    pattern: 'seq_escape\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<s>[^,]+)\s*,\s*(?P<esc>[^)]+)\s*\)'
+    description: "转义特殊字符后输出"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+    return_type: "void"
+
+  seq_escape_mem:
+    pattern: 'seq_escape_mem\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<src>[^,]+)\s*,\s*(?P<len>[^,]+)\s*,\s*(?P<flags>[^,]+)\s*,\s*(?P<esc>[^)]+)\s*\)'
+    description: "转义内存区域后输出"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+    return_type: "void"
+
+  seq_path:
+    pattern: 'seq_path\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<path>[^,]+)\s*,\s*(?P<esc>[^)]+)\s*\)'
+    description: "输出路径到 seq_file"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+  seq_file_path:
+    pattern: 'seq_file_path\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<file>[^,]+)\s*,\s*(?P<esc>[^)]+)\s*\)'
+    description: "输出文件路径到 seq_file"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+  seq_dentry:
+    pattern: 'seq_dentry\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<dentry>[^,]+)\s*,\s*(?P<esc>[^)]+)\s*\)'
+    description: "输出 dentry 路径"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+  seq_pad:
+    pattern: 'seq_pad\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<c>[^)]+)\s*\)'
+    description: "填充到指定位置"
+    file: "fs/seq_file.c"
+    context: "process"
+    can_sleep: false
+    return_type: "void"
+
+  seq_setwidth:
+    pattern: 'seq_setwidth\s*\(\s*(?P<m>[^,]+)\s*,\s*(?P<size>[^)]+)\s*\)'
+    description: "设置输出宽度"
+    file: "include/linux/seq_file.h"
+    context: "process"
+    can_sleep: false
+    return_type: "void"
+
+  # === 特殊输出 ===
+  seq_buf_printf:
+    pattern: 'seq_buf_printf\s*\(\s*(?P<s>[^,]+)\s*,'
+    description: "格式化输出到 seq_buf"
+    file: "lib/seq_buf.c"
+    context: "any"
+    can_sleep: false
+
+  seq_buf_puts:
+    pattern: 'seq_buf_puts\s*\(\s*(?P<s>[^,]+)\s*,\s*(?P<str>[^)]+)\s*\)'
+    description: "输出字符串到 seq_buf"
+    file: "lib/seq_buf.c"
+    context: "any"
+    can_sleep: false
+
+
+# ============================================================
+# ITERATOR CALLBACKS - 迭代器回调
+# ============================================================
+
+iterator_callbacks:
+  start:
+    signature: "void *(*start)(struct seq_file *m, loff_t *pos)"
+    description: "开始迭代，返回第一个元素指针"
+    parameters:
+      - name: "m"
+        type: "struct seq_file *"
+        description: "seq_file 结构"
+      - name: "pos"
+        type: "loff_t *"
+        description: "当前位置（可修改）"
+    return_value:
+      type: "void *"
+      description: "当前元素指针，NULL 表示结束，ERR_PTR 表示错误"
+    notes:
+      - "可以在此获取锁"
+      - "SEQ_START_TOKEN 表示需要输出头部"
+
+  next:
+    signature: "void *(*next)(struct seq_file *m, void *v, loff_t *pos)"
+    description: "移动到下一个元素"
+    parameters:
+      - name: "m"
+        type: "struct seq_file *"
+        description: "seq_file 结构"
+      - name: "v"
+        type: "void *"
+        description: "当前元素指针"
+      - name: "pos"
+        type: "loff_t *"
+        description: "位置（必须递增）"
+    return_value:
+      type: "void *"
+      description: "下一个元素指针，NULL 表示结束"
+    notes:
+      - "必须递增 *pos"
+      - "不递增会导致无限循环"
+
+  stop:
+    signature: "void (*stop)(struct seq_file *m, void *v)"
+    description: "停止迭代，清理资源"
+    parameters:
+      - name: "m"
+        type: "struct seq_file *"
+        description: "seq_file 结构"
+      - name: "v"
+        type: "void *"
+        description: "当前元素指针（可能为 NULL 或 ERR_PTR）"
+    notes:
+      - "在此释放 start() 中获取的锁"
+      - "即使 start() 返回错误也会被调用"
+
+  show:
+    signature: "int (*show)(struct seq_file *m, void *v)"
+    description: "输出当前元素内容"
+    parameters:
+      - name: "m"
+        type: "struct seq_file *"
+        description: "seq_file 结构"
+      - name: "v"
+        type: "void *"
+        description: "当前元素指针"
+    return_value:
+      type: "int"
+      description: "0 成功，负值错误，SEQ_SKIP 跳过此元素"
+    notes:
+      - "使用 seq_printf/seq_puts 等输出"
+      - "返回 SEQ_SKIP 跳过当前元素"
+
+
+# ============================================================
+# LIST HELPERS - 链表遍历辅助
+# ============================================================
+
+list_helpers:
+  seq_list_start:
+    pattern: 'seq_list_start\s*\(\s*(?P<head>[^,]+)\s*,\s*(?P<pos>[^)]+)\s*\)'
+    description: "开始遍历链表"
+    file: "fs/seq_file.c"
+    return_type: "struct list_head *"
+    note: "用于 start() 回调"
+
+  seq_list_start_head:
+    pattern: 'seq_list_start_head\s*\(\s*(?P<head>[^,]+)\s*,\s*(?P<pos>[^)]+)\s*\)'
+    description: "开始遍历链表（包含头节点用于输出标题）"
+    file: "fs/seq_file.c"
+    return_type: "struct list_head *"
+
+  seq_list_next:
+    pattern: 'seq_list_next\s*\(\s*(?P<v>[^,]+)\s*,\s*(?P<head>[^,]+)\s*,\s*(?P<ppos>[^)]+)\s*\)'
+    description: "移动到链表下一个元素"
+    file: "fs/seq_file.c"
+    return_type: "struct list_head *"
+    note: "用于 next() 回调"
+
+  seq_list_start_rcu:
+    pattern: 'seq_list_start_rcu\s*\(\s*(?P<head>[^,]+)\s*,\s*(?P<pos>[^)]+)\s*\)'
+    description: "开始 RCU 保护的链表遍历"
+    file: "fs/seq_file.c"
+    return_type: "struct list_head *"
+
+  seq_list_next_rcu:
+    pattern: 'seq_list_next_rcu\s*\(\s*(?P<v>[^,]+)\s*,\s*(?P<head>[^,]+)\s*,\s*(?P<ppos>[^)]+)\s*\)'
+    description: "RCU 保护的链表下一个元素"
+    file: "fs/seq_file.c"
+    return_type: "struct list_head *"
+
+  # === hlist 辅助 ===
+  seq_hlist_start:
+    pattern: 'seq_hlist_start\s*\(\s*(?P<head>[^,]+)\s*,\s*(?P<pos>[^)]+)\s*\)'
+    description: "开始遍历 hlist"
+    file: "fs/seq_file.c"
+    return_type: "struct hlist_node *"
+
+  seq_hlist_start_head:
+    pattern: 'seq_hlist_start_head\s*\(\s*(?P<head>[^,]+)\s*,\s*(?P<pos>[^)]+)\s*\)'
+    description: "开始遍历 hlist（包含头节点）"
+    file: "fs/seq_file.c"
+    return_type: "struct hlist_node *"
+
+  seq_hlist_next:
+    pattern: 'seq_hlist_next\s*\(\s*(?P<v>[^,]+)\s*,\s*(?P<head>[^,]+)\s*,\s*(?P<ppos>[^)]+)\s*\)'
+    description: "移动到 hlist 下一个元素"
+    file: "fs/seq_file.c"
+    return_type: "struct hlist_node *"
+
+  seq_hlist_start_rcu:
+    pattern: 'seq_hlist_start_rcu\s*\(\s*(?P<head>[^,]+)\s*,\s*(?P<pos>[^)]+)\s*\)'
+    description: "开始 RCU 保护的 hlist 遍历"
+    file: "fs/seq_file.c"
+    return_type: "struct hlist_node *"
+
+  seq_hlist_next_rcu:
+    pattern: 'seq_hlist_next_rcu\s*\(\s*(?P<v>[^,]+)\s*,\s*(?P<head>[^,]+)\s*,\s*(?P<ppos>[^)]+)\s*\)'
+    description: "RCU 保护的 hlist 下一个元素"
+    file: "fs/seq_file.c"
+    return_type: "struct hlist_node *"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  seq_file:
+    pattern: 'struct seq_file\s*\{'
+    description: "序列文件结构"
+    file: "include/linux/seq_file.h"
+    fields:
+      - name: "buf"
+        type: "char *"
+        description: "输出缓冲区"
+      - name: "size"
+        type: "size_t"
+        description: "缓冲区大小"
+      - name: "from"
+        type: "size_t"
+        description: "当前读取位置"
+      - name: "count"
+        type: "size_t"
+        description: "缓冲区中数据量"
+      - name: "pad_until"
+        type: "size_t"
+        description: "填充目标位置"
+      - name: "index"
+        type: "loff_t"
+        description: "当前迭代索引"
+      - name: "read_pos"
+        type: "loff_t"
+        description: "读取位置"
+      - name: "lock"
+        type: "struct mutex"
+        description: "互斥锁"
+      - name: "op"
+        type: "const struct seq_operations *"
+        description: "迭代器操作"
+      - name: "poll_event"
+        type: "int"
+        description: "轮询事件"
+      - name: "file"
+        type: "const struct file *"
+        description: "关联的文件"
+      - name: "private"
+        type: "void *"
+        description: "私有数据（用户可用）"
+
+  seq_operations:
+    pattern: 'struct seq_operations\s*\{'
+    description: "序列文件迭代器操作"
+    file: "include/linux/seq_file.h"
+    fields:
+      - name: "start"
+        type: "void *(*)(struct seq_file *, loff_t *)"
+        description: "开始迭代"
+      - name: "stop"
+        type: "void (*)(struct seq_file *, void *)"
+        description: "停止迭代"
+      - name: "next"
+        type: "void *(*)(struct seq_file *, void *, loff_t *)"
+        description: "下一个元素"
+      - name: "show"
+        type: "int (*)(struct seq_file *, void *)"
+        description: "显示当前元素"
+
+
+# ============================================================
+# MACROS AND CONSTANTS
+# ============================================================
+
+macros:
+  SEQ_START_TOKEN:
+    pattern: 'SEQ_START_TOKEN'
+    description: "特殊标记，用于在 show() 中输出头部"
+    value: "((void *)1)"
+    note: "start() 返回此值表示需要输出标题行"
+
+  SEQ_SKIP:
+    pattern: 'SEQ_SKIP'
+    description: "show() 返回值，跳过当前元素"
+    value: "1"
+    note: "元素不输出但继续迭代"
+
+  DEFINE_SEQ_ATTRIBUTE:
+    pattern: 'DEFINE_SEQ_ATTRIBUTE\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义完整的 seq_file 属性（包含 open/fops）"
+    expansion: |
+      static int <name>_open(struct inode *inode, struct file *file) {
+          return seq_open(file, &<name>_seq_ops);
+      }
+      static const struct file_operations <name>_fops = {
+          .open = <name>_open,
+          .read = seq_read,
+          .llseek = seq_lseek,
+          .release = seq_release,
+      };
+
+  DEFINE_SHOW_ATTRIBUTE:
+    pattern: 'DEFINE_SHOW_ATTRIBUTE\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义单次输出的 seq_file 属性"
+    expansion: |
+      static int <name>_open(struct inode *inode, struct file *file) {
+          return single_open(file, <name>_show, inode->i_private);
+      }
+      static const struct file_operations <name>_fops = {
+          .open = <name>_open,
+          .read = seq_read,
+          .llseek = seq_lseek,
+          .release = single_release,
+      };
+
+  DEFINE_PROC_SHOW_ATTRIBUTE:
+    pattern: 'DEFINE_PROC_SHOW_ATTRIBUTE\s*\(\s*(?P<name>\w+)\s*\)'
+    description: "定义 proc 文件的单次输出属性"
+    expansion: "类似 DEFINE_SHOW_ATTRIBUTE，使用 proc_ops"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  seq_read_flow:
+    description: "seq_file 读取流程"
+    trigger: "用户 read() seq_file"
+    chain:
+      - function: "vfs_read"
+        file: "fs/read_write.c"
+        description: "VFS 读取入口"
+      - function: "seq_read / seq_read_iter"
+        file: "fs/seq_file.c"
+        description: "seq_file 读取核心"
+      - function: "seq_ops->start(m, &pos)"
+        description: "开始迭代，获取锁"
+        is_user_entry: true
+      - function: "seq_ops->show(m, p)"
+        description: "输出当前元素"
+        is_user_entry: true
+      - function: "seq_ops->next(m, p, &pos)"
+        description: "移动到下一个"
+        is_user_entry: true
+      - function: "seq_ops->stop(m, p)"
+        description: "停止迭代，释放锁"
+        is_user_entry: true
+
+  buffer_overflow_retry:
+    description: "缓冲区溢出重试流程"
+    trigger: "show() 输出超过缓冲区大小"
+    chain:
+      - function: "show()"
+        description: "输出超过 m->size"
+      - function: "seq_read 检测溢出"
+        description: "count == 0 && !m->count"
+      - function: "扩大缓冲区"
+        description: "m->size *= 2"
+      - function: "重新调用 start()"
+        description: "从当前位置重试"
+      - function: "重新调用 show()"
+        description: "再次输出"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "基本 seq_file 遍历链表"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/seq_file.h>
+      #include <linux/list.h>
+      
+      static LIST_HEAD(my_list);
+      static DEFINE_MUTEX(my_mutex);
+      
+      struct my_item {
+          int id;
+          char name[32];
+          struct list_head list;
+      };
+      
+      static void *my_start(struct seq_file *s, loff_t *pos)
+      {
+          mutex_lock(&my_mutex);
+          return seq_list_start(&my_list, *pos);
+      }
+      
+      static void *my_next(struct seq_file *s, void *v, loff_t *pos)
+      {
+          return seq_list_next(v, &my_list, pos);
+      }
+      
+      static void my_stop(struct seq_file *s, void *v)
+      {
+          mutex_unlock(&my_mutex);
+      }
+      
+      static int my_show(struct seq_file *s, void *v)
+      {
+          struct my_item *item = list_entry(v, struct my_item, list);
+          seq_printf(s, "%d: %s\n", item->id, item->name);
+          return 0;
+      }
+      
+      static const struct seq_operations my_seq_ops = {
+          .start = my_start,
+          .next  = my_next,
+          .stop  = my_stop,
+          .show  = my_show,
+      };
+      
+      DEFINE_SEQ_ATTRIBUTE(my);
+
+  - description: "带标题行的 seq_file"
+    kernel_version: "4.0+"
+    code: |
+      static void *my_start(struct seq_file *s, loff_t *pos)
+      {
+          mutex_lock(&my_mutex);
+          /* 位置 0 返回特殊标记用于输出标题 */
+          if (*pos == 0)
+              return SEQ_START_TOKEN;
+          return seq_list_start(&my_list, *pos - 1);
+      }
+      
+      static void *my_next(struct seq_file *s, void *v, loff_t *pos)
+      {
+          (*pos)++;
+          if (v == SEQ_START_TOKEN)
+              return seq_list_start(&my_list, 0);
+          return seq_list_next(v, &my_list, pos);
+      }
+      
+      static int my_show(struct seq_file *s, void *v)
+      {
+          if (v == SEQ_START_TOKEN) {
+              /* 输出标题行 */
+              seq_puts(s, "ID\tName\n");
+              seq_puts(s, "--------------------\n");
+              return 0;
+          }
+          
+          struct my_item *item = list_entry(v, struct my_item, list);
+          seq_printf(s, "%d\t%s\n", item->id, item->name);
+          return 0;
+      }
+
+  - description: "单次输出 seq_file (single_open)"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/seq_file.h>
+      
+      static int my_show(struct seq_file *m, void *v)
+      {
+          seq_puts(m, "Status: OK\n");
+          seq_printf(m, "Value: %d\n", 42);
+          seq_printf(m, "Name: %s\n", "test");
+          return 0;
+      }
+      
+      static int my_open(struct inode *inode, struct file *file)
+      {
+          return single_open(file, my_show, inode->i_private);
+      }
+      
+      static const struct file_operations my_fops = {
+          .open    = my_open,
+          .read    = seq_read,
+          .llseek  = seq_lseek,
+          .release = single_release,
+      };
+      
+      /* 或者使用宏简化 */
+      DEFINE_SHOW_ATTRIBUTE(my);
+
+  - description: "seq_file 配合 debugfs"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/debugfs.h>
+      #include <linux/seq_file.h>
+      
+      static struct dentry *dbgfs_dir;
+      
+      static int stats_show(struct seq_file *m, void *v)
+      {
+          seq_printf(m, "requests: %lu\n", stats.requests);
+          seq_printf(m, "errors: %lu\n", stats.errors);
+          seq_printf(m, "bytes: %llu\n", stats.bytes);
+          return 0;
+      }
+      DEFINE_SHOW_ATTRIBUTE(stats);
+      
+      static int __init my_init(void)
+      {
+          dbgfs_dir = debugfs_create_dir("my_driver", NULL);
+          debugfs_create_file("stats", 0444, dbgfs_dir, NULL, &stats_fops);
+          return 0;
+      }
+
+  - description: "使用私有数据"
+    kernel_version: "4.0+"
+    code: |
+      struct my_private {
+          int filter_type;
+          struct list_head *list;
+      };
+      
+      static void *my_start(struct seq_file *s, loff_t *pos)
+      {
+          struct my_private *priv = s->private;
+          
+          mutex_lock(&my_mutex);
+          return seq_list_start(priv->list, *pos);
+      }
+      
+      static int my_show(struct seq_file *s, void *v)
+      {
+          struct my_private *priv = s->private;
+          struct my_item *item = list_entry(v, struct my_item, list);
+          
+          /* 使用私有数据中的过滤条件 */
+          if (item->type != priv->filter_type)
+              return SEQ_SKIP;  /* 跳过不匹配的项 */
+          
+          seq_printf(s, "%d: %s\n", item->id, item->name);
+          return 0;
+      }
+      
+      static int my_open(struct inode *inode, struct file *file)
+      {
+          struct my_private *priv;
+          
+          /* 分配并初始化私有数据 */
+          priv = __seq_open_private(file, &my_seq_ops, sizeof(*priv));
+          if (!priv)
+              return -ENOMEM;
+          
+          priv->filter_type = (int)(uintptr_t)inode->i_private;
+          priv->list = &my_list;
+          
+          return 0;
+      }
+      
+      static const struct file_operations my_fops = {
+          .open    = my_open,
+          .read    = seq_read,
+          .llseek  = seq_lseek,
+          .release = seq_release_private,
+      };
+
+
+# ============================================================
+# BEST PRACTICES
+# ============================================================
+
+best_practices:
+  - title: "锁的正确使用"
+    description: |
+      - 在 start() 中获取锁
+      - 在 stop() 中释放锁（即使 start() 返回错误）
+      - stop() 可能收到 NULL 或 ERR_PTR
+
+  - title: "位置递增"
+    description: |
+      - next() 必须递增 *pos
+      - 不递增会导致无限循环
+      - 即使要跳过元素也要递增
+
+  - title: "缓冲区溢出处理"
+    description: |
+      - seq_file 自动处理缓冲区不足
+      - 溢出时会扩大缓冲区并重试
+      - 单个元素不应超过 PAGE_SIZE
+
+  - title: "错误处理"
+    description: |
+      - start() 可返回 ERR_PTR(errno)
+      - show() 返回负值表示错误
+      - 返回 SEQ_SKIP 跳过当前元素

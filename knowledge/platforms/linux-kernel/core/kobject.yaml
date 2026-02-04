@@ -1,0 +1,872 @@
+# Linux Kernel - kobject/kset 对象模型知识库
+# Reference: https://www.kernel.org/doc/html/latest/core-api/kobject.html
+# Kernel Version: 2.6+ (current APIs)
+
+# ============================================================
+# KOBJECT OVERVIEW
+# ============================================================
+
+kobject_overview:
+  description: "kobject - 内核对象模型基础"
+  header: "linux/kobject.h"
+  icon: "🧱"
+  kernel_version: "2.6+"
+
+  context:
+    type: "process"
+    can_sleep: true
+    can_schedule: true
+    preemptible: true
+
+  purpose:
+    - description: "提供统一的内核对象生命周期管理"
+    - description: "实现 sysfs 文件系统的目录层次"
+    - description: "支持热插拔 (uevent) 通知"
+    - description: "引用计数和自动释放"
+
+  core_concepts:
+    kobject:
+      description: "内核对象基类，通常嵌入到其他结构中"
+    kset:
+      description: "kobject 集合，管理一组相关对象"
+    ktype:
+      description: "kobject 类型，定义 release 和 sysfs 操作"
+    kref:
+      description: "引用计数，用于对象生命周期管理"
+
+
+# ============================================================
+# KOBJECT FUNCTIONS
+# ============================================================
+
+kobject_functions:
+  # === 初始化 ===
+  kobject_init:
+    pattern: 'kobject_init\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<ktype>[^)]+)\s*\)'
+    description: "初始化 kobject"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: false
+    return_type: "void"
+    parameters:
+      - name: "kobj"
+        type: "struct kobject *"
+        description: "要初始化的 kobject"
+      - name: "ktype"
+        type: "const struct kobj_type *"
+        description: "对象类型"
+    notes:
+      - "必须在使用 kobject 前调用"
+      - "设置引用计数为 1"
+
+  kobject_init_and_add:
+    pattern: 'kobject_init_and_add\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<ktype>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,'
+    description: "初始化 kobject 并添加到层次结构"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+    parameters:
+      - name: "kobj"
+        type: "struct kobject *"
+        description: "要初始化的 kobject"
+      - name: "ktype"
+        type: "const struct kobj_type *"
+        description: "对象类型"
+      - name: "parent"
+        type: "struct kobject *"
+        description: "父对象（可为 NULL）"
+      - name: "fmt, ..."
+        type: "const char *, ..."
+        description: "对象名称格式"
+    notes:
+      - "组合 kobject_init + kobject_add"
+      - "失败时需调用 kobject_put 而非 kfree"
+
+  # === 添加/删除 ===
+  kobject_add:
+    pattern: 'kobject_add\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<parent>[^,]+)\s*,\s*(?P<fmt>[^)]+)'
+    description: "将 kobject 添加到层次结构"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+    parameters:
+      - name: "kobj"
+        type: "struct kobject *"
+        description: "已初始化的 kobject"
+      - name: "parent"
+        type: "struct kobject *"
+        description: "父对象（可为 NULL）"
+      - name: "fmt, ..."
+        type: "const char *, ..."
+        description: "对象名称格式"
+    notes:
+      - "在 sysfs 中创建目录"
+      - "增加父对象引用计数"
+
+  kobject_del:
+    pattern: 'kobject_del\s*\(\s*(?P<kobj>[^)]+)\s*\)'
+    description: "从层次结构中删除 kobject"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "void"
+    notes:
+      - "从 sysfs 中移除目录"
+      - "不释放 kobject 本身"
+      - "通常在 kobject_put 之前调用"
+
+  # === 创建简化接口 ===
+  kobject_create:
+    pattern: 'kobject_create\s*\(\s*\)'
+    description: "动态创建一个简单 kobject"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct kobject *"
+    notes:
+      - "使用默认 ktype"
+      - "返回的 kobject 需要用 kobject_put 释放"
+
+  kobject_create_and_add:
+    pattern: 'kobject_create_and_add\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "创建 kobject 并添加到层次结构"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct kobject *"
+    parameters:
+      - name: "name"
+        type: "const char *"
+        description: "对象名称"
+      - name: "parent"
+        type: "struct kobject *"
+        description: "父对象"
+    notes:
+      - "在 sysfs 中创建目录"
+      - "常用于创建 /sys/kernel/xxx 目录"
+    example: |
+      /* 在 /sys/kernel 下创建目录 */
+      my_kobj = kobject_create_and_add("my_module", kernel_kobj);
+
+  # === 引用计数 ===
+  kobject_get:
+    pattern: 'kobject_get\s*\(\s*(?P<kobj>[^)]+)\s*\)'
+    description: "增加 kobject 引用计数"
+    file: "lib/kobject.c"
+    context: "any"
+    can_sleep: false
+    return_type: "struct kobject *"
+    notes:
+      - "返回传入的 kobject 指针（便于链式调用）"
+      - "NULL 安全"
+
+  kobject_put:
+    pattern: 'kobject_put\s*\(\s*(?P<kobj>[^)]+)\s*\)'
+    description: "减少 kobject 引用计数"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "void"
+    notes:
+      - "引用计数为 0 时调用 ktype->release"
+      - "可能导致 kobject 被释放"
+      - "NULL 安全"
+
+  kobject_get_unless_zero:
+    pattern: 'kobject_get_unless_zero\s*\(\s*(?P<kobj>[^)]+)\s*\)'
+    description: "仅当引用计数非零时增加引用"
+    file: "lib/kobject.c"
+    context: "any"
+    can_sleep: false
+    return_type: "struct kobject *"
+    notes:
+      - "用于避免竞态条件"
+      - "成功返回 kobj，失败返回 NULL"
+
+  # === 名称操作 ===
+  kobject_set_name:
+    pattern: 'kobject_set_name\s*\(\s*(?P<kobj>[^,]+)\s*,'
+    description: "设置 kobject 名称"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+  kobject_set_name_vargs:
+    pattern: 'kobject_set_name_vargs\s*\(\s*(?P<kobj>[^,]+)\s*,'
+    description: "使用 va_list 设置 kobject 名称"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+  kobject_rename:
+    pattern: 'kobject_rename\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<new_name>[^)]+)\s*\)'
+    description: "重命名 kobject"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+    notes:
+      - "更新 sysfs 目录名"
+      - "发送 KOBJ_MOVE uevent"
+
+  kobject_move:
+    pattern: 'kobject_move\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<new_parent>[^)]+)\s*\)'
+    description: "移动 kobject 到新的父对象下"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+
+  # === uevent 相关 ===
+  kobject_uevent:
+    pattern: 'kobject_uevent\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<action>[^)]+)\s*\)'
+    description: "发送 uevent 通知"
+    file: "lib/kobject_uevent.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+    parameters:
+      - name: "kobj"
+        type: "struct kobject *"
+        description: "产生事件的 kobject"
+      - name: "action"
+        type: "enum kobject_action"
+        description: "事件类型 (KOBJ_ADD, KOBJ_REMOVE, KOBJ_CHANGE 等)"
+
+  kobject_uevent_env:
+    pattern: 'kobject_uevent_env\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<action>[^,]+)\s*,\s*(?P<envp>[^)]+)\s*\)'
+    description: "发送带环境变量的 uevent"
+    file: "lib/kobject_uevent.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+    parameters:
+      - name: "envp"
+        type: "char *envp_ext[]"
+        description: "额外的环境变量数组"
+
+  # === 路径获取 ===
+  kobject_get_path:
+    pattern: 'kobject_get_path\s*\(\s*(?P<kobj>[^,]+)\s*,\s*(?P<gfp>[^)]+)\s*\)'
+    description: "获取 kobject 的 sysfs 路径"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "char *"
+    notes:
+      - "调用者需要 kfree 返回的字符串"
+
+
+# ============================================================
+# KSET FUNCTIONS
+# ============================================================
+
+kset_functions:
+  kset_create_and_add:
+    pattern: 'kset_create_and_add\s*\(\s*(?P<name>[^,]+)\s*,\s*(?P<uevent_ops>[^,]+)\s*,\s*(?P<parent>[^)]+)\s*\)'
+    description: "创建并添加 kset"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "struct kset *"
+    parameters:
+      - name: "name"
+        type: "const char *"
+        description: "kset 名称"
+      - name: "uevent_ops"
+        type: "const struct kset_uevent_ops *"
+        description: "uevent 操作（可为 NULL）"
+      - name: "parent"
+        type: "struct kobject *"
+        description: "父对象"
+
+  kset_register:
+    pattern: 'kset_register\s*\(\s*(?P<kset>[^)]+)\s*\)'
+    description: "注册 kset"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "int"
+    notes:
+      - "将 kset 添加到 sysfs"
+      - "发送 KOBJ_ADD uevent"
+
+  kset_unregister:
+    pattern: 'kset_unregister\s*\(\s*(?P<kset>[^)]+)\s*\)'
+    description: "注销 kset"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "void"
+    notes:
+      - "从 sysfs 移除"
+      - "减少引用计数"
+
+  kset_get:
+    pattern: 'kset_get\s*\(\s*(?P<kset>[^)]+)\s*\)'
+    description: "增加 kset 引用计数"
+    file: "lib/kobject.c"
+    context: "any"
+    can_sleep: false
+    return_type: "struct kset *"
+
+  kset_put:
+    pattern: 'kset_put\s*\(\s*(?P<kset>[^)]+)\s*\)'
+    description: "减少 kset 引用计数"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: true
+    return_type: "void"
+
+  kset_find_obj:
+    pattern: 'kset_find_obj\s*\(\s*(?P<kset>[^,]+)\s*,\s*(?P<name>[^)]+)\s*\)'
+    description: "在 kset 中查找 kobject"
+    file: "lib/kobject.c"
+    context: "process"
+    can_sleep: false
+    return_type: "struct kobject *"
+    notes:
+      - "返回的 kobject 引用计数已增加"
+      - "调用者需要 kobject_put"
+
+
+# ============================================================
+# KOBJ_TYPE PATTERNS
+# ============================================================
+
+kobj_type_patterns:
+  struct_kobj_type:
+    pattern: 'struct kobj_type\s+(?P<name>\w+)\s*='
+    description: "定义 kobject 类型"
+    
+  kobj_type_release:
+    pattern: '\.release\s*=\s*(?P<func>\w+)'
+    description: "kobject 释放回调"
+    context: "process"
+    can_sleep: true
+    notes:
+      - "引用计数为 0 时自动调用"
+      - "必须释放包含 kobject 的结构"
+
+  kobj_type_sysfs_ops:
+    pattern: '\.sysfs_ops\s*=\s*(?P<ops>[^,}]+)'
+    description: "sysfs 操作"
+
+  kobj_type_default_groups:
+    pattern: '\.default_groups\s*=\s*(?P<groups>[^,}]+)'
+    description: "默认属性组"
+    notes:
+      - "kobject 添加时自动创建这些属性"
+
+  kobj_type_namespace:
+    pattern: '\.namespace\s*=\s*(?P<func>\w+)'
+    description: "命名空间回调"
+
+
+# ============================================================
+# KSET_UEVENT_OPS PATTERNS
+# ============================================================
+
+kset_uevent_ops_patterns:
+  struct_kset_uevent_ops:
+    pattern: 'struct kset_uevent_ops\s+(?P<name>\w+)\s*='
+    description: "定义 kset uevent 操作"
+
+  uevent_filter:
+    pattern: '\.filter\s*=\s*(?P<func>\w+)'
+    description: "uevent 过滤回调"
+    signature: "int (*filter)(struct kobject *kobj)"
+    notes:
+      - "返回 0 阻止 uevent 发送"
+
+  uevent_name:
+    pattern: '\.name\s*=\s*(?P<func>\w+)'
+    description: "获取 uevent 名称回调"
+    signature: "const char *(*name)(struct kobject *kobj)"
+
+  uevent_uevent:
+    pattern: '\.uevent\s*=\s*(?P<func>\w+)'
+    description: "添加 uevent 环境变量回调"
+    signature: "int (*uevent)(struct kobject *kobj, struct kobj_uevent_env *env)"
+
+
+# ============================================================
+# DATA STRUCTURES
+# ============================================================
+
+data_structures:
+  kobject:
+    pattern: 'struct kobject\s*\{'
+    description: "内核对象基类"
+    file: "include/linux/kobject.h"
+    fields:
+      - name: "name"
+        type: "const char *"
+        description: "对象名称"
+      - name: "entry"
+        type: "struct list_head"
+        description: "kset 链表节点"
+      - name: "parent"
+        type: "struct kobject *"
+        description: "父对象"
+      - name: "kset"
+        type: "struct kset *"
+        description: "所属 kset"
+      - name: "ktype"
+        type: "const struct kobj_type *"
+        description: "对象类型"
+      - name: "sd"
+        type: "struct kernfs_node *"
+        description: "sysfs 目录项"
+      - name: "kref"
+        type: "struct kref"
+        description: "引用计数"
+      - name: "state_initialized"
+        type: "unsigned int:1"
+        description: "是否已初始化"
+      - name: "state_in_sysfs"
+        type: "unsigned int:1"
+        description: "是否在 sysfs 中"
+      - name: "state_add_uevent_sent"
+        type: "unsigned int:1"
+        description: "ADD uevent 已发送"
+      - name: "state_remove_uevent_sent"
+        type: "unsigned int:1"
+        description: "REMOVE uevent 已发送"
+      - name: "uevent_suppress"
+        type: "unsigned int:1"
+        description: "抑制 uevent"
+
+  kset:
+    pattern: 'struct kset\s*\{'
+    description: "内核对象集合"
+    file: "include/linux/kobject.h"
+    fields:
+      - name: "list"
+        type: "struct list_head"
+        description: "kobject 链表头"
+      - name: "list_lock"
+        type: "spinlock_t"
+        description: "链表锁"
+      - name: "kobj"
+        type: "struct kobject"
+        description: "嵌入的 kobject"
+      - name: "uevent_ops"
+        type: "const struct kset_uevent_ops *"
+        description: "uevent 操作"
+
+  kobj_type:
+    pattern: 'struct kobj_type\s*\{'
+    description: "内核对象类型"
+    file: "include/linux/kobject.h"
+    fields:
+      - name: "release"
+        type: "void (*)(struct kobject *)"
+        description: "释放回调"
+      - name: "sysfs_ops"
+        type: "const struct sysfs_ops *"
+        description: "sysfs 读写操作"
+      - name: "default_groups"
+        type: "const struct attribute_group **"
+        description: "默认属性组"
+      - name: "child_ns_type"
+        type: "const void *(*)(struct kobject *)"
+        description: "子命名空间类型"
+      - name: "namespace"
+        type: "const void *(*)(struct kobject *)"
+        description: "命名空间"
+      - name: "get_ownership"
+        type: "void (*)(struct kobject *, kuid_t *, kgid_t *)"
+        description: "获取所有者"
+
+  kobj_uevent_env:
+    pattern: 'struct kobj_uevent_env\s*\{'
+    description: "uevent 环境变量"
+    file: "include/linux/kobject.h"
+    fields:
+      - name: "argv"
+        type: "char *argv[3]"
+        description: "参数数组"
+      - name: "envp"
+        type: "char *envp[UEVENT_NUM_ENVP]"
+        description: "环境变量数组"
+      - name: "envp_idx"
+        type: "int"
+        description: "当前环境变量索引"
+      - name: "buf"
+        type: "char buf[UEVENT_BUFFER_SIZE]"
+        description: "缓冲区"
+      - name: "buflen"
+        type: "int"
+        description: "缓冲区已用长度"
+
+
+# ============================================================
+# ENUMS AND CONSTANTS
+# ============================================================
+
+enums:
+  kobject_action:
+    description: "uevent 动作类型"
+    values:
+      - name: "KOBJ_ADD"
+        description: "对象添加"
+      - name: "KOBJ_REMOVE"
+        description: "对象移除"
+      - name: "KOBJ_CHANGE"
+        description: "对象状态变化"
+      - name: "KOBJ_MOVE"
+        description: "对象移动"
+      - name: "KOBJ_ONLINE"
+        description: "对象上线"
+      - name: "KOBJ_OFFLINE"
+        description: "对象下线"
+      - name: "KOBJ_BIND"
+        description: "驱动绑定"
+      - name: "KOBJ_UNBIND"
+        description: "驱动解绑"
+
+global_kobjects:
+  description: "预定义的全局 kobject"
+  objects:
+    - name: "kernel_kobj"
+      path: "/sys/kernel"
+      description: "内核子系统"
+    - name: "firmware_kobj"
+      path: "/sys/firmware"
+      description: "固件对象"
+    - name: "power_kobj"
+      path: "/sys/power"
+      description: "电源管理"
+    - name: "hypervisor_kobj"
+      path: "/sys/hypervisor"
+      description: "虚拟机监控程序"
+
+
+# ============================================================
+# MACROS
+# ============================================================
+
+macros:
+  to_kset:
+    pattern: 'to_kset\s*\(\s*(?P<kobj>[^)]+)\s*\)'
+    description: "从嵌入的 kobject 获取 kset"
+    expansion: "container_of(kobj, struct kset, kobj)"
+
+  kset_for_each_object:
+    pattern: 'list_for_each_entry\s*\(\s*(?P<pos>[^,]+)\s*,\s*&(?P<kset>\w+)->list\s*,'
+    description: "遍历 kset 中的 kobject"
+    notes:
+      - "需要持有 kset->list_lock"
+
+  add_uevent_var:
+    pattern: 'add_uevent_var\s*\(\s*(?P<env>[^,]+)\s*,'
+    description: "添加 uevent 环境变量"
+    file: "lib/kobject_uevent.c"
+    return_type: "int"
+
+
+# ============================================================
+# CALL CHAINS
+# ============================================================
+
+call_chains:
+  kobject_add_path:
+    description: "kobject 添加到 sysfs 的调用链"
+    trigger: "kobject_add() 调用"
+    chain:
+      - function: "kobject_add"
+        file: "lib/kobject.c"
+        description: "添加入口"
+        context: "process"
+      - function: "kobject_add_internal"
+        file: "lib/kobject.c"
+        description: "内部添加"
+      - function: "kobject_get(parent)"
+        description: "增加父对象引用"
+      - function: "create_dir"
+        file: "lib/kobject.c"
+        description: "创建 sysfs 目录"
+      - function: "sysfs_create_dir_ns"
+        file: "fs/sysfs/dir.c"
+        description: "sysfs 创建目录"
+      - function: "populate_dir"
+        description: "填充默认属性"
+        is_user_entry: true
+
+  kobject_release_path:
+    description: "kobject 释放调用链"
+    trigger: "引用计数降为 0"
+    chain:
+      - function: "kobject_put"
+        file: "lib/kobject.c"
+        description: "减少引用"
+      - function: "kref_put"
+        file: "lib/kref.c"
+        description: "引用计数检查"
+      - function: "kobject_release"
+        file: "lib/kobject.c"
+        description: "内部释放"
+      - function: "kobject_cleanup"
+        file: "lib/kobject.c"
+        description: "清理资源"
+      - function: "ktype->release(kobj)"
+        description: "用户释放回调"
+        is_user_entry: true
+
+  uevent_send_path:
+    description: "uevent 发送调用链"
+    trigger: "kobject_uevent() 调用"
+    chain:
+      - function: "kobject_uevent"
+        file: "lib/kobject_uevent.c"
+        description: "发送入口"
+      - function: "kobject_uevent_env"
+        description: "环境变量版本"
+      - function: "kset->uevent_ops->filter()"
+        description: "过滤检查"
+        is_user_entry: true
+      - function: "kset->uevent_ops->uevent()"
+        description: "添加环境变量"
+        is_user_entry: true
+      - function: "netlink_broadcast"
+        description: "通过 netlink 发送"
+
+
+# ============================================================
+# EXAMPLES
+# ============================================================
+
+examples:
+  - description: "简单 kobject 创建（最常用）"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/kobject.h>
+      #include <linux/sysfs.h>
+      
+      static struct kobject *my_kobj;
+      
+      static int __init my_init(void)
+      {
+          /* 在 /sys/kernel 下创建 my_module 目录 */
+          my_kobj = kobject_create_and_add("my_module", kernel_kobj);
+          if (!my_kobj)
+              return -ENOMEM;
+          
+          return 0;
+      }
+      
+      static void __exit my_exit(void)
+      {
+          kobject_put(my_kobj);
+      }
+      
+      module_init(my_init);
+      module_exit(my_exit);
+
+  - description: "带自定义 ktype 的 kobject"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/kobject.h>
+      
+      struct my_device {
+          int value;
+          struct kobject kobj;
+      };
+      
+      #define to_my_device(k) container_of(k, struct my_device, kobj)
+      
+      /* 释放回调 - 必须释放整个结构 */
+      static void my_release(struct kobject *kobj)
+      {
+          struct my_device *dev = to_my_device(kobj);
+          pr_info("Releasing my_device\n");
+          kfree(dev);
+      }
+      
+      /* sysfs show 回调 */
+      static ssize_t value_show(struct kobject *kobj,
+                                struct kobj_attribute *attr, char *buf)
+      {
+          struct my_device *dev = to_my_device(kobj);
+          return sysfs_emit(buf, "%d\n", dev->value);
+      }
+      
+      /* sysfs store 回调 */
+      static ssize_t value_store(struct kobject *kobj,
+                                 struct kobj_attribute *attr,
+                                 const char *buf, size_t count)
+      {
+          struct my_device *dev = to_my_device(kobj);
+          int ret;
+          
+          ret = kstrtoint(buf, 10, &dev->value);
+          if (ret)
+              return ret;
+          
+          return count;
+      }
+      
+      static struct kobj_attribute value_attr =
+          __ATTR(value, 0644, value_show, value_store);
+      
+      static struct attribute *my_attrs[] = {
+          &value_attr.attr,
+          NULL,
+      };
+      ATTRIBUTE_GROUPS(my);
+      
+      static const struct kobj_type my_ktype = {
+          .release       = my_release,
+          .sysfs_ops     = &kobj_sysfs_ops,
+          .default_groups = my_groups,
+      };
+      
+      /* 创建设备 */
+      static struct my_device *create_my_device(const char *name)
+      {
+          struct my_device *dev;
+          int ret;
+          
+          dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+          if (!dev)
+              return ERR_PTR(-ENOMEM);
+          
+          dev->value = 0;
+          
+          ret = kobject_init_and_add(&dev->kobj, &my_ktype,
+                                     kernel_kobj, "%s", name);
+          if (ret) {
+              /* 失败时使用 kobject_put 而非 kfree */
+              kobject_put(&dev->kobj);
+              return ERR_PTR(ret);
+          }
+          
+          /* 发送 ADD uevent */
+          kobject_uevent(&dev->kobj, KOBJ_ADD);
+          
+          return dev;
+      }
+      
+      /* 销毁设备 */
+      static void destroy_my_device(struct my_device *dev)
+      {
+          kobject_del(&dev->kobj);  /* 从 sysfs 移除 */
+          kobject_put(&dev->kobj);  /* 触发 release */
+      }
+
+  - description: "使用 kset 管理多个 kobject"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/kobject.h>
+      
+      static struct kset *my_kset;
+      
+      /* uevent 操作 */
+      static int my_filter(struct kobject *kobj)
+      {
+          /* 返回 1 允许 uevent，0 阻止 */
+          return 1;
+      }
+      
+      static int my_uevent(struct kobject *kobj,
+                           struct kobj_uevent_env *env)
+      {
+          /* 添加自定义环境变量 */
+          add_uevent_var(env, "MY_VAR=%s", kobject_name(kobj));
+          return 0;
+      }
+      
+      static const struct kset_uevent_ops my_uevent_ops = {
+          .filter = my_filter,
+          .uevent = my_uevent,
+      };
+      
+      static int __init my_init(void)
+      {
+          /* 在 /sys/kernel 下创建 kset */
+          my_kset = kset_create_and_add("my_devices",
+                                        &my_uevent_ops,
+                                        kernel_kobj);
+          if (!my_kset)
+              return -ENOMEM;
+          
+          return 0;
+      }
+      
+      /* 将 kobject 添加到 kset */
+      static int add_to_kset(struct kobject *kobj)
+      {
+          kobj->kset = my_kset;
+          return kobject_add(kobj, NULL, kobject_name(kobj));
+      }
+      
+      static void __exit my_exit(void)
+      {
+          kset_unregister(my_kset);
+      }
+
+  - description: "发送自定义 uevent"
+    kernel_version: "4.0+"
+    code: |
+      #include <linux/kobject.h>
+      
+      static void notify_state_change(struct kobject *kobj,
+                                      const char *state)
+      {
+          char *envp[3];
+          char buf[64];
+          
+          snprintf(buf, sizeof(buf), "STATE=%s", state);
+          envp[0] = buf;
+          envp[1] = NULL;
+          
+          kobject_uevent_env(kobj, KOBJ_CHANGE, envp);
+      }
+      
+      /* 用户空间可以通过 udev 规则处理:
+       * 
+       * # /etc/udev/rules.d/99-my.rules
+       * SUBSYSTEM=="my_subsys", ACTION=="change", \
+       *     ENV{STATE}=="active", RUN+="/usr/bin/my_handler"
+       */
+
+
+# ============================================================
+# BEST PRACTICES
+# ============================================================
+
+best_practices:
+  - title: "正确的错误处理"
+    description: |
+      - kobject_init_and_add 失败后必须调用 kobject_put（不是 kfree）
+      - kobject_put 会调用 ktype->release
+      - 不要直接 kfree 包含 kobject 的结构
+
+  - title: "release 回调实现"
+    description: |
+      - 必须释放整个包含 kobject 的结构
+      - 使用 container_of 获取外层结构
+      - 在 release 中清理所有资源
+
+  - title: "引用计数管理"
+    description: |
+      - 保存 kobject 指针时调用 kobject_get
+      - 使用完毕后调用 kobject_put
+      - kobject_get_unless_zero 用于避免竞态
+
+  - title: "sysfs 属性"
+    description: |
+      - 优先使用 default_groups 而非手动创建
+      - show 回调使用 sysfs_emit 而非 sprintf
+      - store 回调返回 count 表示成功
+
+  - title: "uevent 使用"
+    description: |
+      - 对象添加后发送 KOBJ_ADD
+      - 状态变化发送 KOBJ_CHANGE
+      - 移除前会自动发送 KOBJ_REMOVE

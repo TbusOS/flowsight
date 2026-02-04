@@ -1,0 +1,29 @@
+# Linux Kernel - VFIO (Virtual Function I/O)
+vfio:
+  description: "用户空间驱动框架，用于虚拟化设备直通"
+  header: "linux/vfio.h"
+  
+  driver_registration:
+    bind_patterns:
+      - pattern: 'vfio_register_group_dev\s*\('
+      - pattern: 'vfio_unregister_group_dev\s*\('
+      - pattern: 'vfio_pci_core_register_device\s*\('
+      - pattern: 'vfio_pci_core_unregister_device\s*\('
+      - pattern: 'module_vfio_pci_register_driver\s*\('
+      
+  device_ops:
+    bind_patterns:
+      - pattern: 'vfio_device_ops\s*='
+      - pattern: '\.open_device\s*='
+      - pattern: '\.close_device\s*='
+      - pattern: '\.read\s*='
+      - pattern: '\.write\s*='
+      - pattern: '\.ioctl\s*='
+      - pattern: '\.mmap\s*='
+      
+  iommu:
+    bind_patterns:
+      - pattern: 'vfio_iommu_driver_ops\s*='
+      - pattern: 'vfio_pin_pages\s*\('
+      - pattern: 'vfio_unpin_pages\s*\('
+      - pattern: 'vfio_dma_rw\s*\('
