@@ -1,0 +1,41 @@
+# Linux Kernel - ACPI 驱动框架
+acpi:
+  description: "ACPI 驱动和电源管理框架"
+  header: "linux/acpi.h"
+  
+  driver_registration:
+    bind_patterns:
+      - pattern: 'acpi_bus_register_driver\s*\('
+      - pattern: 'acpi_bus_unregister_driver\s*\('
+      - pattern: 'module_acpi_driver\s*\('
+      
+  device:
+    bind_patterns:
+      - pattern: 'acpi_device_hid\s*\('
+      - pattern: 'acpi_device_uid\s*\('
+      - pattern: 'acpi_device_adr\s*\('
+      - pattern: 'acpi_dev_found\s*\('
+      - pattern: 'acpi_dev_present\s*\('
+      - pattern: 'acpi_dev_get_first_match_dev\s*\('
+      
+  resources:
+    bind_patterns:
+      - pattern: 'acpi_dev_get_resources\s*\('
+      - pattern: 'acpi_dev_free_resource_list\s*\('
+      - pattern: 'acpi_dev_resource_memory\s*\('
+      - pattern: 'acpi_dev_resource_io\s*\('
+      - pattern: 'acpi_dev_resource_interrupt\s*\('
+      - pattern: 'acpi_dev_gpio_irq_get\s*\('
+      
+  eval:
+    bind_patterns:
+      - pattern: 'acpi_evaluate_object\s*\('
+      - pattern: 'acpi_evaluate_integer\s*\('
+      - pattern: 'acpi_evaluate_reference\s*\('
+      - pattern: 'acpi_execute_simple_method\s*\('
+      
+  power:
+    bind_patterns:
+      - pattern: 'acpi_device_set_power\s*\('
+      - pattern: 'acpi_bus_set_power\s*\('
+      - pattern: 'acpi_pm_device_sleep_state\s*\('

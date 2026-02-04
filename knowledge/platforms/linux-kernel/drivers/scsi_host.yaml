@@ -1,0 +1,160 @@
+# Linux Kernel - SCSI Host 驱动框架
+# Reference: https://www.kernel.org/doc/html/latest/scsi/
+# 补充 scsi.yaml，专注于主机适配器 API 模式
+
+scsi_host:
+  description: "SCSI 主机适配器驱动框架"
+  header: "scsi/scsi_host.h"
+  icon: "💽"
+  
+  host_registration:
+    description: "主机注册与管理 API"
+    bind_patterns:
+      - pattern: 'scsi_host_alloc\s*\(\s*&?(?P<template>\w+)\s*,\s*(?P<privsize>[^)]+)\s*\)'
+        description: "分配 SCSI 主机"
+        can_sleep: true
+        returns: "struct Scsi_Host *"
+        
+      - pattern: 'scsi_add_host\s*\(\s*(?P<host>\w+)\s*,\s*(?P<dev>[^)]+)\s*\)'
+        description: "添加 SCSI 主机到系统"
+        can_sleep: true
+        returns: "int"
+        
+      - pattern: 'scsi_add_host_with_dma\s*\(\s*(?P<host>\w+)\s*,\s*(?P<dev>[^,]+)\s*,\s*(?P<dma_dev>[^)]+)\s*\)'
+        description: "带 DMA 设备添加主机"
+        can_sleep: true
+        returns: "int"
+        
+      - pattern: 'scsi_remove_host\s*\(\s*(?P<host>\w+)\s*\)'
+        description: "移除 SCSI 主机"
+        can_sleep: true
+        
+      - pattern: 'scsi_host_put\s*\(\s*(?P<host>\w+)\s*\)'
+        description: "释放 SCSI 主机引用"
+        can_sleep: false
+        
+      - pattern: 'scsi_host_get\s*\(\s*(?P<host>\w+)\s*\)'
+        description: "获取 SCSI 主机引用"
+        can_sleep: false
+        returns: "struct Scsi_Host *"
+      
+  scan:
+    description: "设备扫描 API"
+    bind_patterns:
+      - pattern: 'scsi_scan_host\s*\(\s*(?P<host>\w+)\s*\)'
+        description: "扫描主机上所有设备"
+        can_sleep: true
+        
+      - pattern: 'scsi_scan_target\s*\(\s*(?P<parent>[^,]+)\s*,\s*(?P<channel>\d+)\s*,\s*(?P<id>\d+)\s*,\s*(?P<lun>[^,]+)\s*,\s*(?P<rescan>\d)\s*\)'
+        description: "扫描指定目标"
+        can_sleep: true
+        
+      - pattern: 'scsi_add_device\s*\(\s*(?P<host>\w+)\s*,\s*(?P<channel>\d+)\s*,\s*(?P<id>\d+)\s*,\s*(?P<lun>[^)]+)\s*\)'
+        description: "手动添加 SCSI 设备"
+        can_sleep: true
+        returns: "struct scsi_device *"
+        
+      - pattern: 'scsi_remove_device\s*\(\s*(?P<sdev>\w+)\s*\)'
+        description: "移除 SCSI 设备"
+        can_sleep: true
+      
+  queue:
+    description: "命令队列 API"
+    bind_patterns:
+      - pattern: 'scsi_done\s*\(\s*(?P<cmd>\w+)\s*\)'
+        description: "命令完成通知"
+        context: "可在中断上下文"
+        can_sleep: false
+        
+      - pattern: 'scsi_change_queue_depth\s*\(\s*(?P<sdev>\w+)\s*,\s*(?P<depth>\d+)\s*\)'
+        description: "修改设备队列深度"
+        can_sleep: true
+        returns: "int"
+
+  dma:
+    description: "DMA 映射 API"
+    bind_patterns:
+      - pattern: 'scsi_dma_map\s*\(\s*(?P<cmd>\w+)\s*\)'
+        description: "DMA 映射 SCSI 命令"
+        returns: "int (sg 段数)"
+        
+      - pattern: 'scsi_dma_unmap\s*\(\s*(?P<cmd>\w+)\s*\)'
+        description: "DMA 解映射"
+        
+      - pattern: 'scsi_for_each_sg\s*\(\s*(?P<cmd>\w+)\s*,\s*(?P<sg>\w+)\s*,\s*(?P<nseg>\w+)\s*,\s*(?P<iter>\w+)\s*\)'
+        description: "遍历 scatter-gather 列表"
+      
+  host_template_callbacks:
+    description: "scsi_host_template 回调函数"
+    callbacks:
+      - name: "queuecommand"
+        signature: "int (*queuecommand)(struct Scsi_Host *, struct scsi_cmnd *)"
+        description: "发送 SCSI 命令"
+        context: "可能在中断上下文"
+        can_sleep: false
+        pattern: '\.queuecommand\s*=\s*(?P<handler>\w+)'
+        
+      - name: "eh_abort_handler"
+        signature: "int (*eh_abort_handler)(struct scsi_cmnd *)"
+        description: "中止命令错误处理"
+        context: "process"
+        can_sleep: true
+        pattern: '\.eh_abort_handler\s*=\s*(?P<handler>\w+)'
+        
+      - name: "eh_device_reset_handler"
+        signature: "int (*eh_device_reset_handler)(struct scsi_cmnd *)"
+        description: "设备复位错误处理"
+        context: "process"
+        can_sleep: true
+        pattern: '\.eh_device_reset_handler\s*=\s*(?P<handler>\w+)'
+        
+      - name: "eh_bus_reset_handler"
+        signature: "int (*eh_bus_reset_handler)(struct scsi_cmnd *)"
+        description: "总线复位错误处理"
+        context: "process"
+        can_sleep: true
+        pattern: '\.eh_bus_reset_handler\s*=\s*(?P<handler>\w+)'
+        
+      - name: "eh_host_reset_handler"
+        signature: "int (*eh_host_reset_handler)(struct scsi_cmnd *)"
+        description: "主机复位错误处理"
+        context: "process"
+        can_sleep: true
+        pattern: '\.eh_host_reset_handler\s*=\s*(?P<handler>\w+)'
+        
+      - name: "slave_alloc"
+        signature: "int (*slave_alloc)(struct scsi_device *)"
+        description: "分配 SCSI 设备"
+        context: "process"
+        can_sleep: true
+        pattern: '\.slave_alloc\s*=\s*(?P<handler>\w+)'
+        
+      - name: "slave_configure"
+        signature: "int (*slave_configure)(struct scsi_device *)"
+        description: "配置 SCSI 设备"
+        context: "process"
+        can_sleep: true
+        pattern: '\.slave_configure\s*=\s*(?P<handler>\w+)'
+        
+      - name: "slave_destroy"
+        signature: "void (*slave_destroy)(struct scsi_device *)"
+        description: "销毁 SCSI 设备"
+        context: "process"
+        can_sleep: true
+        pattern: '\.slave_destroy\s*=\s*(?P<handler>\w+)'
+        
+      - name: "target_alloc"
+        signature: "int (*target_alloc)(struct scsi_target *)"
+        description: "分配目标设备"
+        context: "process"
+        can_sleep: true
+        pattern: '\.target_alloc\s*=\s*(?P<handler>\w+)'
+        
+      - name: "target_destroy"
+        signature: "void (*target_destroy)(struct scsi_target *)"
+        description: "销毁目标设备"
+        context: "process"
+        can_sleep: true
+        pattern: '\.target_destroy\s*=\s*(?P<handler>\w+)'
+
+kernel_version: "2.6.0+"

@@ -1,0 +1,299 @@
+# Linux Kernel - libata (ATA/SATA) 驱动框架
+# Reference: https://www.kernel.org/doc/html/latest/driver-api/libata.html
+
+libata:
+  description: "ATA/SATA 驱动框架"
+  header: "linux/libata.h"
+  icon: "💿"
+  
+  host_registration:
+    description: "ATA 主机注册 API"
+    bind_patterns:
+      - pattern: 'ata_host_alloc\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<max_ports>\d+)\s*\)'
+        description: "分配 ATA 主机"
+        can_sleep: true
+        returns: "struct ata_host *"
+        
+      - pattern: 'ata_host_alloc_pinfo\s*\(\s*(?P<dev>[^,]+)\s*,\s*(?P<ppi>[^,]+)\s*,\s*(?P<n_ports>\d+)\s*\)'
+        description: "使用端口信息分配主机"
+        can_sleep: true
+        returns: "struct ata_host *"
+        
+      - pattern: 'ata_host_activate\s*\(\s*(?P<host>\w+)\s*,\s*(?P<irq>[^,]+)\s*,\s*(?P<irq_handler>[^,]+)\s*,\s*(?P<irq_flags>[^,]+)\s*,\s*(?P<sht>[^)]+)\s*\)'
+        description: "激活 ATA 主机"
+        can_sleep: true
+        returns: "int"
+        
+      - pattern: 'ata_host_detach\s*\(\s*(?P<host>\w+)\s*\)'
+        description: "分离 ATA 主机"
+        can_sleep: true
+        
+      - pattern: 'ata_host_register\s*\(\s*(?P<host>\w+)\s*,\s*(?P<sht>[^)]+)\s*\)'
+        description: "注册 ATA 主机"
+        can_sleep: true
+        returns: "int"
+
+  pci_helpers:
+    description: "PCI ATA 辅助函数"
+    bind_patterns:
+      - pattern: 'ata_pci_sff_init_one\s*\('
+        description: "PCI SFF ATA 初始化"
+        can_sleep: true
+        
+      - pattern: 'ata_pci_bmdma_init_one\s*\('
+        description: "PCI BMDMA ATA 初始化"
+        can_sleep: true
+        
+      - pattern: 'ata_pci_remove_one\s*\('
+        description: "PCI ATA 移除"
+        can_sleep: true
+      
+  port_ops:
+    description: "端口操作 API"
+    bind_patterns:
+      - pattern: 'ata_sff_qc_issue\s*\(\s*(?P<qc>\w+)\s*\)'
+        description: "SFF 命令发送"
+        context: "可能在中断上下文"
+        returns: "unsigned int"
+        
+      - pattern: 'ata_sff_dev_select\s*\(\s*(?P<ap>\w+)\s*,\s*(?P<device>\d+)\s*\)'
+        description: "SFF 设备选择"
+        
+      - pattern: 'ata_sff_tf_load\s*\(\s*(?P<ap>\w+)\s*,\s*(?P<tf>[^)]+)\s*\)'
+        description: "加载任务文件"
+        
+      - pattern: 'ata_sff_tf_read\s*\(\s*(?P<ap>\w+)\s*,\s*(?P<tf>[^)]+)\s*\)'
+        description: "读取任务文件"
+        
+      - pattern: 'ata_sff_data_xfer\s*\(\s*(?P<dev>\w+)\s*,\s*(?P<buf>[^,]+)\s*,\s*(?P<buflen>[^,]+)\s*,\s*(?P<rw>\d)\s*\)'
+        description: "SFF 数据传输"
+        returns: "unsigned int"
+        
+      - pattern: 'ata_sff_irq_on\s*\(\s*(?P<ap>\w+)\s*\)'
+        description: "启用 SFF IRQ"
+        
+      - pattern: 'ata_sff_irq_clear\s*\(\s*(?P<ap>\w+)\s*\)'
+        description: "清除 SFF IRQ"
+        
+      - pattern: 'ata_bmdma_qc_prep\s*\(\s*(?P<qc>\w+)\s*\)'
+        description: "BMDMA 命令准备"
+        
+      - pattern: 'ata_bmdma_qc_issue\s*\(\s*(?P<qc>\w+)\s*\)'
+        description: "BMDMA 命令发送"
+        returns: "unsigned int"
+        
+      - pattern: 'ata_bmdma_port_start\s*\(\s*(?P<ap>\w+)\s*\)'
+        description: "BMDMA 端口启动"
+        returns: "int"
+        
+      - pattern: 'ata_bmdma_irq_clear\s*\(\s*(?P<ap>\w+)\s*\)'
+        description: "清除 BMDMA IRQ"
+        
+      - pattern: 'ata_bmdma_status\s*\(\s*(?P<ap>\w+)\s*\)'
+        description: "获取 BMDMA 状态"
+        returns: "u8"
+        
+      - pattern: 'ata_bmdma_stop\s*\(\s*(?P<qc>\w+)\s*\)'
+        description: "停止 BMDMA 传输"
+        
+      - pattern: 'ata_bmdma_start\s*\(\s*(?P<qc>\w+)\s*\)'
+        description: "启动 BMDMA 传输"
+
+  error_handling:
+    description: "错误处理 API"
+    bind_patterns:
+      - pattern: 'ata_eh_freeze_port\s*\(\s*(?P<ap>\w+)\s*\)'
+        description: "冻结端口"
+        
+      - pattern: 'ata_eh_thaw_port\s*\(\s*(?P<ap>\w+)\s*\)'
+        description: "解冻端口"
+        
+      - pattern: 'ata_sff_softreset\s*\(\s*(?P<link>\w+)\s*,\s*(?P<classes>[^,]+)\s*,\s*(?P<deadline>[^)]+)\s*\)'
+        description: "SFF 软复位"
+        returns: "int"
+        
+      - pattern: 'ata_sff_hardreset\s*\(\s*(?P<link>\w+)\s*,\s*(?P<classes>[^,]+)\s*,\s*(?P<deadline>[^)]+)\s*\)'
+        description: "SFF 硬复位"
+        returns: "int"
+        
+      - pattern: 'sata_link_hardreset\s*\(\s*(?P<link>\w+)\s*,\s*(?P<timing>[^,]+)\s*,\s*(?P<deadline>[^,]+)\s*,\s*(?P<online>[^,]+)\s*,\s*(?P<check_ready>[^)]+)\s*\)'
+        description: "SATA 链路硬复位"
+        returns: "int"
+        
+      - pattern: 'ata_std_postreset\s*\(\s*(?P<link>\w+)\s*,\s*(?P<classes>[^)]+)\s*\)'
+        description: "标准复位后处理"
+      
+  port_callbacks:
+    description: "ata_port_operations 回调函数"
+    callbacks:
+      - name: "qc_prep"
+        signature: "enum ata_completion_errors (*qc_prep)(struct ata_queued_cmd *qc)"
+        description: "命令准备"
+        pattern: '\.qc_prep\s*=\s*(?P<handler>\w+)'
+        
+      - name: "qc_issue"
+        signature: "unsigned int (*qc_issue)(struct ata_queued_cmd *qc)"
+        description: "命令发送"
+        context: "可能在中断上下文"
+        pattern: '\.qc_issue\s*=\s*(?P<handler>\w+)'
+        
+      - name: "qc_fill_rtf"
+        signature: "bool (*qc_fill_rtf)(struct ata_queued_cmd *qc)"
+        description: "填充结果任务文件"
+        pattern: '\.qc_fill_rtf\s*=\s*(?P<handler>\w+)'
+        
+      - name: "freeze"
+        signature: "void (*freeze)(struct ata_port *ap)"
+        description: "冻结端口"
+        pattern: '\.freeze\s*=\s*(?P<handler>\w+)'
+        
+      - name: "thaw"
+        signature: "void (*thaw)(struct ata_port *ap)"
+        description: "解冻端口"
+        pattern: '\.thaw\s*=\s*(?P<handler>\w+)'
+        
+      - name: "softreset"
+        signature: "int (*softreset)(struct ata_link *link, unsigned int *classes, unsigned long deadline)"
+        description: "软复位"
+        context: "process"
+        can_sleep: true
+        pattern: '\.softreset\s*=\s*(?P<handler>\w+)'
+        
+      - name: "hardreset"
+        signature: "int (*hardreset)(struct ata_link *link, unsigned int *classes, unsigned long deadline)"
+        description: "硬复位"
+        context: "process"
+        can_sleep: true
+        pattern: '\.hardreset\s*=\s*(?P<handler>\w+)'
+        
+      - name: "postreset"
+        signature: "void (*postreset)(struct ata_link *link, unsigned int *classes)"
+        description: "复位后处理"
+        pattern: '\.postreset\s*=\s*(?P<handler>\w+)'
+        
+      - name: "error_handler"
+        signature: "void (*error_handler)(struct ata_port *ap)"
+        description: "错误处理"
+        context: "process (EH thread)"
+        can_sleep: true
+        pattern: '\.error_handler\s*=\s*(?P<handler>\w+)'
+        
+      - name: "port_start"
+        signature: "int (*port_start)(struct ata_port *ap)"
+        description: "端口启动"
+        can_sleep: true
+        pattern: '\.port_start\s*=\s*(?P<handler>\w+)'
+        
+      - name: "port_stop"
+        signature: "void (*port_stop)(struct ata_port *ap)"
+        description: "端口停止"
+        pattern: '\.port_stop\s*=\s*(?P<handler>\w+)'
+        
+      - name: "sff_dev_select"
+        signature: "void (*sff_dev_select)(struct ata_port *ap, unsigned int device)"
+        description: "SFF 设备选择"
+        pattern: '\.sff_dev_select\s*=\s*(?P<handler>\w+)'
+        
+      - name: "sff_tf_load"
+        signature: "void (*sff_tf_load)(struct ata_port *ap, const struct ata_taskfile *tf)"
+        description: "SFF 任务文件加载"
+        pattern: '\.sff_tf_load\s*=\s*(?P<handler>\w+)'
+        
+      - name: "sff_tf_read"
+        signature: "void (*sff_tf_read)(struct ata_port *ap, struct ata_taskfile *tf)"
+        description: "SFF 任务文件读取"
+        pattern: '\.sff_tf_read\s*=\s*(?P<handler>\w+)'
+        
+      - name: "sff_data_xfer"
+        signature: "unsigned int (*sff_data_xfer)(struct ata_queued_cmd *qc, unsigned char *buf, unsigned int buflen, int rw)"
+        description: "SFF 数据传输"
+        pattern: '\.sff_data_xfer\s*=\s*(?P<handler>\w+)'
+        
+      - name: "bmdma_setup"
+        signature: "void (*bmdma_setup)(struct ata_queued_cmd *qc)"
+        description: "BMDMA 设置"
+        pattern: '\.bmdma_setup\s*=\s*(?P<handler>\w+)'
+        
+      - name: "bmdma_start"
+        signature: "void (*bmdma_start)(struct ata_queued_cmd *qc)"
+        description: "BMDMA 启动"
+        pattern: '\.bmdma_start\s*=\s*(?P<handler>\w+)'
+        
+      - name: "bmdma_stop"
+        signature: "void (*bmdma_stop)(struct ata_queued_cmd *qc)"
+        description: "BMDMA 停止"
+        pattern: '\.bmdma_stop\s*=\s*(?P<handler>\w+)'
+        
+      - name: "bmdma_status"
+        signature: "u8 (*bmdma_status)(struct ata_port *ap)"
+        description: "BMDMA 状态"
+        pattern: '\.bmdma_status\s*=\s*(?P<handler>\w+)'
+
+  data_structures:
+    ata_host:
+      pattern: 'struct ata_host\s*\{'
+      description: "ATA 主机结构"
+      file: "include/linux/libata.h"
+      fields:
+        - name: "dev"
+          type: "struct device *"
+          description: "通用设备"
+        - name: "n_ports"
+          type: "unsigned int"
+          description: "端口数量"
+        - name: "ports"
+          type: "struct ata_port *[]"
+          description: "端口数组"
+        - name: "ops"
+          type: "struct ata_port_operations *"
+          description: "端口操作"
+        - name: "private_data"
+          type: "void *"
+          description: "驱动私有数据"
+          
+    ata_port:
+      pattern: 'struct ata_port\s*\{'
+      description: "ATA 端口结构"
+      file: "include/linux/libata.h"
+      fields:
+        - name: "host"
+          type: "struct ata_host *"
+          description: "所属主机"
+        - name: "port_no"
+          type: "unsigned int"
+          description: "端口号"
+        - name: "ioaddr"
+          type: "struct ata_ioports"
+          description: "I/O 地址"
+        - name: "link"
+          type: "struct ata_link"
+          description: "主链路"
+        - name: "ops"
+          type: "struct ata_port_operations *"
+          description: "端口操作"
+          
+    ata_queued_cmd:
+      pattern: 'struct ata_queued_cmd\s*\{'
+      description: "ATA 队列命令"
+      file: "include/linux/libata.h"
+      fields:
+        - name: "ap"
+          type: "struct ata_port *"
+          description: "所属端口"
+        - name: "dev"
+          type: "struct ata_device *"
+          description: "目标设备"
+        - name: "tf"
+          type: "struct ata_taskfile"
+          description: "任务文件"
+        - name: "sg"
+          type: "struct scatterlist *"
+          description: "scatter-gather 列表"
+        - name: "n_elem"
+          type: "unsigned int"
+          description: "SG 元素数"
+        - name: "flags"
+          type: "unsigned long"
+          description: "命令标志"
+
+kernel_version: "2.6.12+"

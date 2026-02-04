@@ -1,0 +1,76 @@
+# Linux Kernel - devres 设备资源管理
+devres:
+  description: "设备管理资源框架 (自动释放)"
+  header: "linux/device.h"
+  
+  core:
+    bind_patterns:
+      - pattern: 'devres_alloc\s*\('
+        description: "分配 devres 资源"
+        
+      - pattern: 'devres_add\s*\('
+      - pattern: 'devres_free\s*\('
+      - pattern: 'devres_find\s*\('
+      - pattern: 'devres_remove\s*\('
+      - pattern: 'devres_destroy\s*\('
+      - pattern: 'devres_release\s*\('
+      - pattern: 'devres_release_all\s*\('
+      
+  action:
+    bind_patterns:
+      - pattern: 'devm_add_action\s*\('
+        description: "添加释放动作"
+        
+      - pattern: 'devm_add_action_or_reset\s*\('
+      - pattern: 'devm_remove_action\s*\('
+      
+  memory:
+    bind_patterns:
+      - pattern: 'devm_kmalloc\s*\('
+      - pattern: 'devm_kzalloc\s*\('
+      - pattern: 'devm_kcalloc\s*\('
+      - pattern: 'devm_kmalloc_array\s*\('
+      - pattern: 'devm_kstrdup\s*\('
+      - pattern: 'devm_kasprintf\s*\('
+      - pattern: 'devm_kfree\s*\('
+      
+  ioremap:
+    bind_patterns:
+      - pattern: 'devm_ioremap\s*\('
+      - pattern: 'devm_ioremap_resource\s*\('
+      - pattern: 'devm_platform_ioremap_resource\s*\('
+      - pattern: 'devm_platform_get_and_ioremap_resource\s*\('
+      - pattern: 'devm_iounmap\s*\('
+      
+  irq:
+    bind_patterns:
+      - pattern: 'devm_request_irq\s*\('
+      - pattern: 'devm_request_threaded_irq\s*\('
+      - pattern: 'devm_free_irq\s*\('
+      
+  clk:
+    bind_patterns:
+      - pattern: 'devm_clk_get\s*\('
+      - pattern: 'devm_clk_get_optional\s*\('
+      - pattern: 'devm_clk_put\s*\('
+      - pattern: 'devm_clk_bulk_get\s*\('
+      
+  regulator:
+    bind_patterns:
+      - pattern: 'devm_regulator_get\s*\('
+      - pattern: 'devm_regulator_get_optional\s*\('
+      - pattern: 'devm_regulator_bulk_get\s*\('
+      
+  gpio:
+    bind_patterns:
+      - pattern: 'devm_gpiod_get\s*\('
+      - pattern: 'devm_gpiod_get_optional\s*\('
+      - pattern: 'devm_gpiod_get_index\s*\('
+      - pattern: 'devm_gpio_request\s*\('
+      
+  reset:
+    bind_patterns:
+      - pattern: 'devm_reset_control_get\s*\('
+      - pattern: 'devm_reset_control_get_optional\s*\('
+      - pattern: 'devm_reset_control_get_exclusive\s*\('
+      - pattern: 'devm_reset_control_get_shared\s*\('

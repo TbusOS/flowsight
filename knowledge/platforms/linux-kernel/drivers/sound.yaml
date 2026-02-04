@@ -1,0 +1,827 @@
+# Linux Kernel - ALSA 音频驱动框架
+# ALSA (Advanced Linux Sound Architecture) 是 Linux 内核的音频子系统
+# 
+# 主要组件:
+# - Card: 声卡抽象
+# - PCM: 数字音频播放/录制
+# - Control: 混音器和控制接口
+# - ASoC: 嵌入式音频系统级芯片框架
+#
+# 验证统计 (Linux 内核源码):
+# - snd_card_new: 122 个文件
+# - snd_pcm_new: 100 个文件
+# - snd_ctl_new1: 140+ 个文件
+# - snd_soc_register: 300+ 个文件
+# - SND_SOC_DAPM_*: 数百处使用
+
+alsa_driver:
+  description: "ALSA (Advanced Linux Sound Architecture) 驱动框架"
+  header: "sound/core.h"
+  source_path: "sound/"
+  
+  # ==========================================================================
+  # 声卡注册 (Card Registration)
+  # ==========================================================================
+  card_registration:
+    description: "声卡创建和注册 API"
+    header: "sound/core.h"
+    
+    bind_patterns:
+      - pattern: 'snd_card_new\s*\('
+        description: "创建新声卡实例"
+        signature: "int snd_card_new(struct device *parent, int idx, const char *xid, struct module *module, int extra_size, struct snd_card **card_ret)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          创建声卡对象，分配私有数据空间
+          idx: 声卡索引 (-1 表示自动分配)
+          extra_size: 驱动私有数据大小
+        example: |
+          struct snd_card *card;
+          err = snd_card_new(&pci->dev, index[dev], id[dev],
+                             THIS_MODULE, sizeof(struct my_chip), &card);
+          
+      - pattern: 'devm_snd_card_new\s*\('
+        description: "设备管理版声卡创建"
+        signature: "int devm_snd_card_new(struct device *parent, int idx, const char *xid, struct module *module, int extra_size, struct snd_card **card_ret)"
+        can_sleep: true
+        context: "process"
+        usage: "自动管理声卡生命周期，设备移除时自动释放"
+        
+      - pattern: 'snd_card_register\s*\('
+        description: "注册声卡到系统"
+        signature: "int snd_card_register(struct snd_card *card)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          完成声卡初始化后调用
+          创建 /proc 和 sysfs 接口
+          使声卡对用户空间可见
+        
+      - pattern: 'snd_card_free\s*\('
+        description: "释放声卡资源"
+        signature: "int snd_card_free(struct snd_card *card)"
+        can_sleep: true
+        context: "process"
+        usage: "释放声卡及其所有组件"
+        
+      - pattern: 'snd_card_disconnect\s*\('
+        description: "断开声卡连接"
+        signature: "int snd_card_disconnect(struct snd_card *card)"
+        can_sleep: true
+        context: "process"
+        usage: "热插拔场景下断开声卡"
+        
+      - pattern: 'snd_card_set_id\s*\('
+        description: "设置声卡 ID"
+        signature: "void snd_card_set_id(struct snd_card *card, const char *id)"
+        
+  # ==========================================================================
+  # PCM 子系统 (数字音频)
+  # ==========================================================================
+  pcm:
+    description: "PCM (Pulse Code Modulation) 数字音频子系统"
+    header: "sound/pcm.h"
+    
+    bind_patterns:
+      - pattern: 'snd_pcm_new\s*\('
+        description: "创建 PCM 设备"
+        signature: "int snd_pcm_new(struct snd_card *card, const char *id, int device, int playback_count, int capture_count, struct snd_pcm **rpcm)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          device: PCM 设备编号
+          playback_count: 播放子流数量
+          capture_count: 录制子流数量
+        example: |
+          err = snd_pcm_new(card, "My PCM", 0, 1, 1, &pcm);
+          snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &playback_ops);
+          snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_CAPTURE, &capture_ops);
+          
+      - pattern: 'snd_pcm_new_internal\s*\('
+        description: "创建内部 PCM 设备"
+        signature: "int snd_pcm_new_internal(struct snd_card *card, const char *id, int device, int playback_count, int capture_count, struct snd_pcm **rpcm)"
+        can_sleep: true
+        context: "process"
+        usage: "创建不暴露给用户空间的内部 PCM"
+        
+      - pattern: 'snd_pcm_set_ops\s*\('
+        description: "设置 PCM 操作回调"
+        signature: "void snd_pcm_set_ops(struct snd_pcm *pcm, int direction, const struct snd_pcm_ops *ops)"
+        usage: |
+          direction: SNDRV_PCM_STREAM_PLAYBACK 或 SNDRV_PCM_STREAM_CAPTURE
+          设置播放或录制操作的回调函数
+        
+      - pattern: 'snd_pcm_lib_preallocate_pages_for_all\s*\('
+        description: "为所有子流预分配 DMA 缓冲区"
+        signature: "int snd_pcm_lib_preallocate_pages_for_all(struct snd_pcm *pcm, int type, void *data, size_t size, size_t max)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          type: SNDRV_DMA_TYPE_DEV, SNDRV_DMA_TYPE_DEV_SG 等
+          size: 初始预分配大小
+          max: 最大允许大小
+        example: |
+          snd_pcm_lib_preallocate_pages_for_all(pcm,
+              SNDRV_DMA_TYPE_DEV,
+              &pci->dev,
+              64*1024, 128*1024);
+              
+      - pattern: 'snd_pcm_lib_malloc_pages\s*\('
+        description: "分配 PCM DMA 缓冲区"
+        signature: "int snd_pcm_lib_malloc_pages(struct snd_pcm_substream *substream, size_t size)"
+        can_sleep: true
+        context: "process"
+        usage: "在 hw_params 回调中分配 DMA 缓冲区"
+        
+      - pattern: 'snd_pcm_lib_free_pages\s*\('
+        description: "释放 PCM DMA 缓冲区"
+        signature: "int snd_pcm_lib_free_pages(struct snd_pcm_substream *substream)"
+        can_sleep: true
+        context: "process"
+        usage: "在 hw_free 回调中释放 DMA 缓冲区"
+        
+      - pattern: 'snd_pcm_period_elapsed\s*\('
+        description: "通知周期完成"
+        signature: "void snd_pcm_period_elapsed(struct snd_pcm_substream *substream)"
+        can_sleep: false
+        context: "interrupt"
+        usage: |
+          当一个音频周期完成时调用
+          通常在中断处理程序中调用
+          唤醒等待的用户空间进程
+        important: "可在中断上下文调用"
+        
+      - pattern: 'snd_pcm_stop\s*\('
+        description: "停止 PCM 流"
+        signature: "int snd_pcm_stop(struct snd_pcm_substream *substream, snd_pcm_state_t state)"
+        
+      - pattern: 'snd_pcm_stop_xrun\s*\('
+        description: "因 XRUN 停止 PCM 流"
+        signature: "void snd_pcm_stop_xrun(struct snd_pcm_substream *substream)"
+        can_sleep: false
+        context: "any"
+        usage: "当检测到缓冲区欠载/过载时调用"
+        
+      - pattern: 'snd_pcm_set_managed_buffer_all\s*\('
+        description: "设置托管缓冲区"
+        signature: "int snd_pcm_set_managed_buffer_all(struct snd_pcm *pcm, int type, struct device *data, size_t size, size_t max)"
+        can_sleep: true
+        context: "process"
+        usage: "现代方式设置 DMA 缓冲区，自动管理分配/释放"
+
+  # ==========================================================================
+  # PCM 回调函数
+  # ==========================================================================
+  pcm_callbacks:
+    description: "PCM 操作回调函数 (struct snd_pcm_ops)"
+    header: "sound/pcm.h"
+    
+    callbacks:
+      - name: "open"
+        signature: "int (*open)(struct snd_pcm_substream *substream)"
+        context: "process"
+        can_sleep: true
+        description: "打开 PCM 子流"
+        usage: |
+          初始化硬件
+          设置硬件约束 (snd_pcm_hw_constraint_*)
+          分配运行时资源
+          
+      - name: "close"
+        signature: "int (*close)(struct snd_pcm_substream *substream)"
+        context: "process"
+        can_sleep: true
+        description: "关闭 PCM 子流"
+        usage: "释放 open 中分配的资源"
+        
+      - name: "ioctl"
+        signature: "int (*ioctl)(struct snd_pcm_substream *substream, unsigned int cmd, void *arg)"
+        context: "process"
+        can_sleep: true
+        description: "处理 ioctl 命令"
+        usage: "通常使用 snd_pcm_lib_ioctl 作为默认实现"
+        
+      - name: "hw_params"
+        signature: "int (*hw_params)(struct snd_pcm_substream *substream, struct snd_pcm_hw_params *params)"
+        context: "process"
+        can_sleep: true
+        description: "配置硬件参数"
+        usage: |
+          设置采样率、格式、通道数等
+          分配 DMA 缓冲区
+          配置 DMA 控制器
+          
+      - name: "hw_free"
+        signature: "int (*hw_free)(struct snd_pcm_substream *substream)"
+        context: "process"
+        can_sleep: true
+        description: "释放硬件资源"
+        usage: "释放 hw_params 中分配的资源"
+        
+      - name: "prepare"
+        signature: "int (*prepare)(struct snd_pcm_substream *substream)"
+        context: "process"
+        can_sleep: true
+        description: "准备 PCM 流"
+        usage: |
+          在 start 之前调用
+          设置 DMA 参数
+          重置硬件状态
+          
+      - name: "trigger"
+        signature: "int (*trigger)(struct snd_pcm_substream *substream, int cmd)"
+        context: "atomic"
+        can_sleep: false
+        description: "触发 PCM 操作"
+        usage: |
+          cmd: SNDRV_PCM_TRIGGER_START, _STOP, _PAUSE_PUSH, _PAUSE_RELEASE, _SUSPEND, _RESUME
+          必须是原子操作
+          启动/停止 DMA 传输
+        important: "不可睡眠！在持有 spinlock 时调用"
+        
+      - name: "sync_stop"
+        signature: "int (*sync_stop)(struct snd_pcm_substream *substream)"
+        context: "process"
+        can_sleep: true
+        description: "同步等待 DMA 停止"
+        usage: "确保所有 DMA 操作完成"
+        
+      - name: "pointer"
+        signature: "snd_pcm_uframes_t (*pointer)(struct snd_pcm_substream *substream)"
+        context: "atomic"
+        can_sleep: false
+        description: "返回当前 DMA 位置"
+        usage: |
+          返回当前缓冲区位置（以帧为单位）
+          频繁调用，必须快速返回
+        important: "不可睡眠！可能在中断上下文调用"
+        
+      - name: "copy_user"
+        signature: "int (*copy_user)(struct snd_pcm_substream *substream, int channel, unsigned long pos, void __user *buf, unsigned long bytes)"
+        context: "process"
+        can_sleep: true
+        description: "用户空间数据拷贝"
+        usage: "当不使用标准 DMA 缓冲区时实现"
+        
+      - name: "fill_silence"
+        signature: "int (*fill_silence)(struct snd_pcm_substream *substream, int channel, unsigned long pos, unsigned long bytes)"
+        context: "process"
+        can_sleep: true
+        description: "填充静音数据"
+
+  # ==========================================================================
+  # 控制接口 (Mixer)
+  # ==========================================================================
+  control:
+    description: "ALSA 控制/混音器接口"
+    header: "sound/control.h"
+    
+    bind_patterns:
+      - pattern: 'snd_ctl_new1\s*\('
+        description: "创建控制元素"
+        signature: "struct snd_kcontrol *snd_ctl_new1(const struct snd_kcontrol_new *ncontrol, void *private_data)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          从模板创建控制元素
+          private_data 通常是芯片结构体指针
+        example: |
+          static struct snd_kcontrol_new my_control = {
+              .iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+              .name = "Master Playback Volume",
+              .info = my_info,
+              .get = my_get,
+              .put = my_put,
+          };
+          kctl = snd_ctl_new1(&my_control, chip);
+          
+      - pattern: 'snd_ctl_add\s*\('
+        description: "添加控制元素到声卡"
+        signature: "int snd_ctl_add(struct snd_card *card, struct snd_kcontrol *kcontrol)"
+        can_sleep: true
+        context: "process"
+        usage: "将控制元素注册到声卡"
+        
+      - pattern: 'snd_ctl_notify\s*\('
+        description: "通知控制值变化"
+        signature: "void snd_ctl_notify(struct snd_card *card, unsigned int mask, struct snd_ctl_elem_id *id)"
+        can_sleep: false
+        context: "any"
+        usage: |
+          当控制值被硬件改变时通知用户空间
+          mask: SNDRV_CTL_EVENT_MASK_VALUE, _INFO, _ADD, _TLV
+        example: |
+          snd_ctl_notify(card, SNDRV_CTL_EVENT_MASK_VALUE,
+                        &kctl->id);
+                        
+      - pattern: 'snd_ctl_find_id\s*\('
+        description: "查找控制元素"
+        signature: "struct snd_kcontrol *snd_ctl_find_id(struct snd_card *card, struct snd_ctl_elem_id *id)"
+        
+      - pattern: 'snd_ctl_remove\s*\('
+        description: "移除控制元素"
+        signature: "int snd_ctl_remove(struct snd_card *card, struct snd_kcontrol *kcontrol)"
+        
+      - pattern: 'snd_ctl_rename_id\s*\('
+        description: "重命名控制元素"
+        signature: "int snd_ctl_rename_id(struct snd_card *card, struct snd_ctl_elem_id *src_id, struct snd_ctl_elem_id *dst_id)"
+
+  # ==========================================================================
+  # 控制回调函数
+  # ==========================================================================
+  control_callbacks:
+    description: "控制元素回调函数 (struct snd_kcontrol_new)"
+    header: "sound/control.h"
+    
+    callbacks:
+      - name: "info"
+        signature: "int (*info)(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_info *uinfo)"
+        context: "process"
+        can_sleep: true
+        description: "返回控制元素信息"
+        usage: |
+          设置类型、值范围等
+          uinfo->type: SNDRV_CTL_ELEM_TYPE_INTEGER, _BOOLEAN, _ENUMERATED 等
+          uinfo->count: 值的数量
+          uinfo->value.integer.min/max: 值范围
+          
+      - name: "get"
+        signature: "int (*get)(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)"
+        context: "process"
+        can_sleep: true
+        description: "获取控制值"
+        usage: "读取当前硬件/软件状态"
+        
+      - name: "put"
+        signature: "int (*put)(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)"
+        context: "process"
+        can_sleep: true
+        description: "设置控制值"
+        usage: |
+          写入新值到硬件
+          返回值: 0 表示未改变, 1 表示已改变
+          
+      - name: "tlv"
+        signature: "int (*tlv)(struct snd_kcontrol *kcontrol, int op_flag, unsigned int size, unsigned int __user *tlv)"
+        context: "process"
+        can_sleep: true
+        description: "TLV (Type-Length-Value) 数据访问"
+        usage: "用于 dB 刻度等元数据"
+
+  # ==========================================================================
+  # ASoC 框架 (嵌入式音频)
+  # ==========================================================================
+  soc_framework:
+    description: "ASoC (ALSA System on Chip) 嵌入式音频框架"
+    header: "sound/soc.h"
+    source_path: "sound/soc/"
+    
+    bind_patterns:
+      - pattern: 'devm_snd_soc_register_component\s*\('
+        description: "注册 ASoC 组件"
+        signature: "int devm_snd_soc_register_component(struct device *dev, const struct snd_soc_component_driver *cmpnt_drv, struct snd_soc_dai_driver *dai_drv, int num_dai)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          注册 CPU DAI、Codec 或平台驱动
+          设备管理版本，自动清理
+        example: |
+          static const struct snd_soc_component_driver my_codec_driver = {
+              .controls = my_controls,
+              .num_controls = ARRAY_SIZE(my_controls),
+              .dapm_widgets = my_widgets,
+              .num_dapm_widgets = ARRAY_SIZE(my_widgets),
+              .dapm_routes = my_routes,
+              .num_dapm_routes = ARRAY_SIZE(my_routes),
+          };
+          devm_snd_soc_register_component(dev, &my_codec_driver,
+                                          &my_dai, 1);
+          
+      - pattern: 'snd_soc_register_component\s*\('
+        description: "注册 ASoC 组件 (非设备管理)"
+        signature: "int snd_soc_register_component(struct device *dev, const struct snd_soc_component_driver *cmpnt_drv, struct snd_soc_dai_driver *dai_drv, int num_dai)"
+        can_sleep: true
+        context: "process"
+        
+      - pattern: 'snd_soc_unregister_component\s*\('
+        description: "注销 ASoC 组件"
+        signature: "void snd_soc_unregister_component(struct device *dev)"
+        
+      - pattern: 'snd_soc_register_card\s*\('
+        description: "注册声卡"
+        signature: "int snd_soc_register_card(struct snd_soc_card *card)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          注册 Machine 驱动定义的声卡
+          绑定 CPU DAI、Codec DAI 和平台
+        example: |
+          static struct snd_soc_card my_card = {
+              .name = "My Sound Card",
+              .dai_link = my_dai_links,
+              .num_links = ARRAY_SIZE(my_dai_links),
+          };
+          snd_soc_register_card(&my_card);
+          
+      - pattern: 'devm_snd_soc_register_card\s*\('
+        description: "注册声卡 (设备管理)"
+        signature: "int devm_snd_soc_register_card(struct device *dev, struct snd_soc_card *card)"
+        can_sleep: true
+        context: "process"
+          
+      - pattern: 'snd_soc_unregister_card\s*\('
+        description: "注销声卡"
+        signature: "int snd_soc_unregister_card(struct snd_soc_card *card)"
+        
+      - pattern: 'snd_soc_dai_set_fmt\s*\('
+        description: "设置 DAI 格式"
+        signature: "int snd_soc_dai_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          fmt 组合:
+          - SND_SOC_DAIFMT_I2S, _DSP_A, _DSP_B 等 (格式)
+          - SND_SOC_DAIFMT_NB_NF, _IB_NF 等 (极性)
+          - SND_SOC_DAIFMT_CBS_CFS, _CBM_CFM 等 (主从)
+        example: |
+          snd_soc_dai_set_fmt(codec_dai,
+              SND_SOC_DAIFMT_I2S |
+              SND_SOC_DAIFMT_NB_NF |
+              SND_SOC_DAIFMT_CBS_CFS);
+          
+      - pattern: 'snd_soc_dai_set_sysclk\s*\('
+        description: "设置 DAI 系统时钟"
+        signature: "int snd_soc_dai_set_sysclk(struct snd_soc_dai *dai, int clk_id, unsigned int freq, int dir)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          clk_id: 时钟源标识
+          freq: 时钟频率 (Hz)
+          dir: SND_SOC_CLOCK_IN 或 SND_SOC_CLOCK_OUT
+        
+      - pattern: 'snd_soc_dai_set_pll\s*\('
+        description: "配置 DAI PLL"
+        signature: "int snd_soc_dai_set_pll(struct snd_soc_dai *dai, int pll_id, int source, unsigned int freq_in, unsigned int freq_out)"
+        can_sleep: true
+        context: "process"
+        
+      - pattern: 'snd_soc_dai_set_clkdiv\s*\('
+        description: "设置 DAI 时钟分频"
+        signature: "int snd_soc_dai_set_clkdiv(struct snd_soc_dai *dai, int div_id, int div)"
+
+  # ==========================================================================
+  # DAPM (动态音频电源管理)
+  # ==========================================================================
+  dapm:
+    description: "DAPM (Dynamic Audio Power Management) 动态音频电源管理"
+    header: "sound/soc-dapm.h"
+    
+    bind_patterns:
+      - pattern: 'SND_SOC_DAPM_INPUT\s*\('
+        description: "输入引脚 widget"
+        usage: "定义外部音频输入连接点"
+        example: "SND_SOC_DAPM_INPUT(\"MIC\")"
+        
+      - pattern: 'SND_SOC_DAPM_OUTPUT\s*\('
+        description: "输出引脚 widget"
+        usage: "定义外部音频输出连接点"
+        example: "SND_SOC_DAPM_OUTPUT(\"SPK\")"
+        
+      - pattern: 'SND_SOC_DAPM_MIC\s*\('
+        description: "麦克风 widget"
+        usage: "带偏置的麦克风输入"
+        example: 'SND_SOC_DAPM_MIC("Mic Jack", mic_event)'
+        
+      - pattern: 'SND_SOC_DAPM_HP\s*\('
+        description: "耳机 widget"
+        usage: "耳机输出，通常有 jack 检测"
+        example: 'SND_SOC_DAPM_HP("Headphone", hp_event)'
+        
+      - pattern: 'SND_SOC_DAPM_SPK\s*\('
+        description: "扬声器 widget"
+        usage: "扬声器输出"
+        example: 'SND_SOC_DAPM_SPK("Speaker", spk_event)'
+        
+      - pattern: 'SND_SOC_DAPM_LINE\s*\('
+        description: "线路输入/输出 widget"
+        
+      - pattern: 'SND_SOC_DAPM_MIXER\s*\('
+        description: "混音器 widget"
+        usage: "多输入混音，每个输入有独立开关"
+        example: |
+          SND_SOC_DAPM_MIXER("Output Mixer", SND_SOC_NOPM, 0, 0,
+                            output_mixer_controls,
+                            ARRAY_SIZE(output_mixer_controls))
+        
+      - pattern: 'SND_SOC_DAPM_MIXER_NAMED_CTL\s*\('
+        description: "带自定义控制名的混音器"
+        
+      - pattern: 'SND_SOC_DAPM_MUX\s*\('
+        description: "多路选择器 widget"
+        usage: "从多个输入中选择一个"
+        example: |
+          SND_SOC_DAPM_MUX("DAC Mux", SND_SOC_NOPM, 0, 0,
+                          &dac_mux_control)
+        
+      - pattern: 'SND_SOC_DAPM_DEMUX\s*\('
+        description: "解复用器 widget"
+        usage: "将一个输入路由到多个输出之一"
+        
+      - pattern: 'SND_SOC_DAPM_PGA\s*\('
+        description: "可编程增益放大器 widget"
+        usage: "音量控制放大器"
+        example: |
+          SND_SOC_DAPM_PGA("PGA", CODEC_PWR, 0, 0, NULL, 0)
+        
+      - pattern: 'SND_SOC_DAPM_PGA_E\s*\('
+        description: "带事件的 PGA widget"
+        usage: "PGA 加上电源事件回调"
+        
+      - pattern: 'SND_SOC_DAPM_DAC\s*\('
+        description: "DAC widget"
+        usage: "数模转换器"
+        example: |
+          SND_SOC_DAPM_DAC("DAC", "Playback", CODEC_PWR, 1, 0)
+        
+      - pattern: 'SND_SOC_DAPM_DAC_E\s*\('
+        description: "带事件的 DAC widget"
+        
+      - pattern: 'SND_SOC_DAPM_ADC\s*\('
+        description: "ADC widget"
+        usage: "模数转换器"
+        example: |
+          SND_SOC_DAPM_ADC("ADC", "Capture", CODEC_PWR, 2, 0)
+        
+      - pattern: 'SND_SOC_DAPM_ADC_E\s*\('
+        description: "带事件的 ADC widget"
+        
+      - pattern: 'SND_SOC_DAPM_SUPPLY\s*\('
+        description: "电源供应 widget"
+        usage: "电源轨、时钟等共享资源"
+        example: |
+          SND_SOC_DAPM_SUPPLY("VREF", CODEC_PWR, 3, 0,
+                             vref_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD)
+        
+      - pattern: 'SND_SOC_DAPM_REGULATOR_SUPPLY\s*\('
+        description: "稳压器电源 widget"
+        usage: "连接到 regulator framework"
+        
+      - pattern: 'SND_SOC_DAPM_CLOCK_SUPPLY\s*\('
+        description: "时钟供应 widget"
+        usage: "连接到 clock framework"
+        
+      - pattern: 'SND_SOC_DAPM_AIF_IN\s*\('
+        description: "音频接口输入 widget"
+        usage: "接收来自 CPU DAI 的数据"
+        
+      - pattern: 'SND_SOC_DAPM_AIF_OUT\s*\('
+        description: "音频接口输出 widget"
+        usage: "发送数据到 CPU DAI"
+        
+      - pattern: 'SND_SOC_DAPM_SWITCH\s*\('
+        description: "开关 widget"
+        usage: "简单的开/关控制"
+        
+      - pattern: 'SND_SOC_DAPM_PRE\s*\('
+        description: "前序列 widget"
+        usage: "在流操作开始前执行"
+        
+      - pattern: 'SND_SOC_DAPM_POST\s*\('
+        description: "后序列 widget"
+        usage: "在流操作结束后执行"
+
+  # ==========================================================================
+  # DAPM 路由
+  # ==========================================================================
+  dapm_routes:
+    description: "DAPM 路由定义"
+    header: "sound/soc-dapm.h"
+    
+    bind_patterns:
+      - pattern: 'snd_soc_dapm_add_routes\s*\('
+        description: "添加 DAPM 路由"
+        signature: "int snd_soc_dapm_add_routes(struct snd_soc_dapm_context *dapm, const struct snd_soc_dapm_route *route, int num)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          定义 widget 之间的连接
+          路由格式: {"sink", "control", "source"}
+        example: |
+          static const struct snd_soc_dapm_route routes[] = {
+              {"Output Mixer", "DAC Switch", "DAC"},
+              {"Output Mixer", "Line Switch", "Line In"},
+              {"Speaker", NULL, "Output Mixer"},
+          };
+          
+      - pattern: 'snd_soc_dapm_sync\s*\('
+        description: "同步 DAPM 状态"
+        signature: "int snd_soc_dapm_sync(struct snd_soc_dapm_context *dapm)"
+        can_sleep: true
+        context: "process"
+        usage: "应用待处理的电源状态变化"
+        
+      - pattern: 'snd_soc_dapm_enable_pin\s*\('
+        description: "启用 DAPM 引脚"
+        signature: "int snd_soc_dapm_enable_pin(struct snd_soc_dapm_context *dapm, const char *pin)"
+        can_sleep: true
+        context: "process"
+        
+      - pattern: 'snd_soc_dapm_disable_pin\s*\('
+        description: "禁用 DAPM 引脚"
+        signature: "int snd_soc_dapm_disable_pin(struct snd_soc_dapm_context *dapm, const char *pin)"
+        can_sleep: true
+        context: "process"
+        
+      - pattern: 'snd_soc_dapm_nc_pin\s*\('
+        description: "标记引脚未连接"
+        signature: "int snd_soc_dapm_nc_pin(struct snd_soc_dapm_context *dapm, const char *pin)"
+        can_sleep: true
+        context: "process"
+        usage: "优化未使用引脚的电源"
+
+  # ==========================================================================
+  # Jack 检测
+  # ==========================================================================
+  jack:
+    description: "音频 Jack 检测"
+    header: "sound/jack.h"
+    
+    bind_patterns:
+      - pattern: 'snd_soc_card_jack_new\s*\('
+        description: "创建 ASoC jack"
+        signature: "int snd_soc_card_jack_new(struct snd_soc_card *card, const char *id, int type, struct snd_soc_jack *jack, struct snd_soc_jack_pin *pins, unsigned int num_pins)"
+        can_sleep: true
+        context: "process"
+        usage: |
+          type: SND_JACK_HEADPHONE, SND_JACK_MICROPHONE, SND_JACK_HEADSET 等
+          
+      - pattern: 'snd_soc_jack_report\s*\('
+        description: "报告 jack 状态"
+        signature: "void snd_soc_jack_report(struct snd_soc_jack *jack, int status, int mask)"
+        can_sleep: false
+        context: "any"
+        usage: |
+          当检测到 jack 插入/拔出时调用
+          status: 当前状态位
+          mask: 要更新的状态位
+          
+      - pattern: 'snd_soc_jack_add_gpios\s*\('
+        description: "添加 GPIO jack 检测"
+        signature: "int snd_soc_jack_add_gpios(struct snd_soc_jack *jack, int count, struct snd_soc_jack_gpio *gpios)"
+        can_sleep: true
+        context: "process"
+        usage: "使用 GPIO 进行 jack 检测"
+
+  # ==========================================================================
+  # 通用工具函数
+  # ==========================================================================
+  utility:
+    description: "ALSA 工具函数"
+    
+    bind_patterns:
+      - pattern: 'snd_printk\s*\('
+        description: "ALSA 调试打印"
+        usage: "已废弃，使用 dev_err/dev_warn 等"
+        
+      - pattern: 'snd_BUG\s*\('
+        description: "ALSA BUG 报告"
+        
+      - pattern: 'snd_device_new\s*\('
+        description: "创建声卡设备"
+        signature: "int snd_device_new(struct snd_card *card, enum snd_device_type type, void *device_data, const struct snd_device_ops *ops)"
+        
+      - pattern: 'snd_info_create_card_entry\s*\('
+        description: "创建 /proc 条目"
+        signature: "struct snd_info_entry *snd_info_create_card_entry(struct snd_card *card, const char *name, struct snd_info_entry *parent)"
+
+  # ==========================================================================
+  # 硬件描述符
+  # ==========================================================================
+  hw_params:
+    description: "硬件参数和约束"
+    header: "sound/pcm.h"
+    
+    bind_patterns:
+      - pattern: 'snd_pcm_hw_constraint_\w+\s*\('
+        description: "设置硬件约束"
+        examples:
+          - "snd_pcm_hw_constraint_list - 限制为特定值列表"
+          - "snd_pcm_hw_constraint_minmax - 设置最小最大值"
+          - "snd_pcm_hw_constraint_step - 设置步进值"
+          - "snd_pcm_hw_constraint_integer - 限制为整数"
+        usage: "在 open 回调中设置硬件能力约束"
+        
+      - pattern: 'SNDRV_PCM_HW_PARAM_\w+'
+        description: "硬件参数标识"
+        examples:
+          - "SNDRV_PCM_HW_PARAM_FORMAT - 采样格式"
+          - "SNDRV_PCM_HW_PARAM_RATE - 采样率"
+          - "SNDRV_PCM_HW_PARAM_CHANNELS - 通道数"
+          - "SNDRV_PCM_HW_PARAM_PERIODS - 周期数"
+          - "SNDRV_PCM_HW_PARAM_PERIOD_SIZE - 周期大小"
+          - "SNDRV_PCM_HW_PARAM_BUFFER_SIZE - 缓冲区大小"
+
+  # ==========================================================================
+  # 采样格式
+  # ==========================================================================
+  formats:
+    description: "PCM 采样格式"
+    header: "sound/pcm.h"
+    
+    constants:
+      - name: "SNDRV_PCM_FORMAT_S16_LE"
+        description: "16位有符号小端"
+      - name: "SNDRV_PCM_FORMAT_S24_LE"
+        description: "24位有符号小端 (4字节对齐)"
+      - name: "SNDRV_PCM_FORMAT_S32_LE"
+        description: "32位有符号小端"
+      - name: "SNDRV_PCM_FORMAT_FLOAT_LE"
+        description: "32位浮点小端"
+      - name: "SNDRV_PCM_FORMAT_S24_3LE"
+        description: "24位有符号小端 (3字节紧凑)"
+
+  # ==========================================================================
+  # 典型驱动流程
+  # ==========================================================================
+  typical_flows:
+    description: "典型 ALSA 驱动实现流程"
+    
+    pci_driver:
+      description: "PCI 声卡驱动流程"
+      steps:
+        - "1. probe: snd_card_new() 创建声卡"
+        - "2. 初始化芯片私有结构"
+        - "3. snd_pcm_new() 创建 PCM 设备"
+        - "4. snd_pcm_set_ops() 设置 PCM 操作"
+        - "5. snd_ctl_add() 添加混音器控件"
+        - "6. snd_card_register() 注册声卡"
+        - "7. remove: snd_card_free() 释放声卡"
+        
+    asoc_codec:
+      description: "ASoC Codec 驱动流程"
+      steps:
+        - "1. probe: devm_snd_soc_register_component()"
+        - "2. 定义 snd_soc_component_driver (controls, widgets, routes)"
+        - "3. 定义 snd_soc_dai_driver (ops, formats, rates)"
+        - "4. 实现 DAI ops (hw_params, set_fmt, set_sysclk)"
+        - "5. 实现 component ops (probe, remove, suspend, resume)"
+        
+    asoc_machine:
+      description: "ASoC Machine 驱动流程"
+      steps:
+        - "1. 定义 snd_soc_dai_link 数组 (CPU DAI ↔ Codec DAI)"
+        - "2. 定义 snd_soc_card 结构"
+        - "3. 实现 init 回调 (jack 检测, 路由配置)"
+        - "4. probe: devm_snd_soc_register_card()"
+
+  # ==========================================================================
+  # 重要数据结构
+  # ==========================================================================
+  data_structures:
+    description: "关键数据结构"
+    
+    structures:
+      - name: "struct snd_card"
+        description: "声卡顶层结构"
+        header: "sound/core.h"
+        
+      - name: "struct snd_pcm"
+        description: "PCM 设备结构"
+        header: "sound/pcm.h"
+        
+      - name: "struct snd_pcm_substream"
+        description: "PCM 子流结构"
+        header: "sound/pcm.h"
+        
+      - name: "struct snd_pcm_ops"
+        description: "PCM 操作回调集合"
+        header: "sound/pcm.h"
+        
+      - name: "struct snd_pcm_runtime"
+        description: "PCM 运行时状态"
+        header: "sound/pcm.h"
+        
+      - name: "struct snd_kcontrol"
+        description: "内核控制元素"
+        header: "sound/control.h"
+        
+      - name: "struct snd_soc_card"
+        description: "ASoC 声卡"
+        header: "sound/soc.h"
+        
+      - name: "struct snd_soc_component"
+        description: "ASoC 组件"
+        header: "sound/soc.h"
+        
+      - name: "struct snd_soc_dai"
+        description: "ASoC DAI"
+        header: "sound/soc.h"
+        
+      - name: "struct snd_soc_dapm_widget"
+        description: "DAPM widget"
+        header: "sound/soc-dapm.h"
+        
+      - name: "struct snd_soc_dapm_route"
+        description: "DAPM 路由"
+        header: "sound/soc-dapm.h"
