@@ -8,6 +8,7 @@ mod output;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use commands::flow::FlowOptions;
 use output::OutputFormat;
 use std::path::PathBuf;
 
@@ -51,6 +52,18 @@ enum Commands {
         /// Function name
         #[arg(value_name = "FUNCTION")]
         function: String,
+
+        /// Maximum depth to display
+        #[arg(short, long)]
+        depth: Option<usize>,
+
+        /// Hide kernel API calls from output
+        #[arg(long)]
+        no_kernel: bool,
+
+        /// Expand async boundaries (show deferred execution)
+        #[arg(long)]
+        expand_async: bool,
     },
 
     /// Show execution flow in ftrace style
@@ -103,6 +116,48 @@ enum Commands {
         #[arg(value_name = "FILE")]
         file: PathBuf,
     },
+
+    /// Knowledge base query and inspection
+    #[command(subcommand)]
+    Kb(KbCommands),
+}
+
+#[derive(Subcommand)]
+enum KbCommands {
+    /// Show knowledge base statistics
+    Stats,
+
+    /// Search knowledge base for a term
+    Query {
+        /// Search term
+        #[arg(value_name = "TERM")]
+        term: String,
+    },
+
+    /// Show kernel call chain for a framework callback
+    Chain {
+        /// Framework name (e.g., usb_driver)
+        #[arg(value_name = "FRAMEWORK")]
+        framework: String,
+
+        /// Callback name (e.g., probe)
+        #[arg(value_name = "CALLBACK")]
+        callback: String,
+    },
+
+    /// Show async handler call chain
+    AsyncChain {
+        /// Async pattern name (e.g., work_struct)
+        #[arg(value_name = "PATTERN")]
+        pattern: String,
+    },
+
+    /// Match a source file against knowledge base patterns
+    Match {
+        /// Source file to match
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -114,8 +169,19 @@ fn main() -> Result<()> {
         Commands::Analyze { file, output } => {
             commands::analyze::run(&file, output.as_deref(), &cli.format)?;
         }
-        Commands::Flow { file, function } => {
-            commands::flow::run(&file, &function, &cli.format)?;
+        Commands::Flow {
+            file,
+            function,
+            depth,
+            no_kernel,
+            expand_async,
+        } => {
+            let opts = FlowOptions {
+                max_depth: depth,
+                no_kernel,
+                expand_async,
+            };
+            commands::flow::run(&file, &function, &cli.format, &opts)?;
         }
         Commands::Trace {
             file,
@@ -136,6 +202,26 @@ fn main() -> Result<()> {
         Commands::Callbacks { file } => {
             commands::async_cmd::run_callbacks(&file)?;
         }
+        Commands::Kb(kb_cmd) => match kb_cmd {
+            KbCommands::Stats => {
+                commands::kb::run_stats(&cli.format)?;
+            }
+            KbCommands::Query { term } => {
+                commands::kb::run_query(&term, &cli.format)?;
+            }
+            KbCommands::Chain {
+                framework,
+                callback,
+            } => {
+                commands::kb::run_chain(&framework, &callback, &cli.format)?;
+            }
+            KbCommands::AsyncChain { pattern } => {
+                commands::kb::run_async_chain(&pattern, &cli.format)?;
+            }
+            KbCommands::Match { file } => {
+                commands::kb::run_match(&file, &cli.format)?;
+            }
+        },
     }
 
     Ok(())

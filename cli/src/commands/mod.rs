@@ -6,3 +6,4 @@ pub mod analyze;
 pub mod async_cmd;
 pub mod flow;
 pub mod graph;
+pub mod kb;
