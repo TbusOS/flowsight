@@ -5,165 +5,170 @@
 
 use flowsight_knowledge::{AsyncTimeline, CallChain, ExecutionContext};
 
-/// Lane configuration
-struct Lane {
-    label: String,
-    col: usize,
+/// Calculate display width of a string (CJK chars = 2 columns, ASCII = 1)
+fn display_width(s: &str) -> usize {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii() {
+                1
+            } else {
+                // CJK and other wide characters
+                2
+            }
+        })
+        .sum()
 }
 
-const COL_WIDTH: usize = 26;
+/// Pad a string to a target display width with trailing spaces
+fn pad_to_width(s: &str, target: usize) -> String {
+    let w = display_width(s);
+    if w >= target {
+        s.to_string()
+    } else {
+        format!("{}{}", s, " ".repeat(target - w))
+    }
+}
+
+/// Center a string within a target display width
+fn center_in_width(s: &str, target: usize) -> String {
+    let w = display_width(s);
+    if w >= target {
+        s.to_string()
+    } else {
+        let left = (target - w) / 2;
+        let right = target - w - left;
+        format!("{}{}{}", " ".repeat(left), s, " ".repeat(right))
+    }
+}
+
+const COL_W: usize = 28;
 
 /// A sequence diagram renderer
 pub struct SequenceDiagram {
-    lanes: Vec<Lane>,
+    labels: Vec<String>,
     lines: Vec<String>,
+    num_lanes: usize,
 }
 
 impl SequenceDiagram {
-    /// Create a new sequence diagram with the given lane labels
     pub fn new(labels: &[&str]) -> Self {
-        let lanes: Vec<Lane> = labels
-            .iter()
-            .enumerate()
-            .map(|(i, label)| Lane {
-                label: label.to_string(),
-                col: i,
-            })
-            .collect();
-
         Self {
-            lanes,
+            labels: labels.iter().map(|s| s.to_string()).collect(),
             lines: Vec::new(),
+            num_lanes: labels.len(),
         }
     }
 
-    /// Add the header line with lane labels
     fn add_header(&mut self) {
-        let mut parts: Vec<String> = Vec::new();
-        for lane in &self.lanes {
-            parts.push(format!("{:^width$}", lane.label, width = COL_WIDTH));
+        let mut line = String::new();
+        for label in &self.labels {
+            line.push_str(&center_in_width(label, COL_W));
         }
-        self.lines.push(parts.join(""));
+        self.lines.push(line);
     }
 
-    /// Add vertical lane markers
-    fn add_separator(&mut self) {
+    fn add_lane_line(&mut self) {
         self.lines.push(self.make_lane_line());
     }
 
-    fn add_blank(&mut self) {
-        self.add_separator();
-    }
-
-    /// Add an action label next to a lane's vertical bar
-    fn add_action(&mut self, lane_idx: usize, text: &str) {
-        let mut parts: Vec<String> = Vec::new();
-        for (i, _) in self.lanes.iter().enumerate() {
-            if i == lane_idx {
-                // Put text right of the bar
-                let content = format!("| {}", text);
-                parts.push(format!("{:<width$}", content, width = COL_WIDTH));
-            } else {
-                parts.push(format!("{:^width$}", "|", width = COL_WIDTH));
-            }
-        }
-        self.lines.push(parts.join(""));
-    }
-
-    /// Add an arrow from one lane to another
-    fn add_arrow(&mut self, from: usize, to: usize, label: &str) {
-        let mut parts: Vec<String> = Vec::new();
-        let min_lane = from.min(to);
-        let max_lane = from.max(to);
-        let going_right = to > from;
-
-        for (i, _) in self.lanes.iter().enumerate() {
-            if i == min_lane && i == max_lane {
-                // Same lane, no arrow needed
-                parts.push(format!("{:^width$}", "|", width = COL_WIDTH));
-            } else if i == from && going_right {
-                // Start of right arrow
-                let mut s = String::from("|");
-                for _ in 0..(COL_WIDTH - 1) {
-                    s.push('-');
-                }
-                parts.push(s);
-            } else if i == from && !going_right {
-                // Start of left arrow (arrow goes left from here)
-                let mut s = String::from("|");
-                for _ in 0..(COL_WIDTH - 1) {
-                    s.push(' ');
-                }
-                parts.push(s);
-            } else if i == to && going_right {
-                // End of right arrow
-                let mut s = String::new();
-                for _ in 0..(COL_WIDTH - 2) {
-                    s.push('-');
-                }
-                s.push_str(">|");
-                parts.push(s);
-            } else if i == to && !going_right {
-                // End of left arrow
-                let mut s = String::from("|<");
-                for _ in 0..(COL_WIDTH - 2) {
-                    s.push('-');
-                }
-                parts.push(s);
-            } else if i > min_lane && i < max_lane {
-                // Middle of arrow
-                let mut s = String::new();
-                for _ in 0..COL_WIDTH {
-                    s.push('-');
-                }
-                parts.push(s);
-            } else {
-                parts.push(format!("{:^width$}", "|", width = COL_WIDTH));
-            }
-        }
-
-        if !label.is_empty() {
-            // Add label line before arrow
-            let mid_lane = (from + to) / 2;
-            self.add_action(mid_lane, label);
-        }
-
-        self.lines.push(parts.join(""));
-    }
-
-    /// Add a note spanning across lanes
-    fn add_note(&mut self, text: &str) {
-        let total = COL_WIDTH * self.lanes.len();
-        let note = format!("... {} ...", text);
-        self.lines
-            .push(format!("{:^width$}", note, width = total));
-    }
-
-    /// Add a section header
-    fn add_section(&mut self, text: &str) {
-        self.add_blank();
-        let header = format!("[{}]", text);
-        self.add_action(0, &header);
-        self.add_blank();
-    }
-
     fn make_lane_line(&self) -> String {
-        let mut parts: Vec<String> = Vec::new();
-        for _ in &self.lanes {
-            parts.push(format!("{:^width$}", "|", width = COL_WIDTH));
+        let mut line = String::new();
+        for _ in 0..self.num_lanes {
+            line.push_str(&center_in_width("|", COL_W));
         }
-        parts.join("")
+        line
     }
 
-    /// Render all lines to stdout
-    pub fn render(&self) {
+    /// Place text right of lane's `|` marker
+    fn add_action(&mut self, lane: usize, text: &str) {
+        let mut line = String::new();
+        for i in 0..self.num_lanes {
+            if i == lane {
+                let cell = format!("| {}", text);
+                line.push_str(&pad_to_width(&cell, COL_W));
+            } else {
+                line.push_str(&center_in_width("|", COL_W));
+            }
+        }
+        self.lines.push(line);
+    }
+
+    /// Draw arrow between two lanes
+    fn add_arrow(&mut self, from: usize, to: usize) {
+        if from == to || from >= self.num_lanes || to >= self.num_lanes {
+            return;
+        }
+
+        let mut line = String::new();
+        let going_right = to > from;
+        let min_l = from.min(to);
+        let max_l = from.max(to);
+
+        for i in 0..self.num_lanes {
+            if i < min_l || i > max_l {
+                // Outside arrow range
+                line.push_str(&center_in_width("|", COL_W));
+            } else if i == from && going_right {
+                // Start: |--------
+                let mut cell = String::from("|");
+                for _ in 0..(COL_W - 1) {
+                    cell.push('-');
+                }
+                line.push_str(&cell);
+            } else if i == to && going_right {
+                // End: -------->|
+                let mut cell = String::new();
+                for _ in 0..(COL_W - 2) {
+                    cell.push('-');
+                }
+                cell.push_str(">|");
+                line.push_str(&cell);
+            } else if i == from && !going_right {
+                // Start going left: just |
+                let mut cell = String::new();
+                for _ in 0..(COL_W - 2) {
+                    cell.push('-');
+                }
+                cell.push_str("-|");
+                line.push_str(&cell);
+            } else if i == to && !going_right {
+                // End going left: |<-------
+                let mut cell = String::from("|<");
+                for _ in 0..(COL_W - 2) {
+                    cell.push('-');
+                }
+                line.push_str(&cell);
+            } else {
+                // Middle of arrow
+                let mut cell = String::new();
+                for _ in 0..COL_W {
+                    cell.push('-');
+                }
+                line.push_str(&cell);
+            }
+        }
+        self.lines.push(line);
+    }
+
+    fn add_note(&mut self, text: &str) {
+        let total = COL_W * self.num_lanes;
+        let note = format!("... {} ...", text);
+        self.lines.push(center_in_width(&note, total));
+    }
+
+    fn add_section(&mut self, lane: usize, text: &str) {
+        self.add_lane_line();
+        self.add_action(lane, &format!("[{}]", text));
+        self.add_lane_line();
+    }
+
+    fn render(&self) {
         for line in &self.lines {
             println!("{}", line.trim_end());
         }
     }
 }
 
-/// Map execution context to lane index
 fn context_to_lane(ctx: &ExecutionContext) -> usize {
     match ctx {
         ExecutionContext::User => 0,
@@ -176,46 +181,53 @@ fn context_to_lane(ctx: &ExecutionContext) -> usize {
 
 /// Render a timeline-based async sequence diagram
 pub fn print_async_sequence(timeline: &AsyncTimeline, name: &str) {
-    let mut dia = SequenceDiagram::new(&["User Space", "Kernel", "Hardware"]);
+    let mut d = SequenceDiagram::new(&["User Space", "Kernel", "Hardware"]);
 
-    dia.add_header();
-    dia.add_separator();
-    dia.add_blank();
+    d.add_header();
+    d.add_lane_line();
+    d.add_lane_line();
 
-    dia.add_action(1, &format!("<<< {} >>>", name));
-    dia.add_blank();
+    d.add_action(1, &format!("<<< {} >>>", name));
+    d.add_lane_line();
 
     // Phase 1
-    dia.add_action(1, &format!("=== {} ===", timeline.phase1.name));
-    render_phase_calls(&mut dia, &timeline.phase1.call_chain);
+    let p1_lane = context_to_lane(&timeline.phase1.context);
+    d.add_action(p1_lane, &format!("=== {} ===", timeline.phase1.name));
+    render_chain_nodes(&mut d, &timeline.phase1.call_chain);
 
     // Separation
-    dia.add_blank();
-    dia.add_note(&timeline.separation);
-    dia.add_blank();
+    d.add_lane_line();
+    d.add_note(&timeline.separation);
+    d.add_lane_line();
 
     // Phase 2
-    dia.add_action(1, &format!("=== {} ===", timeline.phase2.name));
-    render_phase_calls(&mut dia, &timeline.phase2.call_chain);
+    let p2_lane = context_to_lane(&timeline.phase2.context);
+    d.add_action(p2_lane, &format!("=== {} ===", timeline.phase2.name));
+    render_chain_nodes(&mut d, &timeline.phase2.call_chain);
 
-    dia.add_blank();
-    dia.add_separator();
+    d.add_lane_line();
+    d.add_lane_line();
 
-    dia.render();
+    d.render();
 }
 
-fn render_phase_calls(dia: &mut SequenceDiagram, chain: &CallChain) {
-    dia.add_section(&chain.trigger_source);
+fn render_chain_nodes(d: &mut SequenceDiagram, chain: &CallChain) {
+    // Determine trigger lane from first node context
+    let trigger_lane = chain
+        .nodes
+        .first()
+        .map(|n| context_to_lane(&n.context))
+        .unwrap_or(1);
+    d.add_section(trigger_lane, &chain.trigger_source);
 
     let mut prev_lane: Option<usize> = None;
 
     for node in &chain.nodes {
         let lane = context_to_lane(&node.context);
 
-        // If switching lanes, draw an arrow
         if let Some(pl) = prev_lane {
             if pl != lane {
-                dia.add_arrow(pl, lane, "");
+                d.add_arrow(pl, lane);
             }
         }
 
@@ -224,28 +236,34 @@ fn render_phase_calls(dia: &mut SequenceDiagram, chain: &CallChain) {
         } else {
             ""
         };
-        dia.add_action(lane, &format!("{}(){}", node.function, marker));
+        d.add_action(lane, &format!("{}(){}", node.function, marker));
 
         if let Some(ref desc) = node.description {
-            dia.add_action(lane, &format!("  // {}", desc));
+            d.add_action(lane, &format!("  // {}", desc));
         }
 
         prev_lane = Some(lane);
     }
 }
 
-/// Render a simple call chain as a sequence diagram (for framework callbacks)
+/// Render a simple call chain as a sequence diagram
 pub fn print_chain_sequence(chain: &CallChain) {
-    let mut dia = SequenceDiagram::new(&["User Space", "Kernel", "Hardware"]);
+    let mut d = SequenceDiagram::new(&["User Space", "Kernel", "Hardware"]);
 
-    dia.add_header();
-    dia.add_separator();
-    dia.add_blank();
+    d.add_header();
+    d.add_lane_line();
+    d.add_lane_line();
 
-    dia.add_action(1, &format!("<<< {} >>>", chain.name));
-    dia.add_blank();
+    d.add_action(1, &format!("<<< {} >>>", chain.name));
+    d.add_lane_line();
 
-    dia.add_section(&chain.trigger_source);
+    // Determine trigger lane
+    let trigger_lane = chain
+        .nodes
+        .first()
+        .map(|n| context_to_lane(&n.context))
+        .unwrap_or(1);
+    d.add_section(trigger_lane, &chain.trigger_source);
 
     let mut prev_lane: Option<usize> = None;
 
@@ -254,7 +272,7 @@ pub fn print_chain_sequence(chain: &CallChain) {
 
         if let Some(pl) = prev_lane {
             if pl != lane {
-                dia.add_arrow(pl, lane, "");
+                d.add_arrow(pl, lane);
             }
         }
 
@@ -263,21 +281,21 @@ pub fn print_chain_sequence(chain: &CallChain) {
         } else {
             ""
         };
-        dia.add_action(lane, &format!("{}(){}", node.function, marker));
+        d.add_action(lane, &format!("{}(){}", node.function, marker));
 
         if let Some(ref desc) = node.description {
-            dia.add_action(lane, &format!("  // {}", desc));
+            d.add_action(lane, &format!("  // {}", desc));
         }
 
         if let Some(ref file) = node.file {
-            dia.add_action(lane, &format!("  // {}", file));
+            d.add_action(lane, &format!("  // {}", file));
         }
 
         prev_lane = Some(lane);
     }
 
-    dia.add_blank();
-    dia.add_separator();
+    d.add_lane_line();
+    d.add_lane_line();
 
-    dia.render();
+    d.render();
 }
