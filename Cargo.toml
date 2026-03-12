@@ -11,7 +11,7 @@ members = [
     "crates/flowsight-llvm",
     "crates/flowsight-ai",
     "crates/flowsight-learning",
-    "crates/flowsight-cli",
+    "cli",
     "app/src-tauri",
 ]
 
@@ -21,7 +21,7 @@ edition = "2021"
 authors = ["FlowSight Team"]
 license = "MIT"
 repository = "https://github.com/user/flowsight"
-description = "A cross-platform IDE for visualizing code execution flow"
+description = "Code execution flow analysis tool and kernel expert model training pipeline"
 
 [workspace.dependencies]
 # Internal crates

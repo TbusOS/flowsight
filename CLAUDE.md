@@ -1,28 +1,85 @@
 # FlowSight - Claude Code 配置
 
-> **自动加载**: 启动时自动加载完整 SuperClaude Framework skills
+> **当前阶段**: CLI-First 开发 (IDE 暂停)
 >
-> **任务感知**: 根据当前工作上下文自动激活相关 skills
+> **核心目标**: 函数执行流分析 + 内核专家模型训练数据生成
 >
-> 运行 `/sc:help` 验证所有 skills 已加载
+> **详细方案**: [docs/plans/cli-first-pivot.md](docs/plans/cli-first-pivot.md)
 
 ---
 
-## 🚀 自动团队开发模式
+## 当前开发重点: CLI
 
-**直接告诉我开发任务，系统会自动启动团队开发：**
+**FlowSight 正在从 IDE 转向 CLI 优先。** CLI 和 IDE 共享同一套 `crates/` 分析引擎。
 
 ```
-用户: 实现执行流树视图组件
-系统: 自动分析 → 分配 UI-Dev → 开发 → E2E-Tester 测试 → 完成
+flowsight/
+├── cli/           ← 当前开发重点 (Phase 1 已完成)
+├── crates/        ← 共享 Rust 分析库
+├── app/           ← IDE (暂停，保留在 workspace)
+└── knowledge/     ← 知识库 (137 YAML)
 ```
 
-**团队角色：**
-- 🦀 **Rust-Dev** - 后端/分析引擎
-- 🎨 **UI-Dev** - 前端/可视化
-- 🧪 **Unit-Tester** - 单元测试
-- 🖥️ **E2E-Tester** - E2E 测试
+### 进度状态
+
+| Phase | 内容 | 状态 |
+|-------|------|------|
+| Phase 1 | CLI 模块化重构 | done (2026-03-13) |
+| Phase 2 | 增强命令 (kb/scenario/index/graph) | 待实施 |
+| Phase 3 | 训练数据管道 (JSONL SFT/DPO) | 待实施 |
+| Phase 4 | REPL 交互 + 配置 | 待实施 |
+
+### CLI 架构
+
+```
+cli/src/
+├── main.rs          # 薄分发器 + 全局 -F/--format 选项
+├── context.rs       # AnalysisContext (parser + analyzer)
+├── commands/        # 每个命令独立文件
+│   ├── analyze.rs   # 文件/目录分析
+│   ├── flow.rs      # 执行流 + ftrace
+│   ├── graph.rs     # callers/callees
+│   └── async_cmd.rs # 异步机制 + 回调
+└── output/          # 输出格式化
+    ├── text.rs      # 文本/ftrace
+    └── json.rs      # JSON
+```
+
+### 常用 CLI 命令
+
+```bash
+# 构建
+cargo build --package flowsight-cli
+
+# 分析文件
+flowsight analyze <file>
+flowsight -F json analyze <file>
+
+# 执行流
+flowsight flow <file> <function>
+flowsight trace <file> <function>
+
+# 调用关系
+flowsight callers <file> <function>
+flowsight callees <file> <function>
+
+# 异步/回调
+flowsight async <file>
+flowsight callbacks <file>
+```
+
+---
+
+## 团队开发模式
+
+**CLI 开发适用的 Agent 角色：**
+- 🦀 **Rust-Dev** - CLI 命令实现 + 分析引擎
+- 🧪 **Unit-Tester** - Rust 单元测试
 - 🔧 **Debug-Dev** - Bug 修复
+
+**IDE 开发恢复后额外启用：**
+- 🎨 **UI-Dev** - 前端/可视化
+- 🖥️ **E2E-Tester** - E2E 测试
 
 **任务看板**: `.claude/tasks/board.md`
 

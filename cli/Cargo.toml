@@ -4,13 +4,14 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Command-line interface for FlowSight"
+description = "Code execution flow analysis CLI and kernel expert model training pipeline"
 
 [[bin]]
 name = "flowsight"
 path = "src/main.rs"
 
 [dependencies]
+# Internal crates
 flowsight-core = { workspace = true }
 flowsight-parser = { workspace = true }
 flowsight-analysis = { workspace = true }
@@ -18,9 +19,21 @@ flowsight-knowledge = { workspace = true }
 flowsight-index = { workspace = true }
 flowsight-query = { workspace = true }
 
+# CLI framework
 clap = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
 serde_json = { workspace = true }
+
+# Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+# Error handling
 anyhow = { workspace = true }
+
+# File walking (for batch analysis)
+walkdir = { workspace = true }
+globset = { workspace = true }
 
