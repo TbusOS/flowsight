@@ -89,9 +89,9 @@ pub fn run(
                     text::print_ftrace_tree(&filtered, 0, &result.parse_result.functions);
                     println!("```");
                 }
-                OutputFormat::Mermaid => {
+                OutputFormat::Sequence => {
                     anyhow::bail!(
-                        "Mermaid output format is not yet implemented. Use --format text/json/ftrace/markdown"
+                        "Sequence format is for kb chain/async-chain commands. Use --format text/json/ftrace/markdown for flow."
                     );
                 }
                 OutputFormat::Text => {

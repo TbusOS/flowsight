@@ -4,10 +4,11 @@
 //! - Text: human-readable console output
 //! - JSON: machine-readable structured output
 //! - Ftrace: Linux ftrace-style function trace
-//! - Mermaid: Mermaid diagram syntax
+//! - Sequence: ASCII multi-lane sequence diagram
 //! - Markdown: Markdown table format
 
 pub mod json;
+pub mod sequence;
 pub mod text;
 
 use clap::ValueEnum;
@@ -22,8 +23,8 @@ pub enum OutputFormat {
     Json,
     /// Linux ftrace-style function trace
     Ftrace,
-    /// Mermaid diagram syntax
-    Mermaid,
+    /// ASCII multi-lane sequence diagram (for async/chain)
+    Sequence,
     /// Markdown table format
     Markdown,
 }

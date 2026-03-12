@@ -1,7 +1,7 @@
 //! `flowsight kb` command group - knowledge base query and inspection
 
 use crate::context::AnalysisContext;
-use crate::output::{json, OutputFormat};
+use crate::output::{json, sequence, OutputFormat};
 use anyhow::Result;
 use std::path::Path;
 
@@ -275,6 +275,9 @@ pub fn run_chain(framework: &str, callback: &str, format: &OutputFormat) -> Resu
         OutputFormat::Json => {
             println!("{}", json::to_pretty_json(chain)?);
         }
+        OutputFormat::Sequence => {
+            sequence::print_chain_sequence(chain);
+        }
         _ => {
             println!("{}", chain.name);
             println!("Trigger: {}", chain.trigger_source);
@@ -327,6 +330,15 @@ pub fn run_async_chain(pattern: &str, format: &OutputFormat) -> Result<()> {
                 "timeline": pat.timeline,
             });
             println!("{}", json::to_pretty_json(&result)?);
+        }
+        OutputFormat::Sequence => {
+            if let Some(ref timeline) = pat.timeline {
+                sequence::print_async_sequence(timeline, &name);
+            } else if let Some(ref chain) = pat.handler_call_chain {
+                sequence::print_chain_sequence(chain);
+            } else {
+                eprintln!("No timeline or call chain data for '{}'", name);
+            }
         }
         _ => {
             println!("[Async] {} - {}", name, pat.description);
