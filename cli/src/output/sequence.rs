@@ -5,22 +5,15 @@
 
 use flowsight_knowledge::{AsyncTimeline, CallChain, ExecutionContext};
 
-/// Calculate display width of a string (CJK chars = 2 columns, ASCII = 1)
+/// Calculate display width (CJK = 2 columns, ASCII = 1)
 fn display_width(s: &str) -> usize {
     s.chars()
-        .map(|c| {
-            if c.is_ascii() {
-                1
-            } else {
-                // CJK and other wide characters
-                2
-            }
-        })
+        .map(|c| if c.is_ascii() { 1 } else { 2 })
         .sum()
 }
 
-/// Pad a string to a target display width with trailing spaces
-fn pad_to_width(s: &str, target: usize) -> String {
+/// Pad string to exact display width with trailing spaces
+fn pad_to(s: &str, target: usize) -> String {
     let w = display_width(s);
     if w >= target {
         s.to_string()
@@ -29,8 +22,27 @@ fn pad_to_width(s: &str, target: usize) -> String {
     }
 }
 
-/// Center a string within a target display width
-fn center_in_width(s: &str, target: usize) -> String {
+/// Truncate string to fit within target display width
+fn fit_to(s: &str, target: usize) -> String {
+    let mut result = String::new();
+    let mut w = 0;
+    for c in s.chars() {
+        let cw = if c.is_ascii() { 1 } else { 2 };
+        if w + cw > target {
+            break;
+        }
+        result.push(c);
+        w += cw;
+    }
+    // Pad remaining
+    if w < target {
+        result.push_str(&" ".repeat(target - w));
+    }
+    result
+}
+
+/// Center string within target display width
+fn center(s: &str, target: usize) -> String {
     let w = display_width(s);
     if w >= target {
         s.to_string()
@@ -41,13 +53,12 @@ fn center_in_width(s: &str, target: usize) -> String {
     }
 }
 
-const COL_W: usize = 28;
+const COL: usize = 36;
 
-/// A sequence diagram renderer
 pub struct SequenceDiagram {
     labels: Vec<String>,
     lines: Vec<String>,
-    num_lanes: usize,
+    n: usize,
 }
 
 impl SequenceDiagram {
@@ -55,47 +66,72 @@ impl SequenceDiagram {
         Self {
             labels: labels.iter().map(|s| s.to_string()).collect(),
             lines: Vec::new(),
-            num_lanes: labels.len(),
+            n: labels.len(),
         }
     }
 
     fn add_header(&mut self) {
         let mut line = String::new();
         for label in &self.labels {
-            line.push_str(&center_in_width(label, COL_W));
+            line.push_str(&center(label, COL));
         }
         self.lines.push(line);
     }
 
     fn add_lane_line(&mut self) {
-        self.lines.push(self.make_lane_line());
+        self.lines.push(self.make_pipes());
     }
 
-    fn make_lane_line(&self) -> String {
+    fn make_pipes(&self) -> String {
         let mut line = String::new();
-        for _ in 0..self.num_lanes {
-            line.push_str(&center_in_width("|", COL_W));
+        for i in 0..self.n {
+            if i == self.n - 1 {
+                // Last lane: just centered pipe, no need to pad fully
+                line.push_str(&center("|", COL));
+            } else {
+                line.push_str(&center("|", COL));
+            }
         }
         line
     }
 
-    /// Place text right of lane's `|` marker
+    /// Make a cell that fits exactly COL display width.
+    /// For non-last lanes, truncate if too wide.
+    /// For the last lane, allow overflow.
+    fn make_cell(&self, lane: usize, content: &str) -> String {
+        let w = display_width(content);
+        if lane < self.n - 1 {
+            // Non-last lane: must be exactly COL wide
+            if w <= COL {
+                pad_to(content, COL)
+            } else {
+                fit_to(content, COL)
+            }
+        } else {
+            // Last lane: pad if short, allow overflow
+            if w < COL {
+                pad_to(content, COL)
+            } else {
+                content.to_string()
+            }
+        }
+    }
+
     fn add_action(&mut self, lane: usize, text: &str) {
         let mut line = String::new();
-        for i in 0..self.num_lanes {
+        for i in 0..self.n {
             if i == lane {
                 let cell = format!("| {}", text);
-                line.push_str(&pad_to_width(&cell, COL_W));
+                line.push_str(&self.make_cell(i, &cell));
             } else {
-                line.push_str(&center_in_width("|", COL_W));
+                line.push_str(&center("|", COL));
             }
         }
         self.lines.push(line);
     }
 
-    /// Draw arrow between two lanes
     fn add_arrow(&mut self, from: usize, to: usize) {
-        if from == to || from >= self.num_lanes || to >= self.num_lanes {
+        if from == to || from >= self.n || to >= self.n {
             return;
         }
 
@@ -104,44 +140,38 @@ impl SequenceDiagram {
         let min_l = from.min(to);
         let max_l = from.max(to);
 
-        for i in 0..self.num_lanes {
+        for i in 0..self.n {
             if i < min_l || i > max_l {
-                // Outside arrow range
-                line.push_str(&center_in_width("|", COL_W));
+                line.push_str(&center("|", COL));
             } else if i == from && going_right {
-                // Start: |--------
                 let mut cell = String::from("|");
-                for _ in 0..(COL_W - 1) {
+                for _ in 0..(COL - 1) {
                     cell.push('-');
                 }
                 line.push_str(&cell);
             } else if i == to && going_right {
-                // End: -------->|
                 let mut cell = String::new();
-                for _ in 0..(COL_W - 2) {
+                for _ in 0..(COL - 2) {
                     cell.push('-');
                 }
                 cell.push_str(">|");
                 line.push_str(&cell);
             } else if i == from && !going_right {
-                // Start going left: just |
                 let mut cell = String::new();
-                for _ in 0..(COL_W - 2) {
+                for _ in 0..(COL - 1) {
                     cell.push('-');
                 }
-                cell.push_str("-|");
+                cell.push('|');
                 line.push_str(&cell);
             } else if i == to && !going_right {
-                // End going left: |<-------
                 let mut cell = String::from("|<");
-                for _ in 0..(COL_W - 2) {
+                for _ in 0..(COL - 2) {
                     cell.push('-');
                 }
                 line.push_str(&cell);
             } else {
-                // Middle of arrow
                 let mut cell = String::new();
-                for _ in 0..COL_W {
+                for _ in 0..COL {
                     cell.push('-');
                 }
                 line.push_str(&cell);
@@ -151,9 +181,9 @@ impl SequenceDiagram {
     }
 
     fn add_note(&mut self, text: &str) {
-        let total = COL_W * self.num_lanes;
+        let total = COL * self.n;
         let note = format!("... {} ...", text);
-        self.lines.push(center_in_width(&note, total));
+        self.lines.push(center(&note, total));
     }
 
     fn add_section(&mut self, lane: usize, text: &str) {
@@ -179,7 +209,6 @@ fn context_to_lane(ctx: &ExecutionContext) -> usize {
     }
 }
 
-/// Render a timeline-based async sequence diagram
 pub fn print_async_sequence(timeline: &AsyncTimeline, name: &str) {
     let mut d = SequenceDiagram::new(&["User Space", "Kernel", "Hardware"]);
 
@@ -195,7 +224,6 @@ pub fn print_async_sequence(timeline: &AsyncTimeline, name: &str) {
     d.add_action(p1_lane, &format!("=== {} ===", timeline.phase1.name));
     render_chain_nodes(&mut d, &timeline.phase1.call_chain);
 
-    // Separation
     d.add_lane_line();
     d.add_note(&timeline.separation);
     d.add_lane_line();
@@ -212,7 +240,6 @@ pub fn print_async_sequence(timeline: &AsyncTimeline, name: &str) {
 }
 
 fn render_chain_nodes(d: &mut SequenceDiagram, chain: &CallChain) {
-    // Determine trigger lane from first node context
     let trigger_lane = chain
         .nodes
         .first()
@@ -231,11 +258,7 @@ fn render_chain_nodes(d: &mut SequenceDiagram, chain: &CallChain) {
             }
         }
 
-        let marker = if node.is_user_entry {
-            " <-- YOUR CODE"
-        } else {
-            ""
-        };
+        let marker = if node.is_user_entry { " <<< YOU" } else { "" };
         d.add_action(lane, &format!("{}(){}", node.function, marker));
 
         if let Some(ref desc) = node.description {
@@ -246,7 +269,6 @@ fn render_chain_nodes(d: &mut SequenceDiagram, chain: &CallChain) {
     }
 }
 
-/// Render a simple call chain as a sequence diagram
 pub fn print_chain_sequence(chain: &CallChain) {
     let mut d = SequenceDiagram::new(&["User Space", "Kernel", "Hardware"]);
 
@@ -257,7 +279,6 @@ pub fn print_chain_sequence(chain: &CallChain) {
     d.add_action(1, &format!("<<< {} >>>", chain.name));
     d.add_lane_line();
 
-    // Determine trigger lane
     let trigger_lane = chain
         .nodes
         .first()
@@ -276,11 +297,7 @@ pub fn print_chain_sequence(chain: &CallChain) {
             }
         }
 
-        let marker = if node.is_user_entry {
-            " <-- YOUR CODE"
-        } else {
-            ""
-        };
+        let marker = if node.is_user_entry { " <<< YOU" } else { "" };
         d.add_action(lane, &format!("{}(){}", node.function, marker));
 
         if let Some(ref desc) = node.description {
