@@ -1,0 +1,542 @@
+//! Interactive REPL mode
+//!
+//! Provides an interactive shell for FlowSight with:
+//! - Persistent context (loaded file, knowledge base)
+//! - Command history
+//! - Tab completion
+//! - Colored output
+
+use crate::commands;
+use crate::context::AnalysisContext;
+use crate::output::OutputFormat;
+use crossterm::style::{Color, Stylize};
+use rustyline::completion::{Completer, Pair};
+use rustyline::error::ReadlineError;
+use rustyline::{Context, Editor, Helper};
+use std::path::PathBuf;
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Print the welcome banner
+fn print_banner() {
+    let logo = r#"
+    ╔═══════════════════════════════════════════════╗
+    ║                                               ║
+    ║     ███████╗██╗      ██████╗ ██╗    ██╗       ║
+    ║     ██╔════╝██║     ██╔═══██╗██║    ██║       ║
+    ║     █████╗  ██║     ██║   ██║██║ █╗ ██║       ║
+    ║     ██╔══╝  ██║     ██║   ██║██║███╗██║       ║
+    ║     ██║     ███████╗╚██████╔╝╚███╔███╔╝       ║
+    ║     ╚═╝     ╚══════╝ ╚═════╝  ╚══╝╚══╝       ║
+    ║              S I G H T                        ║
+    ║                                               ║
+    ╚═══════════════════════════════════════════════╝"#;
+
+    println!("{}", logo.with(Color::Cyan));
+    println!(
+        "    {} v{} - Code Execution Flow Analyzer",
+        "FlowSight".with(Color::Green).bold(),
+        VERSION
+    );
+    println!(
+        "    {}",
+        "Type 'help' for commands, 'quit' to exit"
+            .with(Color::DarkGrey)
+    );
+    println!();
+}
+
+/// REPL session state
+struct Session {
+    current_file: Option<PathBuf>,
+    format: OutputFormat,
+    depth: Option<usize>,
+    no_kernel: bool,
+}
+
+impl Session {
+    fn new() -> Self {
+        Self {
+            current_file: None,
+            format: OutputFormat::Text,
+            depth: None,
+            no_kernel: false,
+        }
+    }
+
+    fn file_display(&self) -> String {
+        self.current_file
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("no file")
+            .to_string()
+    }
+}
+
+/// Tab completion helper
+struct FlowHelper {
+    commands: Vec<String>,
+}
+
+impl Helper for FlowHelper {}
+impl rustyline::validate::Validator for FlowHelper {}
+impl rustyline::highlight::Highlighter for FlowHelper {}
+impl rustyline::hint::Hinter for FlowHelper {
+    type Hint = String;
+}
+
+impl FlowHelper {
+    fn new() -> Self {
+        Self {
+            commands: vec![
+                "open".into(),
+                "flow".into(),
+                "trace".into(),
+                "callers".into(),
+                "callees".into(),
+                "async".into(),
+                "callbacks".into(),
+                "analyze".into(),
+                "kb".into(),
+                "kb stats".into(),
+                "kb query".into(),
+                "kb chain".into(),
+                "kb async-chain".into(),
+                "kb match".into(),
+                "set".into(),
+                "set format".into(),
+                "set depth".into(),
+                "set no-kernel".into(),
+                "status".into(),
+                "help".into(),
+                "quit".into(),
+                "exit".into(),
+            ],
+        }
+    }
+}
+
+impl Completer for FlowHelper {
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Pair>)> {
+        let input = &line[..pos];
+        let mut matches = Vec::new();
+
+        for cmd in &self.commands {
+            if cmd.starts_with(input) {
+                matches.push(Pair {
+                    display: cmd.clone(),
+                    replacement: cmd.clone(),
+                });
+            }
+        }
+
+        Ok((0, matches))
+    }
+}
+
+/// Run the interactive REPL
+pub fn run() -> anyhow::Result<()> {
+    print_banner();
+
+    // Load KB once
+    let ctx = AnalysisContext::new();
+    let kb = ctx.knowledge_base();
+    let fw_count = kb.frameworks.len();
+    let cb_count: usize = kb.frameworks.values().map(|f| f.callbacks.len()).sum();
+    println!(
+        "  {} Knowledge base: {} frameworks, {} callbacks loaded",
+        ">>".with(Color::Green),
+        fw_count,
+        cb_count
+    );
+    println!();
+
+    let helper = FlowHelper::new();
+    let mut rl = Editor::new()?;
+    rl.set_helper(Some(helper));
+
+    // Try to load history
+    let history_path = dirs_home().join(".flowsight_history");
+    let _ = rl.load_history(&history_path);
+
+    let mut session = Session::new();
+
+    loop {
+        let prompt = format!(
+            "{} {} ",
+            session.file_display().with(Color::Blue),
+            ">".with(Color::Green).bold()
+        );
+
+        match rl.readline(&prompt) {
+            Ok(line) => {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                let _ = rl.add_history_entry(line);
+
+                match execute_command(line, &mut session) {
+                    Ok(should_quit) => {
+                        if should_quit {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        println!("{} {}", "Error:".with(Color::Red).bold(), e);
+                    }
+                }
+            }
+            Err(ReadlineError::Interrupted) => {
+                println!("Ctrl-C: use 'quit' to exit");
+            }
+            Err(ReadlineError::Eof) => {
+                break;
+            }
+            Err(e) => {
+                println!("{} {}", "Error:".with(Color::Red), e);
+                break;
+            }
+        }
+    }
+
+    let _ = rl.save_history(&history_path);
+    println!(
+        "{}",
+        "Goodbye!".with(Color::DarkGrey)
+    );
+    Ok(())
+}
+
+fn dirs_home() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+/// Execute a REPL command. Returns Ok(true) if should quit.
+fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    if parts.is_empty() {
+        return Ok(false);
+    }
+
+    match parts[0] {
+        "quit" | "exit" | "q" => return Ok(true),
+
+        "help" | "h" | "?" => {
+            print_help();
+        }
+
+        "open" | "o" => {
+            if parts.len() < 2 {
+                anyhow::bail!("Usage: open <file.c>");
+            }
+            let path = PathBuf::from(parts[1]);
+            if !path.exists() {
+                anyhow::bail!("File not found: {}", parts[1]);
+            }
+            let mut ctx = AnalysisContext::new();
+            let result = ctx.analyze_file(&path)?;
+            let func_count = result.parse_result.functions.len();
+            let entry_count = result.analysis.entry_points.len();
+            let async_count = result.analysis.async_bindings.len();
+
+            session.current_file = Some(path);
+            println!(
+                "  {} {} functions, {} entry points, {} async handlers",
+                "Loaded:".with(Color::Green),
+                func_count,
+                entry_count,
+                async_count
+            );
+        }
+
+        "flow" | "f" => {
+            let file = require_file(session, parts.get(1))?;
+            let func = if session.current_file.is_some() && parts.len() >= 2 {
+                parts[1]
+            } else if parts.len() >= 3 {
+                parts[2]
+            } else {
+                anyhow::bail!("Usage: flow [file] <function>");
+            };
+
+            let opts = commands::flow::FlowOptions {
+                max_depth: parse_flag(&parts, "--depth").or(session.depth),
+                no_kernel: parts.contains(&"--no-kernel") || session.no_kernel,
+                expand_async: parts.contains(&"--expand-async"),
+            };
+            let format = parse_format_flag(&parts).unwrap_or(session.format);
+            commands::flow::run(&file, func, &format, &opts)?;
+        }
+
+        "trace" | "t" => {
+            let file = require_file(session, parts.get(1))?;
+            let func = if session.current_file.is_some() && parts.len() >= 2 {
+                parts[1]
+            } else if parts.len() >= 3 {
+                parts[2]
+            } else {
+                anyhow::bail!("Usage: trace [file] <function>");
+            };
+            commands::flow::run_trace(&file, func, "ftrace")?;
+        }
+
+        "callers" => {
+            let file = require_file(session, parts.get(1))?;
+            let func = if session.current_file.is_some() && parts.len() >= 2 {
+                parts[1]
+            } else if parts.len() >= 3 {
+                parts[2]
+            } else {
+                anyhow::bail!("Usage: callers [file] <function>");
+            };
+            commands::graph::run_callers(&file, func)?;
+        }
+
+        "callees" => {
+            let file = require_file(session, parts.get(1))?;
+            let func = if session.current_file.is_some() && parts.len() >= 2 {
+                parts[1]
+            } else if parts.len() >= 3 {
+                parts[2]
+            } else {
+                anyhow::bail!("Usage: callees [file] <function>");
+            };
+            commands::graph::run_callees(&file, func)?;
+        }
+
+        "async" => {
+            let file = require_file(session, parts.get(1))?;
+            commands::async_cmd::run_async(&file)?;
+        }
+
+        "callbacks" => {
+            let file = require_file(session, parts.get(1))?;
+            commands::async_cmd::run_callbacks(&file)?;
+        }
+
+        "analyze" => {
+            let file = require_file(session, parts.get(1))?;
+            let format = parse_format_flag(&parts).unwrap_or(session.format);
+            commands::analyze::run(&file, None, &format)?;
+        }
+
+        "kb" => {
+            if parts.len() < 2 {
+                anyhow::bail!("Usage: kb <stats|query|chain|async-chain|match>");
+            }
+            let format = parse_format_flag(&parts).unwrap_or(session.format);
+            match parts[1] {
+                "stats" => commands::kb::run_stats(&format)?,
+                "query" => {
+                    if parts.len() < 3 {
+                        anyhow::bail!("Usage: kb query <term>");
+                    }
+                    commands::kb::run_query(parts[2], &format)?;
+                }
+                "chain" => {
+                    if parts.len() < 4 {
+                        anyhow::bail!("Usage: kb chain <framework> <callback>");
+                    }
+                    commands::kb::run_chain(parts[2], parts[3], &format)?;
+                }
+                "async-chain" => {
+                    if parts.len() < 3 {
+                        anyhow::bail!("Usage: kb async-chain <pattern>");
+                    }
+                    commands::kb::run_async_chain(parts[2], &format)?;
+                }
+                "match" => {
+                    let file = if parts.len() >= 3 {
+                        PathBuf::from(parts[2])
+                    } else {
+                        require_file(session, None)?
+                    };
+                    commands::kb::run_match(&file, &format)?;
+                }
+                other => anyhow::bail!("Unknown kb subcommand: {}", other),
+            }
+        }
+
+        "set" => {
+            if parts.len() < 2 {
+                println!("  format:    {:?}", session.format);
+                println!("  depth:     {:?}", session.depth);
+                println!("  no-kernel: {}", session.no_kernel);
+                return Ok(false);
+            }
+            match parts[1] {
+                "format" => {
+                    if parts.len() < 3 {
+                        anyhow::bail!("Usage: set format <text|json|ftrace|sequence|markdown>");
+                    }
+                    session.format = match parts[2] {
+                        "text" => OutputFormat::Text,
+                        "json" => OutputFormat::Json,
+                        "ftrace" => OutputFormat::Ftrace,
+                        "sequence" => OutputFormat::Sequence,
+                        "markdown" => OutputFormat::Markdown,
+                        other => anyhow::bail!("Unknown format: {}", other),
+                    };
+                    println!("  format = {:?}", session.format);
+                }
+                "depth" => {
+                    if parts.len() < 3 {
+                        session.depth = None;
+                        println!("  depth = unlimited");
+                    } else {
+                        let d: usize = parts[2].parse()?;
+                        session.depth = Some(d);
+                        println!("  depth = {}", d);
+                    }
+                }
+                "no-kernel" => {
+                    if parts.len() >= 3 {
+                        session.no_kernel = parts[2] == "on" || parts[2] == "true";
+                    } else {
+                        session.no_kernel = !session.no_kernel;
+                    }
+                    println!("  no-kernel = {}", session.no_kernel);
+                }
+                other => anyhow::bail!("Unknown setting: {}", other),
+            }
+        }
+
+        "status" | "s" => {
+            println!(
+                "  File:      {}",
+                session
+                    .current_file
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(none)".into())
+            );
+            println!("  Format:    {:?}", session.format);
+            println!("  Depth:     {:?}", session.depth);
+            println!("  No-kernel: {}", session.no_kernel);
+        }
+
+        other => {
+            anyhow::bail!(
+                "Unknown command: '{}'. Type 'help' for available commands.",
+                other
+            );
+        }
+    }
+
+    Ok(false)
+}
+
+fn require_file(session: &Session, arg: Option<&&str>) -> anyhow::Result<PathBuf> {
+    if let Some(path_str) = arg {
+        let p = PathBuf::from(path_str);
+        if p.exists() {
+            return Ok(p);
+        }
+        // If it doesn't exist as a path and we have a current file, treat as function name
+        if session.current_file.is_some() {
+            // The caller will use current_file
+        }
+    }
+
+    session
+        .current_file
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("No file loaded. Use 'open <file.c>' first."))
+}
+
+fn parse_flag(parts: &[&str], flag: &str) -> Option<usize> {
+    for (i, part) in parts.iter().enumerate() {
+        if *part == flag {
+            if let Some(val) = parts.get(i + 1) {
+                return val.parse().ok();
+            }
+        }
+    }
+    None
+}
+
+fn parse_format_flag(parts: &[&str]) -> Option<OutputFormat> {
+    for (i, part) in parts.iter().enumerate() {
+        if *part == "-F" || *part == "--format" {
+            if let Some(val) = parts.get(i + 1) {
+                return match *val {
+                    "text" => Some(OutputFormat::Text),
+                    "json" => Some(OutputFormat::Json),
+                    "ftrace" => Some(OutputFormat::Ftrace),
+                    "sequence" => Some(OutputFormat::Sequence),
+                    "markdown" => Some(OutputFormat::Markdown),
+                    _ => None,
+                };
+            }
+        }
+    }
+    None
+}
+
+fn print_help() {
+    println!();
+    println!(
+        "  {}",
+        "File Commands:".with(Color::Yellow).bold()
+    );
+    println!("    open <file>              Load a C source file");
+    println!("    analyze [file]           Full analysis of current file");
+    println!("    status                   Show current session state");
+    println!();
+    println!(
+        "  {}",
+        "Flow Analysis:".with(Color::Yellow).bold()
+    );
+    println!("    flow <func>              Show execution flow tree");
+    println!("      --depth N              Limit depth");
+    println!("      --no-kernel            Hide kernel API calls");
+    println!("    trace <func>             Ftrace-style output");
+    println!("    callers <func>           Who calls this function");
+    println!("    callees <func>           What this function calls");
+    println!("    async                    List async handlers");
+    println!("    callbacks                List callback functions");
+    println!();
+    println!(
+        "  {}",
+        "Knowledge Base:".with(Color::Yellow).bold()
+    );
+    println!("    kb stats                 KB statistics");
+    println!("    kb query <term>          Search KB");
+    println!("    kb chain <fw> <cb>       Kernel call chain");
+    println!("    kb async-chain <pat>     Async handler chain");
+    println!("    kb match [file]          Match file against KB");
+    println!();
+    println!(
+        "  {}",
+        "Settings:".with(Color::Yellow).bold()
+    );
+    println!("    set                      Show all settings");
+    println!("    set format <fmt>         text|json|ftrace|sequence|markdown");
+    println!("    set depth <N>            Default depth limit");
+    println!("    set no-kernel            Toggle kernel API filter");
+    println!();
+    println!(
+        "  {}",
+        "Other:".with(Color::Yellow).bold()
+    );
+    println!("    help                     This help");
+    println!("    quit                     Exit FlowSight");
+    println!();
+    println!(
+        "  {}",
+        "Tip: Use -F sequence with kb commands for sequence diagrams"
+            .with(Color::DarkGrey)
+    );
+    println!();
+}

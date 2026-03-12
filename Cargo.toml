@@ -73,6 +73,10 @@ globset = "0.4"
 # Parallelism
 rayon = "1.8"
 
+# REPL / Interactive
+rustyline = "15.0"
+crossterm = "0.28"
+
 [profile.release]
 lto = true
 codegen-units = 1

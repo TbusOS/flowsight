@@ -5,6 +5,7 @@
 mod commands;
 mod context;
 mod output;
+mod repl;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -120,6 +121,10 @@ enum Commands {
     /// Knowledge base query and inspection
     #[command(subcommand)]
     Kb(KbCommands),
+
+    /// Interactive REPL mode
+    #[command(alias = "i")]
+    Interactive,
 }
 
 #[derive(Subcommand)]
@@ -162,6 +167,12 @@ enum KbCommands {
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
+
+    // No arguments -> launch REPL
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 1 {
+        return repl::run();
+    }
 
     let cli = Cli::parse();
 
@@ -222,6 +233,9 @@ fn main() -> Result<()> {
                 commands::kb::run_match(&file, &cli.format)?;
             }
         },
+        Commands::Interactive => {
+            repl::run()?;
+        }
     }
 
     Ok(())
