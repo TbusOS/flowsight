@@ -10,6 +10,16 @@ use crate::commands;
 use crate::context::AnalysisContext;
 use crate::output::OutputFormat;
 use crossterm::style::{Color, Stylize};
+
+// Low-saturation color palette
+const C_LOGO: Color = Color::Rgb { r: 130, g: 160, b: 190 };   // steel blue
+const C_TITLE: Color = Color::Rgb { r: 140, g: 185, b: 165 };  // sage
+const C_OK: Color = Color::Rgb { r: 130, g: 175, b: 140 };     // muted green
+const C_FILE: Color = Color::Rgb { r: 155, g: 160, b: 185 };   // lavender grey
+const C_PROMPT: Color = Color::Rgb { r: 150, g: 175, b: 155 }; // soft green
+const C_ERR: Color = Color::Rgb { r: 195, g: 120, b: 120 };    // dusty red
+const C_HEAD: Color = Color::Rgb { r: 190, g: 170, b: 130 };   // sand
+const C_DIM: Color = Color::Rgb { r: 110, g: 115, b: 120 };    // warm grey
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::{Context, Editor, Helper};
@@ -32,16 +42,15 @@ fn print_banner() {
     ║                                               ║
     ╚═══════════════════════════════════════════════╝"#;
 
-    println!("{}", logo.with(Color::Cyan));
+    println!("{}", logo.with(C_LOGO));
     println!(
         "    {} v{} - Code Execution Flow Analyzer",
-        "FlowSight".with(Color::Green).bold(),
+        "FlowSight".with(C_TITLE).bold(),
         VERSION
     );
     println!(
         "    {}",
-        "Type 'help' for commands, 'quit' to exit"
-            .with(Color::DarkGrey)
+        "Type 'help' for commands, 'quit' to exit".with(C_DIM)
     );
     println!();
 }
@@ -153,7 +162,7 @@ pub fn run() -> anyhow::Result<()> {
     let cb_count: usize = kb.frameworks.values().map(|f| f.callbacks.len()).sum();
     println!(
         "  {} Knowledge base: {} frameworks, {} callbacks loaded",
-        ">>".with(Color::Green),
+        ">>".with(C_OK),
         fw_count,
         cb_count
     );
@@ -172,8 +181,8 @@ pub fn run() -> anyhow::Result<()> {
     loop {
         let prompt = format!(
             "{} {} ",
-            session.file_display().with(Color::Blue),
-            ">".with(Color::Green).bold()
+            session.file_display().with(C_FILE),
+            ">".with(C_PROMPT).bold()
         );
 
         match rl.readline(&prompt) {
@@ -191,7 +200,7 @@ pub fn run() -> anyhow::Result<()> {
                         }
                     }
                     Err(e) => {
-                        println!("{} {}", "Error:".with(Color::Red).bold(), e);
+                        println!("{} {}", "Error:".with(C_ERR).bold(), e);
                     }
                 }
             }
@@ -202,7 +211,7 @@ pub fn run() -> anyhow::Result<()> {
                 break;
             }
             Err(e) => {
-                println!("{} {}", "Error:".with(Color::Red), e);
+                println!("{} {}", "Error:".with(C_ERR), e);
                 break;
             }
         }
@@ -211,7 +220,7 @@ pub fn run() -> anyhow::Result<()> {
     let _ = rl.save_history(&history_path);
     println!(
         "{}",
-        "Goodbye!".with(Color::DarkGrey)
+        "Goodbye!".with(C_DIM)
     );
     Ok(())
 }
@@ -253,7 +262,7 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
             session.current_file = Some(path);
             println!(
                 "  {} {} functions, {} entry points, {} async handlers",
-                "Loaded:".with(Color::Green),
+                "Loaded:".with(C_OK),
                 func_count,
                 entry_count,
                 async_count
@@ -488,7 +497,7 @@ fn print_help() {
     println!();
     println!(
         "  {}",
-        "File Commands:".with(Color::Yellow).bold()
+        "File Commands:".with(C_HEAD).bold()
     );
     println!("    open <file>              Load a C source file");
     println!("    analyze [file]           Full analysis of current file");
@@ -496,7 +505,7 @@ fn print_help() {
     println!();
     println!(
         "  {}",
-        "Flow Analysis:".with(Color::Yellow).bold()
+        "Flow Analysis:".with(C_HEAD).bold()
     );
     println!("    flow <func>              Show execution flow tree");
     println!("      --depth N              Limit depth");
@@ -509,7 +518,7 @@ fn print_help() {
     println!();
     println!(
         "  {}",
-        "Knowledge Base:".with(Color::Yellow).bold()
+        "Knowledge Base:".with(C_HEAD).bold()
     );
     println!("    kb stats                 KB statistics");
     println!("    kb query <term>          Search KB");
@@ -519,7 +528,7 @@ fn print_help() {
     println!();
     println!(
         "  {}",
-        "Settings:".with(Color::Yellow).bold()
+        "Settings:".with(C_HEAD).bold()
     );
     println!("    set                      Show all settings");
     println!("    set format <fmt>         text|json|ftrace|sequence|markdown");
@@ -528,7 +537,7 @@ fn print_help() {
     println!();
     println!(
         "  {}",
-        "Other:".with(Color::Yellow).bold()
+        "Other:".with(C_HEAD).bold()
     );
     println!("    help                     This help");
     println!("    quit                     Exit FlowSight");
@@ -536,7 +545,7 @@ fn print_help() {
     println!(
         "  {}",
         "Tip: Use -F sequence with kb commands for sequence diagrams"
-            .with(Color::DarkGrey)
+            .with(C_DIM)
     );
     println!();
 }
