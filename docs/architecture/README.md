@@ -6,6 +6,7 @@
 
 | 文档 | 描述 |
 |------|------|
+| [DESIGN-PRINCIPLES.md](DESIGN-PRINCIPLES.md) | **设计原理总览** — 架构、算法、知识库设计 |
 | [KNOWLEDGE-BASE-SCHEMA.md](KNOWLEDGE-BASE-SCHEMA.md) | 知识库 YAML Schema 设计规范 |
 | [POINTER-ANALYSIS.md](POINTER-ANALYSIS.md) | 函数指针分析算法实现方案 |
 | [MULTI-LANGUAGE-ABSTRACTION.md](MULTI-LANGUAGE-ABSTRACTION.md) | 多语言统一抽象层 (UIR) 设计 |
