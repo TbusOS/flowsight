@@ -1,280 +1,217 @@
-# 🔭 FlowSight
+<p align="center">
+  <img src="docs/images/logo.svg" alt="FlowSight" width="140"/>
+</p>
+
+<h1 align="center">FlowSight</h1>
 
 <p align="center">
-  <img src="docs/images/logo.svg" alt="FlowSight Logo" width="180"/>
+  <strong>Static execution flow analyzer for Linux kernel code</strong>
 </p>
 
 <p align="center">
-  <strong>See Your Code Flow — A Cross-Platform IDE for Visualizing Execution Flow</strong>
+  <a href="https://crates.io/crates/flowsight-cli"><img src="https://img.shields.io/crates/v/flowsight-cli.svg" alt="crates.io"/></a>
+  <a href="https://github.com/TbusOS/flowsight/actions"><img src="https://img.shields.io/github/actions/workflow/status/TbusOS/flowsight/ci.yml?branch=main" alt="CI"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"/></a>
+  <img src="https://img.shields.io/badge/rust-1.75+-orange.svg" alt="Rust 1.75+"/>
 </p>
 
 <p align="center">
-  <a href="README.md">中文</a> | <a href="README.en.md">English</a>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"/>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
-  <img src="https://img.shields.io/badge/rust-1.75+-orange.svg" alt="Rust"/>
-  <img src="https://img.shields.io/badge/i18n-简体中文%20%7C%20English-green.svg" alt="Languages"/>
-</p>
-
-<p align="center">
-  <a href="#features">Features</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#documentation">Documentation</a> •
+  <a href="#features">Features</a> |
+  <a href="#installation">Installation</a> |
+  <a href="#quick-start">Quick Start</a> |
+  <a href="#output-formats">Output Formats</a> |
+  <a href="#knowledge-base">Knowledge Base</a> |
   <a href="#contributing">Contributing</a>
 </p>
 
 ---
 
-## 🎯 What is FlowSight?
+FlowSight is a command-line tool that statically analyzes C source code to trace execution flows, resolve function pointers, detect async handlers, and map callback chains. It is purpose-built for navigating large codebases like the Linux kernel, where indirect calls, deferred work, and framework callbacks make control flow hard to follow.
 
-When you're reading a large codebase like the Linux kernel (20M+ lines), existing IDEs fall short:
+## Features
 
-```c
-// 😵 Traditional IDEs lose track here
-INIT_WORK(&dev->work, my_handler);    // Binding
-schedule_work(&dev->work);             // Trigger → ??? Who gets called?
+- **Execution flow tracing** -- Follow a function's call tree with depth control and kernel API filtering
+- **ftrace-style output** -- Render call graphs in the same format as Linux `function_graph` tracer
+- **Async handler detection** -- Find work queues, timers, tasklets, IRQ handlers, and kthreads
+- **Callback analysis** -- Identify function pointer assignments in ops tables and struct initializers
+- **Caller/callee graphs** -- Show who calls a function and what it calls
+- **Knowledge base** -- 137 YAML definitions covering Linux kernel subsystems (drivers, mm, net, fs, sync, arch)
+- **Sequence diagrams** -- ASCII multi-lane diagrams showing async execution across subsystem boundaries
+- **Interactive REPL** -- Explore code with history, tab completion, and inline help
+- **Multiple output formats** -- Text, JSON, ftrace, sequence diagram, and Markdown
 
-request_irq(irq, irq_handler, ...);    // Register → ??? When executed?
+## Installation
 
-static struct file_operations fops = {
-    .read = my_read,                    // Assignment → ??? Who calls .read?
-};
-```
-
-**FlowSight** solves this by understanding code semantics:
-
-| Feature | Description |
-|---------|-------------|
-| 🔍 **Static Analysis** | No code execution needed |
-| 🧠 **Semantic Understanding** | Understands async mechanisms, callbacks, function pointers |
-| 📊 **Visualization** | Complete execution flow graphs |
-| 🖥️ **Cross-Platform** | Windows (primary) / Linux / macOS |
-| 🌐 **Internationalization** | 简体中文 + English |
-
----
-
-## ✨ Features
-
-### Core Capabilities
-
-| Feature | Description |
-|---------|-------------|
-| **Execution Flow Visualization** | See how code flows through async handlers, callbacks, and function pointers |
-| **Function Pointer Resolution** | Track ops tables, variable assignments, type-based matching |
-| **Async Mechanism Tracking** | Work queues, timers, interrupts, tasklets, kthreads |
-| **Call Graph Analysis** | Interactive call graph with filtering and search |
-| **Struct Relationship View** | Visualize data structure relationships |
-| **Knowledge Base Driven** | Built-in understanding of common frameworks |
-
-### Supported Languages
-
-| Language | Status |
-|----------|--------|
-| C | ✅ Full Support |
-| C++ | 🚧 Planned |
-| Rust | 🚧 Planned |
-| Java/Kotlin (Android) | 📅 v2.0 |
-| Go | 📅 Future |
-
-### Knowledge Base Priority
-
-| Priority | Platform | Version |
-|----------|----------|---------|
-| P0 | Linux Kernel | v1.0 |
-| P1 | Android System | v2.0+ |
-| P2 | Others | Future |
-
----
-
-## 🖼️ UI Preview
-
-> 🚧 **Under Development** - Below is the planned UI layout:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  📁 File  📝 Edit  🔍 View  📊 Analyze  ❓ Help                         │
-├──────┬──────────────────────────────────────────────────┬───────────────┤
-│      │                                                  │               │
-│ 📁   │  ┌──────────────────────────────────────────┐   │  📋 Outline   │
-│ File │  │  // usb_driver.c                          │   │  ├─ probe     │
-│ Exp- │  │  static int usb_probe(struct usb_device)  │   │  ├─ disconnect│
-│ lorer│  │  {                                        │   │  └─ suspend   │
-│      │  │      INIT_WORK(&dev->work, handler);      │   │               │
-│      │  │      ...                                  │   ├───────────────┤
-│      │  └──────────────────────────────────────────┘   │  📊 Flow View │
-│      │                                                  │  ┌───────────┐│
-│      │  ┌──────────────────────────────────────────┐   │  │ probe     ││
-│      │  │         🔗 Execution Flow View            │   │  │   ↓       ││
-│      │  │    ┌─────────┐      ┌─────────┐          │   │  │ INIT_WORK ││
-│      │  │    │  probe  │ ───→ │ handler │          │   │  │   ↓       ││
-│      │  │    └─────────┘      └─────────┘          │   │  │ schedule  ││
-│      │  └──────────────────────────────────────────┘   │  └───────────┘│
-├──────┴──────────────────────────────────────────────────┴───────────────┤
-│  ✅ Indexing complete: 15,234 symbols | 📊 Analysis ready               │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🚀 Installation
-
-### Download Pre-built Binaries
-
-> ⏳ Coming Soon
-
-Visit the [Releases](https://github.com/TbusOS/flowsight/releases) page to download:
-
-| Platform | File |
-|----------|------|
-| Windows | `flowsight-x.x.x-windows.msi` |
-| Linux | `flowsight-x.x.x-linux.AppImage` or `.deb` |
-| macOS | `flowsight-x.x.x-macos.dmg` |
-
-### Build from Source
+### From crates.io
 
 ```bash
-# Prerequisites
-# - Rust 1.75+
-# - Node.js 20+
-# - pnpm
-
-# Clone
-git clone https://github.com/TbusOS/flowsight.git
-cd flowsight
-
-# Install dependencies
-pnpm install
-
-# Build and run
-cargo tauri dev
+cargo install flowsight-cli
 ```
 
----
-
-## 🎮 Quick Start
-
-### 1. Open a Project
-
-```
-File → Open Folder → Select your source code directory
-```
-
-### 2. Wait for Indexing
-
-FlowSight will automatically index your project. For large projects like the Linux kernel, this may take a few minutes.
-
-### 3. Explore Execution Flow
-
-- **Right-click** on a function → "Show Execution Flow"
-- **Ctrl+Click** on a function to jump to definition
-- Use the **Flow View** panel to see async call chains
-
-### 4. Understand Async Patterns
-
-FlowSight automatically detects:
-- Work queue handlers
-- Timer callbacks
-- Interrupt handlers
-- Function pointer assignments
-
----
-
-## 📖 Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Project Plan](docs/design/PROJECT-PLAN.md) | Complete project plan and roadmap |
-| [User Guide](docs/user-guide/README.md) | Usage tutorials (WIP) |
-| [Developer Guide](docs/developer/README.md) | Development and contribution guide |
-| [Architecture](docs/architecture/README.md) | Technical architecture docs |
-| [i18n](docs/developer/I18N.md) | Internationalization and translation |
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         FlowSight                                │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Tauri Desktop App (React + TypeScript + Monaco)          │  │
-│  │  Languages: 简体中文 | English                             │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                              │                                   │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Rust Analysis Engine                                      │  │
-│  │  ├── flowsight-parser    (tree-sitter + libclang)         │  │
-│  │  ├── flowsight-analysis  (async tracking, func ptr)       │  │
-│  │  ├── flowsight-index     (symbol table, call graph)       │  │
-│  │  └── flowsight-knowledge (pattern matching)               │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                              │                                   │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Storage: SQLite (symbols) + sled (graphs)                │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Development Setup
+### From source
 
 ```bash
-# Clone the repo
 git clone https://github.com/TbusOS/flowsight.git
 cd flowsight
+cargo build --release --package flowsight-cli
+# Binary is at target/release/flowsight
+```
 
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+Requires Rust 1.75 or later.
 
-# Install Node.js dependencies
-pnpm install
+## Quick Start
 
-# Run in development mode
-cargo tauri dev
+Analyze a kernel source file:
 
-# Run tests
+```bash
+flowsight analyze drivers/usb/gadget/udc/fsl_udc_core.c
+```
+
+Trace the execution flow of a function:
+
+```bash
+flowsight flow drivers/usb/gadget/udc/fsl_udc_core.c fsl_udc_probe
+```
+
+Limit depth and hide kernel API calls:
+
+```bash
+flowsight flow --depth 3 --no-kernel arch/arm/mach-imx/pm-imx6.c imx6q_pm_init
+```
+
+Show ftrace-style output:
+
+```bash
+flowsight trace arch/arm/mach-imx/clk-imx6q.c imx6q_clocks_init
+```
+
+List async handlers in a file:
+
+```bash
+flowsight async drivers/usb/gadget/udc/fsl_udc_core.c
+```
+
+List callbacks and ops table assignments:
+
+```bash
+flowsight callbacks drivers/usb/gadget/udc/fsl_udc_core.c
+```
+
+Show callers and callees:
+
+```bash
+flowsight callers drivers/usb/gadget/udc/fsl_udc_core.c fsl_udc_probe
+flowsight callees drivers/usb/gadget/udc/fsl_udc_core.c fsl_udc_probe
+```
+
+Query the knowledge base:
+
+```bash
+flowsight kb stats
+flowsight kb query work_struct
+flowsight kb chain usb_driver probe
+flowsight kb async-chain work_struct
+flowsight kb match drivers/usb/gadget/udc/fsl_udc_core.c
+```
+
+Launch the interactive REPL:
+
+```bash
+flowsight interactive
+# or just:
+flowsight
+```
+
+## Output Formats
+
+Use the global `-F` flag to switch formats:
+
+```bash
+flowsight -F json  analyze file.c          # Structured JSON
+flowsight -F ftrace flow file.c func       # ftrace function_graph style
+flowsight -F sequence flow file.c func     # ASCII sequence diagram
+flowsight -F markdown analyze file.c       # Markdown tables
+```
+
+### ftrace output example
+
+```
+ 0)               |  fsl_udc_probe() {
+ 0)               |    usb_add_gadget_udc() {
+ 0)   0.000 us    |      device_register();
+ 0)               |    }
+ 0)               |    INIT_WORK() {
+ 0)               |      /* deferred -> fsl_udc_work_handler */
+ 0)               |    }
+ 0)               |  }
+```
+
+### Sequence diagram output example
+
+```
+  fsl_udc_probe        workqueue            IRQ
+  -------------        ---------            ---
+       |                   |                  |
+       |--INIT_WORK------->|                  |
+       |                   |                  |
+       |--request_irq------------------------->
+       |                   |                  |
+       |  schedule_work--->|                  |
+       |                   |--handler()       |
+       |                   |                  |
+```
+
+## Knowledge Base
+
+FlowSight ships with 137 YAML knowledge files covering:
+
+| Area | Examples |
+|------|----------|
+| Core | workqueue, timer, kthread, softirq, RCU, signals |
+| Memory | page_alloc, vmalloc, slab, OOM, DMA, ioremap |
+| Drivers | USB, I2C, SPI, GPIO, platform, DRM, input, clk |
+| Networking | TCP, UDP, socket, netfilter, XDP, ARP, ICMP |
+| Filesystems | VFS, ext4, procfs, sysfs, tmpfs |
+| Sync | spinlock, mutex, rwlock, semaphore, completion |
+| Arch | ARM32, ARM64, x86, RISC-V |
+
+The knowledge base maps framework registration macros to their kernel call chains, enabling FlowSight to show how a driver's `.probe` function gets called through the device model.
+
+## Architecture
+
+```
+flowsight-cli           CLI frontend (clap + REPL)
+    |
+flowsight-analysis      Execution flow, async tracking, callback resolution
+flowsight-knowledge     YAML knowledge base loader and matcher
+flowsight-query         Cross-file query engine
+flowsight-index         Symbol table and call graph index
+flowsight-parser        Tree-sitter C parser
+flowsight-core          Shared types and data structures
+```
+
+All crates live under `crates/` and share a Cargo workspace.
+
+## Contributing
+
+Contributions are welcome. To get started:
+
+```bash
+git clone https://github.com/TbusOS/flowsight.git
+cd flowsight
+cargo build --workspace
 cargo test --workspace
+cargo clippy --workspace
 ```
 
-### Areas for Contribution
+Before submitting a pull request:
 
-| Type | Description |
-|------|-------------|
-| 🐛 Bug Fixes | Fix known issues |
-| 📚 Documentation | Improve docs and translations |
-| 🔧 Parsers | Add new language support |
-| ✨ UI/UX | Interface improvements |
-| 🧪 Testing | Increase test coverage |
-| 🌐 Translation | Add new language packs |
+1. Run `cargo fmt` and `cargo clippy`
+2. Add tests for new functionality
+3. Keep commits focused and use [conventional commit](https://www.conventionalcommits.org/) messages
 
----
+See [docs/developer/](docs/developer/) for architecture details.
 
-## 📄 License
+## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-## 🙏 Acknowledgments
-
-- [tree-sitter](https://tree-sitter.github.io/) - Incremental parsing
-- [Tauri](https://tauri.app/) - Desktop app framework
-- [Monaco Editor](https://microsoft.github.io/monaco-editor/) - Code editor
-- Linux Kernel community - Inspiration for understanding complex codebases
-
----
-
-<p align="center">
-  Made with ❤️ for developers who want to truly understand their code
-</p>
-
+MIT -- see [LICENSE](LICENSE) for details.

@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Code execution flow analysis CLI and kernel expert model training pipeline"
+description = "Static execution flow analyzer for Linux kernel code"
+repository = "https://github.com/TbusOS/flowsight"
+homepage = "https://github.com/TbusOS/flowsight"
+keywords = ["linux", "kernel", "analysis", "execution-flow", "static-analysis"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "../README.md"
 
 [[bin]]
 name = "flowsight"
