@@ -337,7 +337,13 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
         "analyze" => {
             let file = require_file(session, parts.get(1))?;
             let format = parse_format_flag(&parts).unwrap_or(session.format);
-            commands::analyze::run(&file, None, &format)?;
+            let opts = commands::analyze::AnalyzeOptions {
+                recursive: parts.contains(&"-r") || parts.contains(&"--recursive"),
+                pattern: "*.c".to_string(),
+                parallel: None,
+                summary: parts.contains(&"--summary"),
+            };
+            commands::analyze::run(&file, None, &format, &opts)?;
         }
 
         "kb" => {
