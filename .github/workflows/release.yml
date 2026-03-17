@@ -1,0 +1,180 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  BINARY_NAME: flowsight
+
+jobs:
+  # ---------------------------------------------------------------
+  # Build matrix: native builds + cross-compilation
+  # ---------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive: tar.gz
+            cross: false
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive: tar.gz
+            cross: true
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            archive: tar.gz
+            cross: false
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            archive: tar.gz
+            cross: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --locked
+
+      - name: Build (native)
+        if: "!matrix.cross"
+        run: cargo build --release --package flowsight-cli --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --package flowsight-cli --target ${{ matrix.target }}
+
+      - name: Prepare archive
+        id: archive
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          ARCHIVE_NAME="${BINARY_NAME}-${TAG}-${{ matrix.target }}"
+
+          mkdir -p "staging/${ARCHIVE_NAME}"
+          cp "target/${{ matrix.target }}/release/${BINARY_NAME}" "staging/${ARCHIVE_NAME}/"
+          cp LICENSE README.md "staging/${ARCHIVE_NAME}/" 2>/dev/null || true
+
+          cd staging
+          tar czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
+          echo "path=staging/${ARCHIVE_NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "name=${ARCHIVE_NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SHA256
+        id: checksum
+        shell: bash
+        run: |
+          cd staging
+          ARCHIVE_NAME="$(basename "${{ steps.archive.outputs.path }}")"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            shasum -a 256 "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+          else
+            sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+          fi
+          echo "path=staging/${ARCHIVE_NAME}.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            ${{ steps.archive.outputs.path }}
+            ${{ steps.checksum.outputs.path }}
+          retention-days: 3
+
+  # ---------------------------------------------------------------
+  # Create GitHub Release with all binaries
+  # ---------------------------------------------------------------
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Generate combined checksums
+        run: |
+          cd artifacts
+          cat *.sha256 > checksums-sha256.txt
+          echo "--- SHA256 Checksums ---"
+          cat checksums-sha256.txt
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p' || echo "")
+
+          {
+            echo "body<<RELEASE_EOF"
+            echo "## FlowSight ${TAG}"
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              echo "### Changes since ${PREV_TAG}"
+              echo ""
+              git log "${PREV_TAG}..${TAG}" --pretty=format:"- %s" --no-merges
+            else
+              echo "### Initial Release"
+              echo ""
+              git log --pretty=format:"- %s" --no-merges -20
+            fi
+            echo ""
+            echo ""
+            echo "### Downloads"
+            echo ""
+            echo "| Platform | Architecture | File |"
+            echo "|----------|-------------|------|"
+            echo "| Linux | x86_64 | \`flowsight-${TAG}-x86_64-unknown-linux-gnu.tar.gz\` |"
+            echo "| Linux | aarch64 | \`flowsight-${TAG}-aarch64-unknown-linux-gnu.tar.gz\` |"
+            echo "| macOS | x86_64 (Intel) | \`flowsight-${TAG}-x86_64-apple-darwin.tar.gz\` |"
+            echo "| macOS | aarch64 (Apple Silicon) | \`flowsight-${TAG}-aarch64-apple-darwin.tar.gz\` |"
+            echo ""
+            echo "### Verify Downloads"
+            echo ""
+            echo "\`\`\`bash"
+            echo "sha256sum -c checksums-sha256.txt"
+            echo "\`\`\`"
+            echo "RELEASE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.body }}
+          files: |
+            artifacts/*.tar.gz
+            artifacts/checksums-sha256.txt
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
