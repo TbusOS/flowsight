@@ -138,6 +138,10 @@ enum Commands {
     #[command(subcommand)]
     Kb(KbCommands),
 
+    /// Generate training data for kernel expert LLM fine-tuning
+    #[command(subcommand)]
+    Train(commands::train::TrainCommands),
+
     /// Generate shell completions
     #[command(hide = true)]
     Completions {
@@ -270,6 +274,9 @@ fn main() -> Result<()> {
                 commands::kb::run_match(&file, &cli.format)?;
             }
         },
+        Commands::Train(train_cmd) => {
+            commands::train::run(&train_cmd)?;
+        }
         Commands::Completions { shell } => {
             clap_complete::generate(
                 shell,

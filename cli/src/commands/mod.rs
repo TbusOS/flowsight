@@ -7,3 +7,5 @@ pub mod async_cmd;
 pub mod flow;
 pub mod graph;
 pub mod kb;
+#[path = "train/mod.rs"]
+pub mod train;
