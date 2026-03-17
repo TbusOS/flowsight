@@ -8,7 +8,7 @@ mod output;
 mod repl;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use commands::flow::FlowOptions;
 use output::OutputFormat;
 use std::path::PathBuf;
@@ -33,15 +33,31 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Analyze a source file
+    /// Analyze source file(s) or directory
     Analyze {
-        /// Source file to analyze
-        #[arg(value_name = "FILE")]
-        file: PathBuf,
+        /// Source file or directory to analyze
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
 
         /// Output file (default: stdout)
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Recursively analyze all matching files in directory
+        #[arg(short, long)]
+        recursive: bool,
+
+        /// File pattern for directory scan (default: "*.c")
+        #[arg(short, long, default_value = "*.c")]
+        pattern: String,
+
+        /// Number of parallel workers (default: number of CPUs)
+        #[arg(short = 'j', long)]
+        parallel: Option<usize>,
+
+        /// Show only summary statistics
+        #[arg(long)]
+        summary: bool,
     },
 
     /// Show execution flow for a function
@@ -122,6 +138,14 @@ enum Commands {
     #[command(subcommand)]
     Kb(KbCommands),
 
+    /// Generate shell completions
+    #[command(hide = true)]
+    Completions {
+        /// Shell type (bash, zsh, fish, powershell, elvish)
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
+
     /// Interactive REPL mode
     #[command(alias = "i")]
     Interactive,
@@ -177,8 +201,21 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Analyze { file, output } => {
-            commands::analyze::run(&file, output.as_deref(), &cli.format)?;
+        Commands::Analyze {
+            path,
+            output,
+            recursive,
+            pattern,
+            parallel,
+            summary,
+        } => {
+            let opts = commands::analyze::AnalyzeOptions {
+                recursive,
+                pattern,
+                parallel,
+                summary,
+            };
+            commands::analyze::run(&path, output.as_deref(), &cli.format, &opts)?;
         }
         Commands::Flow {
             file,
@@ -233,6 +270,14 @@ fn main() -> Result<()> {
                 commands::kb::run_match(&file, &cli.format)?;
             }
         },
+        Commands::Completions { shell } => {
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "flowsight",
+                &mut std::io::stdout(),
+            );
+        }
         Commands::Interactive => {
             repl::run()?;
         }

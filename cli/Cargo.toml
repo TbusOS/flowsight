@@ -21,6 +21,7 @@ flowsight-query = { workspace = true }
 
 # CLI framework
 clap = { workspace = true }
+clap_complete = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
@@ -36,6 +37,9 @@ anyhow = { workspace = true }
 # File walking (for batch analysis)
 walkdir = { workspace = true }
 globset = { workspace = true }
+
+# Parallelism
+rayon = { workspace = true }
 
 # REPL / Interactive
 rustyline = { workspace = true }
