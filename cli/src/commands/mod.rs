@@ -4,6 +4,7 @@
 
 pub mod analyze;
 pub mod async_cmd;
+pub mod diff;
 pub mod flow;
 pub mod graph;
 pub mod index;

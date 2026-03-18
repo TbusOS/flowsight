@@ -135,6 +135,37 @@ enum Commands {
         file: PathBuf,
     },
 
+    /// Compare execution flows between two file versions
+    Diff {
+        /// First source file (base version)
+        #[arg(value_name = "FILE_A")]
+        file_a: PathBuf,
+
+        /// Second source file (new version)
+        #[arg(value_name = "FILE_B")]
+        file_b: PathBuf,
+
+        /// Compare only this function (default: all functions)
+        #[arg(value_name = "FUNCTION")]
+        function: Option<String>,
+
+        /// Maximum depth for flow comparison
+        #[arg(short, long)]
+        depth: Option<usize>,
+
+        /// Ignore call ordering changes
+        #[arg(long)]
+        ignore_order: bool,
+
+        /// Also show unchanged paths in output
+        #[arg(long)]
+        show_common: bool,
+
+        /// Only show which functions changed (skip call-level details)
+        #[arg(long)]
+        summary: bool,
+    },
+
     /// Knowledge base query and inspection
     #[command(subcommand)]
     Kb(KbCommands),
@@ -360,6 +391,29 @@ fn main() -> Result<()> {
         }
         Commands::Callbacks { file } => {
             commands::async_cmd::run_callbacks(&file)?;
+        }
+        Commands::Diff {
+            file_a,
+            file_b,
+            function,
+            depth,
+            ignore_order,
+            show_common,
+            summary,
+        } => {
+            let opts = commands::diff::DiffOptions {
+                max_depth: depth,
+                ignore_order,
+                show_common,
+                summary_only: summary,
+            };
+            commands::diff::run(
+                &file_a,
+                &file_b,
+                function.as_deref(),
+                &cli.format,
+                &opts,
+            )?;
         }
         Commands::Kb(kb_cmd) => match kb_cmd {
             KbCommands::Stats => {
