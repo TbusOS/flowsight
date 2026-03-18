@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight Self-Learning Module
 //!
 //! Provides user feedback collection and local model adaptation:

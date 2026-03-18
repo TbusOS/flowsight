@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight LLVM IR Parser
 //!
 //! Parses LLVM IR (.bc and .ll files) to extract:

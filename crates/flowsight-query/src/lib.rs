@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight Query Engine
 //!
 //! High-level query interface for code analysis.

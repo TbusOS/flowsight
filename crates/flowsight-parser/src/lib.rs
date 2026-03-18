@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight Parser
 //!
 //! Code parsing using tree-sitter for fast incremental parsing,

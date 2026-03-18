@@ -1,7 +1,6 @@
 # Rust
 /target/
 **/*.rs.bk
-Cargo.lock
 
 # Node
 node_modules/
@@ -36,3 +35,4 @@ Thumbs.db
 .flowsight/
 
 .claude/worktrees/
+.claude/settings.local.json

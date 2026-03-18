@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight Analysis Engine
 //!
 //! Provides advanced code analysis capabilities:

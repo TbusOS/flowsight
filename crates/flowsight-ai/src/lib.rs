@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight Local AI Module
 //!
 //! Provides local AI model inference for:

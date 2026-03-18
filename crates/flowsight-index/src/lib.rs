@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight Index
 //!
 //! Provides persistent indexing for code symbols and call graphs.

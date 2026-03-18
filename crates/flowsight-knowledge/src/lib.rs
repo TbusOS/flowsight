@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight Knowledge Base
 //!
 //! Contains framework patterns, API information, and **complete kernel call chains**.

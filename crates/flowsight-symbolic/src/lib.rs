@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight Symbolic Execution Module
 //!
 //! Provides symbolic execution capabilities using KLEE for:

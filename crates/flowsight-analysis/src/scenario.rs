@@ -200,7 +200,7 @@ impl SymbolicValue {
             SymbolicValue::Integer(n) if *n != 0 => {
                 // Extract lowest set bit as mask
                 let mask = *n as u64;
-                let value = mask & mask; // Value is the masked portion
+                let value = mask; // Value is the masked portion
                 Some((value, mask))
             }
             _ => None,

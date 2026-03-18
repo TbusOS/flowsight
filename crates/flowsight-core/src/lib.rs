@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! FlowSight Core
 //!
 //! Core types and interfaces for the FlowSight code analysis engine.
