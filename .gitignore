@@ -35,3 +35,4 @@ Thumbs.db
 # Index files
 .flowsight/
 
+.claude/worktrees/
