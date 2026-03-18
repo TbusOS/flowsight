@@ -4,6 +4,7 @@
 
 mod commands;
 mod context;
+mod index_db;
 mod output;
 mod repl;
 
@@ -138,6 +139,33 @@ enum Commands {
     #[command(subcommand)]
     Kb(KbCommands),
 
+    /// Cross-file index: build, query, stats, update
+    #[command(subcommand)]
+    Index(IndexCommands),
+
+    /// Detect Linux kernel coding patterns (locking, error handling, lifecycle, etc.)
+    Patterns {
+        /// Source file or directory to scan
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Recursively scan directory
+        #[arg(short, long)]
+        recursive: bool,
+
+        /// Filter by pattern category
+        #[arg(short, long, value_name = "CATEGORY")]
+        category: Option<commands::patterns::PatternCategory>,
+
+        /// File pattern for directory scan (default: "*.c")
+        #[arg(short = 'g', long = "glob", default_value = "*.c")]
+        pattern_glob: String,
+
+        /// Show only summary counts
+        #[arg(long)]
+        summary: bool,
+    },
+
     /// Generate training data for kernel expert LLM fine-tuning
     #[command(subcommand)]
     Train(commands::train::TrainCommands),
@@ -190,6 +218,85 @@ enum KbCommands {
         /// Source file to match
         #[arg(value_name = "FILE")]
         file: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum IndexCommands {
+    /// Build cross-file index from a directory
+    Build {
+        /// Directory to index
+        #[arg(value_name = "DIR")]
+        dir: PathBuf,
+
+        /// Recursive scan (default: true)
+        #[arg(short, long, default_value_t = true)]
+        recursive: bool,
+
+        /// File filter pattern
+        #[arg(short, long, default_value = "*.c")]
+        pattern: String,
+
+        /// SQLite database path (default: <dir>/.flowsight/index.db)
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Number of parallel workers
+        #[arg(short = 'j', long)]
+        parallel: Option<usize>,
+
+        /// Auto-detect kernel subsystem boundaries
+        #[arg(long)]
+        subsystem: bool,
+    },
+
+    /// Look up a symbol across all indexed files
+    Query {
+        /// Symbol name to search for
+        #[arg(value_name = "SYMBOL")]
+        symbol: String,
+
+        /// Filter by symbol type (function, struct, macro, callback)
+        #[arg(short = 't', long = "type")]
+        kind: Option<String>,
+
+        /// Filter by kernel subsystem
+        #[arg(short, long)]
+        subsystem: Option<String>,
+
+        /// SQLite database path
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+
+    /// Show index statistics
+    Stats {
+        /// SQLite database path
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+
+    /// Incremental update (only changed files)
+    Update {
+        /// Directory to update
+        #[arg(value_name = "DIR")]
+        dir: PathBuf,
+
+        /// File filter pattern
+        #[arg(short, long, default_value = "*.c")]
+        pattern: String,
+
+        /// SQLite database path
+        #[arg(long)]
+        db: Option<PathBuf>,
+
+        /// Number of parallel workers
+        #[arg(short = 'j', long)]
+        parallel: Option<usize>,
+
+        /// Auto-detect kernel subsystem boundaries
+        #[arg(long)]
+        subsystem: bool,
     },
 }
 
@@ -274,6 +381,70 @@ fn main() -> Result<()> {
                 commands::kb::run_match(&file, &cli.format)?;
             }
         },
+        Commands::Index(idx_cmd) => match idx_cmd {
+            IndexCommands::Build {
+                dir,
+                recursive: _,
+                pattern,
+                db,
+                parallel,
+                subsystem,
+            } => {
+                let opts = commands::index::BuildOptions {
+                    pattern,
+                    db_path: db,
+                    parallel,
+                    subsystem,
+                };
+                commands::index::run_build(&dir, &cli.format, &opts)?;
+            }
+            IndexCommands::Query {
+                symbol,
+                kind,
+                subsystem,
+                db,
+            } => {
+                let opts = commands::index::QueryOptions {
+                    kind_filter: kind,
+                    subsystem_filter: subsystem,
+                    db_path: db,
+                };
+                commands::index::run_query(&symbol, None, &cli.format, &opts)?;
+            }
+            IndexCommands::Stats { db } => {
+                commands::index::run_stats(None, db.as_deref(), &cli.format)?;
+            }
+            IndexCommands::Update {
+                dir,
+                pattern,
+                db,
+                parallel,
+                subsystem,
+            } => {
+                let opts = commands::index::UpdateOptions {
+                    pattern,
+                    db_path: db,
+                    parallel,
+                    subsystem,
+                };
+                commands::index::run_update(&dir, &cli.format, &opts)?;
+            }
+        },
+        Commands::Patterns {
+            path,
+            recursive,
+            category,
+            pattern_glob,
+            summary,
+        } => {
+            let opts = commands::patterns::PatternsOptions {
+                recursive,
+                pattern_glob,
+                category,
+                summary,
+            };
+            commands::patterns::run(&path, &cli.format, &opts)?;
+        }
         Commands::Train(train_cmd) => {
             commands::train::run(&train_cmd)?;
         }

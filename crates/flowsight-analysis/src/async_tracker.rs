@@ -32,7 +32,7 @@ pub struct AsyncTracker {
 /// Async pattern from knowledge base
 struct KbAsyncPattern {
     /// Pattern name from KB (e.g., "work_struct", "timer_list")
-    name: String,
+    _name: String,
     /// Async mechanism type
     mechanism: AsyncMechanism,
     /// Execution context
@@ -90,7 +90,7 @@ impl AsyncTracker {
 
             if !bind_patterns.is_empty() {
                 self.kb_patterns.push(KbAsyncPattern {
-                    name: pattern_name.clone(),
+                    _name: pattern_name.clone(),
                     mechanism,
                     context,
                     bind_patterns,

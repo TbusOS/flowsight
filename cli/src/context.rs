@@ -33,6 +33,7 @@ impl AnalysisContext {
     }
 
     /// Create with a custom knowledge base (used by `kb` commands)
+    #[allow(dead_code)]
     pub fn with_knowledge_base(kb: KnowledgeBase) -> Self {
         Self {
             parser: get_parser(),

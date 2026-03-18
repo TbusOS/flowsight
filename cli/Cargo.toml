@@ -46,7 +46,20 @@ globset = { workspace = true }
 # Parallelism
 rayon = { workspace = true }
 
+# Database
+rusqlite = { workspace = true }
+
 # REPL / Interactive
 rustyline = { workspace = true }
 crossterm = { workspace = true }
+
+# Regex
+regex = { workspace = true }
+
+# AST-level analysis
+tree-sitter = { workspace = true }
+tree-sitter-c = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
 

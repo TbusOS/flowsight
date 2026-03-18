@@ -12,7 +12,8 @@ pub struct FlowOptions {
     pub max_depth: Option<usize>,
     /// Hide kernel API calls
     pub no_kernel: bool,
-    /// Expand async boundaries
+    /// Expand async boundaries (TODO: not yet implemented)
+    #[allow(dead_code)]
     pub expand_async: bool,
 }
 

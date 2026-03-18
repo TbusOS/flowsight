@@ -31,7 +31,7 @@ pub struct LocalModel {
     /// Model name
     name: String,
     /// Configuration
-    config: AiConfig,
+    _config: AiConfig,
     /// Loaded model handle
     handle: Option<ModelHandle>,
 }
@@ -40,7 +40,7 @@ pub struct LocalModel {
 #[derive(Debug)]
 pub struct ModelHandle {
     /// For now, we store metadata about the model
-    path: PathBuf,
+    _path: PathBuf,
     /// Model file size in bytes
     file_size: u64,
     /// Whether it's loaded
@@ -56,7 +56,7 @@ impl LocalModel {
             return Err(ModelError::NotFound(path.display().to_string()));
         }
 
-        let file_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        let _file_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
 
         let name = path
             .file_stem()
@@ -67,7 +67,7 @@ impl LocalModel {
         Ok(Self {
             path,
             name,
-            config: config.clone(),
+            _config: config.clone(),
             handle: None,
         })
     }
@@ -78,7 +78,7 @@ impl LocalModel {
         // In a full implementation, this would use llama.cpp bindings
 
         self.handle = Some(ModelHandle {
-            path: self.path.clone(),
+            _path: self.path.clone(),
             file_size: std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0),
             is_loaded: true,
         });
@@ -97,7 +97,7 @@ impl LocalModel {
     }
 
     /// Run inference
-    pub async fn inference(&self, prompt: &str, max_tokens: usize) -> Result<String, ModelError> {
+    pub async fn inference(&self, _prompt: &str, _max_tokens: usize) -> Result<String, ModelError> {
         // Placeholder implementation
         // In production, this would use llama.cpp bindings
 

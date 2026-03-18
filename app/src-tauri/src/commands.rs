@@ -1561,7 +1561,7 @@ pub async fn explain_function(
 #[tauri::command]
 pub async fn get_context_annotation(
     mechanism: String,
-    handler_code: String,
+    _handler_code: String,
 ) -> Result<AiContextAnnotation, String> {
     // Match based on mechanism type
     let (context_type, can_sleep, timing, notes) = match mechanism.as_str() {
@@ -1630,7 +1630,7 @@ pub async fn get_context_annotation(
 /// Translate constraint condition to business meaning
 #[tauri::command]
 pub async fn translate_condition(
-    code: String,
+    _code: String,
     constraint: String,
     function_name: String,
 ) -> Result<String, String> {

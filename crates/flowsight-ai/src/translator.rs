@@ -2,7 +2,7 @@
 //!
 //! Translates symbolic execution constraints to business semantics.
 
-use super::{AiConfig, AiResult, AiTask, FlowSightAi};
+use super::{AiConfig, AiTask, FlowSightAi};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

@@ -21,13 +21,12 @@
 //! ```
 
 use flowsight_core::{
-    AnalysisInfo, AsyncBinding, AsyncBoundary, AsyncMechanism, CallEdge, CallType, ConfidenceLevel,
-    ExecutionContext, ExecutionFlow, FlowNode, FlowNodeType,
+    AsyncMechanism, ConfidenceLevel, ExecutionContext, ExecutionFlow, FlowNode, FlowNodeType,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-use crate::{AiConfig, AiResult, FlowSightAi};
+use crate::FlowSightAi;
 
 /// 格式化输出类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -276,7 +275,7 @@ impl FlowFormatter {
             AsyncMechanism::KThread => "kthread",
             AsyncMechanism::RcuCallback => "call_rcu",
             AsyncMechanism::Notifier => "notifier",
-            AsyncMechanism::Custom(name) => {
+            AsyncMechanism::Custom(_name) => {
                 // 返回 static str 需要 leak，这里简化处理
                 "custom"
             }
@@ -354,7 +353,7 @@ impl FlowFormatter {
         }
 
         let indent = "  ".repeat(depth);
-        let icon = self.node_type_icon(&node.node_type);
+        let _icon = self.node_type_icon(&node.node_type);
 
         let context_str = match &node.execution_context {
             Some(ExecutionContext::Process) => "process",

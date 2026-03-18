@@ -215,7 +215,7 @@ pub struct KleeExecutor {
     /// KLEE binary path
     klee_path: Option<PathBuf>,
     /// Working directory (temporary, cleaned up on drop)
-    work_dir: Option<TempDir>,
+    _work_dir: Option<TempDir>,
 }
 
 impl KleeExecutor {
@@ -224,7 +224,7 @@ impl KleeExecutor {
         Self {
             config,
             klee_path: None,
-            work_dir: None,
+            _work_dir: None,
         }
     }
 
@@ -581,7 +581,7 @@ int main(int argc, char** argv) {
         let args_list: Vec<String> = args
             .iter()
             .enumerate()
-            .map(|(i, arg)| format!("int {}", arg.type_name))
+            .map(|(_i, arg)| format!("int {}", arg.type_name))
             .collect();
         code.push_str(&args_list.join(", "));
         code.push_str(");\n\n");
@@ -773,12 +773,12 @@ int main(int argc, char** argv) {
         path_id: usize,
     ) -> Result<ExecutionPath, SymbolicError> {
         // Try to read as binary format first
-        let content = std::fs::read(&ktest_file).map_err(|e| SymbolicError::IoError(e))?;
+        let _content = std::fs::read(&ktest_file).map_err(|e| SymbolicError::IoError(e))?;
 
         // KTEST format is version 4: big-endian int, four bytes of "ktest"
         //   uint8_t data[numBytes]
 
-        let path_name = format!("path_{:04}", path_id);
+        let _path_name = format!("path_{:04}", path_id);
         let mut path = ExecutionPath::new(
             format!("klee_{:04}", path_id),
             format!("KLEE Path {}", path_id),

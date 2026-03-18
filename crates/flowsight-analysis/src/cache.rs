@@ -20,7 +20,7 @@ struct CacheEntry<T> {
     /// 创建时间
     created_at: Instant,
     /// 访问次数
-    access_count: u64,
+    _access_count: u64,
 }
 
 impl<T> CacheEntry<T> {
@@ -28,7 +28,7 @@ impl<T> CacheEntry<T> {
         Self {
             value,
             created_at: Instant::now(),
-            access_count: 1,
+            _access_count: 1,
         }
     }
 

@@ -17,7 +17,7 @@ use flowsight_core::types::{
     ExecutionContext, ExecutionFlow, FlowNode, FlowNodeType, WarningKind,
 };
 use flowsight_knowledge::{
-    matcher::{PatternMatch, PatternMatcher, PatternType},
+    matcher::{PatternMatcher, PatternType},
     KnowledgeBase,
 };
 use std::collections::{HashMap, HashSet};
@@ -61,7 +61,7 @@ struct AsyncBindingInfo {
     /// 机制类型
     mechanism: AsyncMechanism,
     /// 绑定位置
-    bind_location: Option<Location>,
+    _bind_location: Option<Location>,
 }
 
 /// 构建选项
@@ -137,7 +137,7 @@ impl FlowBuilder {
                         variable: var.clone(),
                         handler: handler.clone(),
                         mechanism,
-                        bind_location: None,
+                        _bind_location: None,
                     },
                 );
             }
@@ -378,7 +378,7 @@ impl FlowBuilder {
                     variable: "unknown".into(),
                     handler: format!("{}_handler", trigger),
                     mechanism: mechanism.clone(),
-                    bind_location: None,
+                    _bind_location: None,
                 });
             }
         }
@@ -387,7 +387,7 @@ impl FlowBuilder {
     }
 
     /// 获取内核调用链
-    fn get_kernel_chain(&self, func_name: &str) -> Option<Vec<FlowNode>> {
+    fn get_kernel_chain(&self, _func_name: &str) -> Option<Vec<FlowNode>> {
         // TODO: 从知识库获取调用链
         None
     }

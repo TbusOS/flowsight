@@ -22,15 +22,15 @@ pub struct FuncPtrResolver {
 
 /// Callback pattern from knowledge base
 #[derive(Debug, Clone)]
-struct KbCallbackPattern {
+pub(crate) struct KbCallbackPattern {
     /// Field name (e.g., "probe", "disconnect")
     field: String,
     /// Regex pattern for matching
     pattern: Option<Regex>,
     /// Description from knowledge base
-    description: String,
+    _description: String,
     /// Execution context
-    context: String,
+    _context: String,
 }
 
 /// Pattern for recognizing ops tables
@@ -104,8 +104,8 @@ impl FuncPtrResolver {
                 patterns.push(KbCallbackPattern {
                     field: callback_name.clone(),
                     pattern,
-                    description: callback.description.clone(),
-                    context: context.to_string(),
+                    _description: callback.description.clone(),
+                    _context: context.to_string(),
                 });
             }
 
@@ -124,7 +124,8 @@ impl FuncPtrResolver {
     }
 
     /// Get callback info from knowledge base for a given framework and field
-    pub fn get_kb_callback_info(&self, framework: &str, field: &str) -> Option<&KbCallbackPattern> {
+    #[allow(dead_code)]
+    pub(crate) fn get_kb_callback_info(&self, framework: &str, field: &str) -> Option<&KbCallbackPattern> {
         self.kb_callback_patterns
             .get(framework)?
             .iter()

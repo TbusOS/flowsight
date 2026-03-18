@@ -6,6 +6,9 @@ authors.workspace = true
 license.workspace = true
 description = "Code analysis engine for FlowSight (async tracking, function pointer resolution)"
 
+[features]
+klee = []
+
 [dependencies]
 flowsight-core = { workspace = true }
 flowsight-parser = { workspace = true }

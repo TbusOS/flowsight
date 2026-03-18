@@ -125,7 +125,7 @@ pub enum FeedbackContent {
 #[derive(Debug)]
 pub struct FeedbackCollector {
     /// Database path
-    db_path: PathBuf,
+    _db_path: PathBuf,
     /// Database connection
     conn: Connection,
 }
@@ -158,7 +158,7 @@ impl FeedbackCollector {
         "#,
         )?;
 
-        Ok(Self { db_path, conn })
+        Ok(Self { _db_path: db_path, conn })
     }
 
     /// Add feedback
@@ -360,7 +360,7 @@ impl UserFeedback {
                 feedback_type: "knowledge".into(),
             }),
             FeedbackContent::PatternDiscovery {
-                snippet,
+                snippet: _,
                 pattern_type,
                 semantics,
                 ..
@@ -381,7 +381,7 @@ impl UserFeedback {
             FeedbackContent::TranslationCorrection {
                 original,
                 corrected,
-                reason,
+                reason: _,
             } => Some(TrainingSample {
                 instruction: format!("翻译以下代码条件约束：{}", original),
                 input: self.code_snippet,

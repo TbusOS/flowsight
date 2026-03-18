@@ -2,7 +2,7 @@
 //!
 //! Provides business semantics explanations for functions and execution contexts.
 
-use super::{AiConfig, AiResult, AiTask, FlowSightAi};
+use super::{AiConfig, AiTask, FlowSightAi};
 use serde::{Deserialize, Serialize};
 
 /// Business explanation result
