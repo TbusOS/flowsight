@@ -197,6 +197,10 @@ enum Commands {
         summary: bool,
     },
 
+    /// Kernel execution flow scenarios
+    #[command(subcommand)]
+    Scenario(ScenarioCommands),
+
     /// Generate training data for kernel expert LLM fine-tuning
     #[command(subcommand)]
     Train(commands::train::TrainCommands),
@@ -328,6 +332,41 @@ enum IndexCommands {
         /// Auto-detect kernel subsystem boundaries
         #[arg(long)]
         subsystem: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScenarioCommands {
+    /// List all available kernel scenarios
+    List,
+
+    /// Show scenario details
+    Show {
+        /// Scenario name or partial match
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
+
+    /// Run a scenario, optionally binding to a real source file
+    Run {
+        /// Scenario name or partial match
+        #[arg(value_name = "NAME")]
+        name: String,
+
+        /// Bind a driver source file (e.g., --bind driver=path/to/file.c)
+        #[arg(long = "bind", value_name = "KEY=VALUE")]
+        bindings: Vec<String>,
+
+        /// Maximum call expansion depth
+        #[arg(short, long)]
+        depth: Option<usize>,
+    },
+
+    /// Create a custom scenario template file
+    Create {
+        /// Template name
+        #[arg(value_name = "NAME")]
+        name: String,
     },
 }
 
@@ -499,6 +538,25 @@ fn main() -> Result<()> {
             };
             commands::patterns::run(&path, &cli.format, &opts)?;
         }
+        Commands::Scenario(scenario_cmd) => match scenario_cmd {
+            ScenarioCommands::List => {
+                commands::scenario::run_list(&cli.format)?;
+            }
+            ScenarioCommands::Show { name } => {
+                commands::scenario::run_show(&name, &cli.format)?;
+            }
+            ScenarioCommands::Run {
+                name,
+                bindings,
+                depth,
+            } => {
+                let opts = parse_scenario_bindings(&bindings, depth);
+                commands::scenario::run_scenario(&name, &cli.format, &opts)?;
+            }
+            ScenarioCommands::Create { name } => {
+                commands::scenario::run_create(&name)?;
+            }
+        },
         Commands::Train(train_cmd) => {
             commands::train::run(&train_cmd)?;
         }
@@ -516,4 +574,31 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Parse --bind KEY=VALUE pairs into ScenarioRunOptions
+fn parse_scenario_bindings(
+    bindings: &[String],
+    depth: Option<usize>,
+) -> commands::scenario::ScenarioRunOptions {
+    let mut bind_driver = None;
+    let mut bind_function = None;
+
+    for binding in bindings {
+        if let Some((key, value)) = binding.split_once('=') {
+            match key.trim() {
+                "driver" => bind_driver = Some(value.trim().to_string()),
+                "function" => bind_function = Some(value.trim().to_string()),
+                _ => {
+                    eprintln!("Unknown bind key: '{}' (valid: driver, function)", key);
+                }
+            }
+        }
+    }
+
+    commands::scenario::ScenarioRunOptions {
+        bind_driver,
+        bind_function,
+        max_depth: depth,
+    }
 }
