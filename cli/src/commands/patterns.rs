@@ -347,7 +347,7 @@ fn run_directory(
 // ---------------------------------------------------------------------------
 
 /// Detect all kernel patterns in a source file using tree-sitter AST
-fn detect_patterns(
+pub fn detect_patterns(
     path: &Path,
     source: &str,
     category: Option<PatternCategory>,

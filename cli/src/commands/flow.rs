@@ -1,7 +1,7 @@
 //! `flowsight flow` and `flowsight trace` commands
 
 use crate::context::AnalysisContext;
-use crate::output::{json, text, OutputFormat};
+use crate::output::{dot, json, text, OutputFormat};
 use anyhow::Result;
 use flowsight_core::{FlowNode, FlowNodeType};
 use std::path::Path;
@@ -90,9 +90,13 @@ pub fn run(
                     text::print_ftrace_tree(&filtered, 0, &result.parse_result.functions);
                     println!("```");
                 }
+                OutputFormat::Dot => {
+                    let dot_output = dot::flow_to_dot(&filtered, function);
+                    print!("{}", dot_output);
+                }
                 OutputFormat::Sequence => {
                     anyhow::bail!(
-                        "Sequence format is for kb chain/async-chain commands. Use --format text/json/ftrace/markdown for flow."
+                        "Sequence format is for kb chain/async-chain commands. Use --format text/json/ftrace/markdown/dot for flow."
                     );
                 }
                 OutputFormat::Text => {

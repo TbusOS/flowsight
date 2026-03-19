@@ -328,6 +328,45 @@ impl IndexDb {
         Ok(rows)
     }
 
+    /// Query symbols by partial name match (LIKE), optionally filtered by kind
+    pub fn query_symbol_like(
+        &self,
+        pattern: &str,
+        kind_filter: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<SymbolRow>> {
+        let like_pattern = format!("%{}%", pattern);
+
+        let base = "SELECT s.id, s.name, s.kind, f.path, f.subsystem,
+                    s.line_start, s.line_end, s.is_exported, s.signature
+             FROM symbols s
+             JOIN files f ON s.file_id = f.id
+             WHERE s.name LIKE ?1";
+
+        let rows = match kind_filter {
+            None => {
+                let sql = format!("{} ORDER BY s.name LIMIT ?2", base);
+                let mut stmt = self.conn.prepare(&sql)?;
+                collect_symbol_rows(&mut stmt, params![like_pattern, limit])?
+            }
+            Some(kind) => {
+                let sql = format!("{} AND s.kind = ?2 ORDER BY s.name LIMIT ?3", base);
+                let mut stmt = self.conn.prepare(&sql)?;
+                collect_symbol_rows(&mut stmt, params![like_pattern, kind, limit])?
+            }
+        };
+
+        Ok(rows)
+    }
+
+    /// Count callers for a given symbol name
+    pub fn count_callers(&self, symbol_name: &str) -> Result<usize> {
+        self.count_query_param(
+            "SELECT COUNT(*) FROM calls WHERE callee_name = ?1",
+            symbol_name,
+        )
+    }
+
     /// Get index statistics
     pub fn stats(&self) -> Result<IndexDbStats> {
         let total_files = self.count_query("SELECT COUNT(*) FROM files")?;
@@ -375,6 +414,12 @@ impl IndexDb {
     /// Run a simple COUNT query
     fn count_query(&self, sql: &str) -> Result<usize> {
         let count: usize = self.conn.query_row(sql, [], |r| r.get(0))?;
+        Ok(count)
+    }
+
+    /// Run a COUNT query with one string parameter
+    fn count_query_param(&self, sql: &str, param: &str) -> Result<usize> {
+        let count: usize = self.conn.query_row(sql, params![param], |r| r.get(0))?;
         Ok(count)
     }
 

@@ -3,6 +3,7 @@
 //! Code execution flow analysis tool and kernel expert model training pipeline.
 
 mod commands;
+mod config;
 mod context;
 mod index_db;
 mod output;
@@ -121,6 +122,21 @@ enum Commands {
         function: String,
     },
 
+    /// Full file call graph (use -F dot for Graphviz DOT output)
+    Graph {
+        /// Source file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Hide external/kernel API calls from the graph
+        #[arg(long)]
+        exclude_kernel: bool,
+
+        /// Group nodes by call depth in cluster subgraphs
+        #[arg(long)]
+        cluster: bool,
+    },
+
     /// List all async handlers in a file
     Async {
         /// Source file
@@ -197,6 +213,76 @@ enum Commands {
         summary: bool,
     },
 
+    /// Search for symbols across source files
+    Search {
+        /// Symbol name or pattern to search for
+        #[arg(value_name = "QUERY")]
+        query: String,
+
+        /// Directory or file to search in (default: current directory)
+        #[arg(value_name = "PATH")]
+        path: Option<PathBuf>,
+
+        /// Filter by symbol type
+        #[arg(short = 't', long = "type", value_enum)]
+        kind: Option<commands::search::SymbolKind>,
+
+        /// Treat query as regex pattern
+        #[arg(short = 'e', long = "regex")]
+        regex: bool,
+
+        /// Show N lines of source context around each match
+        #[arg(short = 'c', long = "context", default_value = "0")]
+        context_lines: usize,
+
+        /// Recursively scan directory
+        #[arg(short, long)]
+        recursive: bool,
+
+        /// File filter pattern (default: "*.c")
+        #[arg(long, default_value = "*.c")]
+        pattern: String,
+
+        /// Maximum number of results (default: 50)
+        #[arg(short, long, default_value = "50")]
+        limit: usize,
+
+        /// Use pre-built SQLite index for faster search
+        #[arg(long)]
+        use_index: bool,
+
+        /// SQLite database path (for --use-index)
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
+
+    /// Generate self-contained HTML analysis report
+    Report {
+        /// Source file or directory to analyze
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Output file (default: flowsight-report.html)
+        #[arg(short, long, default_value = "flowsight-report.html")]
+        output: PathBuf,
+
+        /// Recursively analyze all matching files in directory
+        #[arg(short, long)]
+        recursive: bool,
+
+        /// File pattern for directory scan (default: "*.c")
+        #[arg(short, long, default_value = "*.c")]
+        pattern: String,
+
+        /// Report title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// Include source code snippets in per-file details
+        #[arg(long)]
+        include_source: bool,
+    },
+
     /// Kernel execution flow scenarios
     #[command(subcommand)]
     Scenario(ScenarioCommands),
@@ -204,6 +290,10 @@ enum Commands {
     /// Generate training data for kernel expert LLM fine-tuning
     #[command(subcommand)]
     Train(commands::train::TrainCommands),
+
+    /// Project configuration management
+    #[command(subcommand)]
+    Config(ConfigCommands),
 
     /// Generate shell completions
     #[command(hide = true)]
@@ -216,6 +306,18 @@ enum Commands {
     /// Interactive REPL mode
     #[command(alias = "i")]
     Interactive,
+}
+
+#[derive(Subcommand)]
+enum ConfigCommands {
+    /// Show active configuration (merged from file + defaults)
+    Show,
+
+    /// Create a template .flowsight.toml in the current directory
+    Init,
+
+    /// Print the path of the active config file
+    Path,
 }
 
 #[derive(Subcommand)]
@@ -381,6 +483,33 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    // Load project config (optional, never fails the CLI)
+    let cfg = config::load_from_cwd().unwrap_or_default();
+
+    // Merge: CLI flags override config file values.
+    // Clap sets `format` to default "text" even when user didn't pass -F,
+    // so we only override from config when the user did not explicitly set the flag.
+    let format = if std::env::args().any(|a| a == "-F" || a.starts_with("--format")) {
+        cli.format
+    } else {
+        cfg.global
+            .as_ref()
+            .and_then(|g| g.format.as_deref())
+            .and_then(|f| f.parse::<OutputFormat>().ok())
+            .unwrap_or(cli.format)
+    };
+
+    let verbose = if cli.verbose {
+        true
+    } else {
+        cfg.global
+            .as_ref()
+            .and_then(|g| g.verbose)
+            .unwrap_or(false)
+    };
+
+    let _ = verbose; // available for future use
+
     match cli.command {
         Commands::Analyze {
             path,
@@ -396,7 +525,7 @@ fn main() -> Result<()> {
                 parallel,
                 summary,
             };
-            commands::analyze::run(&path, output.as_deref(), &cli.format, &opts)?;
+            commands::analyze::run(&path, output.as_deref(), &format, &opts)?;
         }
         Commands::Flow {
             file,
@@ -405,12 +534,15 @@ fn main() -> Result<()> {
             no_kernel,
             expand_async,
         } => {
+            let analysis_cfg = cfg.analysis.as_ref();
             let opts = FlowOptions {
-                max_depth: depth,
-                no_kernel,
-                expand_async,
+                max_depth: depth.or_else(|| analysis_cfg.and_then(|a| a.max_depth)),
+                no_kernel: no_kernel
+                    || analysis_cfg.and_then(|a| a.no_kernel).unwrap_or(false),
+                expand_async: expand_async
+                    || analysis_cfg.and_then(|a| a.expand_async).unwrap_or(false),
             };
-            commands::flow::run(&file, &function, &cli.format, &opts)?;
+            commands::flow::run(&file, &function, &format, &opts)?;
         }
         Commands::Trace {
             file,
@@ -420,10 +552,21 @@ fn main() -> Result<()> {
             commands::flow::run_trace(&file, &function, &trace_format)?;
         }
         Commands::Callers { file, function } => {
-            commands::graph::run_callers(&file, &function)?;
+            commands::graph::run_callers(&file, &function, &format)?;
         }
         Commands::Callees { file, function } => {
-            commands::graph::run_callees(&file, &function)?;
+            commands::graph::run_callees(&file, &function, &format)?;
+        }
+        Commands::Graph {
+            file,
+            exclude_kernel,
+            cluster,
+        } => {
+            let opts = commands::graph::GraphFullOptions {
+                exclude_kernel,
+                cluster,
+            };
+            commands::graph::run_full(&file, &format, &opts)?;
         }
         Commands::Async { file } => {
             commands::async_cmd::run_async(&file)?;
@@ -450,28 +593,28 @@ fn main() -> Result<()> {
                 &file_a,
                 &file_b,
                 function.as_deref(),
-                &cli.format,
+                &format,
                 &opts,
             )?;
         }
         Commands::Kb(kb_cmd) => match kb_cmd {
             KbCommands::Stats => {
-                commands::kb::run_stats(&cli.format)?;
+                commands::kb::run_stats(&format)?;
             }
             KbCommands::Query { term } => {
-                commands::kb::run_query(&term, &cli.format)?;
+                commands::kb::run_query(&term, &format)?;
             }
             KbCommands::Chain {
                 framework,
                 callback,
             } => {
-                commands::kb::run_chain(&framework, &callback, &cli.format)?;
+                commands::kb::run_chain(&framework, &callback, &format)?;
             }
             KbCommands::AsyncChain { pattern } => {
-                commands::kb::run_async_chain(&pattern, &cli.format)?;
+                commands::kb::run_async_chain(&pattern, &format)?;
             }
             KbCommands::Match { file } => {
-                commands::kb::run_match(&file, &cli.format)?;
+                commands::kb::run_match(&file, &format)?;
             }
         },
         Commands::Index(idx_cmd) => match idx_cmd {
@@ -489,7 +632,7 @@ fn main() -> Result<()> {
                     parallel,
                     subsystem,
                 };
-                commands::index::run_build(&dir, &cli.format, &opts)?;
+                commands::index::run_build(&dir, &format, &opts)?;
             }
             IndexCommands::Query {
                 symbol,
@@ -502,10 +645,10 @@ fn main() -> Result<()> {
                     subsystem_filter: subsystem,
                     db_path: db,
                 };
-                commands::index::run_query(&symbol, None, &cli.format, &opts)?;
+                commands::index::run_query(&symbol, None, &format, &opts)?;
             }
             IndexCommands::Stats { db } => {
-                commands::index::run_stats(None, db.as_deref(), &cli.format)?;
+                commands::index::run_stats(None, db.as_deref(), &format)?;
             }
             IndexCommands::Update {
                 dir,
@@ -520,7 +663,7 @@ fn main() -> Result<()> {
                     parallel,
                     subsystem,
                 };
-                commands::index::run_update(&dir, &cli.format, &opts)?;
+                commands::index::run_update(&dir, &format, &opts)?;
             }
         },
         Commands::Patterns {
@@ -536,14 +679,55 @@ fn main() -> Result<()> {
                 category,
                 summary,
             };
-            commands::patterns::run(&path, &cli.format, &opts)?;
+            commands::patterns::run(&path, &format, &opts)?;
+        }
+        Commands::Search {
+            query,
+            path,
+            kind,
+            regex,
+            context_lines,
+            recursive,
+            pattern,
+            limit,
+            use_index,
+            db,
+        } => {
+            let opts = commands::search::SearchOptions {
+                kind_filter: kind,
+                regex,
+                context_lines,
+                recursive,
+                file_pattern: pattern,
+                limit,
+                use_index,
+                db_path: db,
+            };
+            commands::search::run(&query, path.as_deref(), &format, &opts)?;
+        }
+        Commands::Report {
+            path,
+            output,
+            recursive,
+            pattern,
+            title,
+            include_source,
+        } => {
+            let opts = commands::report::ReportOptions {
+                output,
+                recursive,
+                pattern,
+                title,
+                include_source,
+            };
+            commands::report::run(&path, &opts)?;
         }
         Commands::Scenario(scenario_cmd) => match scenario_cmd {
             ScenarioCommands::List => {
-                commands::scenario::run_list(&cli.format)?;
+                commands::scenario::run_list(&format)?;
             }
             ScenarioCommands::Show { name } => {
-                commands::scenario::run_show(&name, &cli.format)?;
+                commands::scenario::run_show(&name, &format)?;
             }
             ScenarioCommands::Run {
                 name,
@@ -551,7 +735,7 @@ fn main() -> Result<()> {
                 depth,
             } => {
                 let opts = parse_scenario_bindings(&bindings, depth);
-                commands::scenario::run_scenario(&name, &cli.format, &opts)?;
+                commands::scenario::run_scenario(&name, &format, &opts)?;
             }
             ScenarioCommands::Create { name } => {
                 commands::scenario::run_create(&name)?;
@@ -560,6 +744,17 @@ fn main() -> Result<()> {
         Commands::Train(train_cmd) => {
             commands::train::run(&train_cmd)?;
         }
+        Commands::Config(config_cmd) => match config_cmd {
+            ConfigCommands::Show => {
+                commands::config::run_show(&cfg)?;
+            }
+            ConfigCommands::Init => {
+                commands::config::run_init()?;
+            }
+            ConfigCommands::Path => {
+                commands::config::run_path(&cfg)?;
+            }
+        },
         Commands::Completions { shell } => {
             clap_complete::generate(
                 shell,

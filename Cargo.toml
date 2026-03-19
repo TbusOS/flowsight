@@ -65,6 +65,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4.4", features = ["derive"] }
 clap_complete = "4.4"
 
+# Config
+toml = "0.8"
+
 # Regex
 regex = "1.10"
 

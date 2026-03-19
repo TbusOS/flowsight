@@ -309,7 +309,8 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
             } else {
                 anyhow::bail!("Usage: callers [file] <function>");
             };
-            commands::graph::run_callers(&file, func)?;
+            let format = parse_format_flag(&parts).unwrap_or(session.format);
+            commands::graph::run_callers(&file, func, &format)?;
         }
 
         "callees" => {
@@ -321,7 +322,8 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
             } else {
                 anyhow::bail!("Usage: callees [file] <function>");
             };
-            commands::graph::run_callees(&file, func)?;
+            let format = parse_format_flag(&parts).unwrap_or(session.format);
+            commands::graph::run_callees(&file, func, &format)?;
         }
 
         "async" => {
@@ -393,7 +395,7 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
             match parts[1] {
                 "format" => {
                     if parts.len() < 3 {
-                        anyhow::bail!("Usage: set format <text|json|ftrace|sequence|markdown>");
+                        anyhow::bail!("Usage: set format <text|json|ftrace|sequence|markdown|dot>");
                     }
                     session.format = match parts[2] {
                         "text" => OutputFormat::Text,
@@ -401,6 +403,7 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
                         "ftrace" => OutputFormat::Ftrace,
                         "sequence" => OutputFormat::Sequence,
                         "markdown" => OutputFormat::Markdown,
+                        "dot" => OutputFormat::Dot,
                         other => anyhow::bail!("Unknown format: {}", other),
                     };
                     println!("  format = {:?}", session.format);
@@ -491,6 +494,7 @@ fn parse_format_flag(parts: &[&str]) -> Option<OutputFormat> {
                     "ftrace" => Some(OutputFormat::Ftrace),
                     "sequence" => Some(OutputFormat::Sequence),
                     "markdown" => Some(OutputFormat::Markdown),
+                    "dot" => Some(OutputFormat::Dot),
                     _ => None,
                 };
             }
