@@ -1,10 +1,10 @@
 # FlowSight - Claude Code 配置
 
-> **当前阶段**: CLI-First 开发 (IDE 暂停)
+> **当前阶段**: CLI v0.3.0 功能完整 (IDE 暂停)
 >
 > **核心目标**: 函数执行流分析 + 内核专家模型训练数据生成
 >
-> **详细方案**: [docs/plans/cli-first-pivot.md](docs/plans/cli-first-pivot.md)
+> **路线图**: [ROADMAP.md](ROADMAP.md) | **变更日志**: [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
@@ -14,35 +14,54 @@
 
 ```
 flowsight/
-├── cli/           ← 当前开发重点 (Phase 1 已完成)
-├── crates/        ← 共享 Rust 分析库
+├── cli/           ← CLI 工具 (v0.3.0 功能完整, 17 个命令)
+├── crates/        ← 共享 Rust 分析库 (10 个 crate)
+├── knowledge/     ← 知识库 (137 YAML)
 ├── app/           ← IDE (暂停，保留在 workspace)
-└── knowledge/     ← 知识库 (137 YAML)
+└── docs/          ← 文档
 ```
 
 ### 进度状态
 
 | Phase | 内容 | 状态 |
 |-------|------|------|
-| Phase 1 | CLI 模块化重构 | done (2026-03-13) |
-| Phase 2 | 增强命令 (kb/scenario/index/graph) | 待实施 |
-| Phase 3 | 训练数据管道 (JSONL SFT/DPO) | 待实施 |
-| Phase 4 | REPL 交互 + 配置 | 待实施 |
+| Phase 1 | CLI 模块化重构 | ✅ done (2026-03-13) |
+| Phase 2 | 增强命令 (index/scenario/patterns/diff/search/graph/report) | ✅ done (2026-03-19) |
+| Phase 3 | 训练数据管道 (JSONL SFT/DPO/ChatML) | ✅ done (2026-03-19) |
+| Phase 4 | REPL + 配置 + Shell 补全 | ✅ done (2026-03-19) |
+| Phase 5 | 跨文件智能分析 | 计划中 |
+| Phase 6 | C++/Rust 语言支持 | 计划中 |
+
+> 详见 [ROADMAP.md](ROADMAP.md)
 
 ### CLI 架构
 
 ```
 cli/src/
-├── main.rs          # 薄分发器 + 全局 -F/--format 选项
+├── main.rs          # 命令分发 + 配置加载
+├── config.rs        # .flowsight.toml 支持
 ├── context.rs       # AnalysisContext (parser + analyzer)
+├── index_db.rs      # SQLite 索引层
+├── repl.rs          # 交互式 REPL
 ├── commands/        # 每个命令独立文件
-│   ├── analyze.rs   # 文件/目录分析
+│   ├── analyze.rs   # 文件/目录分析 (支持 -r 递归)
 │   ├── flow.rs      # 执行流 + ftrace
-│   ├── graph.rs     # callers/callees
-│   └── async_cmd.rs # 异步机制 + 回调
+│   ├── graph.rs     # 调用图 + DOT 输出
+│   ├── diff.rs      # 执行流版本对比
+│   ├── patterns.rs  # 内核模式检测
+│   ├── search.rs    # 符号搜索
+│   ├── index.rs     # 跨文件索引
+│   ├── scenario.rs  # 内核场景引擎
+│   ├── train/       # 训练数据管道
+│   ├── report.rs    # HTML 报告生成
+│   ├── kb.rs        # 知识库查询
+│   ├── config.rs    # 配置管理
+│   └── async_cmd.rs # 异步/回调
 └── output/          # 输出格式化
     ├── text.rs      # 文本/ftrace
-    └── json.rs      # JSON
+    ├── json.rs      # JSON
+    ├── dot.rs       # Graphviz DOT
+    └── sequence.rs  # ASCII 序列图
 ```
 
 ### 常用 CLI 命令
@@ -51,21 +70,39 @@ cli/src/
 # 构建
 cargo build --package flowsight-cli
 
-# 分析文件
-flowsight analyze <file>
-flowsight -F json analyze <file>
+# 分析
+flowsight analyze <file>                    # 单文件分析
+flowsight analyze <dir> -r                  # 递归目录分析
+flowsight -F json analyze <file>            # JSON 输出
 
 # 执行流
-flowsight flow <file> <function>
-flowsight trace <file> <function>
+flowsight flow <file> <function>            # 执行流树
+flowsight trace <file> <function>           # ftrace 格式
+flowsight diff <file1> <file2> [function]   # 版本对比
 
 # 调用关系
 flowsight callers <file> <function>
 flowsight callees <file> <function>
+flowsight graph <file> -F dot               # 完整调用图 (DOT)
 
-# 异步/回调
-flowsight async <file>
-flowsight callbacks <file>
+# 内核分析
+flowsight patterns <file>                   # 模式检测
+flowsight scenario list                     # 列出场景
+flowsight scenario run usb-enumeration      # 运行场景
+flowsight search probe <dir> -r             # 符号搜索
+
+# 索引 & 知识库
+flowsight index build <dir>                 # 建立索引
+flowsight index query <symbol>              # 查询符号
+flowsight kb stats                          # 知识库统计
+
+# 训练数据 & 报告
+flowsight train generate <dir> -t sft       # 生成训练数据
+flowsight report <dir> -r                   # HTML 报告
+
+# 交互模式
+flowsight                                   # 启动 REPL
+flowsight config init                       # 创建配置文件
 ```
 
 ---
