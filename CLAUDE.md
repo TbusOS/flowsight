@@ -1,10 +1,10 @@
 # FlowSight - Claude Code 配置
 
-> **当前阶段**: CLI v0.3.0 功能完整 (IDE 暂停)
+> **当前阶段**: CLI v0.3.0 完成，v0.4.0 开发中 (IDE 暂停)
 >
-> **核心目标**: 函数执行流分析 + 内核专家模型训练数据生成
+> **核心目标**: 函数执行流分析 + 内核专家模型训练数据生成 + LLM 多模型接入
 >
-> **路线图**: [ROADMAP.md](ROADMAP.md) | **变更日志**: [CHANGELOG.md](CHANGELOG.md)
+> **路线图**: [ROADMAP.md](ROADMAP.md) | **技术设计**: [cli/docs/TECHNICAL-DESIGN.md](cli/docs/TECHNICAL-DESIGN.md) | **变更日志**: [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
@@ -29,8 +29,10 @@ flowsight/
 | Phase 2 | 增强命令 (index/scenario/patterns/diff/search/graph/report) | ✅ done (2026-03-19) |
 | Phase 3 | 训练数据管道 (JSONL SFT/DPO/ChatML) | ✅ done (2026-03-19) |
 | Phase 4 | REPL + 配置 + Shell 补全 | ✅ done (2026-03-19) |
-| Phase 5 | 跨文件智能分析 | 计划中 |
-| Phase 6 | C++/Rust 语言支持 | 计划中 |
+| Phase 5 | CFG + 错误路径 + 宏语义 (v0.4.0) | **开发中** |
+| Phase 6 | CPG + 跨文件智能 (v0.5.0) | 计划中 |
+| Phase 7 | LLM 集成层 + 自然语言 + 本地模型 (v0.6.0) | 计划中 |
+| Phase 8 | C++/Rust 支持 + DPO 闭环 (v0.7.0) | 计划中 |
 
 > 详见 [ROADMAP.md](ROADMAP.md)
 

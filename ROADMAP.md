@@ -56,38 +56,64 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 
 ## Planned
 
-### v0.4.0 — Cross-File Intelligence
+> **技术设计详情**: [cli/docs/TECHNICAL-DESIGN.md](cli/docs/TECHNICAL-DESIGN.md)
 
-- [ ] Cross-file callers/callees using index (resolve calls across entire kernel tree)
-- [ ] `flowsight trace` with cross-file expansion
-- [ ] Subsystem dependency graph generation
-- [ ] Call chain path finding (`graph path --from A --to B`)
-- [ ] Index-backed pattern detection across directories
+### v0.4.0 — CFG + Error Path + Macro Semantics
+
+> 分析引擎补课：从「调用树」升级为「执行流」。借鉴 tree-climber / Smatch。
+
+- [ ] `flowsight-cfg` crate — Control Flow Graph construction from tree-sitter AST
+- [ ] Basic block identification (if/else, switch, for/while, goto/label)
+- [ ] Error path detection (goto err_*, return -EXXX, IS_ERR patterns)
+- [ ] Reachability annotation: Always / Conditional / ErrorPath / ConditionalCompilation
+- [ ] Kernel macro semantics table (INIT_WORK, list_for_each, DEFINE_MUTEX, etc.)
+- [ ] Execution context tracking (spin_lock → atomic, rcu_read_lock → RCU read)
+- [ ] Enhanced FlowNode with FlowBranch (conditional / error-handling / loop)
+- [ ] `flowsight cfg <file> <function>` — CFG output (DOT/JSON)
+- [ ] `flowsight errors <file> <function>` — error path listing
+- [ ] `flowsight flow --error-only / --happy-path / --show-conditions` flags
+
+### v0.5.0 — CPG + Cross-File Intelligence
+
+> 代码属性图 + 跨文件分析。借鉴 Joern CPG / GitHub stack-graphs。
+
+- [ ] Code Property Graph model (AST + CFG + data dependency unified)
+- [ ] Cross-file callers/callees using SQLite index
+- [ ] `flowsight path --from A --to B --index <db>` — call chain path finding (BFS)
+- [ ] `flowsight subsystem-deps --index <db>` — subsystem dependency graph
+- [ ] `flowsight flow --cross-file --index <db>` — cross-file flow expansion
+- [ ] `flowsight index build --with-cfg` — index with CFG information
 - [ ] Performance optimization for 30,000+ file kernel trees
 
-### v0.5.0 — Language Expansion
+### v0.6.0 — LLM Integration Layer
 
-- [ ] C++ source file support (classes, namespaces, templates)
-- [ ] Rust source file support (traits, impl blocks, async/await)
-- [ ] Header file analysis (`.h` function declarations, macro expansion)
-- [ ] Preprocessor-aware analysis (conditional compilation, `#ifdef`)
+> 多 Provider 接入 + 自然语言查询 + 本地模型。借鉴 Aider repo map / MCPtrace。
 
-### v0.6.0 — Developer Experience
+- [ ] `flowsight-llm` crate — unified LLM Provider trait
+- [ ] Provider: OpenAI API (GPT-4o, DeepSeek, compatible endpoints)
+- [ ] Provider: Anthropic Claude API
+- [ ] Provider: Ollama (local models, including self-trained kernel expert)
+- [ ] Provider: LM Studio / custom HTTP endpoints
+- [ ] `flowsight ask "<natural language query>"` — NL interface
+- [ ] `flowsight explain <file> <function>` — AI-powered explanation
+- [ ] `flowsight review <file>` — AI code review
+- [ ] Smart context builder: analysis results → LLM prompt (PageRank ranking)
+- [ ] SSE streaming output
+- [ ] `[llm]` section in `.flowsight.toml` for provider configuration
+- [ ] REPL natural language mode
+- [ ] MCP server mode (optional, for Claude Code integration)
 
-- [ ] `flowsight watch` — file system monitoring with incremental re-analysis
-- [ ] LSP server mode for IDE integration (VS Code, Neovim)
-- [ ] Web-based interactive report viewer (local server)
-- [ ] Man page generation
-- [ ] Structured logging with `tracing` instrumentation
-- [ ] Plugin system for custom analyzers
+### v0.7.0 — Language Expansion + DPO Feedback Loop
 
-### v0.7.0 — AI Integration
+> C++/Rust 支持 + 用户反馈闭环。借鉴 Semgrep generic AST / IRIS paper。
 
-- [ ] `flowsight explain <file> <function>` — AI-powered code explanation
-- [ ] `flowsight suggest` — pattern-based improvement suggestions
+- [ ] C++ source file support (classes, namespaces, templates, virtual methods)
+- [ ] Rust source file support (traits, impl blocks, async/await, Result/?)
+- [ ] Generic AST layer for multi-language CFG construction
+- [ ] `flowsight feedback --good / --bad` — DPO feedback collection
+- [ ] DPO training pair auto-generation from user corrections
 - [ ] Training data quality scoring and filtering
-- [ ] Fine-tuned kernel expert model integration
-- [ ] DPO feedback collection from user corrections
+- [ ] `flowsight watch` — file system monitoring with incremental re-analysis
 
 ### v1.0.0 — Stable Release
 
@@ -97,6 +123,7 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 - [ ] Docker image for CI/CD integration
 - [ ] Benchmark suite with reproducible performance results
 - [ ] 90%+ test coverage
+- [ ] LSP server mode for IDE integration
 
 ---
 
@@ -112,32 +139,18 @@ flowsight/
 │   │   ├── index_db.rs       # SQLite index layer
 │   │   ├── repl.rs           # Interactive REPL
 │   │   ├── commands/         # One file per command
-│   │   │   ├── analyze.rs    # File/directory analysis
-│   │   │   ├── flow.rs       # Execution flow + ftrace
-│   │   │   ├── graph.rs      # Call graph + DOT
-│   │   │   ├── diff.rs       # Flow comparison
-│   │   │   ├── patterns.rs   # Kernel pattern detection
-│   │   │   ├── search.rs     # Symbol search
-│   │   │   ├── index.rs      # Cross-file index
-│   │   │   ├── scenario.rs   # Kernel scenarios
-│   │   │   ├── train/        # Training data pipeline
-│   │   │   ├── report.rs     # HTML report
-│   │   │   ├── kb.rs         # Knowledge base
-│   │   │   └── config.rs     # Config management
 │   │   └── output/           # Output formatters
-│   │       ├── text.rs       # Human-readable
-│   │       ├── json.rs       # JSON
-│   │       ├── dot.rs        # Graphviz DOT
-│   │       └── sequence.rs   # ASCII sequence diagrams
-│   └── tests/
-│       ├── integration_test.rs
-│       └── fixtures/         # Test kernel driver
+│   ├── tests/
+│   └── docs/
+│       └── TECHNICAL-DESIGN.md  # Technical design & roadmap details
 ├── crates/                   # Shared analysis engine
-│   ├── flowsight-core/       # Core types
+│   ├── flowsight-core/       # Core types (FlowNode, CallEdge...)
 │   ├── flowsight-parser/     # Tree-sitter C parser
 │   ├── flowsight-analysis/   # Static analysis engine
+│   ├── flowsight-cfg/        # [v0.4.0] Control flow graph construction
 │   ├── flowsight-knowledge/  # Knowledge base (137 YAML)
 │   ├── flowsight-index/      # Symbol indexing
+│   ├── flowsight-llm/        # [v0.6.0] LLM provider integration
 │   └── ...
 ├── knowledge/                # Kernel knowledge YAML files
 ├── app/                      # Tauri desktop app (paused)
