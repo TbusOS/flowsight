@@ -1,0 +1,18 @@
+[package]
+name = "flowsight-cfg"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Control flow graph construction for FlowSight"
+
+[dependencies]
+flowsight-core = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-c = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
