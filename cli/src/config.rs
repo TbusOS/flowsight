@@ -252,6 +252,7 @@ impl FlowSightConfig {
     }
 
     /// Check if the config is completely empty (all sections None).
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.global.is_none()
             && self.index.is_none()

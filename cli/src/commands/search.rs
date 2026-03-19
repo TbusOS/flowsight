@@ -216,7 +216,7 @@ fn scan_files_for_symbols(
 
     for file_path in files {
         scanned += 1;
-        if scanned % 100 == 0 || scanned == total {
+        if scanned.is_multiple_of(100) || scanned == total {
             eprint!(
                 "\r  {} {}/{} files scanned",
                 "[Scanning]".with(Color::DarkCyan),

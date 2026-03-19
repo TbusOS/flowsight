@@ -26,17 +26,19 @@ pub struct ReportOptions {
 }
 
 /// Per-file data collected for the report
+#[allow(dead_code)]
 struct FileReportData {
     file: String,
     functions: Vec<FunctionEntry>,
     async_handlers: Vec<AsyncEntry>,
     call_edges: Vec<CallEdgeEntry>,
-    pattern_report: Option<PatternReport>,
+    pattern_report: Option<patterns::PatternReport>,
     error: Option<String>,
 }
 
 /// A function entry for the report table
 #[derive(Clone)]
+#[allow(dead_code)]
 struct FunctionEntry {
     name: String,
     file: String,
@@ -58,6 +60,7 @@ struct AsyncEntry {
 }
 
 /// A call edge entry
+#[allow(dead_code)]
 struct CallEdgeEntry {
     caller: String,
     callee: String,
@@ -371,6 +374,60 @@ fn html_escape(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// Format current UTC time without chrono dependency
+fn format_utc_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Simple UTC timestamp (no chrono needed)
+    let days_since_epoch = secs / 86400;
+    let time_of_day = secs % 86400;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+
+    // Approximate date from days since epoch (1970-01-01)
+    let mut y = 1970i64;
+    let mut remaining = days_since_epoch as i64;
+    loop {
+        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+            366
+        } else {
+            365
+        };
+        if remaining < days_in_year {
+            break;
+        }
+        remaining -= days_in_year;
+        y += 1;
+    }
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let month_days: [i64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    ];
+    let mut m = 0usize;
+    for (i, &d) in month_days.iter().enumerate() {
+        if remaining < d {
+            m = i;
+            break;
+        }
+        remaining -= d;
+    }
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
+        y,
+        m + 1,
+        remaining + 1,
+        hours,
+        minutes,
+        seconds
+    )
+}
+
 // ---------------------------------------------------------------------------
 // HTML rendering
 // ---------------------------------------------------------------------------
@@ -676,7 +733,7 @@ fn write_file_index(html: &mut String, data: &ReportData) {
     for (i, file) in data.files.iter().enumerate() {
         let short_name = shorten_path(&file.file, &data.base_path);
         html.push_str(&format!(
-            r#"<li class="file-item" data-name="{}"><a href="#file-{}">{}</a> <span class="count">{} fn</span></li>"#,
+            r##"<li class="file-item" data-name="{}"><a href="#file-{}">{}</a> <span class="count">{} fn</span></li>"##,
             html_escape(&short_name.to_lowercase()),
             i,
             html_escape(&short_name),
@@ -1077,7 +1134,7 @@ fn write_errors_section(html: &mut String, data: &ReportData) {
 
 fn write_javascript(html: &mut String) {
     html.push_str(
-        r#"<script>
+        r##"<script>
 /* File index filtering */
 function filterFiles() {
   var input = document.getElementById('file-search');
@@ -1160,7 +1217,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
   });
 });
 </script>
-"#,
+"##,
     );
 }
 
@@ -1187,7 +1244,7 @@ fn format_count(n: usize) -> String {
     let bytes = s.as_bytes();
     let mut result = String::with_capacity(s.len() + s.len() / 3);
     for (i, &b) in bytes.iter().enumerate() {
-        if i > 0 && (bytes.len() - i) % 3 == 0 {
+        if i > 0 && (bytes.len() - i).is_multiple_of(3) {
             result.push(',');
         }
         result.push(b as char);
