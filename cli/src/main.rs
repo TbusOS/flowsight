@@ -122,6 +122,28 @@ enum Commands {
         function: String,
     },
 
+    /// Show control flow graph for a function (CFG with error paths + macro semantics)
+    Cfg {
+        /// Source file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Function name
+        #[arg(value_name = "FUNCTION")]
+        function: String,
+    },
+
+    /// List error handling paths in a file or function
+    Errors {
+        /// Source file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Function name (optional — all functions if omitted)
+        #[arg(value_name = "FUNCTION")]
+        function: Option<String>,
+    },
+
     /// Full file call graph (use -F dot for Graphviz DOT output)
     Graph {
         /// Source file
@@ -550,6 +572,12 @@ fn main() -> Result<()> {
             trace_format,
         } => {
             commands::flow::run_trace(&file, &function, &trace_format)?;
+        }
+        Commands::Cfg { file, function } => {
+            commands::cfg::run(&file, &function, &format)?;
+        }
+        Commands::Errors { file, function } => {
+            commands::cfg::run_errors(&file, function.as_deref(), &format)?;
         }
         Commands::Callers { file, function } => {
             commands::graph::run_callers(&file, &function, &format)?;

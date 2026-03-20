@@ -19,6 +19,7 @@ path = "src/main.rs"
 # Internal crates
 flowsight-core = { workspace = true }
 flowsight-parser = { workspace = true }
+flowsight-cfg = { workspace = true }
 flowsight-analysis = { workspace = true }
 flowsight-knowledge = { workspace = true }
 flowsight-index = { workspace = true }
