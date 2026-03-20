@@ -290,6 +290,48 @@ impl IndexDb {
         Ok(rows)
     }
 
+    /// Query what a function calls across all indexed files
+    pub fn query_callees(&self, caller_name: &str) -> Result<Vec<CallRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT s.name, f.path, c.callee_name, c.call_line, c.is_indirect
+             FROM calls c
+             JOIN symbols s ON c.caller_id = s.id
+             JOIN files f ON s.file_id = f.id
+             WHERE s.name = ?1
+             ORDER BY c.call_line",
+        )?;
+
+        let rows = stmt
+            .query_map(params![caller_name], |row| {
+                Ok(CallRow {
+                    caller_name: row.get(0)?,
+                    caller_file: row.get(1)?,
+                    callee_name: row.get(2)?,
+                    call_line: row.get(3)?,
+                    is_indirect: row.get(4)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(rows)
+    }
+
+    /// Query callers grouped by subsystem
+    pub fn query_callers_by_subsystem(&self, symbol_name: &str) -> Result<Vec<(String, Vec<CallRow>)>> {
+        let callers = self.query_callers(symbol_name)?;
+        let mut by_subsystem: std::collections::HashMap<String, Vec<CallRow>> = std::collections::HashMap::new();
+
+        for caller in callers {
+            let subsystem = detect_subsystem(&caller.caller_file)
+                .unwrap_or_else(|| "other".to_string());
+            by_subsystem.entry(subsystem).or_default().push(caller);
+        }
+
+        let mut result: Vec<(String, Vec<CallRow>)> = by_subsystem.into_iter().collect();
+        result.sort_by(|a, b| b.1.len().cmp(&a.1.len())); // Sort by count descending
+        Ok(result)
+    }
+
     /// Query a symbol by name, optionally filtered by kind and subsystem
     pub fn query_symbol(
         &self,

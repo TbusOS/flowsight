@@ -112,26 +112,38 @@ enum Commands {
         trace_format: String,
     },
 
-    /// Show who calls a function
+    /// Show who calls a function (use --index for cross-file)
     Callers {
-        /// Source file
-        #[arg(value_name = "FILE")]
+        /// Source file (or function name when using --index)
+        #[arg(value_name = "FILE_OR_FUNCTION")]
         file: PathBuf,
 
-        /// Function name
+        /// Function name (omit when using --index with function as first arg)
         #[arg(value_name = "FUNCTION")]
-        function: String,
+        function: Option<String>,
+
+        /// Use SQLite index for cross-file analysis
+        #[arg(long)]
+        index: Option<PathBuf>,
+
+        /// Group results by kernel subsystem (only with --index)
+        #[arg(long)]
+        group_by_subsystem: bool,
     },
 
-    /// Show what a function calls
+    /// Show what a function calls (use --index for cross-file)
     Callees {
-        /// Source file
-        #[arg(value_name = "FILE")]
+        /// Source file (or function name when using --index)
+        #[arg(value_name = "FILE_OR_FUNCTION")]
         file: PathBuf,
 
-        /// Function name
+        /// Function name (omit when using --index with function as first arg)
         #[arg(value_name = "FUNCTION")]
-        function: String,
+        function: Option<String>,
+
+        /// Use SQLite index for cross-file analysis
+        #[arg(long)]
+        index: Option<PathBuf>,
     },
 
     /// Show control flow graph for a function (CFG with error paths + macro semantics)
@@ -597,11 +609,31 @@ fn main() -> Result<()> {
         Commands::Errors { file, function } => {
             commands::cfg::run_errors(&file, function.as_deref(), &format)?;
         }
-        Commands::Callers { file, function } => {
-            commands::graph::run_callers(&file, &function, &format)?;
+        Commands::Callers { file, function, index, group_by_subsystem } => {
+            if let Some(db_path) = index {
+                // Cross-file mode: first arg is function name
+                let func_name = file.to_string_lossy();
+                commands::graph::run_cross_callers(&func_name, &db_path, &format, group_by_subsystem)?;
+            } else {
+                let func = function.as_deref().unwrap_or_else(|| {
+                    eprintln!("Usage: flowsight callers <file> <function>");
+                    std::process::exit(1);
+                });
+                commands::graph::run_callers(&file, func, &format)?;
+            }
         }
-        Commands::Callees { file, function } => {
-            commands::graph::run_callees(&file, &function, &format)?;
+        Commands::Callees { file, function, index } => {
+            if let Some(db_path) = index {
+                // Cross-file mode: first arg is function name
+                let func_name = file.to_string_lossy();
+                commands::graph::run_cross_callees(&func_name, &db_path, &format)?;
+            } else {
+                let func = function.as_deref().unwrap_or_else(|| {
+                    eprintln!("Usage: flowsight callees <file> <function>");
+                    std::process::exit(1);
+                });
+                commands::graph::run_callees(&file, func, &format)?;
+            }
         }
         Commands::Graph {
             file,
