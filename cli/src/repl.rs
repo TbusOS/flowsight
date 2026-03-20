@@ -285,6 +285,9 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
                 max_depth: parse_flag(&parts, "--depth").or(session.depth),
                 no_kernel: parts.contains(&"--no-kernel") || session.no_kernel,
                 expand_async: parts.contains(&"--expand-async"),
+                show_conditions: parts.contains(&"--show-conditions"),
+                error_only: parts.contains(&"--error-only"),
+                happy_path: parts.contains(&"--happy-path"),
             };
             let format = parse_format_flag(&parts).unwrap_or(session.format);
             commands::flow::run(&file, func, &format, &opts)?;

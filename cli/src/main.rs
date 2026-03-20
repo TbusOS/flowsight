@@ -62,7 +62,7 @@ enum Commands {
         summary: bool,
     },
 
-    /// Show execution flow for a function
+    /// Show execution flow for a function (with CFG-aware reachability)
     Flow {
         /// Source file
         #[arg(value_name = "FILE")]
@@ -83,6 +83,18 @@ enum Commands {
         /// Expand async boundaries (show deferred execution)
         #[arg(long)]
         expand_async: bool,
+
+        /// Show branch conditions on each call
+        #[arg(long)]
+        show_conditions: bool,
+
+        /// Show only error handling paths
+        #[arg(long)]
+        error_only: bool,
+
+        /// Show only normal execution path (hide error paths)
+        #[arg(long)]
+        happy_path: bool,
     },
 
     /// Show execution flow in ftrace style
@@ -555,6 +567,9 @@ fn main() -> Result<()> {
             depth,
             no_kernel,
             expand_async,
+            show_conditions,
+            error_only,
+            happy_path,
         } => {
             let analysis_cfg = cfg.analysis.as_ref();
             let opts = FlowOptions {
@@ -563,6 +578,9 @@ fn main() -> Result<()> {
                     || analysis_cfg.and_then(|a| a.no_kernel).unwrap_or(false),
                 expand_async: expand_async
                     || analysis_cfg.and_then(|a| a.expand_async).unwrap_or(false),
+                show_conditions,
+                error_only,
+                happy_path,
             };
             commands::flow::run(&file, &function, &format, &opts)?;
         }
