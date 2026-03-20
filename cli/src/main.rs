@@ -168,6 +168,29 @@ enum Commands {
         function: Option<String>,
     },
 
+    /// Find call chain path between two functions (requires --index)
+    Path {
+        /// Starting function
+        #[arg(long, value_name = "FUNCTION")]
+        from: String,
+
+        /// Target function
+        #[arg(long, value_name = "FUNCTION")]
+        to: String,
+
+        /// SQLite index database path
+        #[arg(long, value_name = "DB")]
+        index: PathBuf,
+
+        /// Maximum search depth (default: 10)
+        #[arg(long, default_value = "10")]
+        max_depth: usize,
+
+        /// Find all paths (up to 20), not just shortest
+        #[arg(long)]
+        all: bool,
+    },
+
     /// Full file call graph (use -F dot for Graphviz DOT output)
     Graph {
         /// Source file
@@ -602,6 +625,13 @@ fn main() -> Result<()> {
             trace_format,
         } => {
             commands::flow::run_trace(&file, &function, &trace_format)?;
+        }
+        Commands::Path { from, to, index, max_depth, all } => {
+            let opts = commands::path::PathOptions {
+                max_depth,
+                all_paths: all,
+            };
+            commands::path::run(&from, &to, &index, &format, &opts)?;
         }
         Commands::Cfg { file, function } => {
             commands::cfg::run(&file, &function, &format)?;

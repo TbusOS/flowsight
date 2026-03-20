@@ -11,6 +11,7 @@ pub mod flow;
 pub mod graph;
 pub mod index;
 pub mod kb;
+pub mod path;
 pub mod patterns;
 pub mod report;
 pub mod scenario;
