@@ -104,6 +104,8 @@ impl FlowHelper {
                 "trace".into(),
                 "callers".into(),
                 "callees".into(),
+                "cfg".into(),
+                "errors".into(),
                 "async".into(),
                 "callbacks".into(),
                 "analyze".into(),
@@ -326,6 +328,32 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
             commands::graph::run_callees(&file, func, &format)?;
         }
 
+        "cfg" => {
+            let file = require_file(session, parts.get(1))?;
+            let func = if session.current_file.is_some() && parts.len() >= 2 {
+                parts[1]
+            } else if parts.len() >= 3 {
+                parts[2]
+            } else {
+                anyhow::bail!("Usage: cfg [file] <function>");
+            };
+            let format = parse_format_flag(&parts).unwrap_or(session.format);
+            commands::cfg::run(&file, func, &format)?;
+        }
+
+        "errors" => {
+            let file = require_file(session, parts.get(1))?;
+            let func = if session.current_file.is_some() && parts.len() >= 2 {
+                Some(parts[1])
+            } else if parts.len() >= 3 {
+                Some(parts[2])
+            } else {
+                None
+            };
+            let format = parse_format_flag(&parts).unwrap_or(session.format);
+            commands::cfg::run_errors(&file, func, &format)?;
+        }
+
         "async" => {
             let file = require_file(session, parts.get(1))?;
             commands::async_cmd::run_async(&file)?;
@@ -523,6 +551,8 @@ fn print_help() {
     println!("    trace <func>             Ftrace-style output");
     println!("    callers <func>           Who calls this function");
     println!("    callees <func>           What this function calls");
+    println!("    cfg <func>               Control flow graph (blocks + edges + error paths)");
+    println!("    errors [func]            List error handling paths");
     println!("    async                    List async handlers");
     println!("    callbacks                List callback functions");
     println!();

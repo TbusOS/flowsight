@@ -21,6 +21,12 @@ fn test_driver() -> &'static str {
     concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/test_driver.c")
 }
 
+/// Strip ANSI escape sequences from output for assertion matching
+fn strip_ansi(s: &str) -> String {
+    let re = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+    re.replace_all(s, "").to_string()
+}
+
 /// Path to the (nearly) empty C file fixture.
 fn empty_file() -> &'static str {
     concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/empty.c")
@@ -960,5 +966,161 @@ fn callees_work_handler() {
             || stdout.contains("writel")
             || stdout.contains("spin_unlock_irqrestore"),
         "work handler should call spinlock/IO APIs: {stdout}"
+    );
+}
+
+// =========================================================================
+// CFG: Control flow graph commands
+// =========================================================================
+
+#[test]
+fn cfg_text_output() {
+    let output = flowsight()
+        .args(["cfg", test_driver(), "my_device_probe"])
+        .output()
+        .expect("failed to run cfg");
+
+    assert!(output.status.success(), "cfg should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Strip ANSI codes for assertion
+    let clean = strip_ansi(&stdout);
+    assert!(
+        clean.contains("CFG:") && clean.contains("my_device_probe"),
+        "should show CFG header: {clean}"
+    );
+    assert!(
+        clean.contains("blocks") && clean.contains("edges"),
+        "should show block/edge counts: {clean}"
+    );
+    assert!(
+        clean.contains("Calls:"),
+        "should list calls: {clean}"
+    );
+}
+
+#[test]
+fn cfg_dot_output() {
+    let output = flowsight()
+        .args(["-F", "dot", "cfg", test_driver(), "my_device_probe"])
+        .output()
+        .expect("failed to run cfg -F dot");
+
+    assert!(output.status.success(), "cfg dot should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("digraph") && stdout.contains("my_device_probe"),
+        "DOT output should be valid: {stdout}"
+    );
+    assert!(
+        stdout.contains("->"),
+        "DOT should have edges: {stdout}"
+    );
+}
+
+#[test]
+fn cfg_json_output() {
+    let output = flowsight()
+        .args(["-F", "json", "cfg", test_driver(), "my_device_probe"])
+        .output()
+        .expect("failed to run cfg -F json");
+
+    assert!(output.status.success(), "cfg json should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("should be valid JSON");
+    assert_eq!(
+        parsed["function_name"], "my_device_probe",
+        "JSON should contain function name"
+    );
+    assert!(
+        parsed["blocks"].as_array().map(|a| a.len()).unwrap_or(0) > 0,
+        "JSON should have blocks"
+    );
+}
+
+#[test]
+fn cfg_detects_error_paths() {
+    let output = flowsight()
+        .args(["cfg", test_driver(), "my_device_probe"])
+        .output()
+        .expect("failed to run cfg");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The test_driver probe function should have error handling
+    assert!(
+        stdout.contains("error") || stdout.contains("Error"),
+        "should detect error paths or error-related blocks: {stdout}"
+    );
+}
+
+#[test]
+fn cfg_classifies_macros() {
+    let output = flowsight()
+        .args(["cfg", test_driver(), "my_device_probe"])
+        .output()
+        .expect("failed to run cfg");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should classify INIT_WORK as async registration
+    assert!(
+        stdout.contains("async") || stdout.contains("INIT_WORK"),
+        "should classify async macros: {stdout}"
+    );
+}
+
+#[test]
+fn errors_lists_error_paths() {
+    let output = flowsight()
+        .args(["errors", test_driver()])
+        .output()
+        .expect("failed to run errors");
+
+    assert!(output.status.success(), "errors command should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error path") || stdout.contains("Error path"),
+        "should show error path info: {stdout}"
+    );
+}
+
+#[test]
+fn errors_single_function() {
+    let output = flowsight()
+        .args(["errors", test_driver(), "my_device_probe"])
+        .output()
+        .expect("failed to run errors for single function");
+
+    assert!(output.status.success(), "errors for function should succeed");
+}
+
+#[test]
+fn errors_json_output() {
+    let output = flowsight()
+        .args(["-F", "json", "errors", test_driver()])
+        .output()
+        .expect("failed to run errors -F json");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("should be valid JSON");
+    assert!(
+        parsed.as_array().is_some(),
+        "errors JSON should be an array"
+    );
+}
+
+#[test]
+fn cfg_nonexistent_function_fails() {
+    let output = flowsight()
+        .args(["cfg", test_driver(), "nonexistent_function_xyz"])
+        .output()
+        .expect("failed to run cfg with bad function");
+
+    assert!(
+        !output.status.success(),
+        "cfg with nonexistent function should fail"
     );
 }

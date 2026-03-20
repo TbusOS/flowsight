@@ -66,4 +66,5 @@ tree-sitter-c = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+regex = { workspace = true }
 
