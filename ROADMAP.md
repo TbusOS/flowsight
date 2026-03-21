@@ -58,31 +58,34 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 
 > **技术设计详情**: [cli/docs/TECHNICAL-DESIGN.md](cli/docs/TECHNICAL-DESIGN.md)
 
-### v0.4.0 — CFG + Error Path + Macro Semantics
+### v0.4.0 — CFG + Error Path + Macro Semantics + Cross-File (2026-03-21)
 
-> 分析引擎补课：从「调用树」升级为「执行流」。借鉴 tree-climber / Smatch。
+> 分析引擎补课 + 跨文件分析。借鉴 tree-climber / Smatch / Joern / stack-graphs。
 
-- [ ] `flowsight-cfg` crate — Control Flow Graph construction from tree-sitter AST
-- [ ] Basic block identification (if/else, switch, for/while, goto/label)
-- [ ] Error path detection (goto err_*, return -EXXX, IS_ERR patterns)
-- [ ] Reachability annotation: Always / Conditional / ErrorPath / ConditionalCompilation
-- [ ] Kernel macro semantics table (INIT_WORK, list_for_each, DEFINE_MUTEX, etc.)
-- [ ] Execution context tracking (spin_lock → atomic, rcu_read_lock → RCU read)
-- [ ] Enhanced FlowNode with FlowBranch (conditional / error-handling / loop)
-- [ ] `flowsight cfg <file> <function>` — CFG output (DOT/JSON)
-- [ ] `flowsight errors <file> <function>` — error path listing
-- [ ] `flowsight flow --error-only / --happy-path / --show-conditions` flags
+- [x] `flowsight-cfg` crate — Control Flow Graph construction from tree-sitter AST (18 tests)
+- [x] Basic block identification (if/else, switch, for/while, goto/label)
+- [x] Error path detection (goto err_*, return -EXXX, IS_ERR patterns)
+- [x] Reachability annotation: Always / Conditional / ErrorPath / ConditionalCompilation
+- [x] Kernel macro semantics table — 80+ macros (INIT_WORK, list_for_each, DEFINE_MUTEX, spin_lock, etc.)
+- [x] Execution context tracking (spin_lock → atomic, rcu_read_lock → RCU read)
+- [x] `flowsight cfg <file> <function>` — CFG output (text/DOT/JSON)
+- [x] `flowsight errors <file> [function]` — error path listing
+- [x] `flowsight flow --error-only / --happy-path / --show-conditions` flags
+- [x] Cross-file callers/callees using SQLite index (`--index` flag)
+- [x] `flowsight callers <func> --index <db> --group-by-subsystem`
+- [x] `flowsight path --from A --to B --index <db>` — BFS call chain path finding
+- [x] `flowsight path --from A --to B --index <db> --all` — all paths (DFS)
+- [x] `flowsight subsystem-deps --index <db>` — subsystem dependency graph (DOT/JSON)
+- [x] `flowsight flow --cross-file --index <db>` — cross-file flow expansion
+- [x] 9 new integration tests (72 total across workspace)
 
-### v0.5.0 — CPG + Cross-File Intelligence
+### v0.5.0 — CPG + Data Flow
 
-> 代码属性图 + 跨文件分析。借鉴 Joern CPG / GitHub stack-graphs。
+> 代码属性图 + 数据流分析。借鉴 Joern CPG。
 
 - [ ] Code Property Graph model (AST + CFG + data dependency unified)
-- [ ] Cross-file callers/callees using SQLite index
-- [ ] `flowsight path --from A --to B --index <db>` — call chain path finding (BFS)
-- [ ] `flowsight subsystem-deps --index <db>` — subsystem dependency graph
-- [ ] `flowsight flow --cross-file --index <db>` — cross-file flow expansion
 - [ ] `flowsight index build --with-cfg` — index with CFG information
+- [ ] Data flow tracking (variable assignments, return value propagation)
 - [ ] Performance optimization for 30,000+ file kernel trees
 
 ### v0.6.0 — LLM Integration Layer
