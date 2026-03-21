@@ -62,6 +62,10 @@ pub struct FlowSightConfig {
     #[serde(default)]
     pub output: Option<OutputConfig>,
 
+    /// LLM provider settings
+    #[serde(default)]
+    pub llm: Option<flowsight_llm::config::LlmConfig>,
+
     /// Path to the config file that was loaded (not deserialized from TOML)
     #[serde(skip)]
     pub source_path: Option<PathBuf>,

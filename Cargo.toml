@@ -9,6 +9,7 @@ members = [
     "crates/flowsight-knowledge",
     "crates/flowsight-query",
     "crates/flowsight-symbolic",
+    "crates/flowsight-llm",
     "crates/flowsight-llvm",
     "crates/flowsight-ai",
     "crates/flowsight-learning",
@@ -35,6 +36,7 @@ flowsight-analysis = { path = "crates/flowsight-analysis" }
 flowsight-knowledge = { path = "crates/flowsight-knowledge" }
 flowsight-query = { path = "crates/flowsight-query" }
 flowsight-symbolic = { path = "crates/flowsight-symbolic" }
+flowsight-llm = { path = "crates/flowsight-llm" }
 flowsight-llvm = { path = "crates/flowsight-llvm" }
 flowsight-ai = { path = "crates/flowsight-ai" }
 flowsight-learning = { path = "crates/flowsight-learning" }

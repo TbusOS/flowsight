@@ -20,6 +20,7 @@ path = "src/main.rs"
 flowsight-core = { workspace = true }
 flowsight-parser = { workspace = true }
 flowsight-cfg = { workspace = true }
+flowsight-llm = { workspace = true }
 flowsight-analysis = { workspace = true }
 flowsight-knowledge = { workspace = true }
 flowsight-index = { workspace = true }
@@ -56,6 +57,10 @@ rusqlite = { workspace = true }
 # REPL / Interactive
 rustyline = { workspace = true }
 crossterm = { workspace = true }
+
+# Async runtime (for LLM API calls)
+tokio = { workspace = true }
+futures = "0.3"
 
 # Regex
 regex = { workspace = true }

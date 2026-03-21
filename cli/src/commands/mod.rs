@@ -3,6 +3,7 @@
 //! Each command is in its own module for maintainability.
 
 pub mod analyze;
+pub mod ask;
 pub mod async_cmd;
 pub mod cfg;
 pub mod config;

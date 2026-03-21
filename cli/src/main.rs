@@ -399,6 +399,39 @@ enum Commands {
         shell: clap_complete::Shell,
     },
 
+    /// Ask a natural language question about code (uses LLM)
+    Ask {
+        /// Your question
+        #[arg(value_name = "QUERY")]
+        query: String,
+
+        /// LLM provider (openai, claude, ollama, etc.)
+        #[arg(long)]
+        provider: Option<String>,
+
+        /// Source file for analysis context
+        #[arg(long, short)]
+        file: Option<PathBuf>,
+
+        /// Function name for focused context
+        #[arg(long)]
+        function: Option<String>,
+
+        /// Disable streaming (wait for full response)
+        #[arg(long)]
+        no_stream: bool,
+    },
+
+    /// List configured LLM providers
+    LlmProviders,
+
+    /// Test LLM provider connectivity
+    LlmTest {
+        /// Provider name to test (default: default provider)
+        #[arg(value_name = "PROVIDER")]
+        provider: Option<String>,
+    },
+
     /// Interactive REPL mode
     #[command(alias = "i")]
     Interactive,
@@ -910,6 +943,31 @@ fn main() -> Result<()> {
                 "flowsight",
                 &mut std::io::stdout(),
             );
+        }
+        Commands::Ask {
+            query,
+            provider,
+            file,
+            function,
+            no_stream,
+        } => {
+            let llm_cfg = cfg.llm.clone().unwrap_or_else(flowsight_llm::config::LlmConfig::with_defaults);
+            let opts = commands::ask::AskOptions {
+                provider,
+                model: None,
+                file,
+                function,
+                no_stream,
+            };
+            commands::ask::run(&query, &llm_cfg, &opts)?;
+        }
+        Commands::LlmProviders => {
+            let llm_cfg = cfg.llm.clone().unwrap_or_else(flowsight_llm::config::LlmConfig::with_defaults);
+            commands::ask::run_list_providers(&llm_cfg)?;
+        }
+        Commands::LlmTest { provider } => {
+            let llm_cfg = cfg.llm.clone().unwrap_or_else(flowsight_llm::config::LlmConfig::with_defaults);
+            commands::ask::run_test_provider(&llm_cfg, provider.as_deref())?;
         }
         Commands::Interactive => {
             repl::run()?;
