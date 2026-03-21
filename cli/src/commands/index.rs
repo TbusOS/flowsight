@@ -74,12 +74,14 @@ fn index_files_parallel(
 ) -> Result<usize> {
     use rayon::prelude::*;
 
+    // Increase stack size for worker threads — kernel files with deeply nested
+    // macros/structs can overflow the default 8MB stack during tree-sitter parsing
+    let mut pool_builder = rayon::ThreadPoolBuilder::new()
+        .stack_size(32 * 1024 * 1024); // 32MB stack per thread
     if let Some(threads) = opts.parallel {
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build_global()
-            .ok();
+        pool_builder = pool_builder.num_threads(threads);
     }
+    pool_builder.build_global().ok();
 
     let total = files.len();
     let indexed_count = AtomicUsize::new(0);

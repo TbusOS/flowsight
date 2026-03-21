@@ -156,12 +156,12 @@ fn analyze_files_parallel(
 ) -> Result<DirectorySummary> {
     use rayon::prelude::*;
 
+    let mut pool_builder = rayon::ThreadPoolBuilder::new()
+        .stack_size(32 * 1024 * 1024); // 32MB stack for deep kernel files
     if let Some(threads) = parallel {
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build_global()
-            .ok(); // Ignore if already initialized
+        pool_builder = pool_builder.num_threads(threads);
     }
+    pool_builder.build_global().ok();
 
     let summary = Mutex::new(DirectorySummary {
         directory: dir.to_string_lossy().into_owned(),
