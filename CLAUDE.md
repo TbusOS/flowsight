@@ -1,6 +1,6 @@
 # FlowSight - Claude Code 配置
 
-> **当前阶段**: CLI v0.3.0 完成，v0.4.0 开发中 (IDE 暂停)
+> **当前阶段**: CLI v0.6.0 (CFG + 跨文件 + LLM 集成) (IDE 暂停)
 >
 > **核心目标**: 函数执行流分析 + 内核专家模型训练数据生成 + LLM 多模型接入
 >
@@ -31,7 +31,7 @@ flowsight/
 | Phase 4 | REPL + 配置 + Shell 补全 | ✅ done (2026-03-19) |
 | Phase 5 | CFG + 错误路径 + 宏语义 + 跨文件 (v0.4.0) | ✅ done (2026-03-21) |
 | Phase 6 | CPG + 数据流 (v0.5.0) | 计划中 |
-| Phase 7 | LLM 集成层 + 自然语言 + 本地模型 (v0.6.0) | 计划中 |
+| Phase 7 | LLM 集成 + 自然语言 + 本地模型 (v0.6.0) | ✅ done (2026-03-21) |
 | Phase 8 | C++/Rust 支持 + DPO 闭环 (v0.7.0) | 计划中 |
 
 > 详见 [ROADMAP.md](ROADMAP.md)

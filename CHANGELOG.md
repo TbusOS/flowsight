@@ -15,6 +15,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `flowsight watch` for file system monitoring and incremental analysis
 - Web-based interactive report viewer
 
+## [0.6.0] - 2026-03-21
+
+### Added
+
+- **LLM integration** (`flowsight-llm` crate) — unified provider interface
+  - OpenAI-compatible API provider (GPT-4o, DeepSeek, LM Studio, vLLM, Ollama /v1)
+  - Anthropic Claude API provider (Messages API with SSE streaming)
+  - Provider registry with lazy creation and caching
+  - TOML-serializable config with env var API key resolution
+- **`flowsight ask <query>`** — natural language code query with LLM
+  - `--provider` flag to select LLM backend
+  - `--file` + `--function` for injecting CFG analysis context
+  - Streaming output by default, `--no-stream` for blocking mode
+- **`flowsight explain <file> <function>`** — AI-powered function explanation
+- **`flowsight llm-providers`** — list configured providers
+- **`flowsight llm-test [provider]`** — test provider connectivity
+- REPL `ask` and `explain` commands
+- `[llm]` config section in `.flowsight.toml` with provider presets
+
+## [0.4.0] - 2026-03-21
+
+### Added
+
+- **`flowsight-cfg` crate** — Control Flow Graph construction from tree-sitter AST (18 tests)
+  - Basic block identification: if/else, switch/case, while/for/do, goto/label, return
+  - Error path detection: goto err_* chains, early return -EXXX, IS_ERR patterns
+  - Reachability annotation: Always / Conditional / ErrorPath per call site
+  - Kernel macro semantics table: 80+ macros classified (async registration, context change, declaration, iterator, etc.)
+  - DOT graph output for Graphviz visualization
+- **`flowsight cfg <file> <function>`** — control flow graph display (text/DOT/JSON)
+- **`flowsight errors <file> [function]`** — list error handling paths
+- **`flowsight flow` enhanced** with CFG-aware reachability tags
+  - `[always]` / `[conditional]` / `[error-path]` annotations
+  - `--show-conditions` flag for branch condition display
+  - `--error-only` flag for error paths only
+  - `--happy-path` flag for normal path only
+  - `--cross-file --index <db>` for cross-file call expansion
+- **`flowsight callers <func> --index <db>`** — cross-file caller analysis
+  - `--group-by-subsystem` for subsystem-grouped output
+- **`flowsight callees <func> --index <db>`** — cross-file callee analysis
+- **`flowsight path --from A --to B --index <db>`** — BFS call chain path finding
+  - `--all` flag for finding up to 20 paths (DFS)
+  - `--max-depth N` configurable search depth
+- **`flowsight subsystem-deps --index <db>`** — subsystem dependency graph (DOT/JSON)
+- 9 new CLI integration tests for CFG commands
+
+### Fixed
+
+- Stack overflow on large kernel trees (rayon thread stack increased to 32MB)
+
 ## [0.3.0] - 2026-03-19
 
 ### Added

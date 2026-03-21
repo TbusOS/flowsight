@@ -88,23 +88,24 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 - [ ] Data flow tracking (variable assignments, return value propagation)
 - [ ] Performance optimization for 30,000+ file kernel trees
 
-### v0.6.0 — LLM Integration Layer
+### v0.6.0 — LLM Integration Layer (2026-03-21)
 
 > 多 Provider 接入 + 自然语言查询 + 本地模型。借鉴 Aider repo map / MCPtrace。
 
-- [ ] `flowsight-llm` crate — unified LLM Provider trait
-- [ ] Provider: OpenAI API (GPT-4o, DeepSeek, compatible endpoints)
-- [ ] Provider: Anthropic Claude API
-- [ ] Provider: Ollama (local models, including self-trained kernel expert)
-- [ ] Provider: LM Studio / custom HTTP endpoints
-- [ ] `flowsight ask "<natural language query>"` — NL interface
-- [ ] `flowsight explain <file> <function>` — AI-powered explanation
+- [x] `flowsight-llm` crate — unified LLM Provider trait (8 tests)
+- [x] Provider: OpenAI-compatible API (GPT-4o, DeepSeek, LM Studio, vLLM, Ollama /v1)
+- [x] Provider: Anthropic Claude API (Messages API + SSE streaming)
+- [x] Provider: Ollama (local models, including self-trained kernel expert)
+- [x] `flowsight ask "<query>"` — natural language query with CFG context injection
+- [x] `flowsight explain <file> <function>` — AI-powered function explanation
+- [x] `flowsight llm-providers` — list configured providers
+- [x] `flowsight llm-test [provider]` — test provider connectivity
+- [x] SSE streaming output (default) + --no-stream blocking mode
+- [x] `[llm]` section in `.flowsight.toml` for provider configuration
+- [x] REPL `ask` and `explain` commands with --provider flag
 - [ ] `flowsight review <file>` — AI code review
-- [ ] Smart context builder: analysis results → LLM prompt (PageRank ranking)
-- [ ] SSE streaming output
-- [ ] `[llm]` section in `.flowsight.toml` for provider configuration
-- [ ] REPL natural language mode
-- [ ] MCP server mode (optional, for Claude Code integration)
+- [ ] Smart context builder with PageRank ranking
+- [ ] MCP server mode (optional)
 
 ### v0.7.0 — Language Expansion + DPO Feedback Loop
 
