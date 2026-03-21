@@ -422,6 +422,25 @@ enum Commands {
         no_stream: bool,
     },
 
+    /// AI-powered function explanation (uses LLM + CFG analysis context)
+    Explain {
+        /// Source file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Function name
+        #[arg(value_name = "FUNCTION")]
+        function: String,
+
+        /// LLM provider
+        #[arg(long)]
+        provider: Option<String>,
+
+        /// Disable streaming
+        #[arg(long)]
+        no_stream: bool,
+    },
+
     /// List configured LLM providers
     LlmProviders,
 
@@ -957,6 +976,31 @@ fn main() -> Result<()> {
                 model: None,
                 file,
                 function,
+                no_stream,
+            };
+            commands::ask::run(&query, &llm_cfg, &opts)?;
+        }
+        Commands::Explain {
+            file,
+            function,
+            provider,
+            no_stream,
+        } => {
+            let llm_cfg = cfg.llm.clone().unwrap_or_else(flowsight_llm::config::LlmConfig::with_defaults);
+            let query = format!(
+                "Explain the execution flow of {}(). Describe:\n\
+                 1. Purpose and what it does\n\
+                 2. Normal execution path\n\
+                 3. Error handling paths and cleanup\n\
+                 4. Async mechanisms and callbacks\n\
+                 5. Locking and execution context",
+                function
+            );
+            let opts = commands::ask::AskOptions {
+                provider,
+                model: None,
+                file: Some(file),
+                function: Some(function),
                 no_stream,
             };
             commands::ask::run(&query, &llm_cfg, &opts)?;

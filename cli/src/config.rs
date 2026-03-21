@@ -37,6 +37,33 @@ const CONFIG_TEMPLATE: &str = r#"# FlowSight project configuration
 [output]
 # color = true
 # column_width = 36
+
+[llm]
+# default_provider = "openai"    # openai | claude | ollama | custom
+# temperature = 0.3
+# max_tokens = 4096
+# stream = true
+
+# [llm.providers.openai]
+# provider_type = "openai"
+# api_key_env = "OPENAI_API_KEY"
+# model = "gpt-4o"
+
+# [llm.providers.claude]
+# provider_type = "anthropic"
+# api_key_env = "ANTHROPIC_API_KEY"
+# model = "claude-sonnet-4-20250514"
+
+# [llm.providers.ollama]
+# provider_type = "ollama"
+# endpoint = "http://localhost:11434"
+# model = "llama3.2"
+
+# [llm.providers.deepseek]
+# provider_type = "openai"
+# api_key_env = "DEEPSEEK_API_KEY"
+# base_url = "https://api.deepseek.com"
+# model = "deepseek-chat"
 "#;
 
 // ---------------------------------------------------------------------------

@@ -119,6 +119,8 @@ impl FlowHelper {
                 "set format".into(),
                 "set depth".into(),
                 "set no-kernel".into(),
+                "ask".into(),
+                "explain".into(),
                 "status".into(),
                 "help".into(),
                 "quit".into(),
@@ -478,6 +480,64 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
             println!("  No-kernel: {}", session.no_kernel);
         }
 
+        "ask" => {
+            if parts.len() < 2 {
+                anyhow::bail!("Usage: ask <question>");
+            }
+            // Join remaining parts as the query (skip flags)
+            let query_parts: Vec<&str> = parts[1..]
+                .iter()
+                .filter(|p| !p.starts_with("--"))
+                .copied()
+                .collect();
+            let query = query_parts.join(" ");
+            if query.is_empty() {
+                anyhow::bail!("Usage: ask <question>");
+            }
+
+            let llm_config = flowsight_llm::config::LlmConfig::with_defaults();
+            let opts = commands::ask::AskOptions {
+                provider: parse_string_flag(&parts, "--provider").map(|s| s.to_string()),
+                model: None,
+                file: session.current_file.clone(),
+                function: parse_string_flag(&parts, "--function").map(|s| s.to_string()),
+                no_stream: parts.contains(&"--no-stream"),
+            };
+            commands::ask::run(&query, &llm_config, &opts)?;
+        }
+
+        "explain" => {
+            let file = require_file(session, parts.get(1))?;
+            let func = if session.current_file.is_some() && parts.len() >= 2 {
+                parts[1]
+            } else if parts.len() >= 3 {
+                parts[2]
+            } else {
+                anyhow::bail!("Usage: explain [file] <function>");
+            };
+
+            let llm_config = flowsight_llm::config::LlmConfig::with_defaults();
+            let provider = parse_string_flag(&parts, "--provider").map(|s| s.to_string());
+            let query = format!(
+                "Explain the execution flow of the function {}(). \
+                 Describe:\n\
+                 1. What it does (purpose)\n\
+                 2. The normal execution path\n\
+                 3. Error handling paths and cleanup\n\
+                 4. Async mechanisms and callbacks registered\n\
+                 5. Locking and execution context considerations",
+                func
+            );
+            let opts = commands::ask::AskOptions {
+                provider,
+                model: None,
+                file: Some(file),
+                function: Some(func.to_string()),
+                no_stream: parts.contains(&"--no-stream"),
+            };
+            commands::ask::run(&query, &llm_config, &opts)?;
+        }
+
         other => {
             anyhow::bail!(
                 "Unknown command: '{}'. Type 'help' for available commands.",
@@ -582,6 +642,15 @@ fn print_help() {
     println!("    kb chain <fw> <cb>       Kernel call chain");
     println!("    kb async-chain <pat>     Async handler chain");
     println!("    kb match [file]          Match file against KB");
+    println!();
+    println!(
+        "  {}",
+        "AI / LLM:".with(C_HEAD).bold()
+    );
+    println!("    ask <question>           Ask LLM about loaded file");
+    println!("      --provider <name>      Select provider (openai/claude/ollama)");
+    println!("      --function <fn>        Focus on specific function");
+    println!("    explain <func>           AI-powered function explanation");
     println!();
     println!(
         "  {}",
