@@ -191,6 +191,21 @@ enum Commands {
         all: bool,
     },
 
+    /// Show subsystem dependency graph (requires --index)
+    SubsystemDeps {
+        /// SQLite index database path
+        #[arg(long, value_name = "DB")]
+        index: PathBuf,
+
+        /// Only show edges involving these subsystems (comma-separated)
+        #[arg(long, value_name = "LIST")]
+        focus: Option<String>,
+
+        /// Minimum call count to show an edge (default: 1)
+        #[arg(long, default_value = "1")]
+        min_calls: usize,
+    },
+
     /// Full file call graph (use -F dot for Graphviz DOT output)
     Graph {
         /// Source file
@@ -632,6 +647,13 @@ fn main() -> Result<()> {
                 all_paths: all,
             };
             commands::path::run(&from, &to, &index, &format, &opts)?;
+        }
+        Commands::SubsystemDeps { index, focus, min_calls } => {
+            let opts = commands::subsystem::SubsystemDepsOptions {
+                focus: focus.map(|f| f.split(',').map(|s| s.trim().to_string()).collect()),
+                min_calls,
+            };
+            commands::subsystem::run(&index, &format, &opts)?;
         }
         Commands::Cfg { file, function } => {
             commands::cfg::run(&file, &function, &format)?;

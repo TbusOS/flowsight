@@ -49,6 +49,14 @@ pub struct IndexDbStats {
     pub top_callers: Vec<(String, usize)>,
 }
 
+/// Cross-subsystem call edge
+#[derive(Debug, Clone)]
+pub struct SubsystemEdge {
+    pub from: String,
+    pub to: String,
+    pub call_count: usize,
+}
+
 /// SQLite index database
 pub struct IndexDb {
     conn: Connection,
@@ -397,6 +405,56 @@ impl IndexDb {
                 collect_symbol_rows(&mut stmt, params![like_pattern, kind, limit])?
             }
         };
+
+        Ok(rows)
+    }
+
+    /// Query cross-subsystem call edges (subsystem A calls into subsystem B)
+    pub fn query_subsystem_deps(&self) -> Result<Vec<SubsystemEdge>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                 COALESCE(caller_f.subsystem, 'other') AS caller_sub,
+                 COALESCE(callee_f.subsystem, 'other') AS callee_sub,
+                 COUNT(*) AS cnt
+             FROM calls c
+             JOIN symbols caller_s ON c.caller_id = caller_s.id
+             JOIN files caller_f ON caller_s.file_id = caller_f.id
+             LEFT JOIN symbols callee_s ON callee_s.name = c.callee_name
+             LEFT JOIN files callee_f ON callee_s.file_id = callee_f.id
+             WHERE caller_f.subsystem IS NOT NULL
+               AND callee_f.subsystem IS NOT NULL
+               AND caller_f.subsystem != callee_f.subsystem
+             GROUP BY caller_sub, callee_sub
+             ORDER BY cnt DESC",
+        )?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(SubsystemEdge {
+                    from: row.get(0)?,
+                    to: row.get(1)?,
+                    call_count: row.get(2)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(rows)
+    }
+
+    /// Query all unique subsystems in the index
+    pub fn query_subsystems(&self) -> Result<Vec<(String, usize)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT COALESCE(subsystem, 'other'), COUNT(*)
+             FROM files
+             GROUP BY subsystem
+             ORDER BY COUNT(*) DESC",
+        )?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         Ok(rows)
     }
