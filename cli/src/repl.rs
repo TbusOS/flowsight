@@ -288,6 +288,9 @@ fn execute_command(input: &str, session: &mut Session) -> anyhow::Result<bool> {
                 show_conditions: parts.contains(&"--show-conditions"),
                 error_only: parts.contains(&"--error-only"),
                 happy_path: parts.contains(&"--happy-path"),
+                cross_file: parts.contains(&"--cross-file"),
+                index_db: parse_string_flag(&parts, "--index").map(std::path::PathBuf::from),
+                cross_file_depth: parse_flag(&parts, "--cross-depth").unwrap_or(3),
             };
             let format = parse_format_flag(&parts).unwrap_or(session.format);
             commands::flow::run(&file, func, &format, &opts)?;
@@ -509,6 +512,17 @@ fn parse_flag(parts: &[&str], flag: &str) -> Option<usize> {
         if *part == flag {
             if let Some(val) = parts.get(i + 1) {
                 return val.parse().ok();
+            }
+        }
+    }
+    None
+}
+
+fn parse_string_flag<'a>(parts: &[&'a str], flag: &str) -> Option<&'a str> {
+    for (i, part) in parts.iter().enumerate() {
+        if *part == flag {
+            if let Some(val) = parts.get(i + 1) {
+                return Some(val);
             }
         }
     }

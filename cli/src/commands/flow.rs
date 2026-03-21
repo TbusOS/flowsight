@@ -7,13 +7,14 @@
 //! - --happy-path: show only normal execution path
 
 use crate::context::AnalysisContext;
+use crate::index_db::IndexDb;
 use crate::output::{dot, json, text, OutputFormat};
 use anyhow::Result;
 use crossterm::style::{Color, Stylize};
 use flowsight_cfg::{CfgBuilder, CallKind, ErrorPathDetector, Reachability};
 use flowsight_core::{FlowNode, FlowNodeType};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // Low-saturation color palette
 const C_OK: Color = Color::Rgb { r: 130, g: 175, b: 140 };
@@ -37,6 +38,12 @@ pub struct FlowOptions {
     pub error_only: bool,
     /// Show only normal execution path (hide error paths)
     pub happy_path: bool,
+    /// Cross-file expansion: resolve external calls via index
+    pub cross_file: bool,
+    /// SQLite index database path (required for cross-file)
+    pub index_db: Option<PathBuf>,
+    /// Maximum cross-file expansion depth
+    pub cross_file_depth: usize,
 }
 
 impl Default for FlowOptions {
@@ -48,6 +55,9 @@ impl Default for FlowOptions {
             show_conditions: false,
             error_only: false,
             happy_path: false,
+            cross_file: false,
+            index_db: None,
+            cross_file_depth: 3,
         }
     }
 }
@@ -246,6 +256,79 @@ fn has_reachability_in_subtree(
     node.children.iter().any(|c| has_reachability_in_subtree(c, map, target))
 }
 
+/// Expand external function calls by looking them up in the index
+fn expand_cross_file(
+    node: &FlowNode,
+    db: &IndexDb,
+    ctx: &mut AnalysisContext,
+    expanded: &mut HashMap<String, Option<FlowNode>>,
+    depth: usize,
+    max_depth: usize,
+) -> FlowNode {
+    if depth >= max_depth {
+        return node.clone();
+    }
+
+    let children: Vec<FlowNode> = node.children.iter().map(|child| {
+        // If this is an External node, try to resolve it
+        if matches!(child.node_type, FlowNodeType::External | FlowNodeType::KernelApi)
+            && child.children.is_empty()
+        {
+            // Check cache
+            if let Some(cached) = expanded.get(&child.name) {
+                return cached.clone().unwrap_or_else(|| child.clone());
+            }
+
+            // Try to find in index
+            if let Ok(symbols) = db.query_symbol(&child.name, Some("function"), None) {
+                if let Some(sym) = symbols.first() {
+                    // Parse the file containing this function
+                    let file_path = Path::new(&sym.file_path);
+                    if file_path.exists() {
+                        if let Ok(result) = ctx.analyze_file(file_path) {
+                            // Find the flow tree for this function
+                            for tree in &result.analysis.flow_trees {
+                                if tree.name == child.name {
+                                    let mut expanded_tree = tree.clone();
+                                    // Mark as cross-file
+                                    expanded_tree.source_file = Some(sym.file_path.clone());
+                                    expanded_tree.display_name = format!(
+                                        "{}() [{}]",
+                                        child.name,
+                                        Path::new(&sym.file_path)
+                                            .file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("?")
+                                    );
+
+                                    // Recursively expand this tree too
+                                    let result = expand_cross_file(
+                                        &expanded_tree, db, ctx, expanded, depth + 1, max_depth,
+                                    );
+                                    expanded.insert(child.name.clone(), Some(result.clone()));
+                                    return result;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Not found — cache as None
+            expanded.insert(child.name.clone(), None);
+            child.clone()
+        } else {
+            // Recurse into existing children
+            expand_cross_file(child, db, ctx, expanded, depth, max_depth)
+        }
+    }).collect();
+
+    FlowNode {
+        children,
+        ..node.clone()
+    }
+}
+
 /// Show execution flow tree for a function
 pub fn run(
     file: &Path,
@@ -267,7 +350,24 @@ pub fn run(
     // Find the flow tree for the specified function
     for tree in &result.analysis.flow_trees {
         if tree.name == function {
-            let filtered = filter_flow_tree(tree, opts, 0);
+            let mut filtered = filter_flow_tree(tree, opts, 0);
+
+            // Cross-file expansion
+            if opts.cross_file {
+                if let Some(db_path) = &opts.index_db {
+                    if let Ok(db) = IndexDb::open_readonly(db_path) {
+                        let mut expanded_cache = HashMap::new();
+                        filtered = expand_cross_file(
+                            &filtered,
+                            &db,
+                            &mut ctx,
+                            &mut expanded_cache,
+                            0,
+                            opts.cross_file_depth,
+                        );
+                    }
+                }
+            }
 
             match format {
                 OutputFormat::Json => {

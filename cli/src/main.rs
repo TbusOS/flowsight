@@ -95,6 +95,18 @@ enum Commands {
         /// Show only normal execution path (hide error paths)
         #[arg(long)]
         happy_path: bool,
+
+        /// Expand external calls using cross-file index
+        #[arg(long)]
+        cross_file: bool,
+
+        /// SQLite index database for cross-file expansion
+        #[arg(long, value_name = "DB")]
+        index: Option<PathBuf>,
+
+        /// Max cross-file expansion depth (default: 3)
+        #[arg(long, default_value = "3")]
+        cross_depth: usize,
     },
 
     /// Show execution flow in ftrace style
@@ -620,6 +632,9 @@ fn main() -> Result<()> {
             show_conditions,
             error_only,
             happy_path,
+            cross_file,
+            index,
+            cross_depth,
         } => {
             let analysis_cfg = cfg.analysis.as_ref();
             let opts = FlowOptions {
@@ -631,6 +646,9 @@ fn main() -> Result<()> {
                 show_conditions,
                 error_only,
                 happy_path,
+                cross_file,
+                index_db: index,
+                cross_file_depth: cross_depth,
             };
             commands::flow::run(&file, &function, &format, &opts)?;
         }
