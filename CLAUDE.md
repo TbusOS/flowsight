@@ -30,7 +30,7 @@ flowsight/
 | Phase 3 | 训练数据管道 (JSONL SFT/DPO/ChatML) | ✅ done (2026-03-19) |
 | Phase 4 | REPL + 配置 + Shell 补全 | ✅ done (2026-03-19) |
 | Phase 5 | CFG + 错误路径 + 宏语义 + 跨文件 (v0.4.0) | ✅ done (2026-03-21) |
-| Phase 6 | CPG + 数据流 (v0.5.0) | 计划中 |
+| Phase 6 | CPG + 数据流 (v0.5.0) | ✅ done (2026-03-22) |
 | Phase 7 | LLM 集成 + 自然语言 + 本地模型 (v0.6.0) | ✅ done (2026-03-21) |
 | Phase 8 | C++/Rust 支持 + DPO 闭环 (v0.7.0) | 计划中 |
 

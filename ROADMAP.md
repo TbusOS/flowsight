@@ -79,13 +79,19 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 - [x] `flowsight flow --cross-file --index <db>` — cross-file flow expansion
 - [x] 9 new integration tests (72 total across workspace)
 
-### v0.5.0 — CPG + Data Flow
+### v0.5.0 — CPG + Data Flow (2026-03-22)
 
 > 代码属性图 + 数据流分析。借鉴 Joern CPG。
 
-- [ ] Code Property Graph model (AST + CFG + data dependency unified)
-- [ ] `flowsight index build --with-cfg` — index with CFG information
-- [ ] Data flow tracking (variable assignments, return value propagation)
+- [x] `flowsight-cpg` crate — Code Property Graph (8 tests)
+- [x] Variable definition extraction (declarations, assignments, call returns, field assignments)
+- [x] Variable use extraction (conditions, arguments, return values, dereferences, field access)
+- [x] Reaching definitions: worklist algorithm on CFG (fixed-point iteration)
+- [x] Def-use chains: each definition → all its uses
+- [x] Backward/forward slicing
+- [x] `flowsight dataflow <file> <function>` — full data flow summary
+- [x] `flowsight dataflow --var <name>` — single variable tracking with chains
+- [ ] `flowsight index build --with-cfg` — index with CFG + data flow info
 - [ ] Performance optimization for 30,000+ file kernel trees
 
 ### v0.6.0 — LLM Integration Layer (2026-03-21)
