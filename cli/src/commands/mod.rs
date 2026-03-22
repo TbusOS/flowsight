@@ -7,6 +7,7 @@ pub mod ask;
 pub mod async_cmd;
 pub mod cfg;
 pub mod config;
+pub mod dataflow;
 pub mod diff;
 pub mod flow;
 pub mod graph;

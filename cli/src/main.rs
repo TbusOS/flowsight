@@ -158,6 +158,21 @@ enum Commands {
         index: Option<PathBuf>,
     },
 
+    /// Data flow analysis: def-use chains, reaching definitions, variable tracking
+    Dataflow {
+        /// Source file
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Function name
+        #[arg(value_name = "FUNCTION")]
+        function: String,
+
+        /// Track a specific variable (show only its flow)
+        #[arg(long)]
+        var: Option<String>,
+    },
+
     /// Show control flow graph for a function (CFG with error paths + macro semantics)
     Cfg {
         /// Source file
@@ -724,6 +739,9 @@ fn main() -> Result<()> {
                 min_calls,
             };
             commands::subsystem::run(&index, &format, &opts)?;
+        }
+        Commands::Dataflow { file, function, var } => {
+            commands::dataflow::run(&file, &function, &format, var.as_deref())?;
         }
         Commands::Cfg { file, function } => {
             commands::cfg::run(&file, &function, &format)?;

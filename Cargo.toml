@@ -4,6 +4,7 @@ members = [
     "crates/flowsight-core",
     "crates/flowsight-parser",
     "crates/flowsight-cfg",
+    "crates/flowsight-cpg",
     "crates/flowsight-index",
     "crates/flowsight-analysis",
     "crates/flowsight-knowledge",
@@ -31,6 +32,7 @@ description = "Static execution flow analyzer for Linux kernel code"
 flowsight-core = { path = "crates/flowsight-core" }
 flowsight-parser = { path = "crates/flowsight-parser" }
 flowsight-cfg = { path = "crates/flowsight-cfg" }
+flowsight-cpg = { path = "crates/flowsight-cpg" }
 flowsight-index = { path = "crates/flowsight-index" }
 flowsight-analysis = { path = "crates/flowsight-analysis" }
 flowsight-knowledge = { path = "crates/flowsight-knowledge" }
