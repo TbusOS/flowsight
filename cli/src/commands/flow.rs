@@ -118,6 +118,188 @@ fn is_flow_noise(name: &str) -> bool {
     )
 }
 
+/// Build execution flow directly from CFG — calls in source code order with
+/// reachability annotations. This is the TRUE execution flow, not the
+/// alphabetically-sorted call list from the parser.
+fn print_cfg_execution_flow(
+    source: &str,
+    function: &str,
+    opts: &FlowOptions,
+) -> bool {
+    let builder = CfgBuilder::new();
+    let cfg = match builder.build_function_cfg(source, function) {
+        Ok(mut c) => { ErrorPathDetector::analyze(&mut c); c }
+        Err(_) => return false,
+    };
+
+    // Collect all calls in source order (by line number)
+    let mut all_calls: Vec<&flowsight_cfg::CallSite> = cfg.all_calls();
+    all_calls.sort_by_key(|c| c.line);
+
+    // Filter noise
+    all_calls.retain(|c| !is_flow_noise(&c.callee));
+
+    // Apply filters
+    if opts.error_only {
+        all_calls.retain(|c| c.reachability == Reachability::ErrorPath);
+    }
+    if opts.happy_path {
+        all_calls.retain(|c| c.reachability != Reachability::ErrorPath);
+    }
+
+    if all_calls.is_empty() {
+        return false;
+    }
+
+    // Print function header
+    println!("{}()", function);
+    println!();
+
+    // Group calls into normal flow + error handlers
+    let mut normal_calls: Vec<&flowsight_cfg::CallSite> = Vec::new();
+    let mut error_handler_calls: Vec<(&str, Vec<&flowsight_cfg::CallSite>)> = Vec::new();
+
+    // Separate by block type
+    for call in &all_calls {
+        let block = cfg.block(call.block_id);
+        let is_error_block = block
+            .map(|b| b.block_type == flowsight_cfg::BlockType::ErrorHandler)
+            .unwrap_or(false);
+        let label = block.and_then(|b| b.label.as_deref());
+
+        if is_error_block {
+            if let Some(label_name) = label {
+                if let Some(entry) = error_handler_calls.iter_mut().find(|(l, _)| *l == label_name) {
+                    entry.1.push(call);
+                } else {
+                    error_handler_calls.push((label_name, vec![call]));
+                }
+            } else {
+                // Error block without label — check if previous error handler exists
+                if let Some(last) = error_handler_calls.last_mut() {
+                    last.1.push(call);
+                } else {
+                    normal_calls.push(call);
+                }
+            }
+        } else {
+            normal_calls.push(call);
+        }
+    }
+
+    // Print normal flow
+    let total_normal = normal_calls.len();
+    for (i, call) in normal_calls.iter().enumerate() {
+        let is_last = i == total_normal - 1 && error_handler_calls.is_empty();
+        print_execution_call(call, is_last, opts);
+    }
+
+    // Print error handlers
+    if !error_handler_calls.is_empty() && !opts.happy_path {
+        println!("│");
+        for (i, (label, calls)) in error_handler_calls.iter().enumerate() {
+            let is_last_handler = i == error_handler_calls.len() - 1;
+            let prefix = if is_last_handler { "└── " } else { "├── " };
+            println!(
+                "{}{}:",
+                prefix.with(C_ERR),
+                label.with(C_ERR),
+            );
+            for (j, call) in calls.iter().enumerate() {
+                let is_last = is_last_handler && j == calls.len() - 1;
+                let indent = if is_last_handler { "    " } else { "│   " };
+                let connector = if is_last { "└── " } else { "├── " };
+                print!(
+                    "{}{}",
+                    indent.with(C_DIM),
+                    connector.with(C_DIM),
+                );
+                print_call_inline(call);
+            }
+        }
+    }
+
+    // Print returns
+    let error_returns: Vec<_> = cfg.error_paths.iter()
+        .filter(|ep| matches!(ep.strategy,
+            flowsight_cfg::ErrorStrategy::EarlyReturn { .. }))
+        .collect();
+
+    if !error_returns.is_empty() && opts.show_conditions && !opts.happy_path {
+        println!();
+        println!("{}", "  Error returns:".with(C_ERR));
+        for ep in &error_returns {
+            println!(
+                "    L{}: {}",
+                ep.check_line.to_string().with(C_DIM),
+                ep.check_expression.as_str().with(C_ERR),
+            );
+        }
+    }
+
+    true
+}
+
+/// Print a single call in execution flow
+fn print_execution_call(
+    call: &flowsight_cfg::CallSite,
+    is_last: bool,
+    opts: &FlowOptions,
+) {
+    let connector = if is_last { "└── " } else { "├── " };
+
+    let (tag, color) = match &call.reachability {
+        Reachability::Always => ("always", C_OK),
+        Reachability::Conditional(cond) => {
+            if opts.show_conditions {
+                let short = if cond.len() > 25 { &cond[..25] } else { cond };
+                print!("{}", connector.with(C_DIM));
+                println!(
+                    "L{}: [{}] {}(){}",
+                    call.line.to_string().with(C_DIM),
+                    format!("if {}", short).with(C_COND),
+                    call.callee.as_str().with(Color::Rgb { r: 155, g: 160, b: 185 }),
+                    call_kind_tag(call).with(C_DIM),
+                );
+                return;
+            }
+            ("conditional", C_COND)
+        }
+        Reachability::ErrorPath => ("error-path", C_ERR),
+        Reachability::ConditionalCompilation => ("#ifdef", Color::Rgb { r: 140, g: 150, b: 180 }),
+    };
+
+    print!("{}", connector.with(C_DIM));
+    println!(
+        "L{}: [{}] {}(){}",
+        call.line.to_string().with(C_DIM),
+        tag.with(color),
+        call.callee.as_str().with(Color::Rgb { r: 155, g: 160, b: 185 }),
+        call_kind_tag(call).with(C_DIM),
+    );
+}
+
+/// Print a call inline (for error handler blocks)
+fn print_call_inline(call: &flowsight_cfg::CallSite) {
+    println!(
+        "L{}: {}(){}",
+        call.line.to_string().with(C_DIM),
+        call.callee.as_str().with(Color::Rgb { r: 155, g: 160, b: 185 }),
+        call_kind_tag(call).with(C_DIM),
+    );
+}
+
+/// Get the kind tag for a call
+fn call_kind_tag(call: &flowsight_cfg::CallSite) -> String {
+    match &call.call_kind {
+        CallKind::AsyncRegistration { mechanism, .. } => format!(" [async:{}]", mechanism),
+        CallKind::ContextChange { new_context } => format!(" [ctx:{}]", new_context),
+        CallKind::DeclarationMacro => " [decl]".to_string(),
+        CallKind::IteratorMacro => " [iter]".to_string(),
+        _ => String::new(),
+    }
+}
+
 /// Build a reachability map for function calls using CFG
 fn build_reachability_map(source: &str, function: &str) -> HashMap<String, Vec<(Reachability, CallKind)>> {
     let builder = CfgBuilder::new();
@@ -362,8 +544,16 @@ pub fn run(
     let mut ctx = AnalysisContext::new();
     let result = ctx.analyze_file(file)?;
 
-    // Build CFG reachability map for enhanced display
     let source = std::fs::read_to_string(file).unwrap_or_default();
+
+    // For text output, try CFG-based execution flow first (true source order)
+    if matches!(format, OutputFormat::Text) {
+        if print_cfg_execution_flow(&source, function, opts) {
+            return Ok(());
+        }
+    }
+
+    // Build CFG reachability map for enhanced display (fallback)
     let reachability_map = build_reachability_map(&source, function);
     let use_enhanced = !reachability_map.is_empty()
         || opts.show_conditions
