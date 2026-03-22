@@ -466,6 +466,13 @@ enum Commands {
         provider: Option<String>,
     },
 
+    /// Run quality self-test and score (0-100)
+    SelfTest {
+        /// Path to Linux kernel source for real-code testing
+        #[arg(long)]
+        kernel_path: Option<PathBuf>,
+    },
+
     /// Interactive REPL mode
     #[command(alias = "i")]
     Interactive,
@@ -1030,6 +1037,9 @@ fn main() -> Result<()> {
         Commands::LlmTest { provider } => {
             let llm_cfg = cfg.llm.clone().unwrap_or_else(flowsight_llm::config::LlmConfig::with_defaults);
             commands::ask::run_test_provider(&llm_cfg, provider.as_deref())?;
+        }
+        Commands::SelfTest { kernel_path } => {
+            commands::selftest::run(kernel_path.as_deref())?;
         }
         Commands::Interactive => {
             repl::run()?;

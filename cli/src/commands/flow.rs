@@ -73,6 +73,10 @@ fn filter_flow_tree(node: &FlowNode, opts: &FlowOptions, current_depth: usize) -
                 if opts.no_kernel && matches!(child.node_type, FlowNodeType::KernelApi) {
                     return false;
                 }
+                // Filter out helper macros that are noise in flow output
+                if is_flow_noise(&child.name) {
+                    return false;
+                }
                 true
             })
             .map(|child| filter_flow_tree(child, opts, current_depth + 1))
@@ -93,6 +97,25 @@ fn filter_flow_tree(node: &FlowNode, opts: &FlowOptions, current_depth: usize) -
         source_file: node.source_file.clone(),
         is_kernel_internal: node.is_kernel_internal,
     }
+}
+
+/// Helper macros / type casts that are noise in flow output
+fn is_flow_noise(name: &str) -> bool {
+    matches!(
+        name,
+        "IS_ERR" | "IS_ERR_OR_NULL" | "PTR_ERR" | "ERR_PTR" | "ERR_CAST"
+            | "likely" | "unlikely" | "__builtin_expect"
+            | "BUG" | "BUG_ON" | "WARN" | "WARN_ON" | "WARN_ONCE"
+            | "BUILD_BUG_ON" | "BUILD_BUG_ON_ZERO"
+            | "container_of" | "offsetof" | "sizeof"
+            | "min" | "max" | "clamp"
+            | "ARRAY_SIZE" | "FIELD_SIZEOF"
+            | "ACCESS_ONCE" | "READ_ONCE" | "WRITE_ONCE"
+            | "smp_store_release" | "smp_load_acquire"
+            | "to_usb_device" | "to_usb_interface"
+            | "to_platform_device" | "to_pci_dev"
+            | "to_i2c_client" | "to_spi_device"
+    )
 }
 
 /// Build a reachability map for function calls using CFG

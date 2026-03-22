@@ -18,6 +18,7 @@ pub mod patterns;
 pub mod report;
 pub mod scenario;
 pub mod search;
+pub mod selftest;
 pub mod subsystem;
 #[path = "train/mod.rs"]
 pub mod train;
