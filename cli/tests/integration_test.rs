@@ -1205,3 +1205,42 @@ fn quality_directory_json() {
     assert!(obj.contains_key("per_file"), "should have per_file");
     assert!(obj.contains_key("files_analyzed"), "should have files_analyzed");
 }
+
+#[test]
+fn quality_budget_json() {
+    let fixtures_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
+    let output = flowsight()
+        .args(["-F", "json", "quality", fixtures_dir, "--budget", "60"])
+        .output()
+        .expect("failed to run quality --budget");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("budgeted quality JSON should be valid");
+    let obj = parsed.as_object().expect("should be object");
+    assert!(obj.contains_key("budget_seconds"), "should have budget_seconds");
+    assert!(obj.contains_key("elapsed_seconds"), "should have elapsed_seconds");
+    assert!(obj.contains_key("aggregate_aqs"), "should have aggregate_aqs");
+    assert!(obj.contains_key("coverage_pct"), "should have coverage_pct");
+    assert!(obj.contains_key("per_file"), "should have per_file");
+}
+
+#[test]
+fn bench_json() {
+    let fixtures_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
+    let output = flowsight()
+        .args(["-F", "json", "bench", fixtures_dir, "--budget", "60"])
+        .output()
+        .expect("failed to run bench");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("bench JSON should be valid");
+    let obj = parsed.as_object().expect("should be object");
+
+    let aqs = obj["aggregate_aqs"]["score"].as_f64().expect("score should be number");
+    assert!(aqs >= 0.0 && aqs <= 1.0, "AQS should be 0.0-1.0");
+    assert!(obj["files_total"].as_u64().unwrap() > 0, "should find files");
+}

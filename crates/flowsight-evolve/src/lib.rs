@@ -9,3 +9,4 @@
 //! - `aqs`: Analysis Quality Score — single scalar metric (0.0–1.0)
 
 pub mod aqs;
+pub mod budget;

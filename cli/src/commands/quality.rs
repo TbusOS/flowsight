@@ -7,7 +7,11 @@
 use anyhow::Result;
 use crossterm::style::{Color, Stylize};
 use flowsight_evolve::aqs::{aggregate_scores, AnalysisQualityScore};
+use flowsight_evolve::budget::{
+    self, BudgetConfig, BudgetReport, FilePriority,
+};
 use std::path::Path;
+use std::time::Duration;
 
 use crate::context::AnalysisContext;
 use crate::output::OutputFormat;
@@ -54,12 +58,83 @@ pub fn run(
     format: &OutputFormat,
     recursive: bool,
     pattern: &str,
+    budget_secs: Option<f64>,
 ) -> Result<()> {
     if path.is_dir() {
-        run_directory(path, format, recursive, pattern)
+        if let Some(secs) = budget_secs {
+            run_budgeted(path, format, recursive, pattern, secs)
+        } else {
+            run_directory(path, format, recursive, pattern)
+        }
     } else {
         run_file(path, format)
     }
+}
+
+/// Run budgeted analysis (fixed time budget, priority scheduling)
+fn run_budgeted(
+    dir: &Path,
+    format: &OutputFormat,
+    recursive: bool,
+    pattern: &str,
+    budget_secs: f64,
+) -> Result<()> {
+    let files = budget::collect_c_files(dir, pattern, recursive);
+
+    if files.is_empty() {
+        println!("{}", "No matching files found.".with(C_WARN));
+        return Ok(());
+    }
+
+    let config = BudgetConfig {
+        time_limit: Duration::from_secs_f64(budget_secs),
+        priority: FilePriority::EntryFirst,
+    };
+
+    let report = budget::run_budgeted_analysis(&files, dir, &config);
+
+    match format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        _ => {
+            print_budget_report(&report);
+        }
+    }
+
+    Ok(())
+}
+
+/// Bench command: fixed-budget baseline benchmark
+pub fn run_bench(
+    dir: &Path,
+    format: &OutputFormat,
+    budget_secs: f64,
+    pattern: &str,
+) -> Result<()> {
+    let files = budget::collect_c_files(dir, pattern, true);
+
+    if files.is_empty() {
+        anyhow::bail!("No files matching '{}' in '{}'", pattern, dir.display());
+    }
+
+    let config = BudgetConfig {
+        time_limit: Duration::from_secs_f64(budget_secs),
+        priority: FilePriority::EntryFirst,
+    };
+
+    let report = budget::run_budgeted_analysis(&files, dir, &config);
+
+    match format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        _ => {
+            print_budget_report(&report);
+        }
+    }
+
+    Ok(())
 }
 
 /// Compute AQS for a single file
@@ -367,6 +442,140 @@ fn print_directory_report(
         aggregate.stats.functions_analyzed.to_string().with(C_TITLE),
         aggregate.stats.total_calls.to_string().with(C_TITLE),
         scores.len().to_string().with(C_TITLE),
+    );
+    println!();
+}
+
+fn print_budget_report(report: &BudgetReport) {
+    println!();
+    println!(
+        "  {} {}",
+        "Budgeted AQS Report".with(C_TITLE),
+        report.directory.as_str().with(C_FILE),
+    );
+    println!("  {}", "─".repeat(60).with(C_DIM));
+    println!();
+
+    // Budget summary
+    println!(
+        "  {} {:.1}s / {:.1}s {}",
+        "Budget:".with(C_DIM),
+        report.elapsed_seconds,
+        report.budget_seconds,
+        format!(
+            "({}/{} files, {:.0}% coverage)",
+            report.files_analyzed, report.files_total, report.coverage_pct
+        )
+        .with(C_DIM),
+    );
+    if report.files_skipped > 0 {
+        println!(
+            "  {} {} skipped, {} failed",
+            "       ".with(C_DIM),
+            report.files_skipped.to_string().with(C_WARN),
+            report.files_failed.to_string().with(C_ERR),
+        );
+    }
+    println!();
+
+    // Aggregate AQS
+    let color = score_color(report.aggregate_aqs.score);
+    println!(
+        "  {}  {} {}",
+        score_bar(report.aggregate_aqs.score, 20).with(color),
+        format!("{:.2}", report.aggregate_aqs.score).with(C_SCORE),
+        format!("({}%)", (report.aggregate_aqs.score * 100.0).round() as u32).with(C_DIM),
+    );
+    println!();
+
+    // Dimensions
+    println!("  {}", "Aggregate Dimensions".with(C_TITLE));
+    let aqs = &report.aggregate_aqs;
+    print_dimension(
+        "Direct call resolution",
+        aqs.dimensions.direct_call_resolution,
+        0.30,
+        &aqs.stats.direct_calls_resolved.to_string(),
+        &aqs.stats.total_calls.to_string(),
+    );
+    print_dimension(
+        "Indirect call resolution",
+        aqs.dimensions.indirect_call_resolution,
+        0.20,
+        &aqs.stats.indirect_calls_resolved.to_string(),
+        &aqs.stats.indirect_calls_total.to_string(),
+    );
+    print_dimension(
+        "Knowledge base coverage",
+        aqs.dimensions.kb_coverage,
+        0.20,
+        &aqs.stats.kernel_api_covered.to_string(),
+        &aqs.stats.kernel_api_calls.to_string(),
+    );
+    print_dimension(
+        "Error path coverage",
+        aqs.dimensions.error_path_coverage,
+        0.15,
+        &aqs.stats.error_paths_detected.to_string(),
+        &aqs.stats.functions_with_error_potential.to_string(),
+    );
+    print_dimension(
+        "Cross-file resolution",
+        aqs.dimensions.cross_file_resolution,
+        0.15,
+        &aqs.stats.external_symbols_resolved.to_string(),
+        &aqs.stats.external_symbols_total.to_string(),
+    );
+
+    // Per-file results with analysis level
+    println!();
+    println!("  {}", "Per-File Results".with(C_TITLE));
+
+    let mut sorted: Vec<_> = report.per_file.iter().collect();
+    sorted.sort_by(|a, b| {
+        let sa = a.aqs.as_ref().map(|q| q.score).unwrap_or(-1.0);
+        let sb = b.aqs.as_ref().map(|q| q.score).unwrap_or(-1.0);
+        sa.partial_cmp(&sb).unwrap()
+    });
+
+    for result in &sorted {
+        let fname = std::path::Path::new(&result.file)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        if let Some(ref aqs) = result.aqs {
+            let color = score_color(aqs.score);
+            let level_str = match result.level {
+                budget::AnalysisLevel::Full => "full",
+                budget::AnalysisLevel::Fast => "fast",
+                budget::AnalysisLevel::Degraded => "degraded",
+                budget::AnalysisLevel::Skipped => "skip",
+            };
+            println!(
+                "  {} {} {} {} {}",
+                score_bar(aqs.score, 8).with(color),
+                format!("{:.2}", aqs.score).with(color),
+                fname.with(C_FILE),
+                format!("[{}]", level_str).with(C_DIM),
+                format!("{}ms", result.elapsed_ms).with(C_DIM),
+            );
+        } else {
+            println!(
+                "  {}          {} {}",
+                "░░░░░░░░".with(C_DIM),
+                fname.with(C_FILE),
+                format!("[skipped]").with(C_DIM),
+            );
+        }
+    }
+
+    println!();
+    println!(
+        "  {} {} functions, {} call edges",
+        "Total:".with(C_DIM),
+        aqs.stats.functions_analyzed.to_string().with(C_TITLE),
+        aqs.stats.total_calls.to_string().with(C_TITLE),
     );
     println!();
 }

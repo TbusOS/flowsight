@@ -479,6 +479,25 @@ enum Commands {
         /// File pattern for directory scan (default: "*.c")
         #[arg(short, long, default_value = "*.c")]
         pattern: String,
+
+        /// Fixed time budget in seconds (enables priority scheduling)
+        #[arg(long, value_name = "SECONDS")]
+        budget: Option<f64>,
+    },
+
+    /// Fixed-budget benchmark (always recursive, entry-priority scheduling)
+    Bench {
+        /// Directory to benchmark
+        #[arg(value_name = "DIR")]
+        dir: PathBuf,
+
+        /// Time budget in seconds (default: 30)
+        #[arg(short, long, default_value = "30")]
+        budget: f64,
+
+        /// File pattern (default: "*.c")
+        #[arg(short, long, default_value = "*.c")]
+        pattern: String,
     },
 
     /// Run quality self-test and score (0-100)
@@ -1053,8 +1072,11 @@ fn main() -> Result<()> {
             let llm_cfg = cfg.llm.clone().unwrap_or_else(flowsight_llm::config::LlmConfig::with_defaults);
             commands::ask::run_test_provider(&llm_cfg, provider.as_deref())?;
         }
-        Commands::Quality { path, recursive, pattern } => {
-            commands::quality::run(&path, &cli.format, recursive, &pattern)?;
+        Commands::Quality { path, recursive, pattern, budget } => {
+            commands::quality::run(&path, &cli.format, recursive, &pattern, budget)?;
+        }
+        Commands::Bench { dir, budget, pattern } => {
+            commands::quality::run_bench(&dir, &cli.format, budget, &pattern)?;
         }
         Commands::SelfTest { kernel_path } => {
             commands::selftest::run(kernel_path.as_deref())?;
