@@ -1124,3 +1124,84 @@ fn cfg_nonexistent_function_fails() {
         "cfg with nonexistent function should fail"
     );
 }
+
+// ---------------------------------------------------------------------------
+// quality (AQS) command
+// ---------------------------------------------------------------------------
+
+#[test]
+fn quality_single_file_text() {
+    let output = flowsight()
+        .args(["quality", test_driver()])
+        .output()
+        .expect("failed to run quality");
+
+    assert!(output.status.success());
+    let stdout = strip_ansi(&String::from_utf8_lossy(&output.stdout));
+    assert!(
+        stdout.contains("Analysis Quality Score"),
+        "should show AQS header"
+    );
+    assert!(
+        stdout.contains("Direct call resolution"),
+        "should show dimension breakdown"
+    );
+}
+
+#[test]
+fn quality_single_file_json() {
+    let output = flowsight()
+        .args(["-F", "json", "quality", test_driver()])
+        .output()
+        .expect("failed to run quality -F json");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("quality JSON should be valid");
+    let obj = parsed.as_object().expect("quality JSON should be object");
+    assert!(obj.contains_key("score"), "should have score field");
+    assert!(obj.contains_key("dimensions"), "should have dimensions");
+    assert!(obj.contains_key("stats"), "should have stats");
+
+    let score = obj["score"].as_f64().expect("score should be a number");
+    assert!(score >= 0.0 && score <= 1.0, "score should be 0.0-1.0");
+}
+
+#[test]
+fn quality_directory_text() {
+    let fixtures_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
+    let output = flowsight()
+        .args(["quality", fixtures_dir])
+        .output()
+        .expect("failed to run quality on directory");
+
+    assert!(output.status.success());
+    let stdout = strip_ansi(&String::from_utf8_lossy(&output.stdout));
+    assert!(
+        stdout.contains("Directory AQS Report"),
+        "should show directory report header"
+    );
+    assert!(
+        stdout.contains("Per-File Scores"),
+        "should show per-file breakdown"
+    );
+}
+
+#[test]
+fn quality_directory_json() {
+    let fixtures_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
+    let output = flowsight()
+        .args(["-F", "json", "quality", fixtures_dir])
+        .output()
+        .expect("failed to run quality -F json on directory");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("quality JSON should be valid");
+    let obj = parsed.as_object().expect("should be object");
+    assert!(obj.contains_key("aggregate"), "should have aggregate");
+    assert!(obj.contains_key("per_file"), "should have per_file");
+    assert!(obj.contains_key("files_analyzed"), "should have files_analyzed");
+}

@@ -14,6 +14,7 @@ members = [
     "crates/flowsight-llvm",
     "crates/flowsight-ai",
     "crates/flowsight-learning",
+    "crates/flowsight-evolve",
     "cli",
     "app/src-tauri",
 ]
@@ -42,6 +43,7 @@ flowsight-llm = { path = "crates/flowsight-llm" }
 flowsight-llvm = { path = "crates/flowsight-llvm" }
 flowsight-ai = { path = "crates/flowsight-ai" }
 flowsight-learning = { path = "crates/flowsight-learning" }
+flowsight-evolve = { path = "crates/flowsight-evolve" }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }

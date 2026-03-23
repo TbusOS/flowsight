@@ -466,6 +466,21 @@ enum Commands {
         provider: Option<String>,
     },
 
+    /// Compute Analysis Quality Score (AQS) for file or directory
+    Quality {
+        /// Source file or directory
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Recursively analyze directory
+        #[arg(short, long)]
+        recursive: bool,
+
+        /// File pattern for directory scan (default: "*.c")
+        #[arg(short, long, default_value = "*.c")]
+        pattern: String,
+    },
+
     /// Run quality self-test and score (0-100)
     SelfTest {
         /// Path to Linux kernel source for real-code testing
@@ -1037,6 +1052,9 @@ fn main() -> Result<()> {
         Commands::LlmTest { provider } => {
             let llm_cfg = cfg.llm.clone().unwrap_or_else(flowsight_llm::config::LlmConfig::with_defaults);
             commands::ask::run_test_provider(&llm_cfg, provider.as_deref())?;
+        }
+        Commands::Quality { path, recursive, pattern } => {
+            commands::quality::run(&path, &cli.format, recursive, &pattern)?;
         }
         Commands::SelfTest { kernel_path } => {
             commands::selftest::run(kernel_path.as_deref())?;

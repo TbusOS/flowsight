@@ -1,0 +1,20 @@
+[package]
+name = "flowsight-evolve"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Autonomous analysis evolution engine for FlowSight — AQS quality metric, budget scheduling, KB self-evolution"
+
+[dependencies]
+flowsight-core = { workspace = true }
+flowsight-analysis = { workspace = true }
+flowsight-knowledge = { workspace = true }
+flowsight-cfg = { workspace = true }
+flowsight-parser = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"

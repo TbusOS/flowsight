@@ -15,6 +15,7 @@ pub mod index;
 pub mod kb;
 pub mod path;
 pub mod patterns;
+pub mod quality;
 pub mod report;
 pub mod scenario;
 pub mod search;

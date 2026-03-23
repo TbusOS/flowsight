@@ -26,6 +26,7 @@ flowsight-analysis = { workspace = true }
 flowsight-knowledge = { workspace = true }
 flowsight-index = { workspace = true }
 flowsight-query = { workspace = true }
+flowsight-evolve = { workspace = true }
 
 # CLI framework
 clap = { workspace = true }
