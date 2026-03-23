@@ -109,7 +109,7 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 - [x] SSE streaming output (default) + --no-stream blocking mode
 - [x] `[llm]` section in `.flowsight.toml` for provider configuration
 - [x] REPL `ask` and `explain` commands with --provider flag
-- [ ] `flowsight review <file>` — AI code review
+- [x] `flowsight review <file> [function]` — AI code review with CFG + AQS context
 - [ ] Smart context builder with PageRank ranking
 - [ ] MCP server mode (optional)
 
