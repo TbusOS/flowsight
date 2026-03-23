@@ -13,13 +13,14 @@
 2. [当前架构 (v0.3.0)](#2-当前架构-v030)
 3. [问题诊断：现有方案的根本缺陷](#3-问题诊断现有方案的根本缺陷)
 4. [业界调研：值得借鉴的项目与方法](#4-业界调研值得借鉴的项目与方法)
-5. [技术路线图 (v0.4.0 — v0.7.0)](#5-技术路线图-v040--v070)
+5. [技术路线图 (v0.4.0 — v0.8.0)](#5-技术路线图-v040--v080)
 6. [Phase 1: CFG + 错误路径 + 宏语义 (v0.4.0)](#6-phase-1-cfg--错误路径--宏语义-v040)
 7. [Phase 2: CPG + 跨文件智能 (v0.5.0)](#7-phase-2-cpg--跨文件智能-v050)
 8. [Phase 3: LLM 集成层 (v0.6.0)](#8-phase-3-llm-集成层-v060)
 9. [Phase 4: 语言扩展 + DPO 闭环 (v0.7.0)](#9-phase-4-语言扩展--dpo-闭环-v070)
-10. [开发规范与约束](#10-开发规范与约束)
-11. [附录](#11-附录)
+10. [Phase 5: 自主分析进化 (v0.8.0)](#10-phase-5-自主分析进化-v080--autoresearch-pattern)
+11. [开发规范与约束](#11-开发规范与约束)
+12. [附录](#12-附录)
 
 ---
 
@@ -1145,9 +1146,279 @@ Phase 1-2 完成后，训练数据质量显著提升：
 
 ---
 
-## 10. 开发规范与约束
+## 10. Phase 5: 自主分析进化 (v0.8.0) — AutoResearch Pattern
 
-### 10.1 技术约束
+> **灵感来源**: Karpathy autoresearch — 固定预算 + 单一标量 + keep/discard 循环
+>
+> **核心理念**: 将分析改进从"人工审计"转变为"约束驱动的自动化反馈循环"
+
+### 10.1 设计哲学
+
+autoresearch 的核心洞察：把研究过程结构化为**确定性反馈循环**：
+
+```
+人类编写策略 (.flowsight-strategy.md)
+    ↓
+系统生成假设 (候选知识库条目 / 分析参数调整)
+    ↓
+固定预算实验 (分析 arm/mach-imx, 限时 30s)
+    ↓
+评估单一指标 (AQS — Analysis Quality Score)
+    ↓
+决策: AQS 提升 → keep (git commit) / 否则 → discard (git reset)
+    ↓
+循环 → (回到步骤 2)
+```
+
+与 autoresearch 的类比：
+
+| autoresearch | FlowSight v0.8.0 |
+|-------------|------------------|
+| `prepare.py` (不可变) | 分析引擎 crates/* (不可变层) |
+| `train.py` (Agent 改) | `knowledge/*.yaml` (可变层) |
+| `program.md` (人改) | `.flowsight-strategy.md` (策略层) |
+| `val_bpb` (标量指标) | `AQS` (分析质量分) |
+| 5 分钟训练预算 | 30 秒分析预算 |
+| keep/discard 循环 | 同样的 keep/discard 循环 |
+
+### 10.2 Analysis Quality Score (AQS)
+
+单一标量指标，0.0 — 1.0：
+
+```rust
+pub struct AnalysisQualityScore {
+    /// 最终分数 (加权平均)
+    pub score: f64,
+    /// 各维度明细
+    pub dimensions: AqsDimensions,
+}
+
+pub struct AqsDimensions {
+    /// 直接调用解析成功率 (已解析 / 总调用数)
+    pub direct_call_resolution: f64,     // 权重 0.30
+    /// 间接调用识别率 (函数指针/回调成功解析比例)
+    pub indirect_call_resolution: f64,   // 权重 0.20
+    /// 知识库命中率 (调用到的内核 API 被知识库覆盖的比例)
+    pub kb_coverage: f64,                // 权重 0.20
+    /// 错误路径覆盖率 (识别到的 goto err / return -EXXX 路径比例)
+    pub error_path_coverage: f64,        // 权重 0.15
+    /// 跨文件解析率 (外部符号在索引中找到的比例)
+    pub cross_file_resolution: f64,      // 权重 0.15
+}
+
+impl AnalysisQualityScore {
+    pub fn compute(dims: &AqsDimensions) -> f64 {
+        dims.direct_call_resolution * 0.30
+        + dims.indirect_call_resolution * 0.20
+        + dims.kb_coverage * 0.20
+        + dims.error_path_coverage * 0.15
+        + dims.cross_file_resolution * 0.15
+    }
+}
+```
+
+**为什么用单一标量？** 类比 autoresearch 的 `val_bpb`——多维度指标会让自动化 keep/discard 决策变得模糊。加权合并为单一标量，让循环可以简单地比较 `aqs_new > aqs_old`。
+
+### 10.3 分析预算系统
+
+```rust
+pub struct AnalysisBudget {
+    /// 时间预算 (wall clock)
+    pub time_limit: Duration,
+    /// 文件优先级排序策略
+    pub priority: FilePriority,
+}
+
+pub enum FilePriority {
+    /// 入口函数优先 (probe, init, open, ioctl)
+    EntryFirst,
+    /// 修改频率优先 (git log --shortstat)
+    RecentlyChanged,
+    /// 文件大小优先 (大文件先分析，信息密度高)
+    LargestFirst,
+    /// 自定义 (按 glob pattern 指定优先级)
+    Custom(Vec<(String, u32)>),
+}
+```
+
+**调度算法**：
+
+```
+1. 收集目录下所有 .c/.h 文件
+2. 按 FilePriority 排序
+3. 启动计时器
+4. 逐文件分析:
+   a. 预估单文件耗时 (基于行数 + 函数数)
+   b. 如果 预估时间 > 剩余预算: 跳到降级模式
+   c. 正常分析 → 累积 AQS
+5. 降级模式: 仅提取函数签名 + 直接调用列表 (快速但低 AQS)
+6. 输出: AQS + 覆盖率报告
+```
+
+**固定预算的价值**：不同目录、不同时间的分析结果直接可比（类比 autoresearch 的 5 分钟训练预算）。
+
+### 10.4 知识库自进化循环
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  KB Evolution Loop                                          │
+│                                                             │
+│  .flowsight-strategy.md (人类策略)                          │
+│       │                                                     │
+│       ▼                                                     │
+│  ┌─── 发现缺失 ◄─────────────────────────────────────────┐ │
+│  │    分析内核代码，找出知识库未覆盖的 API                 │ │
+│  │         │                                               │ │
+│  │         ▼                                               │ │
+│  │    生成候选 YAML                                        │ │
+│  │    LLM 根据函数签名 + 上下文生成知识条目               │ │
+│  │         │                                               │ │
+│  │         ▼                                               │ │
+│  │    固定预算验证                                         │ │
+│  │    用候选条目分析 arm/mach-imx, 计算 AQS               │ │
+│  │         │                                               │ │
+│  │    ┌────┴────┐                                          │ │
+│  │    ▼         ▼                                          │ │
+│  │  AQS ↑    AQS ↓/=                                      │ │
+│  │  keep      discard                                      │ │
+│  │  git commit git reset                                   │ │
+│  │    │                                                    │ │
+│  │    ▼                                                    │ │
+│  │  记录到 evolution.tsv                                   │ │
+│  │    │                                                    │ │
+│  └────┴────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**evolution.tsv 格式**（类比 autoresearch 的 results.tsv）：
+
+```tsv
+round	commit	aqs_before	aqs_after	delta	status	description
+1	a1b2c3d	0.72	0.74	+0.02	keep	added devm_clk_get to drivers/clk framework
+2	(none)	0.74	0.73	-0.01	discard	attempted platform_bus semantic expansion
+3	e4f5g6h	0.74	0.77	+0.03	keep	added USB gadget ops table resolution
+```
+
+### 10.5 策略文件 (.flowsight-strategy.md)
+
+类比 autoresearch 的 `program.md`——人类用自然语言描述进化策略，系统按策略执行：
+
+```markdown
+# FlowSight KB Evolution Strategy
+
+## 目标
+提升 arm/mach-imx 目录的分析质量分 (AQS) 到 0.85+
+
+## 优先级
+1. 先补全 clk/regulator/pinctrl 子系统的 ops 表
+2. 然后处理 DMA/IRQ 相关的异步回调模式
+3. 最后补全 device model 生命周期函数
+
+## 约束
+- 每个候选条目不超过 30 行 YAML
+- 只添加在 arm/mach-imx 中实际被调用的 API
+- 不修改已有的知识库条目（只新增）
+
+## 验证基准
+- 基线目录: /Users/sky/linux-kernel/linux/arch/arm/mach-imx/
+- 预算: 30 秒
+- 指标: AQS (加权分析质量分)
+```
+
+### 10.6 分析降级策略
+
+```rust
+pub enum AnalysisLevel {
+    /// 完整分析: CFG + CPG + 知识库 + 跨文件
+    Full,
+    /// 标准分析: CFG + 知识库 (无 CPG)
+    Standard,
+    /// 快速分析: 仅调用列表 + 知识库查表
+    Fast,
+    /// 降级分析: 仅函数签名 + 正则提取调用
+    Degraded,
+}
+
+/// 降级决策逻辑
+fn select_level(file: &Path, remaining_budget: Duration) -> AnalysisLevel {
+    let estimated = estimate_analysis_time(file);
+    match () {
+        _ if estimated * 1.0 < remaining_budget => AnalysisLevel::Full,
+        _ if estimated * 0.5 < remaining_budget => AnalysisLevel::Standard,
+        _ if estimated * 0.1 < remaining_budget => AnalysisLevel::Fast,
+        _ => AnalysisLevel::Degraded,
+    }
+}
+```
+
+**错误处理哲学**（借鉴 autoresearch 的"crash = 正常信息"）：
+
+| 错误类型 | 处理方式 | 记录 |
+|---------|---------|------|
+| Tree-sitter 解析失败 | 降级到正则提取 | `level: Degraded, reason: parse_error` |
+| 函数指针无法解析 | 标记 `Unknown` 继续 | `indirect_calls: 5 resolved, 2 unknown` |
+| 跨文件符号未索引 | 标注 `[unindexed]` | `cross_file: 12 resolved, 3 unindexed` |
+| OOM / 栈溢出 | 记录 AQS=0, 跳过 | `status: oom, aqs: 0.0` |
+| 超时 | 输出已完成部分 | `status: timeout, files: 42/100` |
+
+### 10.7 新增命令
+
+```bash
+# 分析质量
+flowsight quality <file|dir>              # 计算 AQS + 各维度明细
+flowsight quality --baseline <dir>        # 建立基线
+
+# 预算分析
+flowsight analyze <dir> -r --budget 30s   # 固定预算分析
+flowsight bench <dir>                     # 基准测试
+
+# 知识库进化
+flowsight kb evolve <dir>                 # 单轮进化
+flowsight kb evolve <dir> --rounds 10     # 多轮自主进化
+flowsight kb evolve --log                 # 查看进化日志
+flowsight kb evolve --strategy <file>     # 指定策略文件
+
+# 实验跟踪
+flowsight experiment start <name>         # 创建实验
+flowsight experiment run                  # 执行 keep/discard 循环
+flowsight experiment log                  # 查看历史
+flowsight experiment best                 # 最佳配置
+```
+
+### 10.8 新增 Crate
+
+```
+flowsight-evolve/
+├── src/
+│   ├── lib.rs           # 进化循环引擎
+│   ├── aqs.rs           # AQS 计算
+│   ├── budget.rs        # 预算调度器
+│   ├── degradation.rs   # 降级策略
+│   ├── candidate.rs     # 候选条目生成 (调用 flowsight-llm)
+│   ├── experiment.rs    # 实验跟踪
+│   └── strategy.rs      # 策略文件解析
+└── tests/
+```
+
+### 10.9 与现有系统的集成
+
+```
+flowsight-evolve 依赖:
+├── flowsight-analysis    # 执行分析
+├── flowsight-knowledge   # 读写知识库
+├── flowsight-llm         # 生成候选条目
+├── flowsight-cfg         # CFG 分析 (AQS 维度)
+├── flowsight-cpg         # CPG 分析 (AQS 维度)
+└── flowsight-index       # 跨文件索引 (AQS 维度)
+```
+
+**不修改已有 crate 的接口**——flowsight-evolve 是纯粹的上层编排层，复用现有分析能力。
+
+---
+
+## 11. 开发规范与约束
+
+### 11.1 技术约束
 
 - **语言**: Rust，`#![forbid(unsafe_code)]`
 - **解析器**: 继续使用 tree-sitter（不切换到 libclang/LLVM）
@@ -1157,7 +1428,7 @@ Phase 1-2 完成后，训练数据质量显著提升：
 - **测试**: 使用真实 Linux 内核代码 (`/Users/sky/linux-kernel/linux`)
 - **CI**: GitHub Actions，4 平台交叉编译
 
-### 10.2 代码风格
+### 11.2 代码风格
 
 - 文件 < 800 行，函数 < 50 行
 - 每个命令独立文件
@@ -1165,14 +1436,14 @@ Phase 1-2 完成后，训练数据质量显著提升：
 - 所有公开 API 有文档注释
 - `cargo clippy` 和 `cargo fmt` 必须通过
 
-### 10.3 测试要求
+### 11.3 测试要求
 
 - 每个新 crate 需要单元测试
 - CLI 命令需要集成测试（在 `cli/tests/`）
 - 使用真实内核文件作为测试夹具
 - 优先测试 ARM32 平台代码 (`arch/arm/mach-imx/`)
 
-### 10.4 配色规范
+### 11.4 配色规范
 
 CLI 终端输出使用低饱和度色板，禁止高亮 Cyan/Green/Blue/Yellow：
 
@@ -1189,7 +1460,7 @@ CLI 终端输出使用低饱和度色板，禁止高亮 Cyan/Green/Blue/Yellow�
 
 ---
 
-## 11. 附录
+## 12. 附录
 
 ### A. 参考文献
 
@@ -1200,6 +1471,7 @@ CLI 终端输出使用低饱和度色板，禁止高亮 Cyan/Green/Blue/Yellow�
 - **Coccinelle 10 Years** (USENIX ATC'18): [usenix.org/system/files/conference/atc18/atc18-lawall.pdf](https://www.usenix.org/system/files/conference/atc18/atc18-lawall.pdf)
 
 #### 开源项目
+- **autoresearch** (Karpathy, 自主 AI 研究循环): [github.com/karpathy/autoresearch](https://github.com/karpathy/autoresearch) — v0.8.0 进化循环的直接灵感来源
 - **tree-climber** (CFG from tree-sitter): [github.com/bstee615/tree-climber](https://github.com/bstee615/tree-climber)
 - **stack-graphs** (GitHub, Rust): [github.com/github/stack-graphs](https://github.com/github/stack-graphs)
 - **weggli** (Google P0, Rust): [github.com/weggli-rs/weggli](https://github.com/weggli-rs/weggli)

@@ -33,6 +33,7 @@ flowsight/
 | Phase 6 | CPG + 数据流 (v0.5.0) | ✅ done (2026-03-22) |
 | Phase 7 | LLM 集成 + 自然语言 + 本地模型 (v0.6.0) | ✅ done (2026-03-21) |
 | Phase 8 | C++/Rust 支持 + DPO 闭环 (v0.7.0) | 计划中 |
+| Phase 9 | 自主分析进化 — AutoResearch Pattern (v0.8.0) | 计划中 |
 
 > 详见 [ROADMAP.md](ROADMAP.md)
 

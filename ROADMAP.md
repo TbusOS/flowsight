@@ -125,6 +125,46 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 - [ ] Training data quality scoring and filtering
 - [ ] `flowsight watch` — file system monitoring with incremental re-analysis
 
+### v0.8.0 — Autonomous Analysis Evolution (AutoResearch Pattern)
+
+> 自主分析进化系统。借鉴 Karpathy autoresearch 的约束驱动自动化范式：固定预算、单一标量指标、keep/discard 循环。
+
+#### 分析预算系统
+
+- [ ] `flowsight analyze <dir> -r --budget <duration>` — 固定时间预算分析
+- [ ] 优先级调度：入口函数 (probe/init/open) > 回调函数 > 工具函数
+- [ ] 预算耗尽时输出覆盖率报告（已分析 X/Y 文件，Z% 覆盖）
+- [ ] `flowsight bench <dir>` — 固定预算基准测试，输出可比指标
+
+#### 分析质量标量 (Analysis Quality Score, AQS)
+
+- [ ] 单一标量指标 `aqs`（0.0 — 1.0），衡量分析深度和准确度
+- [ ] 维度加权：调用解析率 × 0.3 + 间接调用识别率 × 0.2 + 知识库命中率 × 0.2 + 错误路径覆盖率 × 0.15 + 跨文件解析率 × 0.15
+- [ ] `flowsight quality <file|dir>` — 输出 AQS 分数 + 各维度明细
+- [ ] `flowsight quality --baseline` — 对 arm/mach-imx 建立基线 AQS
+
+#### 知识库自进化循环 (KB Evolution Loop)
+
+- [ ] `flowsight kb evolve <dir>` — 自动发现缺失的内核 API 并生成候选 YAML
+- [ ] LLM 生成候选条目 → 真实内核代码验证 → AQS 提升则 keep，否则 discard
+- [ ] 进化日志：TSV 格式记录每次迭代（commit, aqs_before, aqs_after, status, description）
+- [ ] `flowsight kb evolve --rounds <N>` — 运行 N 轮自主进化
+- [ ] 策略文件 `.flowsight-strategy.md` — 人类编写的进化策略指引（类似 autoresearch 的 program.md）
+
+#### 分析降级与容错
+
+- [ ] 解析失败时正则回退（函数签名提取）
+- [ ] 间接调用解析失败标记为 `Unknown { reason, confidence: 0.0 }` 继续分析
+- [ ] 跨文件索引缺失时标注 `[unindexed]` 而非报错
+- [ ] OOM/超时视为信息（记录 AQS=0，继续下一个文件）
+
+#### 实验跟踪
+
+- [ ] `flowsight experiment start <name>` — 创建实验分支 + 基线快照
+- [ ] `flowsight experiment run` — 执行修改 → 测量 AQS → keep/discard
+- [ ] `flowsight experiment log` — 查看实验历史（TSV 格式）
+- [ ] `flowsight experiment best` — 输出最佳配置
+
 ### v1.0.0 — Stable Release
 
 - [ ] Stable public API for all commands
