@@ -9,6 +9,7 @@ pub mod cfg;
 pub mod config;
 pub mod dataflow;
 pub mod diff;
+pub mod experiment;
 pub mod flow;
 pub mod graph;
 pub mod index;

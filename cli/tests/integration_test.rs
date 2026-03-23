@@ -1227,6 +1227,35 @@ fn quality_budget_json() {
 }
 
 #[test]
+fn experiment_list_empty() {
+    let output = flowsight()
+        .args(["experiment", "list"])
+        .output()
+        .expect("failed to run experiment list");
+
+    assert!(output.status.success());
+    let stdout = strip_ansi(&String::from_utf8_lossy(&output.stdout));
+    assert!(
+        stdout.contains("No experiments found"),
+        "should show empty message"
+    );
+}
+
+#[test]
+fn experiment_list_json() {
+    let output = flowsight()
+        .args(["-F", "json", "experiment", "list"])
+        .output()
+        .expect("failed to run experiment list -F json");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("experiment list JSON should be valid");
+    assert!(parsed.as_array().is_some(), "should be an array");
+}
+
+#[test]
 fn bench_json() {
     let fixtures_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
     let output = flowsight()

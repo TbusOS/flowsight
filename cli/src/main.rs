@@ -500,6 +500,10 @@ enum Commands {
         pattern: String,
     },
 
+    /// Experiment tracking for the keep/discard evolution loop
+    #[command(subcommand)]
+    Experiment(ExperimentCommands),
+
     /// Run quality self-test and score (0-100)
     SelfTest {
         /// Path to Linux kernel source for real-code testing
@@ -671,6 +675,41 @@ enum ScenarioCommands {
     /// Create a custom scenario template file
     Create {
         /// Template name
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ExperimentCommands {
+    /// List all experiments
+    List,
+
+    /// Start a new experiment (measures baseline AQS)
+    Start {
+        /// Experiment name
+        #[arg(value_name = "NAME")]
+        name: String,
+
+        /// Target directory for AQS measurement
+        #[arg(value_name = "DIR")]
+        dir: String,
+
+        /// Budget in seconds for each AQS measurement (default: 30)
+        #[arg(short, long, default_value = "30")]
+        budget: f64,
+    },
+
+    /// Show experiment evolution log
+    Log {
+        /// Experiment name
+        #[arg(value_name = "NAME")]
+        name: String,
+    },
+
+    /// Show best result from an experiment
+    Best {
+        /// Experiment name
         #[arg(value_name = "NAME")]
         name: String,
     },
@@ -1077,6 +1116,20 @@ fn main() -> Result<()> {
         }
         Commands::Bench { dir, budget, pattern } => {
             commands::quality::run_bench(&dir, &cli.format, budget, &pattern)?;
+        }
+        Commands::Experiment(exp_cmd) => match exp_cmd {
+            ExperimentCommands::List => {
+                commands::experiment::run_list(&cli.format)?;
+            }
+            ExperimentCommands::Start { name, dir, budget } => {
+                commands::experiment::run_start(&name, &dir, budget, &cli.format)?;
+            }
+            ExperimentCommands::Log { name } => {
+                commands::experiment::run_log(&name, &cli.format)?;
+            }
+            ExperimentCommands::Best { name } => {
+                commands::experiment::run_best(&name, &cli.format)?;
+            }
         }
         Commands::SelfTest { kernel_path } => {
             commands::selftest::run(kernel_path.as_deref())?;
