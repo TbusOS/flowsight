@@ -131,17 +131,18 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 
 #### 分析预算系统
 
-- [ ] `flowsight analyze <dir> -r --budget <duration>` — 固定时间预算分析
-- [ ] 优先级调度：入口函数 (probe/init/open) > 回调函数 > 工具函数
-- [ ] 预算耗尽时输出覆盖率报告（已分析 X/Y 文件，Z% 覆盖）
-- [ ] `flowsight bench <dir>` — 固定预算基准测试，输出可比指标
+- [x] `flowsight quality <dir> --budget <seconds>` — 固定时间预算分析
+- [x] 优先级调度：入口函数 (probe/init/open) > 回调函数 > 工具函数
+- [x] 预算耗尽时输出覆盖率报告（已分析 X/Y 文件，Z% 覆盖）
+- [x] `flowsight bench <dir>` — 固定预算基准测试，输出可比指标
+- [x] 自适应降级：Full → Fast → Degraded → Skipped
 
 #### 分析质量标量 (Analysis Quality Score, AQS)
 
-- [ ] 单一标量指标 `aqs`（0.0 — 1.0），衡量分析深度和准确度
-- [ ] 维度加权：调用解析率 × 0.3 + 间接调用识别率 × 0.2 + 知识库命中率 × 0.2 + 错误路径覆盖率 × 0.15 + 跨文件解析率 × 0.15
-- [ ] `flowsight quality <file|dir>` — 输出 AQS 分数 + 各维度明细
-- [ ] `flowsight quality --baseline` — 对 arm/mach-imx 建立基线 AQS
+- [x] 单一标量指标 `aqs`（0.0 — 1.0），衡量分析深度和准确度
+- [x] 维度加权：调用解析率 × 0.3 + 间接调用识别率 × 0.2 + 知识库命中率 × 0.2 + 错误路径覆盖率 × 0.15 + 跨文件解析率 × 0.15
+- [x] `flowsight quality <file|dir>` — 输出 AQS 分数 + 各维度明细
+- [x] `flowsight quality --baseline` — 对 arm/mach-imx 建立基线 AQS
 
 #### 知识库自进化循环 (KB Evolution Loop)
 
@@ -153,17 +154,19 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 
 #### 分析降级与容错
 
-- [ ] 解析失败时正则回退（函数签名提取）
+- [x] 预算调度器中自动降级 (Full → Fast → Degraded → Skipped)
+- [x] 解析失败时跳过并记录（继续下一个文件）
+- [x] OOM/超时视为信息（记录 AQS=0，继续下一个文件）
 - [ ] 间接调用解析失败标记为 `Unknown { reason, confidence: 0.0 }` 继续分析
 - [ ] 跨文件索引缺失时标注 `[unindexed]` 而非报错
-- [ ] OOM/超时视为信息（记录 AQS=0，继续下一个文件）
 
 #### 实验跟踪
 
-- [ ] `flowsight experiment start <name>` — 创建实验分支 + 基线快照
-- [ ] `flowsight experiment run` — 执行修改 → 测量 AQS → keep/discard
-- [ ] `flowsight experiment log` — 查看实验历史（TSV 格式）
-- [ ] `flowsight experiment best` — 输出最佳配置
+- [x] `flowsight experiment start <name>` — 创建实验 + 基线 AQS 快照
+- [x] `flowsight experiment log` — 查看实验历史（TSV 格式）
+- [x] `flowsight experiment best` — 输出最佳配置
+- [x] `flowsight experiment list` — 列出所有实验
+- [ ] `flowsight experiment run` — 自动执行修改 → 测量 AQS → keep/discard
 
 ### v1.0.0 — Stable Release
 
