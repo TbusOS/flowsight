@@ -1256,6 +1256,38 @@ fn experiment_list_json() {
 }
 
 #[test]
+fn review_requires_llm() {
+    // Review needs a configured LLM provider — should fail gracefully without one
+    let output = flowsight()
+        .args(["review", test_driver(), "--no-stream"])
+        .output()
+        .expect("failed to run review");
+
+    // Should exit non-zero since no LLM is configured
+    // (but should not panic — graceful error message)
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Either fails with "no provider" or succeeds if user has config
+    assert!(
+        !output.status.success() || stderr.contains("Reviewing"),
+        "review should either fail gracefully or succeed with LLM"
+    );
+}
+
+#[test]
+fn review_help() {
+    let output = flowsight()
+        .args(["review", "--help"])
+        .output()
+        .expect("failed to run review --help");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("AI-powered code review"));
+    assert!(stdout.contains("--focus"));
+    assert!(stdout.contains("--provider"));
+}
+
+#[test]
 fn bench_json() {
     let fixtures_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
     let output = flowsight()

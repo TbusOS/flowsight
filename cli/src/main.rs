@@ -437,6 +437,29 @@ enum Commands {
         no_stream: bool,
     },
 
+    /// AI-powered code review (uses LLM + CFG + AQS context)
+    Review {
+        /// Source file to review
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Specific function to review (otherwise reviews entire file)
+        #[arg(value_name = "FUNCTION")]
+        function: Option<String>,
+
+        /// LLM provider
+        #[arg(long)]
+        provider: Option<String>,
+
+        /// Focus area: security, error-handling, performance, or all
+        #[arg(long, default_value = "all")]
+        focus: String,
+
+        /// Disable streaming
+        #[arg(long)]
+        no_stream: bool,
+    },
+
     /// AI-powered function explanation (uses LLM + CFG analysis context)
     Explain {
         /// Source file
@@ -1077,6 +1100,22 @@ fn main() -> Result<()> {
                 no_stream,
             };
             commands::ask::run(&query, &llm_cfg, &opts)?;
+        }
+        Commands::Review {
+            file,
+            function,
+            provider,
+            focus,
+            no_stream,
+        } => {
+            let llm_cfg = cfg.llm.clone().unwrap_or_else(flowsight_llm::config::LlmConfig::with_defaults);
+            let opts = commands::review::ReviewOptions {
+                provider,
+                function,
+                no_stream,
+                focus,
+            };
+            commands::review::run(&file, &llm_cfg, &opts)?;
         }
         Commands::Explain {
             file,

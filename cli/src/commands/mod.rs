@@ -18,6 +18,7 @@ pub mod path;
 pub mod patterns;
 pub mod quality;
 pub mod report;
+pub mod review;
 pub mod scenario;
 pub mod search;
 pub mod selftest;
