@@ -1256,6 +1256,25 @@ fn experiment_list_json() {
 }
 
 #[test]
+fn index_build_with_cfg() {
+    let fixtures_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
+    let tmp_db = std::env::temp_dir().join("flowsight-test-cfg-index.db");
+    let _ = std::fs::remove_file(&tmp_db);
+
+    let output = flowsight()
+        .args([
+            "index", "build", fixtures_dir,
+            "--db", tmp_db.to_str().unwrap(),
+            "--with-cfg",
+        ])
+        .output()
+        .expect("failed to run index build --with-cfg");
+
+    assert!(output.status.success(), "index build --with-cfg should succeed");
+    let _ = std::fs::remove_file(&tmp_db);
+}
+
+#[test]
 fn review_requires_llm() {
     // Review needs a configured LLM provider — should fail gracefully without one
     let output = flowsight()

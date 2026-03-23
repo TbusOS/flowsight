@@ -27,6 +27,7 @@ pub struct BuildOptions {
     pub db_path: Option<PathBuf>,
     pub parallel: Option<usize>,
     pub subsystem: bool,
+    pub with_cfg: bool,
 }
 
 /// Build (or rebuild) the cross-file index for a directory
@@ -89,10 +90,15 @@ fn index_files_parallel(
     let error_count = AtomicUsize::new(0);
 
     // Phase 1: Parse all files in parallel, collecting results in memory
+    let with_cfg = opts.with_cfg;
     let file_results: Vec<_> = files
         .par_iter()
         .map(|file_path| {
-            let result = parse_single_file(file_path, base_dir, opts.subsystem);
+            let result = if with_cfg {
+                parse_single_file_with_cfg(file_path, base_dir, opts.subsystem)
+            } else {
+                parse_single_file(file_path, base_dir, opts.subsystem)
+            };
             let current = indexed_count.fetch_add(1, Ordering::Relaxed) + 1;
             if current % 50 == 0 || current == total {
                 eprint_progress(
@@ -155,6 +161,17 @@ struct ParsedFileData {
     symbols: Vec<ParsedSymbol>,
 }
 
+/// CFG statistics for a function
+struct CfgStatsData {
+    block_count: usize,
+    edge_count: usize,
+    error_path_count: usize,
+    always_calls: usize,
+    conditional_calls: usize,
+    error_calls: usize,
+    max_depth: usize,
+}
+
 /// A parsed symbol with its calls
 struct ParsedSymbol {
     name: String,
@@ -165,6 +182,7 @@ struct ParsedSymbol {
     signature: Option<String>,
     calls: Vec<(String, u32, bool)>, // (callee_name, call_line, is_indirect)
     async_handler: Option<(String, bool)>, // (mechanism, can_sleep)
+    cfg_stats: Option<CfgStatsData>,
 }
 
 /// Parse a single file and extract index data (thread-safe, no DB access)
@@ -172,6 +190,24 @@ fn parse_single_file(
     file_path: &Path,
     base_dir: &Path,
     detect_subsys: bool,
+) -> Result<ParsedFileData> {
+    parse_single_file_inner(file_path, base_dir, detect_subsys, false)
+}
+
+/// Parse a single file, optionally including CFG analysis
+fn parse_single_file_with_cfg(
+    file_path: &Path,
+    base_dir: &Path,
+    detect_subsys: bool,
+) -> Result<ParsedFileData> {
+    parse_single_file_inner(file_path, base_dir, detect_subsys, true)
+}
+
+fn parse_single_file_inner(
+    file_path: &Path,
+    base_dir: &Path,
+    detect_subsys: bool,
+    with_cfg: bool,
 ) -> Result<ParsedFileData> {
     let content = std::fs::read(file_path)
         .with_context(|| format!("Failed to read {}", file_path.display()))?;
@@ -238,6 +274,30 @@ fn parse_single_file(
                 (mechanism, can_sleep)
             });
 
+        // Optionally build CFG for this function
+        let cfg_stats = if with_cfg && kind == "function" {
+            let source_str = String::from_utf8_lossy(&content);
+            let builder = flowsight_cfg::CfgBuilder::new();
+            match builder.build_function_cfg(&source_str, name) {
+                Ok(mut cfg) => {
+                    flowsight_cfg::ErrorPathDetector::analyze(&mut cfg);
+                    let stats = cfg.stats();
+                    Some(CfgStatsData {
+                        block_count: stats.block_count,
+                        edge_count: stats.edge_count,
+                        error_path_count: stats.error_path_count,
+                        always_calls: stats.always_calls,
+                        conditional_calls: stats.conditional_calls,
+                        error_calls: stats.error_calls,
+                        max_depth: 0, // TODO: compute from CFG
+                    })
+                }
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
         symbols.push(ParsedSymbol {
             name: name.clone(),
             kind: kind.to_string(),
@@ -247,6 +307,7 @@ fn parse_single_file(
             signature: Some(sig),
             calls,
             async_handler,
+            cfg_stats,
         });
     }
 
@@ -267,6 +328,7 @@ fn parse_single_file(
             signature: None,
             calls: Vec::new(),
             async_handler: None,
+            cfg_stats: None,
         });
     }
 
@@ -317,6 +379,19 @@ fn write_file_to_db(db: &IndexDb, data: &ParsedFileData) -> Result<()> {
 
         if let Some((mechanism, can_sleep)) = &sym.async_handler {
             db.insert_async_handler(sym_id, mechanism, *can_sleep)?;
+        }
+
+        if let Some(ref cfg) = sym.cfg_stats {
+            db.insert_cfg_stats(
+                sym_id,
+                cfg.block_count,
+                cfg.edge_count,
+                cfg.error_path_count,
+                cfg.always_calls,
+                cfg.conditional_calls,
+                cfg.error_calls,
+                cfg.max_depth,
+            )?;
         }
     }
 
@@ -649,6 +724,7 @@ pub fn run_update(dir: &Path, format: &OutputFormat, opts: &UpdateOptions) -> Re
         db_path: Some(db_path.clone()),
         parallel: opts.parallel,
         subsystem: opts.subsystem,
+        with_cfg: false, // update doesn't re-run CFG by default
     };
 
     let indexed = index_files_parallel(&db, &changed_files, &dir, &build_opts)?;

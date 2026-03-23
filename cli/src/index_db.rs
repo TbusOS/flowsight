@@ -136,6 +136,17 @@ impl IndexDb {
                 can_sleep BOOLEAN
             );
 
+            CREATE TABLE IF NOT EXISTS cfg_stats (
+                symbol_id INTEGER PRIMARY KEY REFERENCES symbols(id),
+                block_count INTEGER DEFAULT 0,
+                edge_count INTEGER DEFAULT 0,
+                error_path_count INTEGER DEFAULT 0,
+                always_calls INTEGER DEFAULT 0,
+                conditional_calls INTEGER DEFAULT 0,
+                error_calls INTEGER DEFAULT 0,
+                max_depth INTEGER DEFAULT 0
+            );
+
             CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
             CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind);
             CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
@@ -188,6 +199,11 @@ impl IndexDb {
 
     /// Remove all symbols and calls for a given file
     pub fn clear_file_symbols(&self, file_id: i64) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM cfg_stats WHERE symbol_id IN
+             (SELECT id FROM symbols WHERE file_id = ?1)",
+            params![file_id],
+        )?;
         self.conn.execute(
             "DELETE FROM async_handlers WHERE symbol_id IN
              (SELECT id FROM symbols WHERE file_id = ?1)",
@@ -251,6 +267,37 @@ impl IndexDb {
             "INSERT INTO async_handlers (symbol_id, mechanism, can_sleep)
              VALUES (?1, ?2, ?3)",
             params![symbol_id, mechanism, can_sleep],
+        )?;
+        Ok(())
+    }
+
+    /// Insert CFG statistics for a symbol
+    pub fn insert_cfg_stats(
+        &self,
+        symbol_id: i64,
+        block_count: usize,
+        edge_count: usize,
+        error_path_count: usize,
+        always_calls: usize,
+        conditional_calls: usize,
+        error_calls: usize,
+        max_depth: usize,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO cfg_stats
+             (symbol_id, block_count, edge_count, error_path_count,
+              always_calls, conditional_calls, error_calls, max_depth)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                symbol_id,
+                block_count as i64,
+                edge_count as i64,
+                error_path_count as i64,
+                always_calls as i64,
+                conditional_calls as i64,
+                error_calls as i64,
+                max_depth as i64,
+            ],
         )?;
         Ok(())
     }

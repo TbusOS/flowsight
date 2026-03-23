@@ -616,6 +616,10 @@ enum IndexCommands {
         /// Auto-detect kernel subsystem boundaries
         #[arg(long)]
         subsystem: bool,
+
+        /// Include CFG analysis (block count, error paths) per function
+        #[arg(long)]
+        with_cfg: bool,
     },
 
     /// Look up a symbol across all indexed files
@@ -946,12 +950,14 @@ fn main() -> Result<()> {
                 db,
                 parallel,
                 subsystem,
+                with_cfg,
             } => {
                 let opts = commands::index::BuildOptions {
                     pattern,
                     db_path: db,
                     parallel,
                     subsystem,
+                    with_cfg,
                 };
                 commands::index::run_build(&dir, &format, &opts)?;
             }
