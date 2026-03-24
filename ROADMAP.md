@@ -91,8 +91,8 @@ FlowSight is a static execution flow analyzer for Linux kernel code. This docume
 - [x] Backward/forward slicing
 - [x] `flowsight dataflow <file> <function>` — full data flow summary
 - [x] `flowsight dataflow --var <name>` — single variable tracking with chains
-- [ ] `flowsight index build --with-cfg` — index with CFG + data flow info
-- [ ] Performance optimization for 30,000+ file kernel trees
+- [x] `flowsight index build --with-cfg` — index with CFG stats per function
+- [x] Performance optimization: thread-local KB cache (30% faster), progress reporting
 
 ### v0.6.0 — LLM Integration Layer (2026-03-21)
 

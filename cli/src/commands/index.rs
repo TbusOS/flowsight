@@ -3,13 +3,15 @@
 //! The most important feature for kernel-scale analysis: indexes symbols,
 //! calls, and async handlers across thousands of source files into SQLite.
 
-use crate::context::AnalysisContext;
 use crate::index_db::{
     build_signature, detect_subsystem, hash_content, is_exported_fn, IndexDb, IndexDbStats,
 };
 use crate::output::OutputFormat;
 use anyhow::{Context, Result};
 use crossterm::style::{Color, Stylize};
+use flowsight_analysis::Analyzer;
+use flowsight_knowledge::KnowledgeBase;
+use flowsight_parser::get_parser;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -49,8 +51,10 @@ pub fn run_build(dir: &Path, format: &OutputFormat, opts: &BuildOptions) -> Resu
 
     eprint_progress("Scanning", &format!("{} files found", files.len()));
 
+    let build_start = std::time::Instant::now();
     let db = IndexDb::open(&db_path)?;
     let indexed = index_files_parallel(&db, &files, &dir, opts)?;
+    let build_elapsed = build_start.elapsed();
 
     match format {
         OutputFormat::Json => {
@@ -60,6 +64,14 @@ pub fn run_build(dir: &Path, format: &OutputFormat, opts: &BuildOptions) -> Resu
         _ => {
             let stats = db.stats()?;
             print_build_summary(&db_path, &stats, indexed);
+            let secs = build_elapsed.as_secs_f64();
+            let rate = if secs > 0.0 { indexed as f64 / secs } else { 0.0 };
+            eprintln!(
+                "  {} {:.1}s ({:.0} files/sec)",
+                "Time:".with(Color::DarkCyan),
+                secs,
+                rate
+            );
         }
     }
 
@@ -100,10 +112,12 @@ fn index_files_parallel(
                 parse_single_file(file_path, base_dir, opts.subsystem)
             };
             let current = indexed_count.fetch_add(1, Ordering::Relaxed) + 1;
-            if current % 50 == 0 || current == total {
+            let interval = if total > 1000 { 100 } else if total > 100 { 50 } else { 10 };
+            if current % interval == 0 || current == total {
+                let pct = current * 100 / total;
                 eprint_progress(
                     "Parsing",
-                    &format!("{}/{} files", current, total),
+                    &format!("{}/{} files ({}%)", current, total, pct),
                 );
             }
             (file_path.clone(), result)
@@ -234,8 +248,36 @@ fn parse_single_file_inner(
         None
     };
 
-    let mut ctx = AnalysisContext::new();
-    let analysis = ctx.analyze_file(file_path)?;
+    // Use thread-local KB to avoid re-loading 137 YAMLs per file
+    thread_local! {
+        static TL_KB: KnowledgeBase = KnowledgeBase::builtin();
+    }
+
+    let source_str = String::from_utf8_lossy(&content).to_string();
+    let parser = get_parser();
+    let filename = file_path.to_string_lossy();
+
+    let mut parse_result = parser
+        .parse(&source_str, &filename)
+        .map_err(|e| anyhow::anyhow!("{}", e))
+        .with_context(|| format!("Failed to parse {}", file_path.display()))?;
+
+    let analysis_result = TL_KB.with(|kb| {
+        let mut analyzer = Analyzer::with_knowledge_base(kb.clone());
+        analyzer
+            .analyze(&source_str, &mut parse_result)
+            .map_err(|e| anyhow::anyhow!("{}", e))
+    })?;
+
+    // Build a pseudo FileAnalysis struct inline
+    struct InlineAnalysis {
+        parse_result: flowsight_parser::ParseResult,
+        analysis: flowsight_analysis::AnalysisResult,
+    }
+    let analysis = InlineAnalysis {
+        parse_result,
+        analysis: analysis_result,
+    };
 
     let mut symbols = Vec::new();
 
